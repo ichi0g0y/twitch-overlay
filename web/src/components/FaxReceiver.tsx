@@ -1,13 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useFaxQueue } from '../hooks/useFaxQueue';
 import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
 import ClockDisplay from './ClockDisplay';
 import MusicPlayer from './music/MusicPlayer';
 import { LAYOUT } from '../constants/layout';
-import { buildApiUrl, buildEventSourceUrl } from '../utils/api';
+import { buildApiUrl } from '../utils/api';
+import { initWebSocket } from '../utils/websocket';
 import { useSettings } from '../contexts/SettingsContext';
 import type { FaxData, FaxState, ServerStatus, DynamicStyles } from '../types';
+
+// クライアントIDを生成（タブごとに一意）
+const generateClientId = (): string => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substr(2, 9);
+  return `${timestamp}-${random}`;
+};
 
 const FaxReceiver = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -17,6 +25,9 @@ const FaxReceiver = () => {
   const [faxState, setFaxState] = useState<FaxState | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
   const { currentFax, addToQueue, onDisplayComplete } = useFaxQueue();
+  
+  // クライアントIDを保持（コンポーネントのライフサイクル中は同じIDを使用）
+  const clientIdRef = useRef<string>(generateClientId());
   
   // ラベル位置をリセット
   useEffect(() => {
@@ -86,55 +97,39 @@ const FaxReceiver = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // WebSocket接続の管理
   useEffect(() => {
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-    let eventSource: EventSource | null = null;
-
-    const connect = () => {
-      eventSource = new EventSource(buildEventSourceUrl('/events'));
-
-      eventSource.onopen = () => {
-        setIsConnected(true);
-        console.log('SSE connection opened');
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
-      };
-
-      eventSource.onmessage = (event: MessageEvent) => {
-        try {
-          const data: FaxData = JSON.parse(event.data);
-          if (data.type === 'fax') {
-            addToQueue(data);
-          }
-        } catch (error) {
-          console.error('Failed to parse SSE message:', error);
-        }
-      };
-
-      eventSource.onerror = (error: Event) => {
-        console.error('SSE connection error:', error);
-        setIsConnected(false);
-        eventSource?.close();
-        
-        // 再接続を試みる
-        reconnectTimeout = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          connect();
-        }, 3000);
-      };
-    };
-
-    connect();
+    const wsClient = initWebSocket();
+    
+    // 接続状態の管理
+    const unsubConnect = wsClient.onConnect(() => {
+      setIsConnected(true);
+      console.log('WebSocket connected in FaxReceiver');
+    });
+    
+    const unsubDisconnect = wsClient.onDisconnect(() => {
+      setIsConnected(false);
+      console.log('WebSocket disconnected in FaxReceiver');
+    });
+    
+    // FAXメッセージの処理
+    const unsubFax = wsClient.on('fax', (data) => {
+      console.log('Fax message received via WebSocket:', data);
+      addToQueue(data as FaxData);
+    });
+    
+    // stream_status_changedメッセージの処理（プリンター状態など）
+    const unsubStreamStatus = wsClient.on('stream_status_changed', (data) => {
+      console.log('Stream status changed via WebSocket:', data);
+      // 必要に応じて処理を追加
+    });
 
     return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (eventSource) {
-        eventSource.close();
-      }
+      // クリーンアップ: すべてのハンドラーを解除
+      unsubConnect();
+      unsubDisconnect();
+      unsubFax();
+      unsubStreamStatus();
     };
   }, [addToQueue]);
 

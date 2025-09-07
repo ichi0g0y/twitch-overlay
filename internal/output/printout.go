@@ -354,10 +354,34 @@ func keepAliveRoutine() {
 	ticker := time.NewTicker(1 * time.Second) // Check every second
 	defer ticker.Stop()
 	
+	// バックオフ戦略用の変数
+	var consecutiveFailures int
+	var lastErrorTime time.Time
+	const maxBackoff = 60 * time.Second
+	const baseBackoff = 2 * time.Second
+	
 	for range ticker.C {
 		// First check if we need to do initial connection
 		if !IsConnected() && !HasInitialPrintBeenDone() {
-			logger.Info("Keep-alive: attempting initial printer connection")
+			// バックオフ戦略を適用
+			if consecutiveFailures > 0 {
+				// 指数バックオフを計算（2秒、4秒、8秒...最大60秒）
+				backoffDuration := time.Duration(1<<uint(consecutiveFailures-1)) * baseBackoff
+				if backoffDuration > maxBackoff {
+					backoffDuration = maxBackoff
+				}
+				
+				// まだバックオフ期間中ならスキップ
+				if time.Since(lastErrorTime) < backoffDuration {
+					continue
+				}
+			}
+			
+			// 10回目以降はログを抑制
+			if consecutiveFailures < 10 {
+				logger.Info("Keep-alive: attempting initial printer connection", 
+					zap.Int("attempt", consecutiveFailures+1))
+			}
 			
 			// Lock printer for exclusive access
 			printerMutex.Lock()
@@ -365,7 +389,13 @@ func keepAliveRoutine() {
 			// Setup printer if needed
 			c, err := SetupPrinter()
 			if err != nil {
-				logger.Error("Keep-alive: failed to setup printer for initial connection", zap.Error(err))
+				if consecutiveFailures < 10 || consecutiveFailures%60 == 0 {
+					logger.Error("Keep-alive: failed to setup printer for initial connection", 
+						zap.Error(err),
+						zap.Int("consecutive_failures", consecutiveFailures+1))
+				}
+				consecutiveFailures++
+				lastErrorTime = time.Now()
 				printerMutex.Unlock()
 				continue
 			}
@@ -373,11 +403,19 @@ func keepAliveRoutine() {
 			// Try to connect
 			err = ConnectPrinter(c, *env.Value.PrinterAddress)
 			if err != nil {
-				logger.Error("Keep-alive: failed initial connection to printer", zap.Error(err))
+				if consecutiveFailures < 10 || consecutiveFailures%60 == 0 {
+					logger.Error("Keep-alive: failed initial connection to printer", 
+						zap.Error(err),
+						zap.Int("consecutive_failures", consecutiveFailures+1))
+				}
+				consecutiveFailures++
+				lastErrorTime = time.Now()
 				printerMutex.Unlock()
 				continue
 			}
 			
+			// 接続成功 - カウンターをリセット
+			consecutiveFailures = 0
 			logger.Info("Keep-alive: initial connection established")
 			
 			// Mark initial print as done
@@ -421,6 +459,8 @@ func keepAliveRoutine() {
 				continue
 			}
 			
+			// 接続成功 - カウンターをリセット
+			consecutiveFailures = 0
 			logger.Info("Keep-alive: new connection established")
 			
 			// Mark initial print as done if not already done

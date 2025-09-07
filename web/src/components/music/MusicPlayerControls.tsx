@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Play, Pause, Square, SkipForward, SkipBack, Volume2, Music } from 'lucide-react';
-import { buildApiUrl, buildEventSourceUrl } from '../../utils/api';
+import { buildApiUrl } from '../../utils/api';
+import { getWebSocketClient } from '../../utils/websocket';
 import type { Playlist, Track } from '../../types/music';
 
 interface MusicStatus {
@@ -36,29 +37,23 @@ const MusicPlayerControls = () => {
       .catch(console.error);
   }, []);
   
-  // オーバーレイからの音楽状態を受信
+  // WebSocketで音楽状態を受信
   useEffect(() => {
-    const eventSource = new EventSource(buildEventSourceUrl('/api/music/status/events'));
+    const wsClient = getWebSocketClient();
+    wsClient.connect(); // 接続を確立
     
-    eventSource.onmessage = (event) => {
-      try {
-        const status = JSON.parse(event.data);
-        // playback_statusがない場合はis_playingから推測
-        if (!status.playback_status) {
-          status.playback_status = status.is_playing ? 'playing' : (status.current_track ? 'paused' : 'stopped');
-        }
-        setMusicStatus(status);
-      } catch (error) {
-        console.error('Failed to parse music status:', error);
+    // 音楽状態更新メッセージを処理
+    const unsubMusicStatus = wsClient.on('music_status', (status) => {
+      console.log('Music status updated via WebSocket in controls:', status);
+      // playback_statusがない場合はis_playingから推測
+      if (!status.playback_status) {
+        status.playback_status = status.is_playing ? 'playing' : (status.current_track ? 'paused' : 'stopped');
       }
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error('Music status SSE error:', error);
-    };
+      setMusicStatus(status);
+    });
     
     return () => {
-      eventSource.close();
+      unsubMusicStatus();
     };
   }, []);
   

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
-import { buildEventSourceUrl } from '../utils/api';
+import { getWebSocketClient } from '../utils/websocket';
 import { useSettings } from './SettingsContext';
 import type { Track, MusicPlayerState } from '../types/music';
 
@@ -26,58 +26,50 @@ export const MusicPlayerProvider = ({ children }: { children: React.ReactNode })
 
   // APIからの制御を受け付ける
   useEffect(() => {
-    const eventSource = new EventSource(buildEventSourceUrl('/api/music/control/events'));
-
-    eventSource.onmessage = (event) => {
-      try {
-        const command = JSON.parse(event.data);
-        console.log('Music control command received:', command);
-        
-        switch (command.type) {
-          case 'play':
-            player.play();
-            break;
-          case 'pause':
-            player.pause();
-            break;
-          case 'stop':
-            player.stop();
-            break;
-          case 'next':
-            player.next();
-            break;
-          case 'previous':
-            player.previous();
-            break;
-          case 'volume':
-            if (typeof command.value === 'number') {
-              player.setVolume(command.value);
-            }
-            break;
-          case 'load_playlist':
-            if (command.playlist) {
-              player.loadPlaylist(command.playlist);
-            }
-            break;
-          case 'seek':
-            if (typeof command.time === 'number') {
-              player.seek(command.time);
-            }
-            break;
-        }
-      } catch (error) {
-        console.error('Failed to process music control command:', error);
+    const wsClient = getWebSocketClient();
+    
+    // 音楽制御コマンドを処理
+    const unsubMusicControl = wsClient.on('music_control', (command) => {
+      console.log('Music control command received via WebSocket:', command);
+      
+      switch (command.type) {
+        case 'play':
+          player.play();
+          break;
+        case 'pause':
+          player.pause();
+          break;
+        case 'stop':
+          player.stop();
+          break;
+        case 'next':
+          player.next();
+          break;
+        case 'previous':
+          player.previous();
+          break;
+        case 'volume':
+          if (typeof command.value === 'number') {
+            player.setVolume(command.value);
+          }
+          break;
+        case 'load_playlist':
+          if (command.playlist) {
+            player.loadPlaylist(command.playlist);
+          }
+          break;
+        case 'seek':
+          if (typeof command.time === 'number') {
+            player.seek(command.time);
+          }
+          break;
       }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('Music control SSE error:', error);
-    };
+    });
 
     return () => {
-      eventSource.close();
+      unsubMusicControl();
     };
-  }, [player.play, player.pause, player.stop, player.next, player.previous, player.setVolume, player.loadPlaylist]);
+  }, [player.play, player.pause, player.stop, player.next, player.previous, player.setVolume, player.loadPlaylist, player.seek]);
 
   return (
     <MusicPlayerContext.Provider value={player}>

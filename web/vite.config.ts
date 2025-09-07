@@ -19,6 +19,11 @@ export default defineConfig({
         target: `http://localhost:${BACKEND_PORT}`,
         changeOrigin: true,
       },
+      '/ws': {
+        target: `ws://localhost:${BACKEND_PORT}`,
+        ws: true,
+        changeOrigin: true,
+      },
       '/events': `http://localhost:${BACKEND_PORT}`,
       '/fax': `http://localhost:${BACKEND_PORT}`,
       '/status': `http://localhost:${BACKEND_PORT}`,

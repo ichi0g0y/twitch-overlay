@@ -70,13 +70,17 @@ func removeMusicControlClient(client chan MusicControlCommand) {
 
 // 全クライアントにコマンドを送信
 func broadcastMusicCommand(cmd MusicControlCommand) {
+	// WebSocketクライアントに送信
+	BroadcastWSMessage("music_control", cmd)
+
+	// SSEクライアントにも送信（互換性のため）
 	musicControlMutex.RLock()
 	defer musicControlMutex.RUnlock()
 	
 	clientCount := len(musicControlClients)
 	logger.Info("Broadcasting music command", 
 		zap.String("command", cmd.Type), 
-		zap.Int("client_count", clientCount))
+		zap.Int("sse_client_count", clientCount))
 	
 	sentCount := 0
 	for client := range musicControlClients {
@@ -90,8 +94,8 @@ func broadcastMusicCommand(cmd MusicControlCommand) {
 	}
 	
 	logger.Info("Music command broadcast completed", 
-		zap.Int("sent_to_clients", sentCount),
-		zap.Int("total_clients", clientCount))
+		zap.Int("sent_to_sse_clients", sentCount),
+		zap.Int("total_sse_clients", clientCount))
 }
 
 // SSEクライアントを登録（ステータス用）
@@ -111,6 +115,10 @@ func removeMusicStatusClient(client chan MusicStatusUpdate) {
 
 // 全クライアントにステータスを送信
 func broadcastMusicStatus(status MusicStatusUpdate) {
+	// WebSocketクライアントに送信
+	BroadcastWSMessage("music_status", status)
+
+	// SSEクライアントにも送信（互換性のため）
 	musicStatusMutex.RLock()
 	defer musicStatusMutex.RUnlock()
 	

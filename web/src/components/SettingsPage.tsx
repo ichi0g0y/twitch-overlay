@@ -16,7 +16,8 @@ import {
   UpdateSettingsRequest
 } from '../types';
 import type { Playlist, Track } from '../types/music';
-import { buildApiUrl, buildEventSourceUrl } from '../utils/api';
+import { buildApiUrl } from '../utils/api';
+import { initWebSocket } from '../utils/websocket';
 import { LogViewer } from './LogViewer';
 import MusicManagerEmbed from './music/MusicManagerEmbed';
 import { Alert, AlertDescription } from './ui/alert';
@@ -151,84 +152,35 @@ export const SettingsPage: React.FC = () => {
       .catch(console.error);
   }, []);
   
-  // オーバーレイからの音楽状態を受信
+  // WebSocket接続で音楽状態を受信
   useEffect(() => {
-    const eventSource = new EventSource(buildEventSourceUrl('/api/music/status/events'));
+    const wsClient = initWebSocket();
     
-    eventSource.onmessage = (event) => {
-      try {
-        const status = JSON.parse(event.data);
-        setMusicStatus(status);
-      } catch (error) {
-        console.error('Failed to parse music status:', error);
-      }
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error('Music status SSE error:', error);
-    };
+    // 音楽状態更新メッセージを処理
+    const unsubMusicStatus = wsClient.on('music_status', (status) => {
+      console.log('Music status updated via WebSocket:', status);
+      setMusicStatus(status);
+    });
     
     return () => {
-      eventSource.close();
+      unsubMusicStatus();
     };
   }, []);
   
-  // SSE接続でプリンター状態の変更をリアルタイムで受信
+  // WebSocket接続でプリンター状態の変更をリアルタイムで受信
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
+    const wsClient = initWebSocket();
     
-    const connect = () => {
-      eventSource = new EventSource(buildEventSourceUrl('/events'));
-      
-      eventSource.onopen = () => {
-        console.log('Settings SSE connection opened');
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
-      };
-      
-      eventSource.onmessage = (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // プリンター接続/切断イベントを処理
-          if (data.type === 'printer_connected' || data.type === 'printer_disconnected') {
-            console.log('Printer status changed:', data.type);
-            // プリンター状態を再取得
-            fetchPrinterStatus();
-          }
-          
-          // 配信状態変更イベントも処理
-          if (data.type === 'stream_online' || data.type === 'stream_offline') {
-            console.log('Stream status changed:', data.type);
-            fetchStreamStatus();
-          }
-        } catch (error) {
-          console.error('Failed to parse SSE message:', error);
-        }
-      };
-      
-      eventSource.onerror = (error: Event) => {
-        console.error('Settings SSE connection error:', error);
-        eventSource?.close();
-        
-        // 3秒後に再接続を試みる
-        reconnectTimeout = setTimeout(() => {
-          console.log('Attempting to reconnect SSE...');
-          connect();
-        }, 3000);
-      };
-    };
-    
-    connect();
+    // stream_status_changedメッセージを処理（プリンター状態など）
+    const unsubStreamStatus = wsClient.on('stream_status_changed', (data) => {
+      console.log('Stream status changed via WebSocket:', data);
+      // プリンター状態を再取得
+      // 配信状態を更新
+      fetchStreamStatus();
+    });
     
     return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      eventSource?.close();
+      unsubStreamStatus();
     };
   }, []);
   

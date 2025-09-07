@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,8 +26,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type SSEClient struct {
+	ID       string
+	Channel  chan string
+	ConnectedAt time.Time
+}
+
 type SSEServer struct {
-	clients map[chan string]bool
+	clients map[string]*SSEClient  // clientID -> client
 	mu      sync.RWMutex
 }
 
@@ -35,9 +42,9 @@ func (s *SSEServer) broadcast(data []byte) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for client := range s.clients {
+	for _, client := range s.clients {
 		select {
-		case client <- string(data):
+		case client.Channel <- string(data):
 		default:
 			// Client is not ready to receive, skip
 		}
@@ -46,7 +53,7 @@ func (s *SSEServer) broadcast(data []byte) {
 
 var (
 	sseServer = &SSEServer{
-		clients: make(map[chan string]bool),
+		clients: make(map[string]*SSEClient),
 	}
 	httpServer *http.Server
 )
@@ -91,10 +98,14 @@ func StartWebServer(port int) {
 
 	// Register stream status change callback
 	status.RegisterStatusChangeCallback(func(streamStatus status.StreamStatus) {
-		BroadcastMessage(map[string]interface{}{
+		msg := map[string]interface{}{
 			"type": "stream_status_changed",
 			"data": streamStatus,
-		})
+		}
+		// WebSocketクライアントに送信
+		BroadcastWSMessage("stream_status_changed", streamStatus)
+		// SSEクライアントにも送信（互換性のため）
+		BroadcastMessage(msg)
 	})
 
 	// Serve static files - try multiple paths
@@ -165,7 +176,10 @@ func StartWebServer(port int) {
 	mux.HandleFunc("/api/logs/stream", handleLogsStream) // WebSocketは独自のUpgrade処理
 	mux.HandleFunc("/api/logs/clear", corsMiddleware(handleLogsClear))
 
-	// SSE endpoint
+	// WebSocket endpoint (新しい統合エンドポイント)
+	RegisterWebSocketRoute(mux)
+	
+	// SSE endpoint (互換性のため一時的に残す)
 	mux.HandleFunc("/events", handleSSE)
 
 	// Fax image endpoint
@@ -233,8 +247,11 @@ func StartWebServer(port int) {
 
 	// Create HTTP server instance
 	httpServer = &http.Server{
-		Addr:    addr,
-		Handler: mux, // Use our custom ServeMux
+		Addr:         addr,
+		Handler:      mux, // Use our custom ServeMux
+		WriteTimeout: 30 * time.Second, // SSE用に書き込みタイムアウトを設定
+		ReadTimeout:  10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {
@@ -273,31 +290,60 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get client ID from query parameter
+	clientID := r.URL.Query().Get("clientId")
+	if clientID == "" {
+		// Generate a client ID if not provided (backward compatibility)
+		clientID = fmt.Sprintf("auto-%d-%d", time.Now().UnixNano(), rand.Int63())
+	}
+
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable buffering for nginx
 
-	// Create client channel
-	clientChan := make(chan string)
+	// Create client
+	client := &SSEClient{
+		ID:          clientID,
+		Channel:     make(chan string, 10), // Buffered channel to prevent blocking
+		ConnectedAt: time.Now(),
+	}
 
-	// Register client
+	// Check for existing client with same ID and close it
 	sseServer.mu.Lock()
-	sseServer.clients[clientChan] = true
+	if existingClient, exists := sseServer.clients[clientID]; exists {
+		logger.Info("Closing existing SSE connection for client", 
+			zap.String("clientId", clientID),
+			zap.String("remote", r.RemoteAddr))
+		close(existingClient.Channel)
+	}
+	// Register new client
+	sseServer.clients[clientID] = client
 	sseServer.mu.Unlock()
 
 	// Remove client on disconnect
 	defer func() {
 		sseServer.mu.Lock()
-		delete(sseServer.clients, clientChan)
-		close(clientChan)
+		if c, exists := sseServer.clients[clientID]; exists && c == client {
+			delete(sseServer.clients, clientID)
+			close(client.Channel)
+		}
 		sseServer.mu.Unlock()
 	}()
 
-	logger.Info("SSE client connected", zap.String("remote", r.RemoteAddr))
+	logger.Info("SSE client connected", 
+		zap.String("clientId", clientID),
+		zap.String("remote", r.RemoteAddr))
 
-	// Send initial connection message
-	fmt.Fprintf(w, "data: {\"type\":\"connected\"}\n\n")
+	// Force flush immediately to establish connection
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	// Send initial connection message with client ID
+	connectionMsg := fmt.Sprintf(`{"type":"connected","clientId":"%s"}`, clientID)
+	fmt.Fprintf(w, "data: %s\n\n", connectionMsg)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -306,22 +352,73 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
 
-	// Send messages to client
+	// Send messages to client with timeout protection
 	for {
 		select {
-		case msg := <-clientChan:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
+		case msg := <-client.Channel:
+			// 書き込みタイムアウト付きで送信
+			done := make(chan bool, 1)
+			go func() {
+				_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
+				if err != nil {
+					logger.Debug("Failed to write SSE message", 
+						zap.String("clientId", clientID),
+						zap.Error(err))
+					done <- false
+					return
+				}
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				done <- true
+			}()
+			
+			// 5秒のタイムアウト
+			select {
+			case success := <-done:
+				if !success {
+					logger.Info("SSE write failed, disconnecting client",
+						zap.String("clientId", clientID))
+					return
+				}
+			case <-time.After(5 * time.Second):
+				logger.Warn("SSE write timeout, disconnecting client",
+					zap.String("clientId", clientID))
+				return
 			}
+			
 		case <-heartbeat.C:
-			// Send heartbeat
-			fmt.Fprintf(w, ": heartbeat\n\n")
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
+			// Send heartbeat with timeout
+			done := make(chan bool, 1)
+			go func() {
+				_, err := fmt.Fprintf(w, ": heartbeat\n\n")
+				if err != nil {
+					done <- false
+					return
+				}
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				done <- true
+			}()
+			
+			select {
+			case success := <-done:
+				if !success {
+					logger.Debug("SSE heartbeat write failed",
+						zap.String("clientId", clientID))
+					return
+				}
+			case <-time.After(5 * time.Second):
+				logger.Debug("SSE heartbeat timeout",
+					zap.String("clientId", clientID))
+				return
 			}
+			
 		case <-r.Context().Done():
-			logger.Info("SSE client disconnected", zap.String("remote", r.RemoteAddr))
+			logger.Info("SSE client disconnected", 
+				zap.String("clientId", clientID),
+				zap.String("remote", r.RemoteAddr))
 			return
 		}
 	}
@@ -360,7 +457,7 @@ func handleFaxImage(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, imagePath)
 }
 
-// BroadcastFax sends a fax notification to all connected SSE clients
+// BroadcastFax sends a fax notification to all connected SSE and WebSocket clients
 func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 	msg := map[string]interface{}{
 		"type":        "fax",
@@ -372,6 +469,10 @@ func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 		"imageUrl":    fmt.Sprintf("/fax/%s/color", fax.ID), // カラー画像のURLを生成
 	}
 
+	// WebSocketクライアントに送信
+	BroadcastWSMessage("fax", msg)
+
+	// SSEクライアントにも送信（互換性のため）
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
 		logger.Error("Failed to marshal fax message", zap.Error(err))
@@ -381,17 +482,17 @@ func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for client := range s.clients {
+	for _, client := range s.clients {
 		select {
-		case client <- string(jsonData):
+		case client.Channel <- string(jsonData):
 		default:
 			// Client channel is full, skip
 		}
 	}
 
-	logger.Info("Broadcasted fax to SSE clients",
+	logger.Info("Broadcasted fax to clients",
 		zap.String("id", fax.ID),
-		zap.Int("clients", len(s.clients)))
+		zap.Int("sse_clients", len(s.clients)))
 }
 
 // handleStatus returns the current system status

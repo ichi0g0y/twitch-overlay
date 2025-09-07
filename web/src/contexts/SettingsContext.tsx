@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
+import { getWebSocketClient } from '../utils/websocket';
 
 interface OverlaySettings {
   // 音楽プレイヤー設定
@@ -61,27 +62,18 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchSettings();
   }, []);
 
-  // SSEで設定変更を監視
+  // WebSocketで設定変更を監視
   useEffect(() => {
-    const eventSource = new EventSource(buildApiUrl('/api/settings/overlay/events'));
-
-    eventSource.onmessage = (event) => {
-      try {
-        const updatedSettings = JSON.parse(event.data);
-        console.log('📡 Settings updated via SSE:', updatedSettings);
-        setSettings(updatedSettings);
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error('SSE connection error:', err);
-      // 再接続は自動的に行われる
-    };
+    const wsClient = getWebSocketClient();
+    
+    // 設定更新メッセージを処理
+    const unsubSettings = wsClient.on('settings', (data) => {
+      console.log('📡 Settings updated via WebSocket:', data);
+      setSettings(data);
+    });
 
     return () => {
-      eventSource.close();
+      unsubSettings();
     };
   }, []);
 

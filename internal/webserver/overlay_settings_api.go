@@ -132,8 +132,12 @@ func saveOverlaySettings(settings *OverlaySettings) error {
 	return nil
 }
 
-// broadcastSettingsUpdate sends settings update to all SSE clients
+// broadcastSettingsUpdate sends settings update to all SSE and WebSocket clients
 func broadcastSettingsUpdate(settings *OverlaySettings) {
+	// WebSocketクライアントに送信
+	BroadcastWSMessage("settings", settings)
+
+	// SSEクライアントにも送信（互換性のため）
 	settingsEventClientsMu.RLock()
 	defer settingsEventClientsMu.RUnlock()
 
