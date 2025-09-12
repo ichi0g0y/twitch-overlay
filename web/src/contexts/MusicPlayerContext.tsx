@@ -30,7 +30,7 @@ export const MusicPlayerProvider = ({ children }: { children: React.ReactNode })
     
     // 音楽制御コマンドを処理
     const unsubMusicControl = wsClient.on('music_control', (command) => {
-      console.log('Music control command received via WebSocket:', command);
+      // console.log('Music control command received via WebSocket:', command); // デバッグ用ログ
       
       switch (command.type) {
         case 'play':

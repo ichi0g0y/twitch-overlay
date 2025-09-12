@@ -139,6 +139,13 @@ func (h *WSHub) run() {
 
 // BroadcastWSMessage すべてのクライアントにメッセージを送信
 func BroadcastWSMessage(msgType string, data interface{}) {
+	// music_statusは頻繁すぎるのでログをスキップ
+	if msgType != "music_status" {
+		logger.Info("BroadcastWSMessage called",
+			zap.String("message_type", msgType),
+			zap.Any("data", data))
+	}
+
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		logger.Error("Failed to marshal WebSocket broadcast data", zap.Error(err))
@@ -152,6 +159,11 @@ func BroadcastWSMessage(msgType string, data interface{}) {
 
 	select {
 	case wsHub.broadcast <- msg:
+		// music_statusは頻繁すぎるのでログをスキップ
+		if msgType != "music_status" {
+			logger.Info("WebSocket message queued for broadcast",
+				zap.String("message_type", msgType))
+		}
 	default:
 		logger.Warn("WebSocket broadcast channel full, message dropped")
 	}

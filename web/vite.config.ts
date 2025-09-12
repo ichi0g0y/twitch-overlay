@@ -24,7 +24,7 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
-      '/events': `http://localhost:${BACKEND_PORT}`,
+      // '/events': `http://localhost:${BACKEND_PORT}`, // SSE削除
       '/fax': `http://localhost:${BACKEND_PORT}`,
       '/status': `http://localhost:${BACKEND_PORT}`,
       '/debug': {

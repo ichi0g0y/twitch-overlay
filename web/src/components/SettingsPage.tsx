@@ -57,6 +57,8 @@ export const SettingsPage: React.FC = () => {
   const [previewText, setPreviewText] = useState<string>('サンプルテキスト Sample Text 123\nフォントプレビュー 🎨');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const seekingRef = useRef<boolean>(false);
+  const seekTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const [restarting, setRestarting] = useState(false);
   const [restartCountdown, setRestartCountdown] = useState(0);
   const [twitchUserInfo, setTwitchUserInfo] = useState<TwitchUserInfo | null>(null);
@@ -158,8 +160,17 @@ export const SettingsPage: React.FC = () => {
     
     // 音楽状態更新メッセージを処理
     const unsubMusicStatus = wsClient.on('music_status', (status) => {
-      console.log('Music status updated via WebSocket:', status);
-      setMusicStatus(status);
+      // console.log('Music status updated via WebSocket:', status); // 頻繁すぎるのでコメントアウト
+      setMusicStatus(prevStatus => {
+        // シーク中は位置情報の更新を無視
+        if (seekingRef.current) {
+          return {
+            ...status,
+            current_time: prevStatus.current_time
+          };
+        }
+        return status;
+      });
     });
     
     return () => {
@@ -216,7 +227,27 @@ export const SettingsPage: React.FC = () => {
   };
   
   const handleSeek = (time: number) => {
+    // シーク中フラグを立てる
+    seekingRef.current = true;
+    
+    // 前のタイマーをクリア
+    if (seekTimeoutRef.current) {
+      clearTimeout(seekTimeoutRef.current);
+    }
+    
+    // ローカルで即座に更新（UIの応答性向上）
+    setMusicStatus(prev => ({
+      ...prev,
+      current_time: time
+    }));
+    
+    // サーバーへのシークコマンドを送信
     sendMusicControlCommand('seek', { time });
+    
+    // 一定時間後にシーク中フラグを解除
+    seekTimeoutRef.current = setTimeout(() => {
+      seekingRef.current = false;
+    }, 500);
   };
 
   // 時間フォーマット
@@ -1680,6 +1711,48 @@ export const SettingsPage: React.FC = () => {
                         className="w-full"
                       />
                     </div>
+              </CardContent>
+            </Card>
+
+            {/* 統計情報設定 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>統計情報表示</CardTitle>
+                <CardDescription>
+                  オーバーレイに表示する統計情報の値を設定
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="clock-weight">おもさ (kg)</Label>
+                  <Input
+                    id="clock-weight"
+                    type="text"
+                    placeholder="例: 75.4"
+                    value={getSettingValue('CLOCK_WEIGHT') || '75.4'}
+                    onChange={(e) => 
+                      handleSettingChange('CLOCK_WEIGHT', e.target.value)
+                    }
+                    className="font-mono"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="clock-wallet">さいふ (えん)</Label>
+                  <Input
+                    id="clock-wallet"
+                    type="text"
+                    placeholder="例: 10387"
+                    value={getSettingValue('CLOCK_WALLET') || '10387'}
+                    onChange={(e) => 
+                      handleSettingChange('CLOCK_WALLET', e.target.value)
+                    }
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    数値のみ入力してください。自動的にカンマ区切りで表示されます。
+                  </p>
+                </div>
               </CardContent>
             </Card>
 

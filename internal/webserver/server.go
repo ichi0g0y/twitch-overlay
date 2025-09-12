@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -179,8 +178,8 @@ func StartWebServer(port int) {
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
 	
-	// SSE endpoint (互換性のため一時的に残す)
-	mux.HandleFunc("/events", handleSSE)
+	// SSE endpoint - 削除（WebSocketのみ使用）
+	// mux.HandleFunc("/events", handleSSE)
 
 	// Fax image endpoint
 	mux.HandleFunc("/fax/", handleFaxImage)
@@ -278,6 +277,8 @@ func Shutdown() {
 }
 
 // handleSSE handles Server-Sent Events connections
+// SSE関連 - 削除（WebSocketのみ使用）
+/*
 func handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers first
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -423,6 +424,7 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+*/
 
 // handleFaxImage serves fax images
 func handleFaxImage(w http.ResponseWriter, r *http.Request) {
@@ -457,8 +459,14 @@ func handleFaxImage(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, imagePath)
 }
 
-// BroadcastFax sends a fax notification to all connected SSE and WebSocket clients
+// BroadcastFax sends a fax notification to all connected WebSocket clients
 func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
+	logger.Info("BroadcastFax called",
+		zap.String("fax_id", fax.ID),
+		zap.String("username", fax.UserName),
+		zap.String("message", fax.Message),
+		zap.Time("timestamp", fax.Timestamp))
+
 	msg := map[string]interface{}{
 		"type":        "fax",
 		"id":          fax.ID,
@@ -471,24 +479,6 @@ func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 
 	// WebSocketクライアントに送信
 	BroadcastWSMessage("fax", msg)
-
-	// SSEクライアントにも送信（互換性のため）
-	jsonData, err := json.Marshal(msg)
-	if err != nil {
-		logger.Error("Failed to marshal fax message", zap.Error(err))
-		return
-	}
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, client := range s.clients {
-		select {
-		case client.Channel <- string(jsonData):
-		default:
-			// Client channel is full, skip
-		}
-	}
 
 	logger.Info("Broadcasted fax to clients",
 		zap.String("id", fax.ID),

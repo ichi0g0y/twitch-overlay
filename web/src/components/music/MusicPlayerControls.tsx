@@ -44,7 +44,7 @@ const MusicPlayerControls = () => {
     
     // 音楽状態更新メッセージを処理
     const unsubMusicStatus = wsClient.on('music_status', (status) => {
-      console.log('Music status updated via WebSocket in controls:', status);
+      // console.log('Music status updated via WebSocket in controls:', status); // 頻繁すぎるのでコメントアウト
       // playback_statusがない場合はis_playingから推測
       if (!status.playback_status) {
         status.playback_status = status.is_playing ? 'playing' : (status.current_track ? 'paused' : 'stopped');

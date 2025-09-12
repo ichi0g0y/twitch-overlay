@@ -29,6 +29,10 @@ const FaxReceiver = () => {
   // クライアントIDを保持（コンポーネントのライフサイクル中は同じIDを使用）
   const clientIdRef = useRef<string>(generateClientId());
   
+  // 処理済みメッセージIDを保持（重複処理を防ぐ）
+  const processedMessageIds = useRef<Set<string>>(new Set());
+  const messageIdTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  
   // ラベル位置をリセット
   useEffect(() => {
     if (!currentFax) {
@@ -112,10 +116,36 @@ const FaxReceiver = () => {
       console.log('WebSocket disconnected in FaxReceiver');
     });
     
-    // FAXメッセージの処理
+    // FAXメッセージの処理（重複チェック付き）
     const unsubFax = wsClient.on('fax', (data) => {
+      const faxData = data as FaxData;
+      
+      // 重複チェック
+      if (processedMessageIds.current.has(faxData.id)) {
+        console.log('Duplicate fax message ignored:', faxData.id);
+        return;
+      }
+      
       console.log('Fax message received via WebSocket:', data);
-      addToQueue(data as FaxData);
+      
+      // メッセージIDを処理済みとして記録
+      processedMessageIds.current.add(faxData.id);
+      
+      // 5秒後にIDを削除（メモリリークを防ぐ）
+      const timeoutId = setTimeout(() => {
+        processedMessageIds.current.delete(faxData.id);
+        messageIdTimeouts.current.delete(faxData.id);
+      }, 5000);
+      
+      // 既存のタイムアウトがあればクリア
+      const existingTimeout = messageIdTimeouts.current.get(faxData.id);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+      messageIdTimeouts.current.set(faxData.id, timeoutId);
+      
+      // キューに追加
+      addToQueue(faxData);
     });
     
     // stream_status_changedメッセージの処理（プリンター状態など）
@@ -130,8 +160,12 @@ const FaxReceiver = () => {
       unsubDisconnect();
       unsubFax();
       unsubStreamStatus();
+      
+      // タイムアウトをクリア
+      messageIdTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      messageIdTimeouts.current.clear();
     };
-  }, [addToQueue]);
+  }, [addToQueue]); // addToQueueを依存配列に戻す
 
   // 背景スタイル
   const backgroundStyle: DynamicStyles = { 
