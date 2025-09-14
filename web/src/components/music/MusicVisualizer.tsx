@@ -14,6 +14,7 @@ const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualize
   const animationIdRef = useRef<number | null>(null);
   const dataArrayRef = useRef<Uint8Array | null>(null);
   const isConnectedRef = useRef<boolean>(false);
+  const lastAudioElementRef = useRef<HTMLAudioElement | null>(null);
 
   // Visualizer設定
   const BAR_COUNT = 32; // 放射状の線の数
@@ -127,41 +128,54 @@ const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualize
     if (!audioElement || !canvasRef.current) return;
 
     // AudioContextの初期化とaudio要素の接続
-    if (!isConnectedRef.current && audioElement) {
-      console.log('Initializing AudioContext for Visualizer');
+    // audioElementが変更された場合のみ再接続（同じ要素の場合はスキップ）
+    if (!isConnectedRef.current || (audioElement !== lastAudioElementRef.current && audioElement)) {
+      console.log('Initializing/Updating AudioContext for Visualizer');
       
-      // 既存のコンテキストがあればクリーンアップ
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      // 初回のみAudioContextを作成
+      if (!audioContextRef.current) {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioContext;
+
+        // AnalyserNodeの作成
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512; // FFTサイズをさらに増やす
+        analyser.smoothingTimeConstant = 0.85; // スムージングを調整
+        analyser.minDecibels = -100; // より低い音も拾う
+        analyser.maxDecibels = -30; // 最大デシベルも調整
+        analyserRef.current = analyser;
+
+        // データ配列の初期化
+        const bufferLength = analyser.frequencyBinCount;
+        dataArrayRef.current = new Uint8Array(bufferLength);
+        console.log('Analyser buffer length:', bufferLength);
       }
-      
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioContextRef.current = audioContext;
-
-      // AnalyserNodeの作成
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512; // FFTサイズをさらに増やす
-      analyser.smoothingTimeConstant = 0.85; // スムージングを調整
-      analyser.minDecibels = -100; // より低い音も拾う
-      analyser.maxDecibels = -30; // 最大デシベルも調整
-      analyserRef.current = analyser;
-
-      // データ配列の初期化
-      const bufferLength = analyser.frequencyBinCount;
-      dataArrayRef.current = new Uint8Array(bufferLength);
-      console.log('Analyser buffer length:', bufferLength);
 
       try {
-        // audio要素をAudioContextに接続
-        const source = audioContext.createMediaElementSource(audioElement);
-        source.connect(analyser);
-        analyser.connect(audioContext.destination);
+        // 既存のソースがある場合は切断
+        if (sourceRef.current) {
+          sourceRef.current.disconnect();
+          sourceRef.current = null;
+        }
+
+        // 新しいaudio要素をAudioContextに接続
+        const source = audioContextRef.current!.createMediaElementSource(audioElement);
+        source.connect(analyserRef.current!);
+        analyserRef.current!.connect(audioContextRef.current!.destination);
         sourceRef.current = source;
         isConnectedRef.current = true;
+        lastAudioElementRef.current = audioElement;
         console.log('Audio source connected successfully');
       } catch (error) {
-        console.error('Failed to connect audio source:', error);
-        isConnectedRef.current = false;
+        // 既に接続されている場合のエラーは無視
+        if ((error as Error).message?.includes('already connected')) {
+          console.log('Audio element already connected to AudioContext');
+          isConnectedRef.current = true;
+          lastAudioElementRef.current = audioElement;
+        } else {
+          console.error('Failed to connect audio source:', error);
+          isConnectedRef.current = false;
+        }
       }
     }
 

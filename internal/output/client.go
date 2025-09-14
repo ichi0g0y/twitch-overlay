@@ -135,3 +135,73 @@ func IsConnected() bool {
 func HasInitialPrintBeenDone() bool {
 	return hasInitialPrintBeenDone
 }
+
+// GetLatestPrinter returns the current printer client
+func GetLatestPrinter() *catprinter.Client {
+	return latestPrinter
+}
+
+// SetupScannerClient creates a new client for scanning without affecting existing connection
+func SetupScannerClient() (*catprinter.Client, error) {
+	logger.Info("Creating scanner client (independent from main connection)")
+	
+	// 新規クライアント作成（既存の接続に影響しない）
+	instance, err := catprinter.NewClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	// グローバル変数を更新しない（独立したクライアント）
+	return instance, nil
+}
+
+// ReconnectPrinter forces a complete reconnection to the printer
+func ReconnectPrinter(address string) error {
+	logger.Info("Starting forced printer reconnection", zap.String("address", address))
+	
+	// まず既存の接続を完全に切断
+	if latestPrinter != nil {
+		logger.Info("Disconnecting existing printer")
+		if isConnected {
+			latestPrinter.Disconnect()
+			isConnected = false
+		}
+		latestPrinter.Stop()
+		latestPrinter = nil
+		
+		// Bluetoothリソースの解放を待つ
+		time.Sleep(500 * time.Millisecond)
+	}
+	
+	// 接続状態をクリア
+	isConnected = false
+	isReconnecting = false
+	status.SetPrinterConnected(false)
+	
+	// 新規クライアント作成
+	logger.Info("Creating new printer client for reconnection")
+	client, err := catprinter.NewClient()
+	if err != nil {
+		logger.Error("Failed to create new client", zap.Error(err))
+		return err
+	}
+	
+	latestPrinter = client
+	
+	// プリンターオプションは後で SetupPrinterOptions で設定される
+	
+	// 接続を実行
+	logger.Info("Connecting to printer", zap.String("address", address))
+	err = client.Connect(address)
+	if err != nil {
+		logger.Error("Failed to connect", zap.Error(err))
+		status.SetPrinterConnected(false)
+		return err
+	}
+	
+	logger.Info("Successfully reconnected to printer", zap.String("address", address))
+	isConnected = true
+	status.SetPrinterConnected(true)
+	
+	return nil
+}

@@ -26,18 +26,39 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
   const rotationSpeedRef = useRef<number>(1); // 回転速度の倍率（1 = 通常速度、0 = 停止）
   const decelerationStartTimeRef = useRef<number | null>(null);
   const [isTrackEnding, setIsTrackEnding] = useState(false); // 曲終了による停止かどうか
+  const [playerPosition, setPlayerPosition] = useState<'visible' | 'hidden' | 'entering'>('hidden'); // プレイヤーの表示位置
   
   // デバッグモードの確認
   const isDebug = new URLSearchParams(window.location.search).get('debug') === 'true';
   
   // Settings からプレイリストを取得（propが優先）
   const playlist = propPlaylist ?? settings?.music_playlist ?? undefined;
-  
-  // 停止状態の場合はプレイヤーを非表示にする
-  const shouldShowPlayer = player.playbackStatus !== 'stopped';
+
+  // プレイヤーの表示位置を制御
+  useEffect(() => {
+    if (player.playbackStatus === 'stopped') {
+      setPlayerPosition('hidden');
+    } else {
+      // 再生/一時停止時は表示（スライドインアニメーション）
+      if (playerPosition === 'hidden') {
+        setPlayerPosition('entering');
+        setTimeout(() => {
+          setPlayerPosition('visible');
+        }, 700); // アニメーション時間と同じ
+      } else {
+        setPlayerPosition('visible');
+      }
+    }
+  }, [player.playbackStatus]);
 
   // トラック変更時のアニメーション制御
   useEffect(() => {
+    // 初回起動時にcurrentTrackがある場合はdisplayTrackを設定
+    if (!displayTrack && player.currentTrack) {
+      setDisplayTrack(player.currentTrack);
+      prevTrackIdRef.current = player.currentTrack.id;
+    }
+    
     // 新しいトラックが選択された時
     if (player.currentTrack && player.currentTrack.id !== prevTrackIdRef.current) {
       // 新しい曲が始まったらフラグをリセット
@@ -65,14 +86,16 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
       }
       prevTrackIdRef.current = player.currentTrack?.id || null;
     } else if (!player.currentTrack && prevTrackIdRef.current !== null) {
-      // トラックが無くなった時
-      setAnimationState('exiting');
-      setShowTypewriter(false);
-      setTimeout(() => {
-        setDisplayTrack(null);
-        setAnimationState('idle');
-      }, 400);
-      prevTrackIdRef.current = null;
+      // トラックが無くなった時（停止時は保持する）
+      if (player.playbackStatus !== 'stopped') {
+        setAnimationState('exiting');
+        setShowTypewriter(false);
+        setTimeout(() => {
+          setDisplayTrack(null);
+          setAnimationState('idle');
+        }, 400);
+        prevTrackIdRef.current = null;
+      }
     }
   }, [player.currentTrack?.id]);
   
@@ -149,19 +172,26 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
   useEffect(() => {
     const sendMusicStatus = async () => {
       try {
+        const statusData = {
+          playback_status: player.playbackStatus,
+          is_playing: player.isPlaying, // 互換性のため
+          current_track: player.currentTrack,
+          progress: player.progress,
+          current_time: player.currentTime,
+          duration: player.duration,
+          volume: player.volume,
+          playlist_name: player.playlistName
+        };
+        
+        // デバッグ用ログ（開発時のみ）
+        if (process.env.NODE_ENV === 'development' && player.isPlaying) {
+          console.debug(`[Overlay Send] time: ${player.currentTime?.toFixed(1)}s, progress: ${player.progress?.toFixed(1)}%`);
+        }
+        
         await fetch(buildApiUrl('/api/music/status/update'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            playback_status: player.playbackStatus,
-            is_playing: player.isPlaying, // 互換性のため
-            current_track: player.currentTrack,
-            progress: player.progress,
-            current_time: player.currentTime,
-            duration: player.duration,
-            volume: player.volume,
-            playlist_name: player.playlistName
-          })
+          body: JSON.stringify(statusData)
         });
       } catch (error) {
         // サイレントに失敗（Settingsが開いていない場合など）
@@ -171,16 +201,24 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
     // 状態が変化したときに送信
     sendMusicStatus();
     
-    // 定期的に進捗状態を送信
+    // 定期的に進捗状態を送信（5秒ごと）
     let interval: NodeJS.Timeout | null = null;
     if (player.isPlaying) {
-      interval = setInterval(sendMusicStatus, 1000);
+      interval = setInterval(sendMusicStatus, 5000); // 1秒→5秒に変更
     }
     
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [player.playbackStatus, player.isPlaying, player.currentTrack?.id, player.progress, player.volume, player.playlistName, buildApiUrl]);
+  }, [
+    player.playbackStatus, 
+    player.isPlaying, 
+    player.currentTrack?.id, 
+    player.volume, 
+    player.playlistName,
+    Math.floor(player.currentTime || 0), // 整数化して頻繁な更新を防ぐ
+    buildApiUrl
+  ]);
 
   // 曲終了が近づいたことを検知
   useEffect(() => {
@@ -280,18 +318,18 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
         </div>
       )}
       
-      {/* プログレスバー - 最下部（停止時は非表示） */}
-      {shouldShowPlayer && (
+      {/* プログレスバー - 最下部（停止時は完全に非表示） */}
+      {playerPosition === 'visible' && (
         <MusicProgress
           progress={player.progress}
           isPlaying={player.isPlaying}
         />
       )}
       
-      {/* アートワーク＋トラック情報 - 左下（停止時は非表示） */}
-      {shouldShowPlayer && displayTrack && (
+      {/* アートワーク＋トラック情報 - 左下（常に表示、位置のみ変更） */}
+      {displayTrack ? (
         <div
-          className={animationState === 'entering' ? 'music-info-entering' : animationState === 'exiting' ? 'music-info-exiting' : ''}
+          className={`${animationState === 'entering' ? 'music-info-entering' : animationState === 'exiting' ? 'music-info-exiting' : ''} ${playerPosition === 'hidden' ? 'music-player-hidden' : playerPosition === 'entering' ? 'music-player-entering' : ''}`}
           style={{
             position: 'fixed',
             bottom: 0,
@@ -344,7 +382,7 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 };

@@ -9,16 +9,24 @@ import (
 	"sync"
 	"time"
 
+	"git.massivebox.net/massivebox/go-catprinter"
 	"github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/status"
 	"go.uber.org/zap"
 )
 
-var printQueue chan image.Image
+// PrintJob represents a print job with optional force flag
+type PrintJob struct {
+	Image image.Image
+	Force bool // Force print even in dry-run mode
+}
+
+var printQueue chan PrintJob
 var lastPrintTime time.Time
 var lastPrintMutex sync.Mutex
 var printerMutex sync.Mutex
@@ -75,7 +83,7 @@ func InitializePrinter() {
 }
 
 func init() {
-	printQueue = make(chan image.Image, 100)
+	printQueue = make(chan PrintJob, 100)
 	
 	// Initialize last print time to now
 	lastPrintTime = time.Now()
@@ -84,28 +92,53 @@ func init() {
 	// after env.Value is properly initialized
 	
 	go func() {
-		for img := range printQueue {
+		for job := range printQueue {
 			// Lock printer for exclusive access
 			printerMutex.Lock()
 			
-			// Setup printer if needed
-			c, err := SetupPrinter()
-			if err != nil {
-				logger.Error("failed to setup printer", zap.Error(err))
-				printerMutex.Unlock()
-				continue
+			var c *catprinter.Client
+			
+			// Check if already connected
+			if !IsConnected() {
+				// Setup printer only if not connected
+				c, err := SetupPrinter()
+				if err != nil {
+					logger.Error("failed to setup printer", zap.Error(err))
+					printerMutex.Unlock()
+					continue
+				}
+				
+				// Try to connect
+				err = ConnectPrinter(c, *env.Value.PrinterAddress)
+				if err != nil {
+					logger.Error("failed to connect printer", zap.Error(err))
+					printerMutex.Unlock()
+					continue
+				}
+			} else {
+				// Use existing connection
+				c = GetLatestPrinter()
+				if c == nil {
+					logger.Error("printer is connected but client is nil")
+					printerMutex.Unlock()
+					continue
+				}
 			}
 			
-			// Try to connect if not connected
-			err = ConnectPrinter(c, *env.Value.PrinterAddress)
-			if err != nil {
-				logger.Error("failed to connect printer", zap.Error(err))
-				printerMutex.Unlock()
-				continue
+			// Ensure printer options are initialized
+			if opts == nil {
+				logger.Info("Initializing printer options")
+				SetupPrinterOptions(
+					env.Value.BestQuality,
+					env.Value.Dither,
+					env.Value.AutoRotate,
+					env.Value.BlackPoint,
+				)
 			}
 			
 			// Check for dry-run mode (including auto dry-run when offline)
-			if shouldUseDryRun() {
+			// Skip dry-run check if force flag is set
+			if !job.Force && shouldUseDryRun() {
 				if env.Value.AutoDryRunWhenOffline && !status.IsStreamLive() {
 					logger.Info("Auto dry-run mode (stream offline): skipping actual printing")
 				} else {
@@ -117,9 +150,13 @@ func init() {
 				lastPrintMutex.Unlock()
 			} else {
 				// Rotate image 180 degrees if ROTATE_PRINT is enabled
-				finalImg := img
+				finalImg := job.Image
 				if env.Value.RotatePrint {
-					finalImg = rotateImage180(img)
+					finalImg = rotateImage180(job.Image)
+				}
+				
+				if job.Force {
+					logger.Info("Force printing (ignoring dry-run mode)")
 				}
 				
 				if err := c.Print(finalImg, opts, false); err != nil {
@@ -145,6 +182,11 @@ func PrintClock(timeStr string) error {
 
 // PrintClockWithOptions sends clock output to printer and frontend with options
 func PrintClockWithOptions(timeStr string, forceEmptyLeaderboard bool) error {
+	return PrintClockWithOptionsForce(timeStr, forceEmptyLeaderboard, false)
+}
+
+// PrintClockWithOptionsForce sends clock output with force print option
+func PrintClockWithOptionsForce(timeStr string, forceEmptyLeaderboard bool, forcePrint bool) error {
 	// Generate color version
 	colorImg, err := GenerateTimeImageWithStatsColorOptions(timeStr, forceEmptyLeaderboard)
 	if err != nil {
@@ -171,8 +213,11 @@ func PrintClockWithOptions(timeStr string, forceEmptyLeaderboard bool) error {
 	// Broadcast to SSE clients
 	broadcast.BroadcastFax(fax)
 
-	// Add to print queue
-	printQueue <- monoImg
+	// Add to print queue with force flag
+	printQueue <- PrintJob{
+		Image: monoImg,
+		Force: forcePrint,
+	}
 	return nil
 }
 
@@ -212,7 +257,10 @@ func PrintOut(userName string, message []twitch.ChatMessageFragment, timestamp t
 	broadcast.BroadcastFax(fax)
 
 	// Add to print queue
-	printQueue <- monoImg
+	printQueue <- PrintJob{
+		Image: monoImg,
+		Force: false,
+	}
 	return nil
 }
 
@@ -254,7 +302,10 @@ func PrintOutWithTitle(title, userName, extra, details string, timestamp time.Ti
 	broadcast.BroadcastFax(fax)
 
 	// Add to print queue
-	printQueue <- monoImg
+	printQueue <- PrintJob{
+		Image: monoImg,
+		Force: false,
+	}
 	return nil
 }
 
@@ -494,7 +545,7 @@ func PrintInitialClock() error {
 	
 	// Save image if debug output is enabled
 	if env.Value.DebugOutput {
-		outputDir := ".output"
+		outputDir := paths.GetOutputDir()
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
@@ -518,7 +569,7 @@ func PrintInitialClock() error {
 	// Directly add to print queue without frontend notification
 	// This is the only output that doesn't notify the frontend
 	select {
-	case printQueue <- img:
+	case printQueue <- PrintJob{Image: img, Force: false}:
 		logger.Info("Initial clock added to print queue (no frontend notification)")
 	default:
 		return fmt.Errorf("print queue is full")

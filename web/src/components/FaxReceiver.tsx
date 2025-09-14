@@ -65,7 +65,7 @@ const FaxReceiver = () => {
   // デバッグ情報をコンソールに出力
   useEffect(() => {
     if (isDebug && faxState) {
-      console.log('FAX State:', faxState.state, 'Progress:', faxState.progress + '%');
+      // console.log('FAX State:', faxState.state, 'Progress:', faxState.progress + '%');
     }
   }, [faxState, isDebug]);
   

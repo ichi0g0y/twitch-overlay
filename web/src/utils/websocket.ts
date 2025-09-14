@@ -82,7 +82,12 @@ class WebSocketClient {
     this.ws.onmessage = (event: MessageEvent) => {
       try {
         const message: WSMessage = JSON.parse(event.data);
-        console.log('WebSocket message received:', message.type);
+        // music_statusは頻繁なのでdebugレベル
+        if (message.type === 'music_status') {
+          console.debug('WebSocket message received:', message.type);
+        } else {
+          console.log('WebSocket message received:', message.type);
+        }
         
         // メッセージタイプ別にハンドラーを呼び出し
         const handlers = this.messageHandlers.get(message.type);

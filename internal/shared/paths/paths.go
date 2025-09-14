@@ -39,12 +39,18 @@ func GetUploadsDir() string {
 	return filepath.Join(GetDataDir(), "uploads")
 }
 
+// GetOutputDir returns the path to the output directory for FAX images
+func GetOutputDir() string {
+	return filepath.Join(GetDataDir(), "output")
+}
+
 // EnsureDataDirs creates all necessary data directories
 func EnsureDataDirs() error {
 	dirs := []string{
 		GetDataDir(),
 		GetFontsDir(),
 		GetUploadsDir(),
+		GetOutputDir(),
 	}
 	
 	for _, dir := range dirs {

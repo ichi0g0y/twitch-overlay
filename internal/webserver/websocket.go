@@ -103,9 +103,17 @@ func (h *WSHub) run() {
 		case message := <-h.broadcast:
 			data, err := json.Marshal(message)
 			if err != nil {
-				logger.Error("Failed to marshal WebSocket message", zap.Error(err))
+				logger.Error("Failed to marshal WebSocket message", 
+					zap.Error(err),
+					zap.String("messageType", message.Type),
+					zap.Int("dataLength", len(message.Data)),
+					zap.String("dataPreview", string(message.Data[:min(100, len(message.Data))])))
 				continue
 			}
+			
+			// デバッグログ：実際に送信されるJSONデータ
+			logger.Debug("Sending WebSocket message to clients",
+				zap.String("jsonData", string(data[:min(200, len(data))])))
 
 			h.mu.RLock()
 			for client := range h.clients {
@@ -139,31 +147,41 @@ func (h *WSHub) run() {
 
 // BroadcastWSMessage すべてのクライアントにメッセージを送信
 func BroadcastWSMessage(msgType string, data interface{}) {
-	// music_statusは頻繁すぎるのでログをスキップ
-	if msgType != "music_status" {
-		logger.Info("BroadcastWSMessage called",
-			zap.String("message_type", msgType),
-			zap.Any("data", data))
-	}
-
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		logger.Error("Failed to marshal WebSocket broadcast data", zap.Error(err))
-		return
+	// dataをjson.RawMessageに変換
+	var jsonData json.RawMessage
+	
+	// dataが既にbyte配列やjson.RawMessageの場合はそのまま使用
+	switch v := data.(type) {
+	case json.RawMessage:
+		jsonData = v
+	case []byte:
+		jsonData = json.RawMessage(v)
+	default:
+		// それ以外の場合はMarshal
+		marshaledData, err := json.Marshal(data)
+		if err != nil {
+			logger.Error("Failed to marshal WebSocket broadcast data", 
+				zap.Error(err),
+				zap.String("msgType", msgType),
+				zap.Any("data", data))
+			return
+		}
+		jsonData = json.RawMessage(marshaledData)
 	}
 
 	msg := WSMessage{
 		Type: msgType,
 		Data: jsonData,
 	}
+	
+	// デバッグログ：送信するメッセージの内容を確認
+	logger.Info("Broadcasting WebSocket message",
+		zap.String("type", msgType),
+		zap.Int("dataSize", len(jsonData)),
+		zap.String("dataPreview", string(jsonData[:min(100, len(jsonData))])))
 
 	select {
 	case wsHub.broadcast <- msg:
-		// music_statusは頻繁すぎるのでログをスキップ
-		if msgType != "music_status" {
-			logger.Info("WebSocket message queued for broadcast",
-				zap.String("message_type", msgType))
-		}
 	default:
 		logger.Warn("WebSocket broadcast channel full, message dropped")
 	}

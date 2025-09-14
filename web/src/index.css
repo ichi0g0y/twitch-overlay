@@ -293,3 +293,35 @@ body {
 .music-info-exiting {
   animation: music-exit 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
 }
+
+/* 音楽プレイヤー停止時のスライドアウト */
+@keyframes music-player-slide-out {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(200px); /* 画面外へ移動（画面下へ） */
+  }
+}
+
+@keyframes music-player-slide-in {
+  0% {
+    transform: translateY(200px); /* 画面外から */
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.music-player-hidden {
+  /* はじめゆっくり、後半で加速するイージング */
+  animation: music-player-slide-out 0.7s cubic-bezier(0.3, 0, 0.8, 0.15) forwards;
+  /* 画面外でも要素は維持 */
+  pointer-events: none;
+}
+
+.music-player-entering {
+  /* 停止→再生時のスライドイン（スライドアウトの逆） */
+  animation: music-player-slide-in 0.7s cubic-bezier(0.85, 0, 0.7, 1) forwards;
+  pointer-events: auto;
+}

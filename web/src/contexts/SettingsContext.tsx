@@ -9,7 +9,6 @@ interface OverlaySettings {
   
   // FAX表示設定
   fax_enabled: boolean;
-  fax_animation_speed: number;
   fax_image_type: 'mono' | 'color';
   
   // 開発者設定

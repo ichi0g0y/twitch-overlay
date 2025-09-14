@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 	
@@ -145,26 +143,12 @@ func (t *Token) RefreshTwitchToken() error {
 
 // getCallbackURL はコールバックURLを生成します
 func getCallbackURL() string {
-	// 環境変数からベースURLを取得
-	callbackBaseURL := os.Getenv("CALLBACK_BASE_URL")
-	if callbackBaseURL != "" {
-		// ベースURLが設定されている場合はそれを使用
-		return fmt.Sprintf("%s/callback", callbackBaseURL)
+	// 設定されたサーバーポートを使用（デフォルト: 8080）
+	port := 8080
+	if env.Value.ServerPort != 0 {
+		port = env.Value.ServerPort
 	}
-	
-	// データベースから読み込まれたサーバーポートを使用
-	serverPort := env.Value.ServerPort
-	if serverPort == 0 {
-		// 環境変数からも試す
-		portStr := os.Getenv("SERVER_PORT")
-		if portStr != "" {
-			serverPort, _ = strconv.Atoi(portStr)
-		}
-		if serverPort == 0 {
-			serverPort = 8080 // デフォルト
-		}
-	}
-	return fmt.Sprintf("http://localhost:%d/callback", serverPort)
+	return fmt.Sprintf("http://localhost:%d/callback", port)
 }
 
 // 変更: 引数なしで環境変数から認証情報を取得し、定数 scopes を使用

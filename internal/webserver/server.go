@@ -2,9 +2,12 @@ package webserver
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -55,6 +58,7 @@ var (
 		clients: make(map[string]*SSEClient),
 	}
 	httpServer *http.Server
+	webAssets  *embed.FS // 埋め込みアセット（Wailsビルド時に使用）
 )
 
 // corsMiddleware adds CORS headers to HTTP handlers
@@ -74,14 +78,35 @@ func corsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 // StartWebServer starts the HTTP server
-// BroadcastMessage sends a message to all connected SSE clients
+// BroadcastMessage sends a message to all connected SSE and WebSocket clients
 func (s *SSEServer) BroadcastMessage(message interface{}) {
+	// SSEクライアントに送信
 	data, err := json.Marshal(message)
 	if err != nil {
 		logger.Error("Failed to marshal SSE message", zap.Error(err))
 		return
 	}
 	s.broadcast(data)
+	
+	// WebSocketクライアントにも送信
+	// messageがmap型の場合、typeフィールドを取得
+	if msgMap, ok := message.(map[string]interface{}); ok {
+		if msgType, hasType := msgMap["type"].(string); hasType {
+			// dataフィールドがある場合はそれを使用
+			if data, hasData := msgMap["data"]; hasData {
+				BroadcastWSMessage(msgType, data)
+			} else {
+				// typeフィールドを除いた残りのデータを送信
+				cleanData := make(map[string]interface{})
+				for k, v := range msgMap {
+					if k != "type" {
+						cleanData[k] = v
+					}
+				}
+				BroadcastWSMessage(msgType, cleanData)
+			}
+		}
+	}
 }
 
 // BroadcastMessage is a convenience function for the global SSE server
@@ -91,7 +116,12 @@ func BroadcastMessage(message interface{}) {
 	}
 }
 
-func StartWebServer(port int) {
+// SetWebAssets sets the embedded web assets for serving
+func SetWebAssets(assets *embed.FS) {
+	webAssets = assets
+}
+
+func StartWebServer(port int) error {
 	// Register SSE server as the global broadcaster
 	broadcast.SetBroadcaster(sseServer)
 
@@ -107,35 +137,54 @@ func StartWebServer(port int) {
 		BroadcastMessage(msg)
 	})
 
-	// Serve static files - try multiple paths
-	var staticDir string
-	possiblePaths := []string{}
+	// Prepare file server for static files
+	var fileServer http.Handler
+	var useEmbedded bool
 
-	// First, try to find public directory relative to executable
-	if execPath, err := os.Executable(); err == nil {
-		execDir := filepath.Dir(execPath)
-		// Try public directory in the same directory as the executable
-		possiblePaths = append(possiblePaths, filepath.Join(execDir, "public"))
-	}
-
-	// Then try relative paths from current working directory
-	possiblePaths = append(possiblePaths,
-		"./public",      // Production: same directory as executable
-		"./dist/public", // Development: built files
-		"./web/dist",    // Fallback: frontend build directory
-	)
-
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			staticDir = path
-			logger.Info("Using static files directory", zap.String("path", staticDir))
-			break
+	if webAssets != nil {
+		// Use embedded assets if available (Wails build)
+		logger.Info("Using embedded web assets")
+		// Get the sub filesystem from "web/dist" directory in the embedded assets
+		webFS, err := fs.Sub(webAssets, "web/dist")
+		if err != nil {
+			logger.Error("Failed to get embedded web filesystem", zap.Error(err))
+			return fmt.Errorf("failed to get embedded web filesystem: %w", err)
 		}
-	}
+		fileServer = http.FileServer(http.FS(webFS))
+		useEmbedded = true
+	} else {
+		// Fall back to file system (development mode)
+		var staticDir string
+		possiblePaths := []string{}
 
-	if staticDir == "" {
-		logger.Warn("No static files directory found, using default")
-		staticDir = "./web/dist"
+		// First, try to find public directory relative to executable
+		if execPath, err := os.Executable(); err == nil {
+			execDir := filepath.Dir(execPath)
+			// Try public directory in the same directory as the executable
+			possiblePaths = append(possiblePaths, filepath.Join(execDir, "public"))
+		}
+
+		// Then try relative paths from current working directory
+		possiblePaths = append(possiblePaths,
+			"./public",      // Production: same directory as executable
+			"./dist/public", // Development: built files
+			"./web/dist",    // Fallback: frontend build directory
+		)
+
+		for _, path := range possiblePaths {
+			if _, err := os.Stat(path); err == nil {
+				staticDir = path
+				logger.Info("Using static files directory", zap.String("path", staticDir))
+				break
+			}
+		}
+
+		if staticDir == "" {
+			logger.Warn("No static files directory found, using default")
+			staticDir = "./web/dist"
+		}
+		fileServer = http.FileServer(http.Dir(staticDir))
+		useEmbedded = false
 	}
 
 	// Create a new ServeMux for better routing control
@@ -163,12 +212,6 @@ func StartWebServer(port int) {
 	mux.HandleFunc("/api/printer/reconnect", corsMiddleware(handlePrinterReconnect))
 	mux.HandleFunc("/api/debug/printer-status", corsMiddleware(handleDebugPrinterStatus)) // デバッグ用
 
-	// Server management API endpoints
-	mux.HandleFunc("/api/server/restart", corsMiddleware(handleServerRestart))
-	mux.HandleFunc("/api/server/status", corsMiddleware(handleServerStatus))
-	mux.HandleFunc("/api/bluetooth/restart", corsMiddleware(handleBluetoothRestart))
-	mux.HandleFunc("/api/service/restart", corsMiddleware(handleServiceRestart))
-
 	// Logs API endpoints
 	mux.HandleFunc("/api/logs", corsMiddleware(handleLogs))
 	mux.HandleFunc("/api/logs/download", corsMiddleware(handleLogsDownload))
@@ -178,8 +221,8 @@ func StartWebServer(port int) {
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
 	
-	// SSE endpoint - 削除（WebSocketのみ使用）
-	// mux.HandleFunc("/events", handleSSE)
+	// SSE endpoint (互換性のため一時的に残す)
+	mux.HandleFunc("/events", handleSSE)
 
 	// Fax image endpoint
 	mux.HandleFunc("/fax/", handleFaxImage)
@@ -210,21 +253,44 @@ func StartWebServer(port int) {
 	mux.HandleFunc("/api/twitch/refresh-token", corsMiddleware(handleTwitchRefreshToken))
 	mux.HandleFunc("/api/stream/status", corsMiddleware(handleStreamStatus))
 
-	// Create a custom file server that handles SPA routing
-	fs := http.FileServer(http.Dir(staticDir))
-
 	// Handle all other routes (SPA fallback) - 最後に登録
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Try to serve the file
-		filePath := filepath.Join(staticDir, r.URL.Path)
-		if _, err := os.Stat(filePath); err == nil && !strings.HasSuffix(r.URL.Path, "/") {
-			// File exists, serve it
-			fs.ServeHTTP(w, r)
-			return
-		}
+		if useEmbedded {
+			// Using embedded assets
+			// Check if the path exists in embedded assets
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path == "" {
+				path = "index.html"
+			}
 
-		// For all other routes, serve index.html (SPA fallback)
-		http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+			// Try to open the file from embedded assets
+			webFS, _ := fs.Sub(webAssets, "web/dist")
+			if file, err := webFS.Open(path); err == nil {
+				file.Close()
+				// File exists, serve it
+				fileServer.ServeHTTP(w, r)
+			} else {
+				// File doesn't exist, serve index.html for SPA routing
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				if indexFile, err := webFS.Open("index.html"); err == nil {
+					defer indexFile.Close()
+					if data, err := io.ReadAll(indexFile); err == nil {
+						w.Write(data)
+					}
+				}
+			}
+		} else {
+			// Using file system
+			filePath := filepath.Join("./web/dist", r.URL.Path)
+			if _, err := os.Stat(filePath); err == nil && !strings.HasSuffix(r.URL.Path, "/") {
+				// File exists, serve it
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// For all other routes, serve index.html (SPA fallback)
+			http.ServeFile(w, r, filepath.Join("./web/dist", "index.html"))
+		}
 	})
 
 	addr := fmt.Sprintf(":%d", port)
@@ -253,11 +319,27 @@ func StartWebServer(port int) {
 		IdleTimeout:  120 * time.Second,
 	}
 
+	// Start server in goroutine and wait briefly to check for immediate errors
+	errChan := make(chan error, 1)
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start web server", zap.Error(err))
+			errChan <- err
 		}
+		close(errChan)
 	}()
+
+	// Wait briefly to catch immediate binding errors
+	select {
+	case err := <-errChan:
+		if err != nil {
+			logger.Error("Failed to start web server", zap.Error(err))
+			return fmt.Errorf("failed to start web server on port %d: %w", port, err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		// Server started successfully
+	}
+
+	return nil
 }
 
 // Shutdown gracefully shuts down the web server
@@ -277,8 +359,6 @@ func Shutdown() {
 }
 
 // handleSSE handles Server-Sent Events connections
-// SSE関連 - 削除（WebSocketのみ使用）
-/*
 func handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers first
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -424,7 +504,6 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-*/
 
 // handleFaxImage serves fax images
 func handleFaxImage(w http.ResponseWriter, r *http.Request) {
@@ -459,14 +538,8 @@ func handleFaxImage(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, imagePath)
 }
 
-// BroadcastFax sends a fax notification to all connected WebSocket clients
+// BroadcastFax sends a fax notification to all connected SSE and WebSocket clients
 func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
-	logger.Info("BroadcastFax called",
-		zap.String("fax_id", fax.ID),
-		zap.String("username", fax.UserName),
-		zap.String("message", fax.Message),
-		zap.Time("timestamp", fax.Timestamp))
-
 	msg := map[string]interface{}{
 		"type":        "fax",
 		"id":          fax.ID,
@@ -479,6 +552,24 @@ func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 
 	// WebSocketクライアントに送信
 	BroadcastWSMessage("fax", msg)
+
+	// SSEクライアントにも送信（互換性のため）
+	jsonData, err := json.Marshal(msg)
+	if err != nil {
+		logger.Error("Failed to marshal fax message", zap.Error(err))
+		return
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, client := range s.clients {
+		select {
+		case client.Channel <- string(jsonData):
+		default:
+			// Client channel is full, skip
+		}
+	}
 
 	logger.Info("Broadcasted fax to clients",
 		zap.String("id", fax.ID),

@@ -1,170 +1,133 @@
 # twitch-overlay
 
-Twitchカスタムリワードと連携した配信用オーバーレイシステム
+Twitchカスタムリワードと連携した配信用オーバーレイシステム（Wails版）
 
-> **📝 利用について**  
-> このプロジェクトは個人の配信環境向けにカスタマイズされています。  
+> **📝 利用について**
+> このプロジェクトは個人の配信環境向けにカスタマイズされています。
 > 時計の表示内容等に個人設定が含まれているため、技術実装の参考として、または改造ベースとしてご活用ください。
 
-**主要機能**: Twitchリワード連携 | FAX風画像表示 | カスタマイズ可能時計 | サーマルプリンター印刷
+**主要機能**: Twitchリワード連携 | FAX風画像表示 | カスタマイズ可能時計 | サーマルプリンター印刷 | デスクトップアプリ
+
+## 概要
+
+Go言語とReact/TypeScriptを使用したデスクトップアプリケーションです。配信用オーバーレイとプリンター制御を統合し、よりシンプルなセットアップと管理を実現しています。
 
 ## 機能
 
-- Twitchチャンネルポイント報酬の自動印刷
-- Webインターフェースでの設定管理
-- カスタムフォントサポート
-- 時計印刷機能
-- プリンター設定のカスタマイズ
+- **Twitchカスタムリワード連携**: チャンネルポイント報酬の自動印刷
+- **FAX風演出**: 受信した画像をFAX風に表示・印刷
+- **統計情報表示**: リアルタイムで更新される各種統計
+- **カスタム時計**: 配信画面用のカスタマイズ可能な時計
+- **Settings画面**: Wailsアプリ内蔵の設定管理UI
+- **WebSocketリアルタイム通信**: オーバーレイとの双方向通信
+- **音楽プレイヤー**: BGM再生機能（ビジュアライザー付き）
 
-## セットアップ
-
-### 必要要件
+## 必要要件
 
 - Go 1.21以上
 - Node.js 20以上 / Bun
+- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
 - Bluetooth対応サーマルプリンター（Cat Printer）
-- Linux環境（systemdサービス利用時）
+- macOS / Linux / Windows
 
-### インストール
+## セットアップ
 
-1. リポジトリをクローン
+### 1. リポジトリをクローン
 ```bash
-git clone https://github.com/nantokaworks/twitch-overlay.git
+git clone https://github.com/yourusername/twitch-overlay.git
 cd twitch-overlay
 ```
 
-2. 依存関係をインストール
+### 2. 依存関係をインストール
 ```bash
-# フロントエンド
+# Wails CLIのインストール（未インストールの場合）
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+# フロントエンド依存関係
+cd frontend && bun install && cd ..
 cd web && bun install && cd ..
-
-# バックエンド（自動的にインストールされます）
 ```
 
-3. 環境変数を設定
+### 3. ビルド
 ```bash
-cp .env.template .env
-# .envファイルを編集して必要な値を設定
-```
+# 開発ビルド（ホットリロード付き）
+task dev
 
-4. ビルド
-```bash
+# プロダクションビルド
 task build:all
 ```
 
-### 実行方法
-
-#### 方法1: 直接実行（setcap権限が必要）
-
-```bash
-# Bluetooth権限を付与
-sudo setcap 'cap_net_admin,cap_net_raw+eip' ./dist/twitch-overlay
-
-# 実行
-./dist/twitch-overlay
-```
-
-#### 方法2: systemdサービスとして実行（推奨）
-
-systemdサービスとして実行することで、setcapを毎回実行する必要がなくなります。
-
-```bash
-# サービスをインストール
-task install:service
-
-# または手動でインストール
-bash scripts/install-service.sh [username]
-```
-
-インストール時のオプション:
-- bluetoothグループへの追加（推奨）
-- 自動起動の設定
-- 即座にサービスを開始
-
-サービス管理コマンド:
-```bash
-# サービスの状態確認
-task service:status
-
-# サービスのログ確認
-task service:logs
-
-# サービスの手動起動/停止/再起動
-sudo systemctl start twitch-overlay@$USER.service
-sudo systemctl stop twitch-overlay@$USER.service
-sudo systemctl restart twitch-overlay@$USER.service
-
-# サービスのアンインストール
-task uninstall:service
-```
-
-### Twitch認証
-
-1. アプリケーションを起動すると、認証URLが表示されます
-2. ブラウザで `http://localhost:8080/auth` にアクセス
-3. Twitchアカウントでログインして認証を完了
-
-### Web設定ページ
-
-ブラウザで `http://localhost:8080/settings` にアクセスして設定を変更できます。
-
 ## 開発
 
-### 開発サーバーの起動
+### プロジェクト構成
+- **`web/`** - オーバーレイ用フロントエンド（ビルド後Wailsに埋め込み）
+- **`frontend/`** - Wails Settings画面用フロントエンド
+- **`internal/`** - Goバックエンド（API、プリンター制御等）
 
+### 開発コマンド
 ```bash
-# フロントエンド
-task dev:frontend
+# Wails開発モード（統合開発環境）
+task dev
 
-# バックエンド
-task dev:backend
-```
+# オーバーレイのビルド
+cd web && bun run build
 
-### テストの実行
-
-```bash
-# DRY_RUN_MODE=trueで実行（実際の印刷を防ぐ）
+# テストの実行（DRY_RUN_MODE=trueで実行）
 task test
 ```
 
-## 環境変数
+### オーバーレイの開発フロー
+1. `web/`ディレクトリで変更を行う
+2. `cd web && bun run build`でビルド
+3. `task dev`でWailsアプリとして動作確認
+4. オーバーレイは`http://localhost:[動的ポート]/`でアクセス可能
 
-| 変数名 | 説明 | デフォルト値 |
-|--------|------|------------|
-| `PRINTER_ADDRESS` | プリンターのMACアドレス | 必須 |
-| `DRY_RUN_MODE` | 実際の印刷を行わないモード | false |
-| `ROTATE_PRINT` | 印刷を180度回転 | false |
-| `CLOCK_ENABLED` | 時計印刷機能の有効化 | true |
+## 設定管理
 
-詳細は `.env.template` を参照してください。
+すべての設定はWailsアプリケーションのSettings画面から行います。環境変数ファイル（.env）は不要です。
+
+### Twitch認証
+
+1. アプリケーションを起動
+2. Settings画面を開く
+3. Twitch設定タブで認証を実行
+4. ブラウザでTwitchアカウントにログイン
+
+### 主な設定項目
+
+Settings画面で以下の設定が可能です：
+
+- **Twitch設定**: クライアントID、シークレット、ユーザーID、カスタムリワードID
+- **プリンター設定**: MACアドレス、画質、回転、KeepAlive機能
+- **一般設定**: サーバーポート、タイムゾーン、時計表示
+- **開発者設定**: DRY_RUNモード、デバッグ出力
 
 ## トラブルシューティング
 
-### Bluetooth権限エラー
-
-以下のいずれかの方法で解決できます：
-
-1. **bluetoothグループに追加（推奨）**
+### Bluetooth権限エラー（Linux）
 ```bash
+# bluetoothグループに追加
 sudo usermod -a -G bluetooth $USER
 # 再ログインが必要
 ```
 
-2. **systemdサービスを使用**
-```bash
-task install:service
-```
-
-3. **setcapを使用（毎回必要）**
-```bash
-sudo setcap 'cap_net_admin,cap_net_raw+eip' ./dist/twitch-overlay
-```
-
 ### プリンターが見つからない
+1. プリンターの電源確認
+2. MACアドレスの確認
+3. Settings画面のプリンタータブから「デバイススキャン」を実行
 
-1. プリンターの電源が入っているか確認
-2. プリンターのMACアドレスが正しいか確認
-3. Web設定画面（`http://localhost:8080/settings`）の「プリンター」タブから「デバイススキャン」を実行
+### オーバーレイが表示されない
+1. `cd web && bun run build`でオーバーレイをビルド
+2. `task dev`でWailsアプリを再起動
+3. Settings画面でポート設定を確認
+
+## タスク管理（Taskfile）
+
+主要なタスクコマンド:
+- `task dev` - 開発モード起動
+- `task build:all` - プロダクションビルド
+- `task test` - テスト実行
+- `task lint` - リント実行
 
 ## ライセンス
 

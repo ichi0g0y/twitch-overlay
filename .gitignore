@@ -1,30 +1,41 @@
-.env*
-!.env.safe
-!.env.template
-!.dev.vars.template
+# ビルド出力
+build/bin
+/dist
+web/dist
+frontend/dist
 
-logs
+# Taskfile作業ディレクトリ
+.task/
+
+# 実行時データ
+/data
+*.db
+overlay_settings.json
+
+# プリンター出力
+.output/
+
+# 環境設定
+.env
+.env.local
+
+# 依存関係
+node_modules
+
+# IDE設定
+.vscode/
+.idea/
+
+# OS固有ファイル
+.DS_Store
+Thumbs.db
+
+# ログファイル
 *.log
 
-.cache
-.eslintcache
-*.tsbuildinfo
+# テスト関連
+coverage/
+*.test
 
-*.DS_Store
-
-dist
-dist-package
-/public
-tmp
-
-// Misc
-.certs
-.output
-.db
-.db.sqlite3
-local.db
-
-// Uploaded files
-uploads/
-cmd/twitch-overlay/uploads/
-
+# Claude設定
+.claude/settings.local.json

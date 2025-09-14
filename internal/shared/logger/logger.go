@@ -16,9 +16,20 @@ var Log *zap.Logger
 
 var once sync.Once
 
-func init() {
-
+// Init initializes the logger with the given debug mode
+func Init(debugMode bool) {
 	once.Do(func() {
+		initLogger(debugMode)
+	})
+}
+
+func init() {
+	once.Do(func() {
+		initLogger(false)
+	})
+}
+
+func initLogger(debugMode bool) {
 		// ログ設定を構築
 		config := zap.NewProductionConfig()
 		config.OutputPaths = []string{"stdout"}
@@ -56,7 +67,6 @@ func init() {
 		// 標準ログのタイムスタンプを無効化
 		log.SetFlags(0)
 		log.SetOutput(zapLogger.Writer())
-	})
 }
 
 // Debug は debug レベルでのログ出力

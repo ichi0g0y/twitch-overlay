@@ -71,6 +71,44 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// playlistsテーブルを追加
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS playlists (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		description TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return nil, err
+	}
+
+	// playlist_tracksテーブルを追加
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS playlist_tracks (
+		playlist_id TEXT NOT NULL,
+		track_id TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (playlist_id, track_id),
+		FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+	)`)
+	if err != nil {
+		return nil, err
+	}
+
+	// tracksテーブルを追加（音楽トラック情報）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS tracks (
+		id TEXT PRIMARY KEY,
+		file_path TEXT NOT NULL UNIQUE,
+		title TEXT,
+		artist TEXT,
+		album TEXT,
+		duration REAL,
+		added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 

@@ -249,10 +249,10 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
       ...prev,
       playbackStatus: 'stopped',
       isPlaying: false,
-      currentTrack: null,
+      // currentTrackは保持（nullにしない）
       currentTime: 0,
       progress: 0,
-      duration: 0,
+      duration: prev.duration, // durationも保持
     }));
     // 停止時は再生履歴もクリア
     setState(prev => ({ ...prev, playHistory: [] }));
@@ -509,7 +509,7 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
   // 定期的に状態を送信（再生中のみ）
   useEffect(() => {
     if (state.playbackStatus === 'playing' && state.currentTrack) {
-      const interval = setInterval(updateServerState, 10000); // 10秒ごと
+      const interval = setInterval(updateServerState, 30000); // 30秒ごとに変更（サーバー保存用）
       return () => clearInterval(interval);
     }
   }, [state.playbackStatus, state.currentTrack, updateServerState]);

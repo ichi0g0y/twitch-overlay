@@ -125,10 +125,74 @@ var DefaultSettings = map[string]Setting{
 		Description: "Automatically enable dry-run mode when stream is offline",
 	},
 	
+	// サーバー設定
+	"SERVER_PORT": {
+		Key: "SERVER_PORT", Value: "8080", Type: SettingTypeNormal, Required: false,
+		Description: "Web server port for OBS overlay",
+	},
+	
 	// フォント設定
 	"FONT_FILENAME": {
 		Key: "FONT_FILENAME", Value: "", Type: SettingTypeNormal, Required: false,
 		Description: "Uploaded font file name",
+	},
+
+	// オーバーレイ表示設定
+	"MUSIC_ENABLED": {
+		Key: "MUSIC_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable music player in overlay",
+	},
+	"MUSIC_VOLUME": {
+		Key: "MUSIC_VOLUME", Value: "70", Type: SettingTypeNormal, Required: false,
+		Description: "Music volume (0-100)",
+	},
+	"MUSIC_PLAYLIST": {
+		Key: "MUSIC_PLAYLIST", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Selected music playlist",
+	},
+	"MUSIC_AUTO_PLAY": {
+		Key: "MUSIC_AUTO_PLAY", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Auto play music on startup",
+	},
+	"FAX_ENABLED": {
+		Key: "FAX_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable FAX animation in overlay",
+	},
+	"FAX_ANIMATION_SPEED": {
+		Key: "FAX_ANIMATION_SPEED", Value: "1.0", Type: SettingTypeNormal, Required: false,
+		Description: "FAX animation speed multiplier",
+	},
+	"FAX_IMAGE_TYPE": {
+		Key: "FAX_IMAGE_TYPE", Value: "color", Type: SettingTypeNormal, Required: false,
+		Description: "FAX image type (mono or color)",
+	},
+	"OVERLAY_CLOCK_ENABLED": {
+		Key: "OVERLAY_CLOCK_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable clock display in overlay",
+	},
+	"OVERLAY_CLOCK_FORMAT": {
+		Key: "OVERLAY_CLOCK_FORMAT", Value: "24h", Type: SettingTypeNormal, Required: false,
+		Description: "Clock format (12h or 24h)",
+	},
+	"OVERLAY_LOCATION_ENABLED": {
+		Key: "OVERLAY_LOCATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Show location in overlay",
+	},
+	"OVERLAY_DATE_ENABLED": {
+		Key: "OVERLAY_DATE_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Show date in overlay",
+	},
+	"OVERLAY_TIME_ENABLED": {
+		Key: "OVERLAY_TIME_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Show time in overlay",
+	},
+	"OVERLAY_STATS_ENABLED": {
+		Key: "OVERLAY_STATS_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Show stats in overlay",
+	},
+	"OVERLAY_DEBUG_ENABLED": {
+		Key: "OVERLAY_DEBUG_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable debug panel in overlay",
 	},
 }
 

@@ -10,6 +10,7 @@ import (
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
 	"go.uber.org/zap"
 )
 
@@ -28,6 +29,40 @@ var (
 	mu         sync.RWMutex
 )
 
+// InitializeDataDir initializes the data directory for storing fax images
+func InitializeDataDir() {
+	if err := os.MkdirAll(paths.GetOutputDir(), 0755); err != nil {
+		logger.Error("Failed to create data directory", zap.Error(err))
+	}
+}
+
+// GetRecentFaxes returns the most recent fax messages
+func GetRecentFaxes(limit int) ([]*Fax, error) {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	faxes := make([]*Fax, 0, len(faxStorage))
+	for _, fax := range faxStorage {
+		faxes = append(faxes, fax)
+	}
+
+	// Sort by timestamp (newest first)
+	for i := 0; i < len(faxes)-1; i++ {
+		for j := i + 1; j < len(faxes); j++ {
+			if faxes[i].Timestamp.Before(faxes[j].Timestamp) {
+				faxes[i], faxes[j] = faxes[j], faxes[i]
+			}
+		}
+	}
+
+	// Limit the results
+	if limit > 0 && limit < len(faxes) {
+		faxes = faxes[:limit]
+	}
+
+	return faxes, nil
+}
+
 // GenerateID creates a new nanoid
 func GenerateID() (string, error) {
 	return gonanoid.New()
@@ -40,7 +75,7 @@ func SaveFax(userName string, message string, imageURL string, colorImg, monoImg
 		return nil, fmt.Errorf("failed to generate ID: %w", err)
 	}
 
-	outputDir := ".output"
+	outputDir := paths.GetOutputDir()
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}

@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"fmt"
-	
+
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
 	"go.uber.org/zap"
 )
 
@@ -47,27 +52,119 @@ type OverlaySettings struct {
 var (
 	currentOverlaySettings *OverlaySettings
 	overlaySettingsMutex   sync.RWMutex
-	overlaySettingsFile    = "data/overlay_settings.json"
 
 	// SSE clients for settings updates
 	settingsEventClients   = make(map[chan string]bool)
 	settingsEventClientsMu sync.RWMutex
 )
 
-// InitOverlaySettings initializes the overlay settings from saved file
+// InitOverlaySettings initializes the overlay settings from database
 func InitOverlaySettings() {
-	// Create data directory if it doesn't exist
-	os.MkdirAll("data", 0755)
+	// まず、既存のJSONファイルから移行を試みる
+	migrateFromJSONIfExists()
 
-	// デフォルト設定
+	// データベースから設定を読み込む
+	loadOverlaySettingsFromDB()
+}
+
+// loadOverlaySettingsFromDB loads overlay settings from database
+func loadOverlaySettingsFromDB() {
+	// データベース接続を取得
+	db, err := localdb.SetupDB(paths.GetDBPath())
+	if err != nil {
+		logger.Error("Failed to setup database for overlay settings", zap.Error(err))
+		useDefaultSettings()
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	allSettings, err := settingsManager.GetAllSettings()
+	if err != nil {
+		logger.Error("Failed to get overlay settings from database", zap.Error(err))
+		useDefaultSettings()
+		return
+	}
+
+	// データベースから設定を読み込んでOverlaySettings構造体に変換
+	overlaySettings := &OverlaySettings{
+		MusicEnabled:      getBoolSetting(allSettings, "MUSIC_ENABLED", true),
+		MusicPlaylist:     getStringSetting(allSettings, "MUSIC_PLAYLIST"),
+		MusicVolume:       getIntSetting(allSettings, "MUSIC_VOLUME", 70),
+		MusicAutoPlay:     getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
+		FaxEnabled:        getBoolSetting(allSettings, "FAX_ENABLED", true),
+		FaxAnimationSpeed: getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
+		FaxImageType:      getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
+		ClockEnabled:      getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
+		ClockFormat:       getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
+		ClockShowIcons:    getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
+		LocationEnabled:   getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
+		DateEnabled:       getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
+		TimeEnabled:       getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
+		StatsEnabled:      getBoolSetting(allSettings, "OVERLAY_STATS_ENABLED", true),
+		ShowDebugInfo:     false, // 廃止予定
+		DebugEnabled:      getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
+		UpdatedAt:         time.Now(),
+	}
+
+	overlaySettingsMutex.Lock()
+	currentOverlaySettings = overlaySettings
+	overlaySettingsMutex.Unlock()
+
+	logger.Info("Loaded overlay settings from database",
+		zap.Bool("music_enabled", overlaySettings.MusicEnabled),
+		zap.Bool("fax_enabled", overlaySettings.FaxEnabled),
+		zap.Bool("clock_enabled", overlaySettings.ClockEnabled))
+}
+
+// Helper functions for getting settings with defaults
+func getBoolSetting(settings map[string]settings.Setting, key string, defaultValue bool) bool {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		return setting.Value == "true"
+	}
+	return defaultValue
+}
+
+func getIntSetting(settings map[string]settings.Setting, key string, defaultValue int) int {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		if val, err := strconv.Atoi(setting.Value); err == nil {
+			return val
+		}
+	}
+	return defaultValue
+}
+
+func getFloatSetting(settings map[string]settings.Setting, key string, defaultValue float64) float64 {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		if val, err := strconv.ParseFloat(setting.Value, 64); err == nil {
+			return val
+		}
+	}
+	return defaultValue
+}
+
+func getStringSetting(settings map[string]settings.Setting, key string) *string {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		return &setting.Value
+	}
+	return nil
+}
+
+func getStringSettingWithDefault(settings map[string]settings.Setting, key string, defaultValue string) string {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		return setting.Value
+	}
+	return defaultValue
+}
+
+func useDefaultSettings() {
 	defaultSettings := &OverlaySettings{
 		MusicEnabled:      true,
-		MusicPlaylist:     nil, // nil = all tracks
+		MusicPlaylist:     nil,
 		MusicVolume:       70,
 		MusicAutoPlay:     false,
 		FaxEnabled:        true,
 		FaxAnimationSpeed: 1.0,
-		FaxImageType:      "mono",
+		FaxImageType:      "color",
 		ClockEnabled:      true,
 		ClockFormat:       "24h",
 		ClockShowIcons:    true,
@@ -80,55 +177,100 @@ func InitOverlaySettings() {
 		UpdatedAt:         time.Now(),
 	}
 
-	// Try to load existing settings
-	if data, err := os.ReadFile(overlaySettingsFile); err == nil {
-		var settings OverlaySettings
-		if err := json.Unmarshal(data, &settings); err == nil {
-			// 新しいフィールドのデフォルト値を適用（後方互換性のため）
-			if settings.ClockFormat == "" {
-				settings.ClockFormat = "24h"
-			}
-			if settings.FaxImageType == "" {
-				settings.FaxImageType = "mono"
-			}
-			// ClockShowIconsはbool型なので、JSONに存在しない場合はfalseになる
-			// 既存ユーザーのためにtrueをデフォルトにする
-			if !settings.ClockShowIcons && settings.UpdatedAt.Before(time.Now().Add(-24*time.Hour)) {
-				settings.ClockShowIcons = true
-			}
-			
-			overlaySettingsMutex.Lock()
-			currentOverlaySettings = &settings
-			overlaySettingsMutex.Unlock()
-
-			logger.Info("Restored overlay settings",
-				zap.Bool("music_enabled", settings.MusicEnabled),
-				zap.Bool("fax_enabled", settings.FaxEnabled),
-				zap.Bool("clock_enabled", settings.ClockEnabled),
-				zap.Bool("clock_show_icons", settings.ClockShowIcons))
-			return
-		}
-	}
-
-	// Use default settings if file doesn't exist or is invalid
 	overlaySettingsMutex.Lock()
 	currentOverlaySettings = defaultSettings
 	overlaySettingsMutex.Unlock()
-
-	// Save default settings
-	saveOverlaySettings(defaultSettings)
 }
 
-// saveOverlaySettings saves settings to file
-func saveOverlaySettings(settings *OverlaySettings) error {
-	settings.UpdatedAt = time.Now()
+// migrateFromJSONIfExists migrates settings from JSON file if it exists
+func migrateFromJSONIfExists() {
+	// 古いJSONファイルのパス（相対パスと絶対パスの両方を試す）
+	possiblePaths := []string{
+		"data/overlay_settings.json",
+		filepath.Join(paths.GetDataDir(), "overlay_settings.json"),
+	}
 
-	if data, err := json.MarshalIndent(settings, "", "  "); err == nil {
-		if err := os.WriteFile(overlaySettingsFile, data, 0644); err != nil {
-			logger.Error("Failed to save overlay settings", zap.Error(err))
-			return err
+	for _, jsonPath := range possiblePaths {
+		if data, err := os.ReadFile(jsonPath); err == nil {
+			var settings OverlaySettings
+			if err := json.Unmarshal(data, &settings); err == nil {
+				logger.Info("Migrating overlay settings from JSON file", zap.String("path", jsonPath))
+
+				// データベースに保存
+				if err := saveOverlaySettingsToDB(&settings); err != nil {
+					logger.Error("Failed to migrate overlay settings to database", zap.Error(err))
+				} else {
+					// 移行成功したらJSONファイルをリネーム
+					backupPath := jsonPath + ".migrated"
+					if err := os.Rename(jsonPath, backupPath); err != nil {
+						logger.Warn("Failed to rename migrated JSON file", zap.Error(err))
+					} else {
+						logger.Info("Migrated and renamed JSON file", zap.String("backup", backupPath))
+					}
+				}
+				return
+			}
 		}
 	}
+}
+
+// saveOverlaySettings saves settings to database
+func saveOverlaySettings(settings *OverlaySettings) error {
+	return saveOverlaySettingsToDB(settings)
+}
+
+// saveOverlaySettingsToDB saves overlay settings to database
+func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
+	overlaySettings.UpdatedAt = time.Now()
+
+	// データベース接続を取得
+	db, err := localdb.SetupDB(paths.GetDBPath())
+	if err != nil {
+		logger.Error("Failed to setup database", zap.Error(err))
+		return err
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// 各設定を保存
+	settingsToSave := map[string]string{
+		"MUSIC_ENABLED":           strconv.FormatBool(overlaySettings.MusicEnabled),
+		"MUSIC_VOLUME":            strconv.Itoa(overlaySettings.MusicVolume),
+		"MUSIC_AUTO_PLAY":         strconv.FormatBool(overlaySettings.MusicAutoPlay),
+		"FAX_ENABLED":             strconv.FormatBool(overlaySettings.FaxEnabled),
+		"FAX_ANIMATION_SPEED":     fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
+		"FAX_IMAGE_TYPE":          overlaySettings.FaxImageType,
+		"OVERLAY_CLOCK_ENABLED":   strconv.FormatBool(overlaySettings.ClockEnabled),
+		"OVERLAY_CLOCK_FORMAT":    overlaySettings.ClockFormat,
+		"CLOCK_SHOW_ICONS":        strconv.FormatBool(overlaySettings.ClockShowIcons),
+		"OVERLAY_LOCATION_ENABLED": strconv.FormatBool(overlaySettings.LocationEnabled),
+		"OVERLAY_DATE_ENABLED":    strconv.FormatBool(overlaySettings.DateEnabled),
+		"OVERLAY_TIME_ENABLED":    strconv.FormatBool(overlaySettings.TimeEnabled),
+		"OVERLAY_STATS_ENABLED":   strconv.FormatBool(overlaySettings.StatsEnabled),
+		"OVERLAY_DEBUG_ENABLED":   strconv.FormatBool(overlaySettings.DebugEnabled),
+	}
+
+	// MusicPlaylistはnilの場合は空文字列として保存
+	if overlaySettings.MusicPlaylist != nil {
+		settingsToSave["MUSIC_PLAYLIST"] = *overlaySettings.MusicPlaylist
+	} else {
+		settingsToSave["MUSIC_PLAYLIST"] = ""
+	}
+
+	for key, value := range settingsToSave {
+		if err := settingsManager.SetSetting(key, value); err != nil {
+			logger.Error("Failed to save overlay setting",
+				zap.String("key", key),
+				zap.String("value", value),
+				zap.Error(err))
+			// エラーがあっても続行（部分的な保存を許可）
+		}
+	}
+
+	logger.Debug("Saved overlay settings to database",
+		zap.Bool("music_enabled", overlaySettings.MusicEnabled),
+		zap.Bool("fax_enabled", overlaySettings.FaxEnabled))
+
 	return nil
 }
 

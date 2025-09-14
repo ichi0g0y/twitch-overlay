@@ -175,6 +175,8 @@ func RegisterPlaybackRoutes(mux *http.ServeMux) {
 	// Register routes
 	mux.HandleFunc("/api/music/state/update", corsMiddleware(handlePlaybackStateUpdate))
 	mux.HandleFunc("/api/music/state/get", corsMiddleware(handlePlaybackStateGet))
+	// /api/music/state エンドポイントも追加（useMusicPlayerフックとの互換性のため）
+	mux.HandleFunc("/api/music/state", corsMiddleware(handlePlaybackStateGet))
 }
 
 // handlePlaybackStateGet handles GET /api/music/state/get
@@ -203,7 +205,7 @@ func handlePlaybackStateGet(w http.ResponseWriter, r *http.Request) {
 
 	// Check if state is too old (24 hours)
 	if time.Since(state.UpdatedAt) > 24*time.Hour {
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"error": "state too old"})
 		return
 	}

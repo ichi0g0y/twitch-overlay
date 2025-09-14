@@ -1,0 +1,295 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: transparent;
+  font-family: 'MOTHER PIXEL2', 'Press Start 2P', 'DotGothic16', monospace;
+}
+
+.text-outline {
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+.led-dot {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  border-radius: 0;
+}
+
+@keyframes fax-image-scroll {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2px, -1px); }
+  20% { transform: translate(2px, 1px); }
+  30% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  50% { transform: translate(-2px, 0); }
+  60% { transform: translate(2px, 1px); }
+  70% { transform: translate(-2px, -1px); }
+  80% { transform: translate(2px, 0); }
+  90% { transform: translate(-2px, 1px); }
+}
+
+/* Clock styles */
+.clock-container {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 8px;
+  justify-content: end;
+  text-align: center;
+  margin: 0px;
+  padding: 0px 10px 0px 0px;
+}
+
+.icon {
+  margin: 6px 12px 0px 32px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.icon-placeholder {
+  width: 1px;
+  height: 42px; /* アイコン36px + 上マージン6px */
+  display: inline-block;
+}
+
+.locate {
+  margin: 0px;
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+.clock {
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  text-align: right;
+}
+
+.clock-date {
+  margin: 0px;
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+.clock-hour,
+.clock-min,
+.clock-separator,
+.clock-string {
+  margin: 0px;
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+.stats-container {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 20px;
+  row-gap: 14px;
+  align-items: center;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.stats-label {
+  text-align: left;
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+.stats-value {
+  text-align: right;
+  text-shadow:
+    -4px -4px 0 #000000,
+    -4px -2px 0 #000000,
+    -4px 0px 0 #000000,
+    -4px 2px 0 #000000,
+    -4px 4px 0 #000000,
+    -2px -4px 0 #000000,
+    -2px -2px 0 #000000,
+    -2px 0px 0 #000000,
+    -2px 2px 0 #000000,
+    -2px 4px 0 #000000,
+    0px -4px 0 #000000,
+    0px -2px 0 #000000,
+    0px 2px 0 #000000,
+    0px 4px 0 #000000,
+    2px -4px 0 #000000,
+    2px -2px 0 #000000,
+    2px 0px 0 #000000,
+    2px 2px 0 #000000,
+    2px 4px 0 #000000,
+    4px -4px 0 #000000,
+    4px -2px 0 #000000,
+    4px 0px 0 #000000,
+    4px 2px 0 #000000,
+    4px 4px 0 #000000;
+}
+
+/* Music player animations */
+@keyframes music-enter {
+  0% {
+    transform: translateY(150%);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(-10%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes music-exit {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  20% {
+    transform: translateY(-5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(150%);
+    opacity: 0;
+  }
+}
+
+.music-info-entering {
+  animation: music-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.music-info-exiting {
+  animation: music-exit 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}

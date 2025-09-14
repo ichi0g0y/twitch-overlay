@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useClock } from '../hooks/useClock';
 import { buildApiUrl } from '../utils/api';
+import { getWebSocketClient } from '../utils/websocket';
 import { CalendarIcon, ClockIcon, LocationIcon } from './ClockIcons';
 
 interface ClockDisplayProps {
@@ -49,7 +50,22 @@ const ClockDisplay: React.FC<ClockDisplayProps> = ({
     
     // 30秒ごとに設定を更新
     const interval = setInterval(fetchSettings, 30000);
-    return () => clearInterval(interval);
+    
+    // WebSocketで設定変更をリアルタイムに受信
+    const wsClient = getWebSocketClient();
+    const unsubscribe = wsClient.on('setting_update', (data: any) => {
+      console.log('Setting update received:', data);
+      if (data.key === 'CLOCK_WEIGHT') {
+        setWeight(data.value);
+      } else if (data.key === 'CLOCK_WALLET') {
+        setWallet(parseInt(data.value).toLocaleString());
+      }
+    });
+    
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
   }, []);
 
   return (

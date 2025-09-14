@@ -9,7 +9,7 @@ const FRONTEND_PORT = process.env.VITE_FRONTEND_PORT ? parseInt(process.env.VITE
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: '../dist/public',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   server: {

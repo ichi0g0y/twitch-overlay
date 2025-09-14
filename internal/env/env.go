@@ -34,11 +34,17 @@ type EnvValue struct {
 	ServerPort            int
 	TimeZone              string
 	AutoDryRunWhenOffline bool
+	// Desktop app fields
+	DebugMode             bool
+	TwitchClientID        *string
+	TwitchClientSecret    *string
+	BlackPointInt         int
 }
 
 var Value EnvValue
 
-func init() {
+// LoadEnv loads environment variables
+func LoadEnv() {
 	// Load environment variables from .env file
 	loadDotEnv()
 
@@ -48,6 +54,10 @@ func init() {
 		logger.Warn("Failed to load from database, using environment variables", zap.Error(err))
 		loadFromEnvironment()
 	}
+}
+
+func init() {
+	// LoadEnv is called explicitly in desktop app
 }
 
 func loadDotEnv() {
@@ -163,8 +173,15 @@ func loadFromDatabase() error {
 	timeZone, _ := settingsManager.GetRealValue("TIMEZONE")
 	autoDryRunWhenOffline, _ := settingsManager.GetRealValue("AUTO_DRY_RUN_WHEN_OFFLINE")
 
-	// SERVER_PORTは環境変数のまま
-	serverPortStr := getEnvOrDefault("SERVER_PORT", "8080")
+	// SERVER_PORTをデータベースから取得
+	serverPortStr, err := settingsManager.GetRealValue("SERVER_PORT")
+	if err != nil || serverPortStr == "" {
+		serverPortStr = "8080"
+	}
+	// 環境変数で上書き（互換性のため）
+	if envPort := os.Getenv("SERVER_PORT"); envPort != "" {
+		serverPortStr = envPort
+	}
 
 	// EnvValue構造体に設定
 	keepAliveEnabledBool := keepAliveEnabled == "true"
@@ -189,9 +206,14 @@ func loadFromDatabase() error {
 		ClockEnabled:          clockEnabled == "true",
 		DryRunMode:            dryRunMode == "true",
 		RotatePrint:           rotatePrint == "true",
-		ServerPort:            parseIntStr(*serverPortStr),
+		ServerPort:            parseIntStr(serverPortStr),
 		TimeZone:              timeZone,
 		AutoDryRunWhenOffline: autoDryRunWhenOffline == "true",
+		// Desktop app fields
+		DebugMode:          debugOutput == "true",
+		TwitchClientID:     stringPtr(clientID),
+		TwitchClientSecret: stringPtr(clientSecret),
+		BlackPointInt:      parseIntStr(blackPoint),
 	}
 
 	// 機能ステータスをチェックして警告を表示
@@ -269,6 +291,11 @@ func loadFromEnvironment() {
 		ServerPort:            parseInt(serverPort),
 		TimeZone:              *timeZone,
 		AutoDryRunWhenOffline: *autoDryRunWhenOffline == "true",
+		// Desktop app fields
+		DebugMode:          *debugOutput == "true",
+		TwitchClientID:     clientID,
+		TwitchClientSecret: clientSecret,
+		BlackPointInt:      int(parseFloat(blackPoint)),
 	}
 
 	fmt.Printf("Loaded environment variables (fallback mode)\n")

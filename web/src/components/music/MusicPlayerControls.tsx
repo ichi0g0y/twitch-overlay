@@ -44,7 +44,10 @@ const MusicPlayerControls = () => {
     
     // 音楽状態更新メッセージを処理
     const unsubMusicStatus = wsClient.on('music_status', (status) => {
-      // console.log('Music status updated via WebSocket in controls:', status); // 頻繁すぎるのでコメントアウト
+      // デバッグ用：進捗情報のみログ出力（開発時のみ）
+      if (process.env.NODE_ENV === 'development' && status.current_time !== undefined) {
+        console.log(`[Music Progress] time: ${status.current_time?.toFixed(1)}s / ${status.duration?.toFixed(1)}s, progress: ${status.progress?.toFixed(1)}%`);
+      }
       // playback_statusがない場合はis_playingから推測
       if (!status.playback_status) {
         status.playback_status = status.is_playing ? 'playing' : (status.current_track ? 'paused' : 'stopped');
@@ -115,8 +118,10 @@ const MusicPlayerControls = () => {
             {musicStatus.current_track.album && (
               <p className="text-sm text-gray-500 dark:text-gray-500 truncate">{musicStatus.current_track.album}</p>
             )}
-            <div className="mt-2 text-sm text-gray-500">
-              {formatTime(musicStatus.current_time)} / {formatTime(musicStatus.duration)}
+            <div className="mt-2 text-sm text-gray-500" key={`time-${musicStatus.current_time}`}>
+              <span className="font-mono">{formatTime(musicStatus.current_time)}</span>
+              <span className="mx-1">/</span>
+              <span className="font-mono">{formatTime(musicStatus.duration)}</span>
             </div>
           </div>
         </div>
@@ -169,16 +174,17 @@ const MusicPlayerControls = () => {
 
       {/* プログレスバー（表示のみ、シークは無効） */}
       {musicStatus.current_track && (
-        <div className="space-y-2">
+        <div className="space-y-2" key={`progress-${musicStatus.current_track.id}`}>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
             <div
-              className="bg-blue-500 h-full transition-all duration-200"
-              style={{ width: `${musicStatus.progress}%` }}
+              className="bg-blue-500 h-full transition-all duration-500 ease-linear"
+              style={{ width: `${Math.min(100, Math.max(0, musicStatus.progress || 0))}%` }}
             />
           </div>
-          <p className="text-xs text-center text-gray-500">
-            シークはオーバーレイ側で操作してください
-          </p>
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>進捗: {musicStatus.progress?.toFixed(1) || 0}%</span>
+            <span>シークはオーバーレイ側で操作してください</span>
+          </div>
         </div>
       )}
 
