@@ -93,6 +93,10 @@ func (a *App) startup(ctx context.Context) {
 		logger.Error("Failed to initialize music database", zap.Error(err))
 	}
 
+	// プリンターサブシステムを初期化（KeepAlive、Clockルーチンを含む）
+	// 注意: env.Valueが適切に初期化された後に呼び出す必要がある
+	output.InitializePrinter()
+
 	// ステータスマネージャーを初期化
 	a.streamStatus = status.GetStreamStatus()
 
@@ -100,6 +104,12 @@ func (a *App) startup(ctx context.Context) {
 	status.RegisterStatusChangeCallback(func(s status.StreamStatus) {
 		a.streamStatus = s
 		runtime.EventsEmit(a.ctx, "stream_status_changed", s)
+	})
+
+	// プリンター状態変更のコールバックを設定
+	status.RegisterPrinterStatusChangeCallback(func(connected bool) {
+		logger.Info("Printer status changed (from callback)", zap.Bool("connected", connected))
+		runtime.EventsEmit(a.ctx, "printer_connected", connected)
 	})
 
 	// OAuth callbackサーバーは削除（メインWebサーバーで処理）
@@ -124,11 +134,18 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}
 
-	// プリンター設定を確認
+	// プリンター設定を確認して初回接続を試行
+	// 注意: KeepAlive機能が有効な場合は、keepAliveRoutineが自動的に接続を管理する
 	if env.Value.PrinterAddress != nil && *env.Value.PrinterAddress != "" {
 		go func() {
-			if err := a.initializePrinter(); err != nil {
-				logger.Error("Failed to initialize printer", zap.Error(err))
+			// KeepAliveが無効な場合のみ手動接続を実行
+			if !env.Value.KeepAliveEnabled {
+				logger.Info("KeepAlive is disabled, attempting manual printer connection")
+				if err := a.initializePrinter(); err != nil {
+					logger.Error("Failed to initialize printer", zap.Error(err))
+				}
+			} else {
+				logger.Info("KeepAlive is enabled, printer will be connected automatically by keepAliveRoutine")
 			}
 		}()
 	}

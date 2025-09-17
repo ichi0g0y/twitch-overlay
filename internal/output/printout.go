@@ -100,6 +100,13 @@ func init() {
 			
 			// Check if already connected
 			if !IsConnected() {
+				// Check if printer address is configured
+				if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+					logger.Error("printer address not configured, cannot process print job")
+					printerMutex.Unlock()
+					continue
+				}
+
 				// Setup printer only if not connected
 				c, err := SetupPrinter()
 				if err != nil {
@@ -107,7 +114,7 @@ func init() {
 					printerMutex.Unlock()
 					continue
 				}
-				
+
 				// Try to connect
 				err = ConnectPrinter(c, *env.Value.PrinterAddress)
 				if err != nil {
@@ -357,12 +364,15 @@ func saveFaxImages(fax *faxmanager.Fax, colorImg, monoImg image.Image) error {
 
 
 func clockRoutine() {
+	logger.Info("Clock routine started",
+		zap.Bool("enabled", env.Value.ClockEnabled))
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	
+
 	lastPrintedTime := ""
 	lastMonth := time.Now().Format("2006-01")
-	
+
 	for range ticker.C {
 		now := time.Now()
 		minute := now.Minute()
@@ -402,16 +412,37 @@ func clockRoutine() {
 
 // keepAliveRoutine maintains printer connection
 func keepAliveRoutine() {
+	logger.Info("KeepAlive routine started",
+		zap.Bool("enabled", env.Value.KeepAliveEnabled),
+		zap.Int("interval", env.Value.KeepAliveInterval),
+		zap.String("printer_address", func() string {
+			if env.Value.PrinterAddress != nil {
+				return *env.Value.PrinterAddress
+			}
+			return "<not set>"
+		}()))
+
 	ticker := time.NewTicker(1 * time.Second) // Check every second
 	defer ticker.Stop()
-	
+
 	// バックオフ戦略用の変数
 	var consecutiveFailures int
 	var lastErrorTime time.Time
+	var addressWarningShown bool
 	const maxBackoff = 60 * time.Second
 	const baseBackoff = 2 * time.Second
-	
+
 	for range ticker.C {
+		// First check if printer address is configured
+		if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+			if !addressWarningShown {
+				logger.Warn("Keep-alive: Printer address not configured, waiting for configuration")
+				addressWarningShown = true
+			}
+			continue
+		}
+		// Reset warning flag when address becomes available
+		addressWarningShown = false
 		// First check if we need to do initial connection
 		if !IsConnected() && !HasInitialPrintBeenDone() {
 			// バックオフ戦略を適用
@@ -437,11 +468,21 @@ func keepAliveRoutine() {
 			// Lock printer for exclusive access
 			printerMutex.Lock()
 			
+			// Check if printer address is configured
+			if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+				if consecutiveFailures == 0 || consecutiveFailures%60 == 0 {
+					logger.Warn("Keep-alive: Printer address not configured, waiting for configuration")
+				}
+				consecutiveFailures++
+				printerMutex.Unlock()
+				continue
+			}
+
 			// Setup printer if needed
 			c, err := SetupPrinter()
 			if err != nil {
 				if consecutiveFailures < 10 || consecutiveFailures%60 == 0 {
-					logger.Error("Keep-alive: failed to setup printer for initial connection", 
+					logger.Error("Keep-alive: failed to setup printer for initial connection",
 						zap.Error(err),
 						zap.Int("consecutive_failures", consecutiveFailures+1))
 				}
@@ -450,7 +491,7 @@ func keepAliveRoutine() {
 				printerMutex.Unlock()
 				continue
 			}
-			
+
 			// Try to connect
 			err = ConnectPrinter(c, *env.Value.PrinterAddress)
 			if err != nil {
@@ -494,7 +535,14 @@ func keepAliveRoutine() {
 			printerMutex.Lock()
 			
 			logger.Info("Keep-alive: creating new connection")
-			
+
+			// Check if printer address is configured before reconnecting
+			if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+				logger.Warn("Keep-alive: Cannot reconnect - printer address not configured")
+				printerMutex.Unlock()
+				continue
+			}
+
 			// Setup printer (will disconnect if connected)
 			c, err := SetupPrinter()
 			if err != nil {
@@ -502,7 +550,7 @@ func keepAliveRoutine() {
 				printerMutex.Unlock()
 				continue
 			}
-			
+
 			err = ConnectPrinter(c, *env.Value.PrinterAddress)
 			if err != nil {
 				logger.Error("Keep-alive: failed to connect printer", zap.Error(err))
