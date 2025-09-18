@@ -75,10 +75,12 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 
 	err := c.Connect(address)
 	if err != nil {
-		// 接続失敗時、再接続中でなければステータスを更新
-		if !isReconnecting {
-			status.SetPrinterConnected(false)
-		}
+		// 接続失敗時は常にステータスを更新
+		// 再接続中でもエラー時は切断状態として扱う
+		status.SetPrinterConnected(false)
+		isConnected = false
+		// エラー時も再接続フラグをクリア
+		isReconnecting = false
 		return err
 	}
 	
