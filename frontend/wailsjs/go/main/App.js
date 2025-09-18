@@ -70,6 +70,14 @@ export function GetRecentFaxes(arg1) {
   return window['go']['main']['App']['GetRecentFaxes'](arg1);
 }
 
+export function GetScreens() {
+  return window['go']['main']['App']['GetScreens']();
+}
+
+export function GetScreensExtended() {
+  return window['go']['main']['App']['GetScreensExtended']();
+}
+
 export function GetServerPort() {
   return window['go']['main']['App']['GetServerPort']();
 }
@@ -94,6 +102,10 @@ export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
+export function GetWindowPosition() {
+  return window['go']['main']['App']['GetWindowPosition']();
+}
+
 export function HandleAuthCallback(arg1) {
   return window['go']['main']['App']['HandleAuthCallback'](arg1);
 }
@@ -108,6 +120,10 @@ export function RemoveTrackFromPlaylist(arg1, arg2) {
 
 export function RestartWebServer(arg1) {
   return window['go']['main']['App']['RestartWebServer'](arg1);
+}
+
+export function SaveWindowPosition(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveWindowPosition'](arg1, arg2, arg3, arg4);
 }
 
 export function ScanBluetoothDevices() {

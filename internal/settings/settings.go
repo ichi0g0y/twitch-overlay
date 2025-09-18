@@ -137,6 +137,40 @@ var DefaultSettings = map[string]Setting{
 		Description: "Uploaded font file name",
 	},
 
+	// ウィンドウ設定
+	"WINDOW_X": {
+		Key: "WINDOW_X", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Window X position",
+	},
+	"WINDOW_Y": {
+		Key: "WINDOW_Y", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Window Y position",
+	},
+	"WINDOW_WIDTH": {
+		Key: "WINDOW_WIDTH", Value: "1024", Type: SettingTypeNormal, Required: false,
+		Description: "Window width",
+	},
+	"WINDOW_HEIGHT": {
+		Key: "WINDOW_HEIGHT", Value: "768", Type: SettingTypeNormal, Required: false,
+		Description: "Window height",
+	},
+	"WINDOW_SCREEN_HASH": {
+		Key: "WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Screen configuration hash for window position validation",
+	},
+	"WINDOW_ABSOLUTE_X": {
+		Key: "WINDOW_ABSOLUTE_X", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Window absolute X position",
+	},
+	"WINDOW_ABSOLUTE_Y": {
+		Key: "WINDOW_ABSOLUTE_Y", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Window absolute Y position",
+	},
+	"WINDOW_SCREEN_INDEX": {
+		Key: "WINDOW_SCREEN_INDEX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Screen index where window is located",
+	},
+
 	// オーバーレイ表示設定
 	"MUSIC_ENABLED": {
 		Key: "MUSIC_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,

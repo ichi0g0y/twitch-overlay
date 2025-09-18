@@ -38,6 +38,7 @@ func main() {
 		MinHeight:         400,
 		AlwaysOnTop:       false,
 		HideWindowOnClose: false,
+		StartHidden:       true, // ウィンドウを隠した状態で起動
 		Bind: []interface{}{
 			app,
 		},
