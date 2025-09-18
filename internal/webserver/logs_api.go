@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,19 +21,26 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// Client represents a WebSocket client with a mutex for thread-safe writes
+type Client struct {
+	conn  *websocket.Conn
+	mu    sync.Mutex
+	send  chan logger.LogEntry
+}
+
 // WebSocket接続を管理
 type LogStreamer struct {
-	clients map[*websocket.Conn]bool
-	broadcast chan logger.LogEntry
-	register chan *websocket.Conn
-	unregister chan *websocket.Conn
+	clients    map[*Client]bool
+	broadcast  chan logger.LogEntry
+	register   chan *Client
+	unregister chan *Client
 }
 
 var logStreamer = &LogStreamer{
-	clients:    make(map[*websocket.Conn]bool),
+	clients:    make(map[*Client]bool),
 	broadcast:  make(chan logger.LogEntry),
-	register:   make(chan *websocket.Conn),
-	unregister: make(chan *websocket.Conn),
+	register:   make(chan *Client),
+	unregister: make(chan *Client),
 }
 
 func init() {
@@ -54,16 +62,18 @@ func (ls *LogStreamer) run() {
 		case client := <-ls.unregister:
 			if _, ok := ls.clients[client]; ok {
 				delete(ls.clients, client)
-				client.Close()
+				close(client.send)
+				client.conn.Close()
 				logger.Info("WebSocket client disconnected from logs")
 			}
 
 		case entry := <-ls.broadcast:
 			for client := range ls.clients {
-				err := client.WriteJSON(entry)
-				if err != nil {
-					client.Close()
-					delete(ls.clients, client)
+				select {
+				case client.send <- entry:
+				default:
+					// クライアントのsendチャネルがブロックされている場合はスキップ
+					logger.Warn("Client send channel blocked, skipping")
 				}
 			}
 		}
@@ -156,28 +166,64 @@ func handleLogsStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// クライアントを登録
-	logStreamer.register <- conn
-
-	// 最近のログを送信
-	buffer := logger.GetLogBuffer()
-	recentLogs := buffer.GetRecent(50)
-	for _, log := range recentLogs {
-		if err := conn.WriteJSON(log); err != nil {
-			break
-		}
+	// クライアントを作成
+	client := &Client{
+		conn: conn,
+		send: make(chan logger.LogEntry, 256), // バッファ付きチャネル
 	}
+
+	// クライアントを登録
+	logStreamer.register <- client
 
 	// 接続を維持
 	defer func() {
-		logStreamer.unregister <- conn
+		logStreamer.unregister <- client
 	}()
+
+	// 最近のログを送信チャネルに送る
+	buffer := logger.GetLogBuffer()
+	recentLogs := buffer.GetRecent(50)
+	for _, log := range recentLogs {
+		select {
+		case client.send <- log:
+		default:
+			// バッファが満杯の場合はスキップ
+		}
+	}
+
+	// 書き込みgoroutineを開始
+	go client.writePump()
 
 	// クライアントからのメッセージを読み続ける（接続維持のため）
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
 			break
+		}
+	}
+}
+
+// writePump handles writing messages to the WebSocket connection
+func (c *Client) writePump() {
+	defer c.conn.Close()
+
+	for {
+		select {
+		case entry, ok := <-c.send:
+			if !ok {
+				// sendチャネルが閉じられた
+				return
+			}
+
+			// Mutexでロックして書き込み
+			c.mu.Lock()
+			err := c.conn.WriteJSON(entry)
+			c.mu.Unlock()
+
+			if err != nil {
+				logger.Warn("Failed to write to WebSocket", zap.Error(err))
+				return
+			}
 		}
 	}
 }
