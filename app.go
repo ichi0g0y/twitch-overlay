@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gorilla/websocket"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
@@ -181,6 +182,9 @@ func (a *App) startup(ctx context.Context) {
 			runtime.EventsEmit(a.ctx, "webserver_started", map[string]interface{}{
 				"port": port,
 			})
+
+			// WebSocketクライアントを起動してバックエンドメッセージをフロントエンドに転送
+			go a.connectToWebSocketServer(port)
 		}
 	}()
 
@@ -1056,41 +1060,69 @@ func (a *App) GetEventSubStatus() map[string]interface{} {
 	status := map[string]interface{}{
 		"connected": twitcheventsub.IsConnected(),
 	}
-	
+
 	if err := twitcheventsub.GetLastError(); err != nil {
 		status["error"] = err.Error()
 	}
-	
+
 	return status
 }
 
-// RestartWebServer restarts the web server with a new port
-func (a *App) RestartWebServer(port int) error {
-	logger.Info("Restarting web server", zap.Int("new_port", port))
+// connectToWebSocketServer connects to the backend WebSocket server and forwards messages to frontend
+func (a *App) connectToWebSocketServer(port int) {
+	url := fmt.Sprintf("ws://localhost:%d/ws", port)
+	logger.Info("Connecting to WebSocket server", zap.String("url", url))
 
-	// Shutdown existing server
-	webserver.Shutdown()
+	// 再接続ループ
+	for {
+		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		if err != nil {
+			logger.Warn("Failed to connect to WebSocket server, retrying in 5 seconds", zap.Error(err))
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-	// Wait briefly for shutdown to complete
-	time.Sleep(500 * time.Millisecond)
+		logger.Info("Connected to WebSocket server")
 
-	// Set embedded assets and start server with new port
-	webserver.SetWebAssets(a.webAssets)
-	if err := webserver.StartWebServer(port); err != nil {
-		logger.Error("Failed to restart web server", zap.Error(err))
-		runtime.EventsEmit(a.ctx, "webserver_error", map[string]interface{}{
-			"error": err.Error(),
-			"port":  port,
-		})
-		return err
+		// メッセージ受信ループ
+		for {
+			var msg map[string]interface{}
+			err := conn.ReadJSON(&msg)
+			if err != nil {
+				logger.Warn("WebSocket read error", zap.Error(err))
+				conn.Close()
+				break
+			}
+
+			// メッセージタイプによって適切なイベントを発行
+			if msgType, ok := msg["type"].(string); ok {
+				switch msgType {
+				case "music_status":
+					if data, ok := msg["data"].(map[string]interface{}); ok {
+						runtime.EventsEmit(a.ctx, "music_status_update", data)
+					}
+				case "music_control":
+					if data, ok := msg["data"].(map[string]interface{}); ok {
+						runtime.EventsEmit(a.ctx, "music_control_command", data)
+					}
+				case "fax":
+					if data, ok := msg["data"].(map[string]interface{}); ok {
+						runtime.EventsEmit(a.ctx, "fax_received", data)
+					}
+				case "eventsub":
+					if data, ok := msg["data"].(map[string]interface{}); ok {
+						runtime.EventsEmit(a.ctx, "eventsub_event", data)
+					}
+				default:
+					// その他のメッセージも転送
+					runtime.EventsEmit(a.ctx, msgType, msg["data"])
+				}
+			}
+		}
+
+		// 再接続前に少し待つ
+		time.Sleep(2 * time.Second)
 	}
-	
-	// Notify frontend that server restarted successfully
-	runtime.EventsEmit(a.ctx, "webserver_started", map[string]interface{}{
-		"port": port,
-	})
-	
-	return nil
 }
 
 // Music Management Functions for Settings Page

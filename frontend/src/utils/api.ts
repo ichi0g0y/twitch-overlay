@@ -48,15 +48,3 @@ export async function buildApiUrlAsync(path: string): Promise<string> {
   }
 }
 
-// EventSource用のURLを構築（Wails環境では完全なURLが必要）
-export function buildEventSourceUrl(path: string): string {
-  // 環境変数が設定されている場合
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return `${import.meta.env.VITE_API_BASE_URL}${path}`;
-  }
-  
-  // Wails環境では常にHTTPサーバー経由でEventSourceにアクセス
-  // 本番・開発環境共にlocalhostの完全なURLを使用
-  const backendPort = import.meta.env.VITE_BACKEND_PORT || '8080';
-  return `http://localhost:${backendPort}${path}`;
-}

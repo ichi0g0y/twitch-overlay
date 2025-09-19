@@ -45,8 +45,9 @@ var (
 	
 	// 現在の音楽再生状態
 	currentMusicState = MusicStatusUpdate{
-		IsPlaying: false,
-		Volume:    70,
+		PlaybackStatus: "stopped",
+		IsPlaying:      false,
+		Volume:         70,
 	}
 	musicStateMutex sync.RWMutex
 )
@@ -397,6 +398,23 @@ func handleMusicStatusUpdate(w http.ResponseWriter, r *http.Request) {
 func updateCurrentMusicState(status MusicStatusUpdate) {
 	musicStateMutex.Lock()
 	defer musicStateMutex.Unlock()
+
+	// IsPlayingとPlaybackStatusの同期を確保
+	if status.PlaybackStatus == "playing" {
+		status.IsPlaying = true
+	} else if status.PlaybackStatus == "paused" || status.PlaybackStatus == "stopped" {
+		status.IsPlaying = false
+	}
+
+	// 逆方向の同期も確保（古いコードとの互換性のため）
+	if status.PlaybackStatus == "" {
+		if status.IsPlaying {
+			status.PlaybackStatus = "playing"
+		} else {
+			status.PlaybackStatus = "stopped"
+		}
+	}
+
 	currentMusicState = status
 }
 
@@ -405,6 +423,20 @@ func getCurrentMusicState() MusicStatusUpdate {
 	musicStateMutex.RLock()
 	defer musicStateMutex.RUnlock()
 	return currentMusicState
+}
+
+// GET /api/music/status
+func handleMusicStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 現在の音楽状態を取得
+	state := getCurrentMusicState()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
 }
 
 // SSE: /api/music/status/events
@@ -466,8 +498,9 @@ func RegisterMusicControlRoutes(mux *http.ServeMux) {
 	
 	// SSEエンドポイント
 	mux.HandleFunc("/api/music/control/events", corsMiddleware(handleMusicControlEvents))
-	
+
 	// 状態同期エンドポイント
+	mux.HandleFunc("/api/music/status", corsMiddleware(handleMusicStatus))
 	mux.HandleFunc("/api/music/status/update", corsMiddleware(handleMusicStatusUpdate))
 	mux.HandleFunc("/api/music/status/events", corsMiddleware(handleMusicStatusEvents))
 }

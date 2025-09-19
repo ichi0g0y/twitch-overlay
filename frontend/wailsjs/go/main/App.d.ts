@@ -65,8 +65,6 @@ export function ReconnectPrinter():Promise<void>;
 
 export function RemoveTrackFromPlaylist(arg1:string,arg2:string):Promise<void>;
 
-export function RestartWebServer(arg1:number):Promise<void>;
-
 export function SaveWindowPosition(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;
 
 export function ScanBluetoothDevices():Promise<Array<Record<string, any>>>;

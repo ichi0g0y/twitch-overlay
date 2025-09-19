@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Upload, X } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -15,7 +15,6 @@ interface GeneralSettingsProps {
   getBooleanValue: (key: string) => boolean;
   webServerError: { error: string; port: number } | null;
   webServerPort: number;
-  handleRestartWebServer: () => void;
   streamStatus: StreamStatus | null;
   fileInputRef: React.RefObject<HTMLInputElement>;
   uploadingFont: boolean;
@@ -33,7 +32,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   getBooleanValue,
   webServerError,
   webServerPort,
-  handleRestartWebServer,
   streamStatus,
   fileInputRef,
   uploadingFont,
@@ -85,7 +83,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 className="w-32"
               />
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                OBSオーバーレイ用のWebサーバーポート（変更後は再起動が必要）
+                OBSオーバーレイ用のWebサーバーポート（変更後はアプリ再起動が必要）
               </p>
             </div>
             {webServerError && (
@@ -96,15 +94,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </Alert>
             )}
             {getSettingValue('SERVER_PORT') !== String(webServerPort) && (
-              <Button
-                onClick={handleRestartWebServer}
-                className="mt-2"
-                variant="outline"
-                size="sm"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Webサーバーを再起動
-              </Button>
+              <p className="text-sm text-orange-600 dark:text-orange-400 mt-2">
+                ⚠️ ポート変更を反映するにはアプリを再起動してください
+              </p>
             )}
           </div>
 

@@ -1,17 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { createContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
-  GetPrinterStatus, GetServerPort, ReconnectPrinter, RestartWebServer, TestPrint,
+  GetPrinterStatus, GetServerPort, ReconnectPrinter,
+  ScanBluetoothDevices,
+  TestPrint,
   UpdateSettings, UploadFont
 } from '../../wailsjs/go/main/App';
 import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
+import { useSettings } from '../contexts/SettingsContext';
 import {
-  AuthStatus, FeatureStatus, PrinterStatusInfo,
-  StreamStatus, TwitchUserInfo, UpdateSettingsRequest
+  AuthStatus,
+  BluetoothDevice,
+  FeatureStatus, PrinterStatusInfo,
+  StreamStatus,
+  TestResponse,
+  TwitchUserInfo, UpdateSettingsRequest
 } from '../types';
+import { buildApiUrl, buildApiUrlAsync } from '../utils/api';
 
 const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
+
+export const SettingsPageContext = createContext<ReturnType<typeof useSettingsPage> | null>(null);
 
 export const useSettingsPage = () => {
   const [activeTab, setActiveTab] = useState(() => {
@@ -45,6 +55,36 @@ export const useSettingsPage = () => {
   const [previewText, setPreviewText] = useState<string>('サンプルテキスト Sample Text 123\nフォントプレビュー 🎨');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // Bluetooth related
+  const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  // Show/hide secrets
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  // Overlay settings
+  const { settings: overlaySettings, updateSettings: updateOverlaySettings } = useSettings();
+
+  // Music related
+  const [musicStatus, setMusicStatus] = useState<{
+    is_playing: boolean;
+    current_track: any | null;
+    current_time: number;
+    duration: number;
+    volume: number;
+    playlist_name?: string;
+  }>({
+    is_playing: false,
+    current_track: null,
+    current_time: 0,
+    duration: 0,
+    volume: 100
+  });
+  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [isControlDisabled, setIsControlDisabled] = useState(false);
+  const seekBarRef = useRef<HTMLInputElement>(null);
 
   // Save active tab
   useEffect(() => {
@@ -217,17 +257,6 @@ export const useSettingsPage = () => {
     }
   };
 
-  const handleRestartWebServer = async () => {
-    const port = parseInt(getSettingValue('SERVER_PORT') || '8080');
-    try {
-      toast.info(`Webサーバーをポート ${port} で再起動中...`);
-      await RestartWebServer(port);
-      setWebServerPort(port);
-      setWebServerError(null);
-    } catch (error) {
-      toast.error(`Webサーバーの再起動に失敗しました: ${error}`);
-    }
-  };
 
   const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -285,6 +314,132 @@ export const useSettingsPage = () => {
   const handleOpenOverlay = async () => {
     const port = await GetServerPort();
     BrowserOpenURL(`http://localhost:${port}/`);
+  };
+
+  // Bluetooth device functions
+  const sortBluetoothDevices = (devices: BluetoothDevice[]): BluetoothDevice[] => {
+    return devices.sort((a, b) => {
+      if (a.name && !b.name) return -1;
+      if (!a.name && b.name) return 1;
+      if (a.name && b.name) return a.name.localeCompare(b.name);
+      return 0;
+    });
+  };
+
+  const handleScanDevices = async () => {
+    setScanning(true);
+    try {
+      const devices = await ScanBluetoothDevices();
+      const bluetoothDevices: BluetoothDevice[] = devices.map(d => ({
+        mac_address: d.mac_address as string,
+        name: d.name as string,
+        last_seen: d.last_seen as string
+      }));
+
+      const currentAddress = getSettingValue('PRINTER_ADDRESS');
+      let updatedDevices = [...bluetoothDevices];
+
+      if (currentAddress && !bluetoothDevices.find(d => d.mac_address === currentAddress)) {
+        updatedDevices.unshift({
+          mac_address: currentAddress,
+          name: '(現在の設定)',
+          last_seen: new Date().toISOString()
+        });
+      }
+
+      const sortedDevices = sortBluetoothDevices(updatedDevices);
+      setBluetoothDevices(sortedDevices);
+      toast.success(`${bluetoothDevices.length}台のデバイスが見つかりました`);
+      await fetchPrinterStatus();
+    } catch (err: any) {
+      toast.error('デバイススキャンに失敗しました: ' + err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    const printerAddress = getSettingValue('PRINTER_ADDRESS');
+    if (!printerAddress) {
+      toast.error('プリンターアドレスが選択されていません');
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const response = await fetch(buildApiUrl('/api/printer/test'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mac_address: printerAddress }),
+      });
+
+      const data: TestResponse = await response.json();
+      if (data.success) {
+        toast.success('プリンターとの接続に成功しました');
+      } else {
+        toast.error('接続テスト失敗: ' + data.message);
+      }
+    } catch (err: any) {
+      toast.error('接続テストでエラーが発生しました: ' + err.message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleTokenRefresh = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/twitch/refresh-token'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Token refresh failed');
+      }
+
+      if (result.success) {
+        toast.success('トークンを更新しました');
+        await fetchAuthStatus();
+      } else {
+        throw new Error(result.error || 'トークンの更新に失敗しました');
+      }
+    } catch (err: any) {
+      toast.error(`トークンの更新に失敗しました: ${err.message}`);
+    }
+  };
+
+  // Music control functions
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const sendMusicControlCommand = async (command: string, data?: any) => {
+    try {
+      setIsControlDisabled(true);
+      const url = await buildApiUrlAsync(`/api/music/control/${command}`);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined
+      });
+
+      if (!response.ok) {
+        throw new Error(`Control command failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Music control error:', error);
+      toast.error(`コマンドエラー: ${error}`);
+    } finally {
+      setTimeout(() => setIsControlDisabled(false), 300);
+    }
+  };
+
+  const handleSeek = async (position: number) => {
+    await sendMusicControlCommand('seek', { position });
   };
 
   // Initial data fetch
@@ -345,6 +500,7 @@ export const useSettingsPage = () => {
     twitchUserInfo,
     printerStatusInfo,
     unsavedChanges,
+    setUnsavedChanges,
     refreshingStreamStatus,
     reconnectingPrinter,
     testingPrinter,
@@ -366,10 +522,36 @@ export const useSettingsPage = () => {
     verifyTwitchConfig,
     handlePrinterReconnect,
     handleTestPrint,
-    handleRestartWebServer,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,
     handleOpenOverlay,
+    handleTokenRefresh,
+
+    // Bluetooth related
+    bluetoothDevices,
+    scanning,
+    testing,
+    handleScanDevices,
+    handleTestConnection,
+
+    // Show/hide secrets
+    showSecrets,
+    setShowSecrets,
+
+    // Overlay settings
+    overlaySettings,
+    updateOverlaySettings,
+
+    // Music related
+    musicStatus,
+    setMusicStatus,
+    playlists,
+    setPlaylists,
+    isControlDisabled,
+    seekBarRef,
+    sendMusicControlCommand,
+    handleSeek,
+    formatTime,
   };
 };

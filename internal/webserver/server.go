@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
@@ -28,38 +26,23 @@ import (
 	"go.uber.org/zap"
 )
 
-type SSEClient struct {
-	ID       string
-	Channel  chan string
-	ConnectedAt time.Time
-}
-
-type SSEServer struct {
-	clients map[string]*SSEClient  // clientID -> client
-	mu      sync.RWMutex
-}
-
-// broadcast sends data to all connected clients
-func (s *SSEServer) broadcast(data []byte) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, client := range s.clients {
-		select {
-		case client.Channel <- string(data):
-		default:
-			// Client is not ready to receive, skip
-		}
-	}
-}
-
 var (
-	sseServer = &SSEServer{
-		clients: make(map[string]*SSEClient),
-	}
 	httpServer *http.Server
 	webAssets  *embed.FS // 埋め込みアセット（Wailsビルド時に使用）
 )
+
+// webSocketBroadcaster implements the Broadcaster interface using WebSocket
+type webSocketBroadcaster struct{}
+
+// BroadcastFax implements FaxBroadcaster interface
+func (w *webSocketBroadcaster) BroadcastFax(fax *faxmanager.Fax) {
+	BroadcastFax(fax)
+}
+
+// BroadcastMessage implements MessageBroadcaster interface
+func (w *webSocketBroadcaster) BroadcastMessage(message interface{}) {
+	BroadcastMessage(message)
+}
 
 // corsMiddleware adds CORS headers to HTTP handlers
 func corsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
@@ -77,18 +60,8 @@ func corsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// StartWebServer starts the HTTP server
-// BroadcastMessage sends a message to all connected SSE and WebSocket clients
-func (s *SSEServer) BroadcastMessage(message interface{}) {
-	// SSEクライアントに送信
-	data, err := json.Marshal(message)
-	if err != nil {
-		logger.Error("Failed to marshal SSE message", zap.Error(err))
-		return
-	}
-	s.broadcast(data)
-	
-	// WebSocketクライアントにも送信
+// BroadcastMessage sends a message to all connected WebSocket clients
+func BroadcastMessage(message interface{}) {
 	// messageがmap型の場合、typeフィールドを取得
 	if msgMap, ok := message.(map[string]interface{}); ok {
 		if msgType, hasType := msgMap["type"].(string); hasType {
@@ -109,32 +82,19 @@ func (s *SSEServer) BroadcastMessage(message interface{}) {
 	}
 }
 
-// BroadcastMessage is a convenience function for the global SSE server
-func BroadcastMessage(message interface{}) {
-	if sseServer != nil {
-		sseServer.BroadcastMessage(message)
-	}
-}
-
 // SetWebAssets sets the embedded web assets for serving
 func SetWebAssets(assets *embed.FS) {
 	webAssets = assets
 }
 
 func StartWebServer(port int) error {
-	// Register SSE server as the global broadcaster
-	broadcast.SetBroadcaster(sseServer)
+	// Register WebSocket broadcaster
+	broadcast.SetBroadcaster(&webSocketBroadcaster{})
 
 	// Register stream status change callback
 	status.RegisterStatusChangeCallback(func(streamStatus status.StreamStatus) {
-		msg := map[string]interface{}{
-			"type": "stream_status_changed",
-			"data": streamStatus,
-		}
 		// WebSocketクライアントに送信
 		BroadcastWSMessage("stream_status_changed", streamStatus)
-		// SSEクライアントにも送信（互換性のため）
-		BroadcastMessage(msg)
 	})
 
 	// Prepare file server for static files
@@ -221,8 +181,6 @@ func StartWebServer(port int) error {
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
 	
-	// SSE endpoint (互換性のため一時的に残す)
-	mux.HandleFunc("/events", handleSSE)
 
 	// Fax image endpoint
 	mux.HandleFunc("/fax/", handleFaxImage)
@@ -358,152 +316,6 @@ func Shutdown() {
 	}
 }
 
-// handleSSE handles Server-Sent Events connections
-func handleSSE(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers first
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	// Handle OPTIONS request
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Get client ID from query parameter
-	clientID := r.URL.Query().Get("clientId")
-	if clientID == "" {
-		// Generate a client ID if not provided (backward compatibility)
-		clientID = fmt.Sprintf("auto-%d-%d", time.Now().UnixNano(), rand.Int63())
-	}
-
-	// Set headers for SSE
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // Disable buffering for nginx
-
-	// Create client
-	client := &SSEClient{
-		ID:          clientID,
-		Channel:     make(chan string, 10), // Buffered channel to prevent blocking
-		ConnectedAt: time.Now(),
-	}
-
-	// Check for existing client with same ID and close it
-	sseServer.mu.Lock()
-	if existingClient, exists := sseServer.clients[clientID]; exists {
-		logger.Info("Closing existing SSE connection for client", 
-			zap.String("clientId", clientID),
-			zap.String("remote", r.RemoteAddr))
-		close(existingClient.Channel)
-	}
-	// Register new client
-	sseServer.clients[clientID] = client
-	sseServer.mu.Unlock()
-
-	// Remove client on disconnect
-	defer func() {
-		sseServer.mu.Lock()
-		if c, exists := sseServer.clients[clientID]; exists && c == client {
-			delete(sseServer.clients, clientID)
-			close(client.Channel)
-		}
-		sseServer.mu.Unlock()
-	}()
-
-	logger.Info("SSE client connected", 
-		zap.String("clientId", clientID),
-		zap.String("remote", r.RemoteAddr))
-
-	// Force flush immediately to establish connection
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	// Send initial connection message with client ID
-	connectionMsg := fmt.Sprintf(`{"type":"connected","clientId":"%s"}`, clientID)
-	fmt.Fprintf(w, "data: %s\n\n", connectionMsg)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	// Create heartbeat ticker
-	heartbeat := time.NewTicker(30 * time.Second)
-	defer heartbeat.Stop()
-
-	// Send messages to client with timeout protection
-	for {
-		select {
-		case msg := <-client.Channel:
-			// 書き込みタイムアウト付きで送信
-			done := make(chan bool, 1)
-			go func() {
-				_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
-				if err != nil {
-					logger.Debug("Failed to write SSE message", 
-						zap.String("clientId", clientID),
-						zap.Error(err))
-					done <- false
-					return
-				}
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				}
-				done <- true
-			}()
-			
-			// 5秒のタイムアウト
-			select {
-			case success := <-done:
-				if !success {
-					logger.Info("SSE write failed, disconnecting client",
-						zap.String("clientId", clientID))
-					return
-				}
-			case <-time.After(5 * time.Second):
-				logger.Warn("SSE write timeout, disconnecting client",
-					zap.String("clientId", clientID))
-				return
-			}
-			
-		case <-heartbeat.C:
-			// Send heartbeat with timeout
-			done := make(chan bool, 1)
-			go func() {
-				_, err := fmt.Fprintf(w, ": heartbeat\n\n")
-				if err != nil {
-					done <- false
-					return
-				}
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				}
-				done <- true
-			}()
-			
-			select {
-			case success := <-done:
-				if !success {
-					logger.Debug("SSE heartbeat write failed",
-						zap.String("clientId", clientID))
-					return
-				}
-			case <-time.After(5 * time.Second):
-				logger.Debug("SSE heartbeat timeout",
-					zap.String("clientId", clientID))
-				return
-			}
-			
-		case <-r.Context().Done():
-			logger.Info("SSE client disconnected", 
-				zap.String("clientId", clientID),
-				zap.String("remote", r.RemoteAddr))
-			return
-		}
-	}
-}
 
 // handleFaxImage serves fax images
 func handleFaxImage(w http.ResponseWriter, r *http.Request) {
@@ -538,8 +350,8 @@ func handleFaxImage(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, imagePath)
 }
 
-// BroadcastFax sends a fax notification to all connected SSE and WebSocket clients
-func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
+// BroadcastFax sends a fax notification to all connected WebSocket clients
+func BroadcastFax(fax *faxmanager.Fax) {
 	msg := map[string]interface{}{
 		"type":        "fax",
 		"id":          fax.ID,
@@ -553,27 +365,8 @@ func (s *SSEServer) BroadcastFax(fax *faxmanager.Fax) {
 	// WebSocketクライアントに送信
 	BroadcastWSMessage("fax", msg)
 
-	// SSEクライアントにも送信（互換性のため）
-	jsonData, err := json.Marshal(msg)
-	if err != nil {
-		logger.Error("Failed to marshal fax message", zap.Error(err))
-		return
-	}
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, client := range s.clients {
-		select {
-		case client.Channel <- string(jsonData):
-		default:
-			// Client channel is full, skip
-		}
-	}
-
 	logger.Info("Broadcasted fax to clients",
-		zap.String("id", fax.ID),
-		zap.Int("sse_clients", len(s.clients)))
+		zap.String("id", fax.ID))
 }
 
 // handleStatus returns the current system status

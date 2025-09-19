@@ -1,7 +1,7 @@
 import { Bluetooth, Bug, FileText, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
 import React from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { useSettingsPage } from '../hooks/useSettingsPage';
+import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -10,10 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { MusicSettings } from './settings/MusicSettings';
 import { LogsTab } from './settings/LogsTab';
-import { TwitchSettings, PrinterSettings, OverlaySettings, ApiTab } from './settings/TabContent';
+import { TwitchSettings } from './settings/TwitchSettings';
+import { PrinterSettings } from './settings/PrinterSettings';
+import { OverlaySettings } from './settings/OverlaySettings';
+import { ApiTab } from './settings/ApiTab';
 
 export const SettingsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
+  const contextValue = useSettingsPage();
   const {
     activeTab,
     setActiveTab,
@@ -41,12 +45,11 @@ export const SettingsPage: React.FC = () => {
     verifyTwitchConfig,
     handlePrinterReconnect,
     handleTestPrint,
-    handleRestartWebServer,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,
     handleOpenOverlay,
-  } = useSettingsPage();
+  } = contextValue;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -111,7 +114,6 @@ export const SettingsPage: React.FC = () => {
               getBooleanValue={getBooleanValue}
               webServerError={webServerError}
               webServerPort={webServerPort}
-              handleRestartWebServer={handleRestartWebServer}
               streamStatus={streamStatus}
               fileInputRef={fileInputRef}
               uploadingFont={uploadingFont}
@@ -123,10 +125,22 @@ export const SettingsPage: React.FC = () => {
               handleDeleteFont={handleDeleteFont}
             />
           </TabsContent>
-          <TabsContent value="twitch"><TwitchSettings /></TabsContent>
-          <TabsContent value="printer"><PrinterSettings /></TabsContent>
+          <TabsContent value="twitch">
+            <SettingsPageContext.Provider value={contextValue}>
+              <TwitchSettings />
+            </SettingsPageContext.Provider>
+          </TabsContent>
+          <TabsContent value="printer">
+            <SettingsPageContext.Provider value={contextValue}>
+              <PrinterSettings />
+            </SettingsPageContext.Provider>
+          </TabsContent>
           <TabsContent value="music"><MusicSettings /></TabsContent>
-          <TabsContent value="overlay"><OverlaySettings /></TabsContent>
+          <TabsContent value="overlay">
+            <SettingsPageContext.Provider value={contextValue}>
+              <OverlaySettings />
+            </SettingsPageContext.Provider>
+          </TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="api"><ApiTab /></TabsContent>
         </Tabs>
