@@ -6,13 +6,14 @@ import (
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
+	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/status"
 	"go.uber.org/zap"
 )
 
 func HandleStreamOnline(message twitch.EventStreamOnline) {
-	logger.Info("Stream went online", 
+	logger.Info("Stream went online",
 		zap.String("broadcaster_id", message.Broadcaster.BroadcasterUserId),
 		zap.String("broadcaster_name", message.Broadcaster.BroadcasterUserName),
 		zap.Time("started_at", message.StartedAt))
@@ -23,6 +24,11 @@ func HandleStreamOnline(message twitch.EventStreamOnline) {
 		startedAt = time.Now()
 	}
 	status.SetStreamOnline(startedAt, 0) // 視聴者数は後でAPIから取得
+
+	// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+	if env.Value.AutoDryRunWhenOffline {
+		logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is now ONLINE - dry-run mode disabled")
+	}
 
 	// WebSocketで通知（broadcastパッケージ経由）
 	broadcast.Send(map[string]interface{}{
@@ -45,6 +51,11 @@ func HandleStreamOffline(message twitch.EventStreamOffline) {
 
 	// 配信状態を更新
 	status.SetStreamOffline()
+
+	// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+	if env.Value.AutoDryRunWhenOffline {
+		logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is now OFFLINE - dry-run mode active")
+	}
 
 	// WebSocketで通知（broadcastパッケージ経由）
 	broadcast.Send(map[string]interface{}{

@@ -26,6 +26,7 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
 	"github.com/nantokaworks/twitch-overlay/internal/status"
+	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"github.com/nantokaworks/twitch-overlay/internal/twitcheventsub"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"github.com/nantokaworks/twitch-overlay/internal/webserver"
@@ -128,7 +129,13 @@ func (a *App) startup(ctx context.Context) {
 			go func() {
 				if err := twitcheventsub.Start(); err != nil {
 					logger.Error("Failed to start EventSub", zap.Error(err))
+					return
 				}
+
+				// EventSub開始後、現在の配信状態を確認
+				// EventSubが既存の配信を検知しないため、明示的に取得
+				time.Sleep(2 * time.Second) // EventSubの接続を待つ
+				a.checkInitialStreamStatus()
 			}()
 
 			// トークンリフレッシュgoroutineを開始
@@ -290,6 +297,50 @@ func (a *App) shutdown(ctx context.Context) {
 
 	// EventSubを停止
 	twitcheventsub.Stop()
+}
+
+// checkInitialStreamStatus checks and sets the initial stream status on startup
+func (a *App) checkInitialStreamStatus() {
+	logger.Info("Checking initial stream status...")
+
+	// Twitchユーザーが設定されているか確認
+	if env.Value.TwitchUserID == nil || *env.Value.TwitchUserID == "" {
+		logger.Warn("Cannot check stream status: Twitch user ID not configured")
+		return
+	}
+
+	// 現在の配信状態をAPIで取得
+	streamInfo, err := twitchapi.GetStreamInfo()
+	if err != nil {
+		logger.Error("Failed to get initial stream status", zap.Error(err))
+		return
+	}
+
+	if streamInfo.IsLive {
+		logger.Info("Stream is currently LIVE on startup, updating status",
+			zap.Int("viewer_count", streamInfo.ViewerCount))
+
+		// 配信状態を更新（startedAtはnilだがEventSubが後で更新する）
+		status.UpdateStreamStatus(true, nil, streamInfo.ViewerCount)
+
+		// フロントエンドに通知
+		runtime.EventsEmit(a.ctx, "stream_status_changed", status.GetStreamStatus())
+
+		// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+		if env.Value.AutoDryRunWhenOffline {
+			logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE is enabled, but stream is LIVE - dry-run disabled")
+		}
+	} else {
+		logger.Info("Stream is OFFLINE on startup")
+
+		// 明示的にオフライン状態を設定
+		status.SetStreamOffline()
+
+		// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+		if env.Value.AutoDryRunWhenOffline {
+			logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE is enabled and stream is OFFLINE - dry-run will be active")
+		}
+	}
 }
 
 // initializePrinter initializes the printer connection

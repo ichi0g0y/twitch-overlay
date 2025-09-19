@@ -8,6 +8,8 @@ import (
 	"github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/status"
+	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"go.uber.org/zap"
 )
@@ -117,7 +119,11 @@ func SetupEventSub(token *twitchtoken.Token) {
 		logger.Info("EventSub connected successfully")
 		isConnected = true
 		lastError = nil
-		
+
+		// EventSub接続成功時に現在の配信状態を確認
+		// EventSubは既存の配信をstream.onlineイベントとして通知しないため
+		go checkStreamStatusOnConnect()
+
 		events := []twitch.EventSubscription{
 			twitch.SubChannelChannelPointsCustomRewardRedemptionAdd,
 			twitch.SubChannelCheer,
@@ -285,6 +291,61 @@ func SetupEventSub(token *twitchtoken.Token) {
 	})
 
 	// Connect処理はStart()関数で行うため、ここでは接続しない
+}
+
+// checkStreamStatusOnConnect checks the current stream status when EventSub connects
+func checkStreamStatusOnConnect() {
+	logger.Info("Checking stream status after EventSub connection...")
+
+	// Twitchユーザーが設定されているか確認
+	if env.Value.TwitchUserID == nil || *env.Value.TwitchUserID == "" {
+		logger.Warn("Cannot check stream status: Twitch user ID not configured")
+		return
+	}
+
+	// 少し待ってからAPIを呼び出す（EventSubのサブスクリプション処理を優先）
+	time.Sleep(1 * time.Second)
+
+	// 現在の配信状態をAPIで取得
+	streamInfo, err := twitchapi.GetStreamInfo()
+	if err != nil {
+		logger.Error("Failed to get stream status on EventSub connect", zap.Error(err))
+		return
+	}
+
+	if streamInfo.IsLive {
+		logger.Info("Stream is currently LIVE (checked on EventSub connect)",
+			zap.Int("viewer_count", streamInfo.ViewerCount))
+
+		// 配信状態を更新
+		// EventSubからstream.onlineイベントが来ていない場合のみ更新
+		currentStatus := status.GetStreamStatus()
+		if !currentStatus.IsLive {
+			logger.Info("Updating stream status to LIVE (was not detected by EventSub)")
+			status.UpdateStreamStatus(true, nil, streamInfo.ViewerCount)
+
+			// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+			if env.Value.AutoDryRunWhenOffline {
+				logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is now LIVE - dry-run mode disabled")
+			}
+		} else {
+			logger.Info("Stream status already set to LIVE by EventSub")
+		}
+	} else {
+		logger.Info("Stream is OFFLINE (checked on EventSub connect)")
+
+		// 明示的にオフライン状態を設定
+		currentStatus := status.GetStreamStatus()
+		if currentStatus.IsLive {
+			logger.Info("Updating stream status to OFFLINE")
+			status.SetStreamOffline()
+		}
+
+		// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
+		if env.Value.AutoDryRunWhenOffline {
+			logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is OFFLINE - dry-run mode active")
+		}
+	}
 }
 
 // Shutdown closes the EventSub client connection

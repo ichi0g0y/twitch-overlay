@@ -1,0 +1,2068 @@
+import { Bluetooth, Bug, Eye, EyeOff, FileText, Layers, Monitor, Moon, Music, Pause, Play, RefreshCw, Settings2, SkipBack, SkipForward, Square, Sun, Upload, Volume2, Wifi, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus, GetMusicPlaylists, GetPrinterStatus, GetServerPort, GetServerStatus, ReconnectPrinter, RestartWebServer, ScanBluetoothDevices, TestPrint, UpdateSettings, UploadFont } from '../../wailsjs/go/main/App';
+import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
+import { useSettings } from '../contexts/SettingsContext';
+import { useTheme } from '../hooks/useTheme';
+import {
+  AuthStatus,
+  BluetoothDevice,
+  FeatureStatus,
+  PrinterStatusInfo,
+  StreamStatus,
+  TestResponse,
+  TwitchUserInfo,
+  UpdateSettingsRequest
+} from '../types';
+import type { Playlist, Track } from '../types/music';
+import { buildApiUrl } from '../utils/api';
+import { initWebSocket } from '../utils/websocket';
+import { LogViewer } from './LogViewer';
+import { SystemStatusCard } from './SystemStatusCard';
+import MusicManagerEmbed from './music/MusicManagerEmbed';
+import { Alert, AlertDescription } from './ui/alert';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Switch } from './ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+
+// タブ状態を保存するキー
+const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
+
+export const SettingsPage: React.FC = () => {
+  const { theme, toggleTheme } = useTheme();
+  const { settings: overlaySettings, updateSettings: updateOverlaySettings } = useSettings();
+  
+  // localStorageから保存されたタブを取得、なければ'general'
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem(SETTINGS_TAB_KEY) || 'general';
+    } catch {
+      return 'general';
+    }
+  });
+  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [featureStatus, setFeatureStatus] = useState<FeatureStatus | null>(null);
+  const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [unsavedChanges, setUnsavedChanges] = useState<UpdateSettingsRequest>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [uploadingFont, setUploadingFont] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [previewText, setPreviewText] = useState<string>('サンプルテキスト Sample Text 123\nフォントプレビュー 🎨');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [twitchUserInfo, setTwitchUserInfo] = useState<TwitchUserInfo | null>(null);
+  const [verifyingTwitch, setVerifyingTwitch] = useState(false);
+  const [printerStatusInfo, setPrinterStatusInfo] = useState<PrinterStatusInfo | null>(null);
+  const [reconnectingPrinter, setReconnectingPrinter] = useState(false);
+  const [testingPrinter, setTestingPrinter] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus | null>(null);
+  const [refreshingStreamStatus, setRefreshingStreamStatus] = useState(false);
+  const [webServerError, setWebServerError] = useState<{ error: string; port: number } | null>(null);
+  const [webServerPort, setWebServerPort] = useState<number>(8080);
+  const [serverStatus, setServerStatus] = useState<{
+    oauth_server: { port: number; running: boolean };
+    web_server: { port: number; running: boolean };
+  } | null>(null);
+  
+  // 音楽プレイヤー制御用の状態
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [musicStatus, setMusicStatus] = useState<{
+    is_playing: boolean;
+    current_track?: Track;
+    progress: number;
+    current_time: number;
+    duration: number;
+    volume: number;
+    playlist_name?: string;
+  }>({
+    is_playing: false,
+    progress: 0,
+    current_time: 0,
+    duration: 0,
+    volume: 70,
+    playlist_name: undefined
+  });
+
+  // デバイスのソート関数
+  const sortBluetoothDevices = (devices: BluetoothDevice[]): BluetoothDevice[] => {
+    return [...devices].sort((a, b) => {
+      // 両方名前がある場合: 名前でソート
+      if (a.name && b.name) {
+        // (現在の設定) を最上位に
+        if (a.name === '(現在の設定)') return -1;
+        if (b.name === '(現在の設定)') return 1;
+        // それ以外は名前順
+        return a.name.localeCompare(b.name);
+      }
+      // 片方だけ名前がある場合: 名前があるものを上に
+      if (a.name && !b.name) return -1;
+      if (!a.name && b.name) return 1;
+      // 両方名前がない場合: MACアドレスでソート
+      return a.mac_address.localeCompare(b.mac_address);
+    });
+  };
+
+  // activeTabが変更されたときにlocalStorageに保存
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_TAB_KEY, activeTab);
+    } catch (error) {
+      console.error('Failed to save active tab:', error);
+    }
+  }, [activeTab]);
+
+  // 設定データの取得
+  useEffect(() => {
+    fetchAllSettings();
+    fetchAuthStatus();
+    fetchServerStatus();
+    
+    // プリンター接続イベントをリッスン
+    const unsubscribePrinter = EventsOn('printer_connected', () => {
+      // プリンター接続状態が変更されたら、設定とステータスを再取得
+      fetchAllSettings();
+      fetchPrinterStatus();
+    });
+    
+    // Webサーバーエラーイベントをリッスン
+    const unsubscribeWebError = EventsOn('webserver_error', (data: { error: string; port: number }) => {
+      setWebServerError(data);
+      toast.error(`Webサーバーの起動に失敗しました: ${data.error}`);
+    });
+    
+    // Webサーバー起動成功イベントをリッスン
+    const unsubscribeWebStarted = EventsOn('webserver_started', (data: { port: number }) => {
+      setWebServerError(null);
+      setWebServerPort(data.port);
+      toast.success(`Webサーバーがポート ${data.port} で起動しました`);
+    });
+    
+    return () => {
+      unsubscribePrinter();
+      unsubscribeWebError();
+      unsubscribeWebStarted();
+    };
+  }, []);
+
+  // 配信状態の定期更新（Twitch連携が設定されている場合のみ）
+  useEffect(() => {
+    if (featureStatus?.twitch_configured) {
+      // 初回取得
+      fetchStreamStatus();
+
+      // 定期更新
+      const interval = setInterval(() => {
+        fetchStreamStatus();
+      }, 30000); // 30秒ごとに更新
+
+      return () => clearInterval(interval);
+    }
+  }, [featureStatus?.twitch_configured]);
+
+  // サーバー状態の定期更新
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchServerStatus();
+    }, 5000); // 5秒ごとに更新
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Twitch連携が設定済みの場合、ユーザー情報を検証
+  useEffect(() => {
+    if (featureStatus?.twitch_configured && authStatus?.authenticated) {
+      verifyTwitchConfig();
+    }
+  }, [featureStatus?.twitch_configured, authStatus?.authenticated]);
+
+  // プリンター設定済みの場合、プリンター状態を取得
+  useEffect(() => {
+    if (featureStatus?.printer_configured) {
+      fetchPrinterStatus();
+    }
+  }, [featureStatus?.printer_configured]);
+  
+  // プレイリスト一覧を取得（Wails API使用）
+  useEffect(() => {
+    GetMusicPlaylists()
+      .then(data => {
+        setPlaylists(data.playlists || []);
+      })
+      .catch(console.error);
+    
+    // サーバーポートを取得して設定
+    GetServerPort()
+      .then(port => {
+        setWebServerPort(port);
+      })
+      .catch(e => {
+        console.error('Failed to get server port:', e);
+        setWebServerPort(30303); // デフォルト値
+      });
+  }, []);
+  
+  // WebSocket接続を統合（音楽状態とストリーム状態の監視）
+  useEffect(() => {
+    let unsubMusicStatus: (() => void) | null = null;
+    let unsubStreamStatus: (() => void) | null = null;
+    
+    // サーバーから保存済みの音楽状態を取得
+    const loadMusicState = async () => {
+      try {
+        const port = await GetServerPort();
+        const response = await fetch(`http://localhost:${port}/api/music/state`);
+        if (response.ok) {
+          const serverState = await response.json();
+          console.log('Loaded music state from server:', serverState);
+          if (serverState) {
+            setMusicStatus(prev => ({
+              ...prev,
+              ...serverState,
+              playlist_name: serverState.playlist_name || undefined
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load music state:', error);
+      }
+    };
+    
+    // 初期状態を読み込み
+    loadMusicState();
+    
+    // WebSocket接続を一度だけ初期化
+    initWebSocket().then(wsClient => {
+      // 音楽状態更新メッセージを処理
+      unsubMusicStatus = wsClient.on('music_status', (status) => {
+        // デバッグ用: プログレス情報を詳細ログ
+        console.debug('Music status updated:', {
+          current_time: status.current_time,
+          duration: status.duration,
+          progress: status.progress,
+          is_playing: status.is_playing
+        });
+        // 完全に新しいオブジェクトとして設定（強制的な再レンダリング）
+        setMusicStatus(prev => ({
+          ...prev,
+          ...status,
+          // 値が確実に更新されるように明示的に設定
+          current_time: status.current_time || 0,
+          duration: status.duration || 0,
+          progress: status.progress || 0
+        }));
+      });
+      
+      // stream_status_changedメッセージを処理（プリンター状態など）
+      unsubStreamStatus = wsClient.on('stream_status_changed', (data) => {
+        console.log('Stream status changed via WebSocket:', data);
+        // 配信状態を更新
+        fetchStreamStatus();
+
+        // AUTO_DRY_RUN_WHEN_OFFLINEが有効な場合は通知
+        const autoDryRunEnabled = settings['AUTO_DRY_RUN_WHEN_OFFLINE']?.value === 'true';
+        const dryRunMode = settings['DRY_RUN_MODE']?.value === 'true';
+
+        if (autoDryRunEnabled && !dryRunMode) {
+          if (data.is_live) {
+            toast.success('配信開始を検知: ドライランモードを解除しました');
+          } else {
+            toast.warning('配信終了を検知: ドライランモードに切り替えました');
+          }
+        }
+      });
+    });
+    
+    return () => {
+      if (unsubMusicStatus) {
+        unsubMusicStatus();
+      }
+      if (unsubStreamStatus) {
+        unsubStreamStatus();
+      }
+    };
+  }, []);
+  
+  // 設定読み込み時に現在のプリンターアドレスをデバイスリストに追加
+  useEffect(() => {
+    const currentAddress = getSettingValue('PRINTER_ADDRESS');
+    if (currentAddress && bluetoothDevices.length === 0) {
+      setBluetoothDevices([{
+        mac_address: currentAddress,
+        name: '(現在の設定)',
+        last_seen: new Date().toISOString()
+      }]);
+    }
+  }, [settings]);
+
+  // 音楽コントロールのデバウンス用
+  const [isControlDisabled, setIsControlDisabled] = useState(false);
+  const controlTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // シークバーのref（強制更新用）
+  const seekBarRef = useRef<HTMLInputElement>(null);
+
+  // 音楽リモートコントロール関数
+  const sendMusicControlCommand = async (endpoint: string, body?: any) => {
+    // デバウンス処理: 既に処理中なら何もしない
+    if (isControlDisabled) {
+      console.log('Music control command ignored (debouncing)');
+      return;
+    }
+
+    try {
+      // デバウンス: 300ms間ボタンを無効化
+      setIsControlDisabled(true);
+      if (controlTimeoutRef.current) {
+        clearTimeout(controlTimeoutRef.current);
+      }
+      controlTimeoutRef.current = setTimeout(() => {
+        setIsControlDisabled(false);
+      }, 300);
+
+      // webServerPortが設定されていればそれを使用、なければ動的に取得
+      let port = webServerPort;
+      
+      if (!port) {
+        try {
+          const serverPort = await GetServerPort();
+          if (serverPort) {
+            port = serverPort;
+          }
+        } catch (e) {
+          // GetServerPortが失敗した場合は8080を使用
+          port = 8080;
+          console.log('Using default port 8080 for music control');
+        }
+      }
+      
+      const url = `http://localhost:${port}/api/music/control/${endpoint}`;
+      
+      const options: RequestInit = {
+        method: 'POST'
+      };
+      
+      // Only add headers and body if needed
+      if (body) {
+        options.headers = { 'Content-Type': 'application/json' };
+        options.body = JSON.stringify(body);
+      }
+      
+      await fetch(url, options);
+    } catch (error) {
+      console.error(`Failed to send ${endpoint} command:`, error);
+      setIsControlDisabled(false);
+    }
+  };
+  
+  const handleSeek = (time: number) => {
+    sendMusicControlCommand('seek', { time });
+  };
+  
+  // シークバーの値を強制的に更新（Reactの制御コンポーネント問題の回避）
+  useEffect(() => {
+    if (seekBarRef.current && musicStatus.current_time !== undefined) {
+      // DOM要素を直接更新
+      seekBarRef.current.value = String(musicStatus.current_time);
+      
+      // スタイルも更新（プログレスバーの視覚的更新）
+      const progress = (musicStatus.current_time / (musicStatus.duration || 1)) * 100;
+      seekBarRef.current.style.background = `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #e5e7eb ${progress}%, #e5e7eb 100%)`;
+      
+      console.debug(`[SeekBar Force Update] time: ${musicStatus.current_time}, progress: ${progress.toFixed(1)}%`);
+    }
+  }, [musicStatus]); // musicStatus全体を監視
+
+  // 時間フォーマット
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const fetchServerStatus = async () => {
+    try {
+      const status = await GetServerStatus();
+      setServerStatus(status as any);
+    } catch (err) {
+      console.error('Failed to fetch server status:', err);
+    }
+  };
+
+  const fetchAllSettings = async () => {
+    try {
+      // Wails関数を呼び出して設定を取得
+      const allSettings = await GetAllSettings();
+      
+      // 設定を適切な形式に変換
+      const formattedSettings: Record<string, any> = {};
+      for (const [key, value] of Object.entries(allSettings)) {
+        formattedSettings[key] = {
+          key: key,
+          value: value,
+          type: 'normal',
+          required: false,
+          description: '',
+          has_value: value !== null && value !== undefined && value !== ''
+        };
+      }
+      
+      setSettings(formattedSettings);
+      
+      // フィーチャーステータスも取得
+      const status = await GetFeatureStatus();
+      setFeatureStatus(status as FeatureStatus);
+    } catch (err: any) {
+      toast.error('設定の取得に失敗しました: ' + err.message);
+    }
+  };
+
+  const handleRestartWebServer = async () => {
+    const port = parseInt(getSettingValue('SERVER_PORT') || '8080');
+    
+    try {
+      toast.info(`Webサーバーをポート ${port} で再起動中...`);
+      
+      await RestartWebServer(port);
+      
+      setWebServerPort(port);
+      setWebServerError(null);
+    } catch (error) {
+      toast.error(`Webサーバーの再起動に失敗しました: ${error}`);
+    }
+  };
+
+  const handleSettingChange = (key: string, value: string | boolean | number) => {
+    const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
+    setUnsavedChanges(prev => ({
+      ...prev,
+      [key]: stringValue
+    }));
+    
+    // 自動保存のタイマーをリセット
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    // 1.5秒後に自動保存
+    saveTimeoutRef.current = setTimeout(() => {
+      handleAutoSave(key, stringValue);
+    }, 1500);
+  };
+  
+  const handleAutoSave = async (key: string, value: string) => {
+    try {
+      // Wails関数を呼び出して設定を保存
+      await UpdateSettings({ [key]: value });
+      
+      toast.success(`設定を保存しました: ${key}`);
+      
+      // 更新された設定をローカル状態に反映
+      setSettings(prev => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          value: value
+        }
+      }));
+      
+      setUnsavedChanges(prev => {
+        const updated = { ...prev };
+        delete updated[key];
+        return updated;
+      });
+      
+      // 設定を再取得して最新の状態を反映
+      await fetchAllSettings();
+    } catch (err: any) {
+      toast.error('設定の保存に失敗しました: ' + err.message);
+    }
+  };
+
+  const getSettingValue = (key: string): string => {
+    if (key in unsavedChanges) {
+      return unsavedChanges[key];
+    }
+    return settings[key]?.value || '';
+  };
+
+  const getBooleanValue = (key: string): boolean => {
+    return getSettingValue(key) === 'true';
+  };
+
+  const getNumberValue = (key: string): number => {
+    return parseInt(getSettingValue(key)) || 0;
+  };
+
+
+  const verifyTwitchConfig = async () => {
+    setVerifyingTwitch(true);
+    try {
+      const response = await fetch(buildApiUrl('/api/twitch/verify'));
+      const data: TwitchUserInfo = await response.json();
+      
+      setTwitchUserInfo(data);
+      
+      if (data.verified) {
+        toast.success(`Twitch連携確認: ${data.display_name} (${data.login})`);
+      } else if (data.error) {
+        toast.error(`Twitch連携エラー: ${data.error}`);
+      }
+    } catch (err: any) {
+      toast.error('Twitch連携の検証に失敗しました');
+      setTwitchUserInfo({
+        id: '',
+        login: '',
+        display_name: '',
+        verified: false,
+        error: '検証に失敗しました'
+      });
+    } finally {
+      setVerifyingTwitch(false);
+    }
+  };
+
+  const fetchPrinterStatus = async () => {
+    try {
+      // Wails関数を呼び出してプリンターステータスを取得
+      const status = await GetPrinterStatus();
+      setPrinterStatusInfo({
+        connected: status.connected || false,
+        printer_address: status.address || '',
+        dry_run_mode: false,  // TODO: 実際の値を取得
+        configured: !!status.address
+      });
+    } catch (err: any) {
+      console.error('Failed to fetch printer status:', err);
+    }
+  };
+
+  const fetchAuthStatus = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/settings/auth/status'));
+      const data: AuthStatus = await response.json();
+      setAuthStatus(data);
+    } catch (err: any) {
+      console.error('Failed to fetch auth status:', err);
+    }
+  };
+
+  const fetchStreamStatus = async (showToast = false) => {
+    try {
+      const response = await fetch(buildApiUrl('/api/stream/status'));
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data: StreamStatus = await response.json();
+      setStreamStatus(data);
+      if (showToast) {
+        toast.success('配信状態を更新しました');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch stream status:', err);
+      // エラー時はデフォルトでオフライン状態を設定
+      setStreamStatus({
+        is_live: false,
+        started_at: undefined,
+        viewer_count: 0,
+        last_checked: new Date().toISOString()
+      });
+      if (showToast) {
+        toast.error('配信状態の取得に失敗しました');
+      }
+    }
+  };
+
+  const handleRefreshStreamStatus = async () => {
+    setRefreshingStreamStatus(true);
+    await fetchStreamStatus(true);
+    setRefreshingStreamStatus(false);
+  };
+
+  const handleTwitchAuth = async () => {
+    try {
+      // WailsのAPIでOAuth URLを取得
+      const authUrl = await GetAuthURL();
+      
+      // 外部ブラウザで開く
+      BrowserOpenURL(authUrl);
+      
+      toast.info('ブラウザでTwitchにログインしてください');
+      
+      // 認証完了を待つ（ポーリング）
+      setTimeout(async () => {
+        await fetchAuthStatus();
+        await verifyTwitchConfig();
+      }, 5000); // 5秒後に状態を確認
+    } catch (error) {
+      console.error('Failed to get auth URL:', error);
+      toast.error('認証URLの取得に失敗しました');
+    }
+  };
+
+
+  const handlePrinterReconnect = async () => {
+    setReconnectingPrinter(true);
+    try {
+      // Wailsの再接続関数を呼び出す
+      await ReconnectPrinter();
+      toast.success('プリンターに再接続しました');
+      // 状態を更新
+      await fetchPrinterStatus();
+    } catch (err: any) {
+      const errorMessage = err.message || err.toString() || '接続に失敗しました';
+      toast.error(`再接続エラー: ${errorMessage}`);
+    } finally {
+      setReconnectingPrinter(false);
+    }
+  };
+
+  const handleTestPrint = async () => {
+    setTestingPrinter(true);
+    try {
+      // Wailsのテストプリント関数を呼び出す
+      TestPrint();
+      toast.success('テストプリントを送信しました');
+    } catch (err: any) {
+      const errorMessage = err.message || err.toString() || 'テストプリントに失敗しました';
+      toast.error(`テストプリントエラー: ${errorMessage}`);
+    } finally {
+      setTestingPrinter(false);
+    }
+  };
+
+  const handleScanDevices = async () => {
+    setScanning(true);
+    try {
+      const devices = await ScanBluetoothDevices();
+      
+      // 結果をBluetoothDevice型に変換
+      const bluetoothDevices: BluetoothDevice[] = devices.map(d => ({
+        mac_address: d.mac_address as string,
+        name: d.name as string,
+        last_seen: d.last_seen as string
+      }));
+      
+      // 現在の設定値を保持
+      const currentAddress = getSettingValue('PRINTER_ADDRESS');
+      let updatedDevices = [...bluetoothDevices];
+      
+      // 現在の設定値がスキャン結果に含まれていない場合、追加
+      if (currentAddress && !bluetoothDevices.find(d => d.mac_address === currentAddress)) {
+        updatedDevices.unshift({
+          mac_address: currentAddress,
+          name: '(現在の設定)',
+          last_seen: new Date().toISOString()
+        });
+      }
+      
+      // デバイスをソート
+      const sortedDevices = sortBluetoothDevices(updatedDevices);
+      
+      setBluetoothDevices(sortedDevices);
+      toast.success(`${bluetoothDevices.length}台のデバイスが見つかりました`);
+      
+      // スキャン後にプリンターステータスを更新
+      await fetchPrinterStatus();
+    } catch (err: any) {
+      toast.error('デバイススキャンに失敗しました: ' + err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    const printerAddress = getSettingValue('PRINTER_ADDRESS');
+    if (!printerAddress) {
+      toast.error('プリンターアドレスが選択されていません');
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const response = await fetch(buildApiUrl('/api/printer/test'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mac_address: printerAddress }),
+      });
+      
+      const data: TestResponse = await response.json();
+      if (data.success) {
+        toast.success('プリンターとの接続に成功しました');
+      } else {
+        toast.error('接続テスト失敗: ' + data.message);
+      }
+    } catch (err: any) {
+      toast.error('接続テストでエラーが発生しました: ' + err.message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // ファイル形式の確認
+    if (!file.name.endsWith('.ttf') && !file.name.endsWith('.otf')) {
+      toast.error('フォントファイルは.ttfまたは.otf形式である必要があります');
+      return;
+    }
+
+    setUploadingFont(true);
+
+    try {
+      // FileReaderでBase64に変換
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result?.toString().split(',')[1];
+          if (!base64) throw new Error('Failed to read file');
+          
+          // Wailsメソッドを呼び出し
+          await UploadFont(file.name, base64);
+          
+          toast.success(`フォント「${file.name}」をアップロードしました`);
+          
+          // 設定を再取得して画面を更新
+          await fetchAllSettings();
+          
+          // ファイル入力をリセット
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        } catch (err: any) {
+          toast.error('フォントのアップロードに失敗しました: ' + err.message);
+        } finally {
+          setUploadingFont(false);
+        }
+      };
+      reader.onerror = () => {
+        toast.error('ファイルの読み込みに失敗しました');
+        setUploadingFont(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error('フォントのアップロードに失敗しました: ' + err.message);
+      setUploadingFont(false);
+    }
+  };
+
+  const handleDeleteFont = async () => {
+    try {
+      // Wailsメソッドを呼び出し
+      await DeleteFont();
+
+      toast.success('フォントを削除しました');
+      
+      // フォント設定をクリア
+      handleSettingChange('FONT_FILENAME', '');
+      
+      // 設定を再取得
+      await fetchAllSettings();
+    } catch (err: any) {
+      toast.error('フォントの削除に失敗しました: ' + err.message);
+    }
+  };
+
+  const handleTokenRefresh = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/twitch/refresh-token'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Token refresh failed');
+      }
+      
+      if (result.success) {
+        toast.success('トークンを更新しました');
+        // 認証状態を再取得
+        await fetchAuthStatus();
+      } else {
+        throw new Error(result.error || 'トークンの更新に失敗しました');
+      }
+    } catch (err: any) {
+      toast.error(`トークンの更新に失敗しました: ${err.message}`);
+    }
+  };
+
+
+  const handleFontPreview = async () => {
+    try {
+      const image = await GenerateFontPreview(previewText);
+      
+      if (image) {
+        setPreviewImage(image);
+        toast.success('プレビューを生成しました');
+      } else {
+        throw new Error('No image data received');
+      }
+    } catch (err: any) {
+      toast.error('プレビューの生成に失敗しました: ' + err.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* ヘッダー */}
+      <div className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700 transition-colors">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Settings2 className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                <h1 className="text-2xl font-bold dark:text-white">設定</h1>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const port = await GetServerPort();
+                    const url = `http://localhost:${port}/`;
+                    console.log('Opening overlay URL:', url);
+                    BrowserOpenURL(url);
+                  }}
+                  className="flex items-center space-x-1"
+                >
+                  <Monitor className="w-3 h-3" />
+                  <span>オーバーレイ表示</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const port = await GetServerPort();
+                    const url = `http://localhost:${port}/?debug=true`;
+                    console.log('Opening overlay URL (Debug):', url);
+                    BrowserOpenURL(url);
+                  }}
+                  className="flex items-center space-x-1"
+                >
+                  <Monitor className="w-3 h-3" />
+                  <span>オーバーレイ表示(Debug)</span>
+                </Button>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={toggleTheme}
+              className="flex items-center space-x-1"
+              title="テーマを切り替え"
+            >
+              {theme === 'light' ? (
+                <Moon className="w-4 h-4" />
+              ) : (
+                <Sun className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* ステータスカード */}
+        <SystemStatusCard
+          featureStatus={featureStatus}
+          authStatus={authStatus}
+          streamStatus={streamStatus}
+          twitchUserInfo={twitchUserInfo}
+          printerStatusInfo={printerStatusInfo}
+          refreshingStreamStatus={refreshingStreamStatus}
+          reconnectingPrinter={reconnectingPrinter}
+          testingPrinter={testingPrinter}
+          verifyingTwitch={verifyingTwitch}
+          onTwitchAuth={handleTwitchAuth}
+          onRefreshStreamStatus={handleRefreshStreamStatus}
+          onVerifyTwitchConfig={verifyTwitchConfig}
+          onPrinterReconnect={handlePrinterReconnect}
+          onTestPrint={handleTestPrint}
+        />
+
+        {/* タブコンテンツ */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-8 mb-6 dark:bg-gray-800 dark:border-gray-700">
+            <TabsTrigger value="general" className="flex items-center space-x-2">
+              <Settings2 className="w-4 h-4" />
+              <span>一般</span>
+            </TabsTrigger>
+            <TabsTrigger value="twitch" className="flex items-center space-x-2">
+              <Wifi className="w-4 h-4" />
+              <span>Twitch</span>
+            </TabsTrigger>
+            <TabsTrigger value="printer" className="flex items-center space-x-2">
+              <Bluetooth className="w-4 h-4" />
+              <span>プリンター</span>
+            </TabsTrigger>
+            <TabsTrigger value="music" className="flex items-center space-x-2">
+              <Music className="w-4 h-4" />
+              <span>音楽</span>
+            </TabsTrigger>
+            <TabsTrigger value="overlay" className="flex items-center space-x-2">
+              <Layers className="w-4 h-4" />
+              <span>オーバーレイ</span>
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="flex items-center space-x-2">
+              <FileText className="w-4 h-4" />
+              <span>ログ</span>
+            </TabsTrigger>
+            <TabsTrigger value="api" className="flex items-center space-x-2">
+              <Bug className="w-4 h-4" />
+              <span>API</span>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* 一般タブ */}
+          <TabsContent value="general" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>基本設定</CardTitle>
+                <CardDescription>
+                  アプリケーションの基本的な動作を設定します
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">タイムゾーン</Label>
+                  <Select
+                    value={getSettingValue('TIMEZONE')}
+                    onValueChange={(value) => handleSettingChange('TIMEZONE', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="タイムゾーンを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
+                      <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
+                      <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
+                      <SelectItem value="UTC">UTC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="server_port">Webサーバーポート</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="server_port"
+                      type="number"
+                      min="1024"
+                      max="65535"
+                      value={getSettingValue('SERVER_PORT')}
+                      onChange={(e) => handleSettingChange('SERVER_PORT', e.target.value)}
+                      className="w-32"
+                    />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      OBSオーバーレイ用のWebサーバーポート（変更後は再起動が必要）
+                    </p>
+                  </div>
+                  {webServerError && (
+                    <Alert className="mt-2">
+                      <AlertDescription className="text-red-600">
+                        ポート {webServerError.port} の起動に失敗しました: {webServerError.error}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {getSettingValue('SERVER_PORT') !== String(webServerPort) && (
+                    <Button
+                      onClick={handleRestartWebServer}
+                      className="mt-2"
+                      variant="outline"
+                      size="sm"
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Webサーバーを再起動
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>ドライランモード</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        実際の印刷を行わずテストします
+                      </p>
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('DRY_RUN_MODE')}
+                      onCheckedChange={(checked) => handleSettingChange('DRY_RUN_MODE', checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>オフライン時自動ドライラン</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        配信オフライン時に自動でドライランモードに切り替えます
+                      </p>
+                      {getBooleanValue('AUTO_DRY_RUN_WHEN_OFFLINE') && !getBooleanValue('DRY_RUN_MODE') && (
+                        <div className="mt-1">
+                          {streamStatus?.is_live ? (
+                            <span className="text-xs text-green-600 dark:text-green-400">
+                              ✓ 配信中 - ドライラン無効
+                            </span>
+                          ) : streamStatus === null ? (
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              ⚠ 配信状態不明
+                            </span>
+                          ) : (
+                            <span className="text-xs text-orange-600 dark:text-orange-400">
+                              ⚠ オフライン - ドライラン有効
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('AUTO_DRY_RUN_WHEN_OFFLINE')}
+                      onCheckedChange={(checked) => handleSettingChange('AUTO_DRY_RUN_WHEN_OFFLINE', checked)}
+                      disabled={getBooleanValue('DRY_RUN_MODE')}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>デバッグ出力</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      詳細なログを出力します
+                    </p>
+                  </div>
+                  <Switch
+                    checked={getBooleanValue('DEBUG_OUTPUT')}
+                    onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* フォント設定カード */}
+            <Card>
+              <CardHeader>
+                <CardTitle>フォント設定（必須）</CardTitle>
+                <CardDescription>
+                  FAXと時計機能を使用するためにフォントのアップロードが必要です
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!getSettingValue('FONT_FILENAME') && (
+                  <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
+                    <AlertDescription className="text-yellow-700 dark:text-yellow-200">
+                      ⚠️ フォントがアップロードされていません。FAXと時計機能を使用するには、フォントファイル（.ttf/.otf）をアップロードしてください。
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>フォントファイルをアップロード</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".ttf,.otf"
+                          onChange={handleFontUpload}
+                          className="hidden"
+                        />
+                        <Button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingFont}
+                          variant="outline"
+                          className="flex items-center gap-2"
+                        >
+                          <Upload className="h-4 w-4" />
+                          {uploadingFont ? 'アップロード中...' : 'フォントをアップロード'}
+                        </Button>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          .ttf または .otf ファイル
+                        </span>
+                      </div>
+                    </div>
+
+                    {getSettingValue('FONT_FILENAME') && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>現在のフォント</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={getSettingValue('FONT_FILENAME')}
+                              disabled
+                              className="max-w-xs"
+                            />
+                            <Button
+                              onClick={handleDeleteFont}
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                              削除
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {/* フォントプレビュー */}
+                        <div className="space-y-2">
+                          <Label>フォントプレビュー</Label>
+                          <div className="space-y-2">
+                            <textarea
+                              value={previewText}
+                              onChange={(e) => setPreviewText(e.target.value)}
+                              className="w-full p-2 border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md min-h-[80px] font-mono text-sm"
+                              placeholder="プレビューテキストを入力..."
+                            />
+                            <Button
+                              onClick={handleFontPreview}
+                              variant="outline"
+                              disabled={!getSettingValue('FONT_FILENAME')}
+                            >
+                              プレビューを生成
+                            </Button>
+                          </div>
+                          {previewImage && (
+                            <div className="mt-2 p-4 bg-gray-100 dark:bg-gray-700 rounded">
+                              <img 
+                                src={previewImage} 
+                                alt="Font Preview" 
+                                className="max-w-full h-auto border border-gray-300 dark:border-gray-600"
+                                style={{ imageRendering: 'pixelated' }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                </div>
+              </CardContent>
+            </Card>
+
+          </TabsContent>
+
+          {/* Twitchタブ */}
+          <TabsContent value="twitch" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Twitch API設定</CardTitle>
+                <CardDescription>
+                  Twitch Developersで取得したAPI情報を設定してください
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* 認証状態の表示 */}
+                {authStatus && (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium dark:text-gray-200">
+                          認証状態: {authStatus.authenticated ? (
+                            <span className="text-green-600">認証済み</span>
+                          ) : (
+                            <span className="text-orange-600">未認証</span>
+                          )}
+                        </h3>
+                        {authStatus.error && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{authStatus.error}</p>
+                        )}
+                        {authStatus.authenticated && authStatus.expiresAt && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            有効期限: {new Date(authStatus.expiresAt * 1000).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                      {!authStatus.authenticated && (
+                        <Button
+                          onClick={handleTwitchAuth}
+                          variant="default"
+                          className="flex items-center space-x-2"
+                        >
+                          <Wifi className="w-4 h-4" />
+                          <span>Twitchで認証</span>
+                        </Button>
+                      )}
+                      {authStatus.authenticated && (
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            onClick={handleTokenRefresh}
+                            variant="outline"
+                            className="flex items-center space-x-2"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            <span>トークンを更新</span>
+                          </Button>
+                          <Button
+                            onClick={handleTwitchAuth}
+                            variant="ghost"
+                            className="flex items-center space-x-2"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            <span>再認証</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_id">Client ID *</Label>
+                    <div className="relative">
+                      <Input
+                        id="client_id"
+                        type={showSecrets['CLIENT_ID'] ? "text" : "password"}
+                        placeholder={settings['CLIENT_ID']?.has_value ? "（設定済み）" : "Twitch Client ID"}
+                        value={unsavedChanges['CLIENT_ID'] !== undefined ? unsavedChanges['CLIENT_ID'] : getSettingValue('CLIENT_ID')}
+                        onChange={(e) => handleSettingChange('CLIENT_ID', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape' && unsavedChanges['CLIENT_ID'] !== undefined) {
+                            setUnsavedChanges(prev => {
+                              const updated = { ...prev };
+                              delete updated['CLIENT_ID'];
+                              return updated;
+                            });
+                          }
+                        }}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecrets(prev => ({ ...prev, CLIENT_ID: !prev.CLIENT_ID }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        {showSecrets['CLIENT_ID'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_secret">Client Secret *</Label>
+                    <div className="relative">
+                      <Input
+                        id="client_secret"
+                        type={showSecrets['CLIENT_SECRET'] ? "text" : "password"}
+                        placeholder={settings['CLIENT_SECRET']?.has_value ? "（設定済み）" : "Twitch Client Secret"}
+                        value={unsavedChanges['CLIENT_SECRET'] !== undefined ? unsavedChanges['CLIENT_SECRET'] : getSettingValue('CLIENT_SECRET')}
+                        onChange={(e) => handleSettingChange('CLIENT_SECRET', e.target.value)}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecrets(prev => ({ ...prev, CLIENT_SECRET: !prev.CLIENT_SECRET }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        {showSecrets['CLIENT_SECRET'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="user_id">ユーザーID *</Label>
+                    <div className="relative">
+                      <Input
+                        id="user_id"
+                        type={showSecrets['TWITCH_USER_ID'] ? "text" : "password"}
+                        placeholder={settings['TWITCH_USER_ID']?.has_value ? "（設定済み）" : "監視対象のTwitchユーザーID"}
+                        value={unsavedChanges['TWITCH_USER_ID'] !== undefined ? unsavedChanges['TWITCH_USER_ID'] : getSettingValue('TWITCH_USER_ID')}
+                        onChange={(e) => handleSettingChange('TWITCH_USER_ID', e.target.value)}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecrets(prev => ({ ...prev, TWITCH_USER_ID: !prev.TWITCH_USER_ID }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        {showSecrets['TWITCH_USER_ID'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reward_id">カスタムリワードID *</Label>
+                    <div className="relative">
+                      <Input
+                        id="reward_id"
+                        type={showSecrets['TRIGGER_CUSTOM_REWORD_ID'] ? "text" : "password"}
+                        placeholder={settings['TRIGGER_CUSTOM_REWORD_ID']?.has_value ? "（設定済み）" : "FAX送信トリガーのカスタムリワードID"}
+                        value={unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] !== undefined ? unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] : getSettingValue('TRIGGER_CUSTOM_REWORD_ID')}
+                        onChange={(e) => handleSettingChange('TRIGGER_CUSTOM_REWORD_ID', e.target.value)}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecrets(prev => ({ ...prev, TRIGGER_CUSTOM_REWORD_ID: !prev.TRIGGER_CUSTOM_REWORD_ID }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        {showSecrets['TRIGGER_CUSTOM_REWORD_ID'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* プリンタータブ */}
+          <TabsContent value="printer" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>プリンター設定</CardTitle>
+                <CardDescription>
+                  BluetoothプリンターのMACアドレスを設定してください
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex space-x-3">
+                  <Button 
+                    onClick={handleScanDevices} 
+                    disabled={scanning}
+                    variant="outline"
+                    className="flex items-center space-x-2"
+                  >
+                    <Bluetooth className="w-4 h-4" />
+                    <span>{scanning ? 'スキャン中...' : 'デバイススキャン'}</span>
+                  </Button>
+                  <Button 
+                    onClick={handleTestConnection} 
+                    disabled={testing || !getSettingValue('PRINTER_ADDRESS')}
+                    variant="outline"
+                    className="flex items-center space-x-2"
+                  >
+                    <span>{testing ? '接続テスト中...' : '接続テスト'}</span>
+                  </Button>
+                </div>
+
+                {bluetoothDevices.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>見つかったデバイス</Label>
+                    <Select
+                      value={getSettingValue('PRINTER_ADDRESS')}
+                      onValueChange={(value) => handleSettingChange('PRINTER_ADDRESS', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="プリンターを選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bluetoothDevices.map((device) => (
+                          <SelectItem key={device.mac_address} value={device.mac_address}>
+                            {device.name || '(名前なし)'} - {device.mac_address}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="printer_address">プリンターMACアドレス *</Label>
+                  <Input
+                    id="printer_address"
+                    type="text"
+                    placeholder="00:00:00:00:00:00"
+                    value={getSettingValue('PRINTER_ADDRESS')}
+                    onChange={(e) => handleSettingChange('PRINTER_ADDRESS', e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>高品質印刷</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">印刷品質を向上</p>
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('BEST_QUALITY')}
+                      onCheckedChange={(checked) => handleSettingChange('BEST_QUALITY', checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>ディザリング</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">画像の濃淡を改善</p>
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('DITHER')}
+                      onCheckedChange={(checked) => handleSettingChange('DITHER', checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>自動回転</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">画像を自動で回転</p>
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('AUTO_ROTATE')}
+                      onCheckedChange={(checked) => handleSettingChange('AUTO_ROTATE', checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>印刷回転</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">出力を180度回転</p>
+                    </div>
+                    <Switch
+                      checked={getBooleanValue('ROTATE_PRINT')}
+                      onCheckedChange={(checked) => handleSettingChange('ROTATE_PRINT', checked)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="black_point">黒点しきい値</Label>
+                  <Input
+                    id="black_point"
+                    type="number"
+                    min="0"
+                    max="255"
+                    value={getNumberValue('BLACK_POINT')}
+                    onChange={(e) => handleSettingChange('BLACK_POINT', parseInt(e.target.value))}
+                  />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">0-255の値で黒色の判定しきい値を設定</p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>キープアライブ</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      プリンター接続を維持します
+                    </p>
+                  </div>
+                  <Switch
+                    checked={getBooleanValue('KEEP_ALIVE_ENABLED')}
+                    onCheckedChange={(checked) => handleSettingChange('KEEP_ALIVE_ENABLED', checked)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="keep_alive_interval">キープアライブ間隔（秒）</Label>
+                  <Input
+                    id="keep_alive_interval"
+                    type="number"
+                    min="10"
+                    max="3600"
+                    value={getNumberValue('KEEP_ALIVE_INTERVAL')}
+                    onChange={(e) => handleSettingChange('KEEP_ALIVE_INTERVAL', parseInt(e.target.value))}
+                    disabled={!getBooleanValue('KEEP_ALIVE_ENABLED')}
+                    className="max-w-xs"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* 音楽タブ */}
+          <TabsContent value="music" className="space-y-6">
+            {/* 音楽管理 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>音楽管理</CardTitle>
+                <CardDescription>
+                  配信中の音楽を管理します。URLパラメータ ?playlist=プレイリスト名 で特定のプレイリストを再生できます。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MusicManagerEmbed />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* オーバーレイタブ */}
+          <TabsContent value="overlay">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 音楽プレイヤーコントロール */}
+            <Card>
+              <CardHeader>
+                <CardTitle>再生コントロール</CardTitle>
+                <CardDescription>
+                  オーバーレイの音楽プレイヤーをリモート操作します
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                  
+                  {/* 現在の曲情報 */}
+                  {musicStatus.current_track ? (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        {/* アートワーク */}
+                        <div className="w-12 h-12 flex-shrink-0">
+                          {musicStatus.current_track.has_artwork ? (
+                            <img
+                              src={`http://localhost:${webServerPort}/api/music/track/${musicStatus.current_track.id}/artwork`}
+                              alt={musicStatus.current_track.title}
+                              className="w-full h-full object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+                              <Music className="w-5 h-5 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 曲情報 */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{musicStatus.current_track.title}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {musicStatus.current_track.artist} • {formatTime(musicStatus.current_time)} / {formatTime(musicStatus.duration)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <Music className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                      <p className="text-sm">再生中の曲はありません</p>
+                    </div>
+                  )}
+
+                  {/* コントロールボタン */}
+                  <div className="flex items-center justify-center gap-1">
+                    <Button
+                      onClick={() => sendMusicControlCommand('previous')}
+                      size="sm"
+                      variant="outline"
+                      disabled={!musicStatus.current_track || isControlDisabled}
+                      className="h-9 w-9"
+                    >
+                      <SkipBack className="w-3.5 h-3.5" />
+                    </Button>
+                    
+                    <Button
+                      onClick={() => sendMusicControlCommand(musicStatus.is_playing ? 'pause' : 'play')}
+                      size="sm"
+                      className="h-9 w-9"
+                      disabled={isControlDisabled}
+                    >
+                      {musicStatus.is_playing ? (
+                        <Pause className="w-4 h-4" />
+                      ) : (
+                        <Play className="w-4 h-4 ml-0.5" />
+                      )}
+                    </Button>
+                    
+                    <Button
+                      onClick={() => sendMusicControlCommand('next')}
+                      size="sm"
+                      variant="outline"
+                      disabled={!musicStatus.current_track || isControlDisabled}
+                      className="h-9 w-9"
+                    >
+                      <SkipForward className="w-3.5 h-3.5" />
+                    </Button>
+                    
+                    <Button
+                      onClick={() => sendMusicControlCommand('stop')}
+                      size="sm"
+                      variant="outline"
+                      className="ml-2 h-9 w-9"
+                      disabled={!musicStatus.current_track}
+                      title="停止"
+                    >
+                      <Square className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+
+                  {/* シークバー */}
+                  {musicStatus.current_track && (
+                    <div className="space-y-2">
+                      <input
+                        ref={seekBarRef}
+                        type="range"
+                        min="0"
+                        max={musicStatus.duration || 100}
+                        value={musicStatus.current_time || 0}
+                        onChange={(e) => handleSeek(Number(e.target.value))}
+                        className="w-full"
+                        style={{ 
+                          // インラインスタイルで進捗を表示（CSSグラデーション）
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(musicStatus.current_time / (musicStatus.duration || 1)) * 100}%, #e5e7eb ${(musicStatus.current_time / (musicStatus.duration || 1)) * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>{formatTime(musicStatus.current_time)}</span>
+                        <span>進捗: {((musicStatus.current_time / (musicStatus.duration || 1)) * 100).toFixed(1)}%</span>
+                        <span>{formatTime(musicStatus.duration)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* リアルタイムボリューム */}
+                  <div className="flex items-center gap-3">
+                    <Volume2 className="w-4 h-4 text-gray-500" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={musicStatus.volume}
+                      onChange={(e) => {
+                        const volume = Number(e.target.value);
+                        sendMusicControlCommand('volume', { volume });
+                        // 設定にも保存
+                        updateOverlaySettings({ music_volume: volume });
+                      }}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-500 w-10 text-right">
+                      {musicStatus.volume}%
+                    </span>
+                  </div>
+
+                  {/* プレイリスト選択 */}
+                  <div className="space-y-2">
+                    <Label htmlFor="playlist-select">プレイリスト</Label>
+                    <Select
+                      value={musicStatus.playlist_name || 'all'}
+                      onValueChange={async (value) => {
+                        // 状態を即座に更新
+                        setMusicStatus(prev => ({
+                          ...prev,
+                          playlist_name: value === 'all' ? undefined : value
+                        }));
+                        
+                        // プレイリストを読み込み
+                        await sendMusicControlCommand('load', { playlist: value === 'all' ? undefined : value });
+                        
+                        // プレイリスト選択を永続化
+                        try {
+                          const { buildApiUrlAsync } = await import('../utils/api');
+                          const url = await buildApiUrlAsync('/api/music/state/update');
+                          await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              track_id: musicStatus.current_track?.id || '',
+                              playlist_name: value === 'all' ? null : value,
+                              position: 0,
+                              duration: 0,
+                              playback_status: 'stopped',
+                              is_playing: false,
+                              volume: musicStatus.volume
+                            })
+                          });
+                        } catch (error) {
+                          console.error('Failed to save playlist selection:', error);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="playlist-select">
+                        <SelectValue placeholder="すべての曲" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">すべての曲</SelectItem>
+                        {playlists.map(playlist => (
+                          <SelectItem key={playlist.id} value={playlist.name}>
+                            {playlist.name} ({playlist.track_count}曲)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+              </CardContent>
+            </Card>
+
+            {/* FAX表示設定 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>FAX表示</CardTitle>
+                <CardDescription>
+                  FAX受信時のアニメーション設定
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                      <Label htmlFor="fax-enabled" className="flex flex-col">
+                        <span>FAXアニメーションを表示</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          FAX受信時にアニメーションを表示します
+                        </span>
+                      </Label>
+                      <Switch
+                        id="fax-enabled"
+                        checked={overlaySettings?.fax_enabled ?? true}
+                        onCheckedChange={(checked) => 
+                          updateOverlaySettings({ fax_enabled: checked })
+                        }
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="fax-color-mode" className="flex flex-col">
+                        <span>カラーモード</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {overlaySettings?.fax_image_type === 'color' 
+                            ? 'カラー: 鮮やかな表示' 
+                            : 'モノクロ: クラシックなFAX風'}
+                        </span>
+                      </Label>
+                      <Switch
+                        id="fax-color-mode"
+                        checked={overlaySettings?.fax_image_type === 'color'}
+                        onCheckedChange={(checked) => 
+                          updateOverlaySettings({ fax_image_type: checked ? 'color' : 'mono' })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fax-speed">
+                        アニメーション速度: {((overlaySettings?.fax_animation_speed ?? 1.0) * 100).toFixed(0)}%
+                      </Label>
+                      <input
+                        type="range"
+                        id="fax-speed"
+                        min="50"
+                        max="200"
+                        value={(overlaySettings?.fax_animation_speed ?? 1.0) * 100}
+                        onChange={(e) => 
+                          updateOverlaySettings({ fax_animation_speed: parseInt(e.target.value) / 100 })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+              </CardContent>
+            </Card>
+
+            {/* 統計情報設定 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>統計情報表示</CardTitle>
+                <CardDescription>
+                  オーバーレイに表示する統計情報の値を設定
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="clock-weight">おもさ (kg)</Label>
+                  <Input
+                    id="clock-weight"
+                    type="text"
+                    placeholder="例: 75.4"
+                    value={getSettingValue('CLOCK_WEIGHT') || '75.4'}
+                    onChange={(e) => 
+                      handleSettingChange('CLOCK_WEIGHT', e.target.value)
+                    }
+                    className="font-mono"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="clock-wallet">さいふ (えん)</Label>
+                  <Input
+                    id="clock-wallet"
+                    type="text"
+                    placeholder="例: 10387"
+                    value={getSettingValue('CLOCK_WALLET') || '10387'}
+                    onChange={(e) => 
+                      handleSettingChange('CLOCK_WALLET', e.target.value)
+                    }
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    数値のみ入力してください。自動的にカンマ区切りで表示されます。
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 開発者設定 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>開発者設定</CardTitle>
+                <CardDescription>
+                  開発・デバッグ用の設定
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="debug-enabled" className="flex flex-col">
+                    <span>デバッグモード</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      デバッグパネルを表示してテスト機能を有効化します
+                    </span>
+                  </Label>
+                  <Switch
+                    id="debug-enabled"
+                    checked={overlaySettings?.debug_enabled ?? false}
+                    onCheckedChange={(checked) => 
+                      updateOverlaySettings({ debug_enabled: checked })
+                    }
+                  />
+                </div>
+                
+                {(overlaySettings?.debug_enabled ?? false) && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                      デバッグモードが有効です。オーバーレイ画面でデバッグパネルが表示されます。
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            </div>
+          </TabsContent>
+
+          {/* ログタブ */}
+          <TabsContent value="logs" className="space-y-6">
+            <LogViewer embedded={true} />
+          </TabsContent>
+
+
+          {/* APIタブ */}
+          <TabsContent value="api" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Music API エンドポイント一覧</CardTitle>
+                <CardDescription>
+                  音楽機能で利用可能なAPIエンドポイントの一覧です
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Track管理API */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold dark:text-white">Track管理</h3>
+                  <div className="space-y-3">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/upload</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">ファイルアップロード (MP3/WAV/M4A/OGG)</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/tracks</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">全トラック取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/track/{`{id}`}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">トラック情報取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/track/{`{id}`}/audio</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">音声ファイル取得 (ストリーミング対応)</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/track/{`{id}`}/artwork</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">アートワーク画像取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-xs font-mono rounded">DELETE</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/track/{`{id}`}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">トラック削除</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-xs font-mono rounded">DELETE</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/track/all</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">全トラック削除</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Playlist管理API */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold dark:text-white">Playlist管理</h3>
+                  <div className="space-y-3">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlists</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">全プレイリスト取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlist</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリスト作成</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlist/{`{id}`}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリスト取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-mono rounded">GET</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlist/{`{id}`}/tracks</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリストトラック取得</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-xs font-mono rounded">PUT</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlist/{`{id}`}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリスト更新 (add_track, remove_track, reorder_track)</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-xs font-mono rounded">DELETE</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/playlist/{`{id}`}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリスト削除</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* リモート制御API */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold dark:text-white">リモート制御</h3>
+                  <div className="space-y-3">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/play</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">音楽再生</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/pause</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">音楽一時停止</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/next</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">次の曲</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/previous</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">前の曲</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/volume</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">音量変更 (body: {`{"volume": 0-100}`})</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/stop</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">音楽停止</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/toggle</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">再生/一時停止切り替え</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/seek</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">シーク位置変更 (body: {`{"position": seconds}`})</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/load</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">プレイリスト読み込み (body: {`{"playlist": "name"}`})</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-xs font-mono rounded">SSE</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/control/events</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">コマンド受信 (Server-Sent Events)</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs font-mono rounded">POST</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/status/update</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">状態更新 (オーバーレイ→サーバー)</p>
+                    </div>
+                    
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-xs font-mono rounded">SSE</span>
+                        <span className="font-mono text-sm dark:text-gray-300">/api/music/status/events</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">状態受信 (Server-Sent Events)</p>
+                    </div>
+                  </div>
+                </div>
+
+                <Alert className="dark:bg-gray-700 dark:border-gray-600">
+                  <AlertDescription className="dark:text-gray-300">
+                    <strong>ℹ️ 使用方法:</strong>
+                    <br />• Track/Playlist管理: Settings画面の音楽タブから操作
+                    <br />• リモート制御: Settings画面からオーバーレイの音楽プレイヤーを制御
+                    <br />• URLパラメータ: ?playlist=name でプレイリスト指定可能
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+    </div>
+  );
+};

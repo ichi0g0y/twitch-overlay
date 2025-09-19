@@ -119,6 +119,9 @@ export interface FeatureStatus {
   missing_settings: string[];
   warnings: string[];
   service_mode?: boolean;  // systemdサービスとして実行されているか
+  webserver_running: boolean;
+  webserver_port: number;
+  font_configured: boolean;
 }
 
 // Twitchユーザー情報

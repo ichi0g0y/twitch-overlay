@@ -35,14 +35,25 @@ var printerMutex sync.Mutex
 func shouldUseDryRun() bool {
 	// If DryRunMode is explicitly set, always use it
 	if env.Value.DryRunMode {
+		logger.Debug("DryRunMode is explicitly enabled")
 		return true
 	}
-	
+
 	// If AutoDryRunWhenOffline is enabled and stream is offline, use dry-run
-	if env.Value.AutoDryRunWhenOffline && !status.IsStreamLive() {
-		return true
+	if env.Value.AutoDryRunWhenOffline {
+		isLive := status.IsStreamLive()
+		logger.Debug("AUTO_DRY_RUN_WHEN_OFFLINE check",
+			zap.Bool("auto_dry_run_enabled", true),
+			zap.Bool("stream_is_live", isLive))
+
+		if !isLive {
+			logger.Info("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is OFFLINE - enabling dry-run mode")
+			return true
+		} else {
+			logger.Debug("AUTO_DRY_RUN_WHEN_OFFLINE: Stream is LIVE - dry-run mode disabled")
+		}
 	}
-	
+
 	return false
 }
 
