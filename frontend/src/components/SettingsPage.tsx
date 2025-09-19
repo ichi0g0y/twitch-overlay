@@ -49,6 +49,7 @@ export const SettingsPage: React.FC = () => {
     handleDeleteFont,
     handleFontPreview,
     handleOpenOverlay,
+    handleOpenOverlayDebug,
   } = contextValue;
 
   return (
@@ -68,6 +69,12 @@ export const SettingsPage: React.FC = () => {
                   className="flex items-center space-x-1">
                   <Monitor className="w-3 h-3" />
                   <span>オーバーレイ表示</span>
+                </Button>
+                <Button size="sm" variant="outline"
+                  onClick={handleOpenOverlayDebug}
+                  className="flex items-center space-x-1">
+                  <Bug className="w-3 h-3" />
+                  <span>オーバーレイ表示(デバッグ)</span>
                 </Button>
               </div>
             </div>

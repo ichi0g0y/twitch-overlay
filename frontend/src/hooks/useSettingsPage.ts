@@ -316,6 +316,11 @@ export const useSettingsPage = () => {
     BrowserOpenURL(`http://localhost:${port}/`);
   };
 
+  const handleOpenOverlayDebug = async () => {
+    const port = await GetServerPort();
+    BrowserOpenURL(`http://localhost:${port}/?debug=true`);
+  };
+
   // Bluetooth device functions
   const sortBluetoothDevices = (devices: BluetoothDevice[]): BluetoothDevice[] => {
     return devices.sort((a, b) => {
@@ -526,6 +531,7 @@ export const useSettingsPage = () => {
     handleDeleteFont,
     handleFontPreview,
     handleOpenOverlay,
+    handleOpenOverlayDebug,
     handleTokenRefresh,
 
     // Bluetooth related
