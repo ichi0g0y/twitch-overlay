@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useFaxQueue } from '../hooks/useFaxQueue';
 import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
-import ClockDisplay from './ClockDisplay';
 import MusicPlayer from './music/MusicPlayer';
 import { LAYOUT } from '../constants/layout';
 import { buildApiUrl } from '../utils/api';
@@ -56,11 +55,6 @@ const FaxReceiver = () => {
   const showFax = params.get('fax') !== 'false' && (settings?.fax_enabled ?? true);
   const playlistName = settings?.music_playlist || undefined;
   
-  // 時計表示用 - URLパラメータを優先、なければデフォルトで表示
-  const showLocation = params.get('location') !== 'false';
-  const showDate = params.get('date') !== 'false';
-  const showTime = params.get('time') !== 'false';
-  const showStats = params.get('stats') !== 'false';
   
   // デバッグ情報をコンソールに出力
   useEffect(() => {
@@ -219,18 +213,6 @@ const FaxReceiver = () => {
               FAX
             </span>
           </div>
-        </div>
-      )}
-
-      {/* Clock Display */}
-      {(showLocation || showDate || showTime || showStats) && (
-        <div className="fixed top-0 right-0 z-10">
-          <ClockDisplay 
-            showLocation={showLocation}
-            showDate={showDate}
-            showTime={showTime}
-            showStats={showStats}
-          />
         </div>
       )}
 
