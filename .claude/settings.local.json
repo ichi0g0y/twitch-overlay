@@ -49,7 +49,9 @@
       "Read(//private/tmp/**)",
       "Read(//tmp/test-wails/**)",
       "Bash(open:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git checkout:*)",
+      "Read(//tmp/**)"
     ],
     "deny": []
   }

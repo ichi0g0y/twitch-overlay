@@ -12,10 +12,15 @@ import (
 )
 
 func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
-	if message.ChannelPointsCustomRewardId != *env.Value.TriggerCustomRewordID {
+	// チャンネルポイント報酬はHandleChannelPointsCustomRedemptionAddで処理するため、
+	// ここでは処理しない（重複防止）
+	if message.ChannelPointsCustomRewardId != "" {
+		logger.Debug("Skipping channel point redemption in chat message handler",
+			zap.String("user", message.Chatter.ChatterUserName),
+			zap.String("rewardId", message.ChannelPointsCustomRewardId))
 		return
 	}
-	output.PrintOut(message.Chatter.ChatterUserName, message.Message.Fragments, time.Now())
+	// 通常のチャットメッセージの処理（必要に応じて実装）
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
@@ -23,17 +28,45 @@ func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPo
 		return
 	}
 
-	// fragments := []twitch.ChatMessageFragment{
-	// 	{
-	// 		Type:      "text",
-	// 		Text:      fmt.Sprintf("チャネポ %s %s", message.Reward.Title, message.UserInput),
-	// 		Cheermote: nil,
-	// 		Emote:     nil,
-	// 	},
-	// }
+	// Parse user input to handle emotes
+	fragments := ParseUserInputToFragments(message.UserInput)
 
-	// // output.PrintOut(message.User.UserName, fragments, time.Now())
-	logger.Info("チャネポ", zap.String("user", message.User.UserName), zap.String("reward", message.Reward.Title), zap.String("userInput", message.UserInput))
+	// If no fragments or empty, create text-only fragment
+	if len(fragments) == 0 {
+		logger.Debug("No fragments created, using text-only fragment",
+			zap.String("userInput", message.UserInput))
+		fragments = []twitch.ChatMessageFragment{
+			{
+				Type: "text",
+				Text: message.UserInput,
+			},
+		}
+	}
+
+	// Log fragment details for debugging
+	for i, frag := range fragments {
+		if frag.Emote != nil {
+			logger.Info("Fragment with emote",
+				zap.Int("index", i),
+				zap.String("type", frag.Type),
+				zap.String("text", frag.Text),
+				zap.String("emote_id", frag.Emote.Id))
+		} else {
+			logger.Debug("Fragment without emote",
+				zap.Int("index", i),
+				zap.String("type", frag.Type),
+				zap.String("text", frag.Text))
+		}
+	}
+
+	// Print the message with emotes
+	output.PrintOut(message.User.UserName, fragments, time.Now())
+
+	logger.Info("チャネポ処理完了",
+		zap.String("user", message.User.UserName),
+		zap.String("reward", message.Reward.Title),
+		zap.String("userInput", message.UserInput),
+		zap.Int("fragments", len(fragments)))
 }
 
 func HandleChannelCheer(message twitch.EventChannelCheer) {

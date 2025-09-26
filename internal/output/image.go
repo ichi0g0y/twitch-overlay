@@ -217,9 +217,12 @@ func generateQR(text string, size int) (image.Image, error) {
 
 // downloadEmote は URL から emote 画像を取得し、MIME タイプで PNG/JPEG/GIF を判別してデコード
 func downloadEmote(url string) (image.Image, error) {
+	logger.Info("downloadEmote: starting", zap.String("url", url))
+
 	// キャッシュディレクトリ準備
 	cacheDir := ".cache"
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		logger.Error("downloadEmote: failed to create cache dir", zap.Error(err))
 		return nil, err
 	}
 	// URLハッシュでファイル名生成
@@ -227,42 +230,88 @@ func downloadEmote(url string) (image.Image, error) {
 	cacheFile := filepath.Join(cacheDir, hex.EncodeToString(h[:]))
 	// キャッシュから読み込み
 	if data, err := os.ReadFile(cacheFile); err == nil {
+		logger.Debug("downloadEmote: loading from cache", zap.String("file", cacheFile))
 		img, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			logger.Error("downloadEmote: failed to decode cached image", zap.Error(err))
+		} else {
+			logger.Debug("downloadEmote: successfully loaded from cache")
+		}
 		return img, err
 	}
 
 	// ネットワークから取得
+	logger.Debug("downloadEmote: fetching from network")
 	resp, err := http.Get(url)
 	if err != nil {
+		logger.Error("downloadEmote: HTTP GET failed", zap.String("url", url), zap.Error(err))
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	logger.Debug("downloadEmote: HTTP response",
+		zap.Int("status", resp.StatusCode),
+		zap.String("content-type", resp.Header.Get("Content-Type")))
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("downloadEmote: unexpected status code",
+			zap.Int("status", resp.StatusCode),
+			zap.String("url", url))
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Error("downloadEmote: failed to read response body", zap.Error(err))
 		return nil, err
 	}
+	logger.Debug("downloadEmote: received data", zap.Int("bytes", len(data)))
+
 	// キャッシュに保存（失敗しても処理継続）
-	_ = os.WriteFile(cacheFile, data, 0644)
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+		logger.Warn("downloadEmote: failed to save cache", zap.Error(err))
+	}
 
 	ct := resp.Header.Get("Content-Type")
+	var img image.Image
+	var decodeErr error
+
 	switch {
 	case strings.Contains(ct, "png"):
-		return png.Decode(bytes.NewReader(data))
+		img, decodeErr = png.Decode(bytes.NewReader(data))
 	case strings.Contains(ct, "gif"):
-		return gif.Decode(bytes.NewReader(data))
+		img, decodeErr = gif.Decode(bytes.NewReader(data))
 	case strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
-		return jpeg.Decode(bytes.NewReader(data))
+		img, decodeErr = jpeg.Decode(bytes.NewReader(data))
 	default:
 		// フォールバック：PNG→GIF→JPEG
-		if img, err := png.Decode(bytes.NewReader(data)); err == nil {
+		logger.Debug("downloadEmote: trying fallback decoders")
+		if img, decodeErr = png.Decode(bytes.NewReader(data)); decodeErr == nil {
+			logger.Debug("downloadEmote: decoded as PNG")
 			return img, nil
 		}
-		if img, err := gif.Decode(bytes.NewReader(data)); err == nil {
+		if img, decodeErr = gif.Decode(bytes.NewReader(data)); decodeErr == nil {
+			logger.Debug("downloadEmote: decoded as GIF")
 			return img, nil
 		}
-		return jpeg.Decode(bytes.NewReader(data))
+		img, decodeErr = jpeg.Decode(bytes.NewReader(data))
+		if decodeErr == nil {
+			logger.Debug("downloadEmote: decoded as JPEG")
+		}
 	}
+
+	if decodeErr != nil {
+		logger.Error("downloadEmote: failed to decode image",
+			zap.String("content-type", ct),
+			zap.Error(decodeErr))
+	} else {
+		logger.Info("downloadEmote: successfully downloaded and decoded",
+			zap.String("url", url),
+			zap.Int("width", img.Bounds().Dx()),
+			zap.Int("height", img.Bounds().Dy()))
+	}
+
+	return img, decodeErr
 }
 
 // resizeToHeight は元画像を指定高さにアスペクト比維持でリサイズ
@@ -379,14 +428,14 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 				break
 			}
 		}
-		if len(lines) == 1 && !hasNonEmptyText && len(emoteFrags) > 0 && len(emoteFrags) <= 8 {
+		if !hasNonEmptyText && len(emoteFrags) > 0 && len(emoteFrags) <= 8 {
 			cellW := PaperWidth / len(emoteFrags)
 			currH += cellW
 			continue
 		}
 
 		// single-character text-only line
-		if len(lines) == 1 && len(line) == 1 &&
+		if len(line) == 1 &&
 			line[0].Emote == nil &&
 			!urlRe.MatchString(line[0].Text) &&
 			len([]rune(strings.TrimSpace(line[0].Text))) == 1 {
@@ -438,14 +487,33 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 			}
 		}
 		if !hasNonEmptyText && len(emoteFrags) > 0 && len(emoteFrags) <= 8 {
+			logger.Info("MessageToImage: processing emote-only line",
+				zap.Int("emote_count", len(emoteFrags)))
+
 			cellW := PaperWidth / len(emoteFrags)
 			for j, frag := range emoteFrags {
-				url := fmt.Sprintf(
-					"https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/3.0",
-					frag.Emote.Id,
-				)
+				logger.Debug("MessageToImage: processing emote in grid",
+					zap.Int("index", j),
+					zap.String("emote_id", frag.Emote.Id))
+
+				// Try to get URL from emote cache first (which has actual URLs from API)
+				var url string
+				if emoteInfo, ok := twitchapi.GetEmoteByID(frag.Emote.Id); ok && emoteInfo.Images.URL4x != "" {
+					url = emoteInfo.Images.URL4x
+					logger.Debug("MessageToImage: using cached emote URL in grid", zap.String("url", url))
+				} else {
+					// Fallback to constructing URL from ID
+					url = fmt.Sprintf(
+						"https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/3.0",
+						frag.Emote.Id,
+					)
+					logger.Debug("MessageToImage: using constructed emote URL in grid", zap.String("url", url))
+				}
 				eimg, err := downloadEmote(url)
 				if err != nil {
+					logger.Error("MessageToImage: failed to download emote in grid",
+						zap.String("emote_id", frag.Emote.Id),
+						zap.Error(err))
 					continue
 				}
 				// 正方形(cellW×cellW)にリサイズ
@@ -539,14 +607,34 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 
 			// Emote
 			if frag.Emote != nil {
-				url := fmt.Sprintf(
-					"https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/3.0",
-					frag.Emote.Id,
-				)
+				logger.Info("MessageToImage: processing emote fragment",
+					zap.String("emote_id", frag.Emote.Id),
+					zap.String("text", frag.Text),
+					zap.String("type", frag.Type))
+
+				// Try to get URL from emote cache first (which has actual URLs from API)
+				var url string
+				if emoteInfo, ok := twitchapi.GetEmoteByID(frag.Emote.Id); ok && emoteInfo.Images.URL4x != "" {
+					url = emoteInfo.Images.URL4x
+					logger.Info("MessageToImage: using cached emote URL", zap.String("url", url), zap.String("emote_name", emoteInfo.Name))
+				} else {
+					// Fallback to constructing URL from ID
+					url = fmt.Sprintf(
+						"https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/3.0",
+						frag.Emote.Id,
+					)
+					logger.Warn("MessageToImage: emote not found in cache, using constructed URL", zap.String("url", url), zap.String("emote_id", frag.Emote.Id))
+				}
+				logger.Debug("MessageToImage: downloading emote", zap.String("url", url))
+
 				eimg, err := downloadEmote(url)
 				if err != nil {
+					logger.Error("MessageToImage: failed to download emote",
+						zap.String("emote_id", frag.Emote.Id),
+						zap.Error(err))
 					continue
 				}
+				logger.Debug("MessageToImage: emote downloaded successfully")
 				eimg = resizeToHeight(eimg, lineHeight)
 				// カラーモードでない場合はグレースケール変換
 				var drawEmote image.Image = eimg

@@ -71,8 +71,11 @@ func Start() error {
 		}
 	}
 
+	// Initialize emote cache for channel point redemptions
+	InitializeEmoteParser()
+
 	SetupEventSub(&token)
-	
+
 	if client != nil {
 		go func() {
 			logger.Info("Connecting to EventSub...")
