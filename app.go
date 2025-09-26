@@ -122,9 +122,10 @@ func (a *App) startup(ctx context.Context) {
 
 	// Twitchトークンを確認（EventSubも含む）
 	if env.Value.ClientID != nil && env.Value.ClientSecret != nil {
-		token, _, err := twitchtoken.GetLatestToken()
-		if err == nil && token.AccessToken != "" {
-			logger.Info("Twitch token found, starting refresh goroutine and EventSub")
+		// トークンが無効な場合は自動的にリフレッシュを試みる
+		token, isValid, err := twitchtoken.GetOrRefreshToken()
+		if err == nil && isValid && token.AccessToken != "" {
+			logger.Info("Valid Twitch token found or refreshed, starting refresh goroutine and EventSub")
 
 			// EventSubを開始
 			go func() {

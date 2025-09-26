@@ -1235,8 +1235,8 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get current token status
-	token, isValid, err := twitchtoken.GetLatestToken()
+	// Get current token status (try refresh if expired)
+	token, isValid, err := twitchtoken.GetOrRefreshToken()
 
 	response := map[string]interface{}{
 		"authUrl":       twitchtoken.GetAuthURL(),
@@ -1246,13 +1246,14 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		// No token found
+		// No token found or refresh failed
 		response["error"] = "No token found"
 	} else {
 		response["authenticated"] = isValid
 		response["expiresAt"] = token.ExpiresAt
 		if !isValid {
-			response["error"] = "Token expired"
+			// Refresh failed, need re-authentication
+			response["error"] = "Token expired and refresh failed"
 		}
 	}
 

@@ -76,6 +76,43 @@ func GetTwitchToken(code string) (map[string]interface{}, error) {
 	return result, nil
 }
 
+// GetOrRefreshToken は有効なトークンを取得するか、無効な場合はリフレッシュを試みます
+// 戻り値: (token, isValid, error)
+func GetOrRefreshToken() (Token, bool, error) {
+	// 最新のトークンを取得
+	token, isValid, err := GetLatestToken()
+	if err != nil {
+		// トークンが存在しない場合
+		return Token{}, false, err
+	}
+
+	// トークンが有効な場合はそのまま返す
+	if isValid {
+		return token, true, nil
+	}
+
+	// トークンが無効な場合、リフレッシュを試みる
+	if token.RefreshToken == "" {
+		// リフレッシュトークンがない場合は再認証が必要
+		return token, false, nil
+	}
+
+	// リフレッシュ実行
+	err = token.RefreshTwitchToken()
+	if err != nil {
+		// リフレッシュに失敗（リフレッシュトークンも無効の可能性）
+		return token, false, err
+	}
+
+	// リフレッシュ成功後、最新のトークンを取得して返す
+	newToken, newIsValid, err := GetLatestToken()
+	if err != nil {
+		return Token{}, false, err
+	}
+
+	return newToken, newIsValid, nil
+}
+
 func (t *Token) RefreshTwitchToken() error {
 	// データベースから読み込まれた認証情報を使用
 	clientID := ""
