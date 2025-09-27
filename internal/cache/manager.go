@@ -438,14 +438,57 @@ func CleanupOversizeCache() error {
 
 // GetCacheDir returns the cache directory path
 func GetCacheDir() (string, error) {
+	// Step 1: Get user home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		logger.Error("Failed to get user home directory", zap.Error(err))
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	cacheDir := filepath.Join(homeDir, ".twitch-overlay", "cache")
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	logger.Debug("User home directory obtained", zap.String("home_dir", homeDir))
+
+	// Step 2: Build cache directory path
+	parentDir := filepath.Join(homeDir, ".twitch-overlay")
+	cacheDir := filepath.Join(parentDir, "cache")
+	logger.Debug("Cache directory path constructed", zap.String("cache_dir", cacheDir))
+
+	// Step 3: Check if parent directory exists and create if needed
+	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
+		logger.Debug("Parent directory does not exist, creating", zap.String("parent_dir", parentDir))
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			logger.Error("Failed to create parent directory",
+				zap.String("parent_dir", parentDir),
+				zap.Error(err))
+			return "", fmt.Errorf("failed to create parent directory %s: %w", parentDir, err)
+		}
+		logger.Debug("Parent directory created successfully", zap.String("parent_dir", parentDir))
 	}
+
+	// Step 4: Create cache directory
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		logger.Error("Failed to create cache directory",
+			zap.String("cache_dir", cacheDir),
+			zap.Error(err))
+		return "", fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
+	}
+
+	// Step 5: Test write permissions
+	testFile := filepath.Join(cacheDir, ".write_test")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		logger.Error("Cache directory is not writable",
+			zap.String("cache_dir", cacheDir),
+			zap.Error(err))
+		return "", fmt.Errorf("cache directory %s is not writable: %w", cacheDir, err)
+	}
+
+	// Clean up test file
+	if err := os.Remove(testFile); err != nil {
+		logger.Warn("Failed to remove test file",
+			zap.String("test_file", testFile),
+			zap.Error(err))
+		// Don't fail for cleanup issues
+	}
+
+	logger.Debug("Cache directory verified and accessible", zap.String("cache_dir", cacheDir))
 	return cacheDir, nil
 }
 
@@ -453,29 +496,88 @@ func GetCacheDir() (string, error) {
 func InitializeCache() error {
 	logger.Info("Initializing cache system")
 
+	// Step 1: Verify cache directory access
+	logger.Debug("Checking cache directory access")
+	cacheDir, err := GetCacheDir()
+	if err != nil {
+		logger.Error("Failed to get/create cache directory", zap.Error(err))
+		return fmt.Errorf("failed to get cache directory: %w", err)
+	}
+	logger.Debug("Cache directory verified", zap.String("path", cacheDir))
+
+	// Step 2: Check database connectivity
+	logger.Debug("Checking database connectivity")
+	db := localdb.GetDB()
+	if db == nil {
+		logger.Error("Database not initialized - cache system will be disabled")
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Test database connectivity
+	if err := db.Ping(); err != nil {
+		logger.Error("Database ping failed", zap.Error(err))
+		return fmt.Errorf("database connection failed: %w", err)
+	}
+	logger.Debug("Database connectivity verified")
+
+	// Step 3: Get cache settings with fallback to defaults
+	logger.Debug("Loading cache settings")
 	settings, err := GetCacheSettings()
 	if err != nil {
-		return fmt.Errorf("failed to get cache settings during initialization: %w", err)
+		logger.Error("Failed to get cache settings, using defaults", zap.Error(err))
+		// Use default settings instead of failing completely
+		settings = &CacheSettings{
+			ExpiryDays:      7,
+			MaxSizeMB:       100,
+			CleanupEnabled:  true,
+			CleanupOnStart:  true,
+		}
+		logger.Info("Using default cache settings",
+			zap.Int("expiry_days", settings.ExpiryDays),
+			zap.Int("max_size_mb", settings.MaxSizeMB))
+	} else {
+		logger.Debug("Cache settings loaded successfully",
+			zap.Int("expiry_days", settings.ExpiryDays),
+			zap.Int("max_size_mb", settings.MaxSizeMB),
+			zap.Bool("cleanup_enabled", settings.CleanupEnabled),
+			zap.Bool("cleanup_on_start", settings.CleanupOnStart))
 	}
 
+	// Step 4: Perform startup cleanup if enabled
 	if settings.CleanupOnStart {
 		logger.Info("Running startup cache cleanup")
+
+		logger.Debug("Cleaning up expired entries")
 		if err := CleanupExpiredEntries(); err != nil {
 			logger.Warn("Failed to cleanup expired entries on startup", zap.Error(err))
+			// Don't fail initialization for cleanup errors
+		} else {
+			logger.Debug("Expired entries cleanup completed")
 		}
+
+		logger.Debug("Cleaning up oversized cache")
 		if err := CleanupOversizeCache(); err != nil {
 			logger.Warn("Failed to cleanup oversized cache on startup", zap.Error(err))
+			// Don't fail initialization for cleanup errors
+		} else {
+			logger.Debug("Oversized cache cleanup completed")
 		}
+	} else {
+		logger.Debug("Startup cleanup disabled in settings")
 	}
 
+	// Step 5: Get cache statistics for logging
+	logger.Debug("Getting cache statistics")
 	stats, err := GetCacheStats()
 	if err != nil {
 		logger.Warn("Failed to get cache stats during initialization", zap.Error(err))
+		logger.Info("Cache system initialized (stats unavailable)")
 	} else {
-		logger.Info("Cache system initialized",
+		logger.Info("Cache system initialized successfully",
 			zap.Int("total_files", stats.TotalFiles),
 			zap.Float64("total_size_mb", stats.TotalSizeMB),
-			zap.Int("expired_files", stats.ExpiredFiles))
+			zap.Int("expired_files", stats.ExpiredFiles),
+			zap.String("cache_dir", cacheDir))
 	}
 
 	return nil

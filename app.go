@@ -64,6 +64,12 @@ func (a *App) startup(ctx context.Context) {
 	logger.Init(false)
 	logger.Info("Twitch Overlay Desktop starting...")
 
+	// UI状態復元関連のクリーンアップ（環境変数でクリーンスタートが指定された場合）
+	if cleanStart := os.Getenv("CLEAN_START"); cleanStart == "true" {
+		logger.Info("Clean start mode enabled - clearing UI state files")
+		a.clearUIStateFiles()
+	}
+
 	// データディレクトリを確保
 	if err := paths.EnsureDataDirs(); err != nil {
 		logger.Error("Failed to create data directories", zap.Error(err))
@@ -95,8 +101,22 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// キャッシュシステムを初期化
-	if err := cache.InitializeCache(); err != nil {
-		logger.Error("Failed to initialize cache system", zap.Error(err))
+	logger.Info("Starting cache system initialization")
+
+	// 環境変数でキャッシュ機能を無効化できる
+	if disableCache := os.Getenv("DISABLE_CACHE"); disableCache == "true" {
+		logger.Info("Cache system disabled by environment variable DISABLE_CACHE=true")
+	} else {
+		if err := cache.InitializeCache(); err != nil {
+			logger.Error("Failed to initialize cache system - cache functionality will be limited",
+				zap.Error(err),
+				zap.String("impact", "Image caching will use memory-only fallback"),
+				zap.String("workaround", "Set DISABLE_CACHE=true to bypass cache initialization"))
+			// Note: Cache initialization failure doesn't prevent app startup
+			// Image processing will work but without persistent caching
+		} else {
+			logger.Info("Cache system initialized successfully")
+		}
 	}
 
 	// 音楽データベースを初期化
@@ -308,6 +328,47 @@ func (a *App) shutdown(ctx context.Context) {
 
 	// EventSubを停止
 	twitcheventsub.Stop()
+}
+
+// clearUIStateFiles removes application state files to ensure clean startup
+func (a *App) clearUIStateFiles() {
+	logger.Info("Clearing UI state files for clean startup")
+
+	// macOSアプリケーション設定ファイルをクリア
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.Error("Failed to get home directory for UI state cleanup", zap.Error(err))
+		return
+	}
+
+	// AppKitの永続状態ファイルを削除
+	stateFiles := []string{
+		filepath.Join(homeDir, "Library", "Saved Application State", "com.wails.twitch-overlay.savedState"),
+		filepath.Join(homeDir, "Library", "Preferences", "com.wails.twitch-overlay.plist"),
+		filepath.Join(homeDir, "Library", "Application Support", "com.wails.twitch-overlay"),
+	}
+
+	for _, path := range stateFiles {
+		if info, err := os.Stat(path); err == nil {
+			if info.IsDir() {
+				if err := os.RemoveAll(path); err != nil {
+					logger.Warn("Failed to remove UI state directory",
+						zap.String("path", path),
+						zap.Error(err))
+				} else {
+					logger.Info("Removed UI state directory", zap.String("path", path))
+				}
+			} else {
+				if err := os.Remove(path); err != nil {
+					logger.Warn("Failed to remove UI state file",
+						zap.String("path", path),
+						zap.Error(err))
+				} else {
+					logger.Info("Removed UI state file", zap.String("path", path))
+				}
+			}
+		}
+	}
 }
 
 // checkInitialStreamStatus checks and sets the initial stream status on startup

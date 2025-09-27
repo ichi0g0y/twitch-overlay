@@ -17,7 +17,7 @@ var webAssets embed.FS
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
-	
+
 	// Set web assets for the web server
 	app.SetWebAssets(&webAssets)
 
@@ -39,6 +39,9 @@ func main() {
 		AlwaysOnTop:       false,
 		HideWindowOnClose: false,
 		StartHidden:       true, // ウィンドウを隠した状態で起動
+		// UI状態復元関連の設定
+		EnableDefaultContextMenu: false,
+		EnableFraudulentWebsiteDetection: false,
 		Bind: []interface{}{
 			app,
 		},
