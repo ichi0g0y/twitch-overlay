@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
+	"github.com/nantokaworks/twitch-overlay/internal/cache"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
@@ -91,6 +92,11 @@ func (a *App) startup(ctx context.Context) {
 	// フォントマネージャーを初期化
 	if err := fontmanager.Initialize(); err != nil {
 		logger.Error("Failed to initialize font manager", zap.Error(err))
+	}
+
+	// キャッシュシステムを初期化
+	if err := cache.InitializeCache(); err != nil {
+		logger.Error("Failed to initialize cache system", zap.Error(err))
 	}
 
 	// 音楽データベースを初期化
@@ -1328,4 +1334,114 @@ func (a *App) DeleteFont() error {
 // GetVersion returns the application version
 func (a *App) GetVersion() string {
 	return "1.0.0"
+}
+
+// TestChannelPointRedemption テスト用のチャンネルポイント報酬を発行
+func (a *App) TestChannelPointRedemption(userInput string, userName string, rewardTitle string) error {
+	logger.Info("TestChannelPointRedemption called",
+		zap.String("user_input", userInput),
+		zap.String("user_name", userName),
+		zap.String("reward_title", rewardTitle))
+
+	// テスト用のRedemptionイベントを作成
+	event := &twitch.EventChannelChannelPointsCustomRewardRedemptionAdd{
+		ID: "test-" + time.Now().Format("20060102150405"),
+		Broadcaster: twitch.Broadcaster{
+			BroadcasterUserId:    *env.Value.TwitchUserID,
+			BroadcasterUserLogin: "test_broadcaster",
+			BroadcasterUserName:  "Test Broadcaster",
+		},
+		User: twitch.User{
+			UserID:    "test_user",
+			UserLogin: userName,
+			UserName:  userName,
+		},
+		UserInput: userInput,
+		Status:    "fulfilled",
+		Reward: twitch.CustomChannelPointReward{
+			ID:     "test-reward-" + time.Now().Format("150405"),
+			Title:  rewardTitle,
+			Cost:   100,
+			Prompt: "Test reward prompt",
+		},
+		RedeemedAt: time.Now(),
+	}
+
+	// EventSub経由でイベントを処理
+	twitcheventsub.HandleChannelPointsCustomRedemptionAdd(*event)
+
+	return nil
+}
+
+// ===== Cache Management API Functions =====
+
+// GetCacheSettings キャッシュ設定を取得
+func (a *App) GetCacheSettings() (map[string]interface{}, error) {
+	settings, err := cache.GetCacheSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"expiry_days":       settings.ExpiryDays,
+		"max_size_mb":       settings.MaxSizeMB,
+		"cleanup_enabled":   settings.CleanupEnabled,
+		"cleanup_on_start":  settings.CleanupOnStart,
+	}, nil
+}
+
+// UpdateCacheSettings キャッシュ設定を更新
+func (a *App) UpdateCacheSettings(settingsMap map[string]interface{}) error {
+	settings := &cache.CacheSettings{}
+
+	if val, ok := settingsMap["expiry_days"]; ok {
+		if days, ok := val.(float64); ok {
+			settings.ExpiryDays = int(days)
+		}
+	}
+	if val, ok := settingsMap["max_size_mb"]; ok {
+		if sizeMB, ok := val.(float64); ok {
+			settings.MaxSizeMB = int(sizeMB)
+		}
+	}
+	if val, ok := settingsMap["cleanup_enabled"]; ok {
+		if enabled, ok := val.(bool); ok {
+			settings.CleanupEnabled = enabled
+		}
+	}
+	if val, ok := settingsMap["cleanup_on_start"]; ok {
+		if enabled, ok := val.(bool); ok {
+			settings.CleanupOnStart = enabled
+		}
+	}
+
+	return cache.UpdateCacheSettings(settings)
+}
+
+// GetCacheStats キャッシュ統計を取得
+func (a *App) GetCacheStats() (map[string]interface{}, error) {
+	stats, err := cache.GetCacheStats()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"total_files":      stats.TotalFiles,
+		"total_size_mb":    stats.TotalSizeMB,
+		"oldest_file_date": stats.OldestFileDate,
+		"expired_files":    stats.ExpiredFiles,
+	}, nil
+}
+
+// ClearAllCache 全キャッシュをクリア
+func (a *App) ClearAllCache() error {
+	return cache.ClearAllCache()
+}
+
+// RunCacheCleanup キャッシュクリーンアップを実行
+func (a *App) RunCacheCleanup() error {
+	if err := cache.CleanupExpiredEntries(); err != nil {
+		return err
+	}
+	return cache.CleanupOversizeCache()
 }

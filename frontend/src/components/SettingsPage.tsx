@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, HardDrive, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
 import React from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
@@ -14,6 +14,7 @@ import { TwitchSettings } from './settings/TwitchSettings';
 import { PrinterSettings } from './settings/PrinterSettings';
 import { OverlaySettings } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
+import { CacheSettings } from './settings/CacheSettings';
 
 export const SettingsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -104,13 +105,14 @@ export const SettingsPage: React.FC = () => {
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-7 mb-6">
+          <TabsList className="grid w-full grid-cols-8 mb-6">
             <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
             <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
             <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
             <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
             <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
             <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
+            <TabsTrigger value="cache"><HardDrive className="w-4 h-4 mr-1" />キャッシュ</TabsTrigger>
             <TabsTrigger value="api"><Bug className="w-4 h-4 mr-1" />API</TabsTrigger>
           </TabsList>
 
@@ -149,6 +151,7 @@ export const SettingsPage: React.FC = () => {
             </SettingsPageContext.Provider>
           </TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
+          <TabsContent value="cache"><CacheSettings /></TabsContent>
           <TabsContent value="api"><ApiTab /></TabsContent>
         </Tabs>
       </div>

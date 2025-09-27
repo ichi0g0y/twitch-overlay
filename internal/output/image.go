@@ -14,6 +14,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
+	"github.com/nantokaworks/twitch-overlay/internal/cache"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
@@ -33,6 +35,38 @@ import (
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
+
+
+// saveImageToCache saves image data to cache file and database
+func saveImageToCache(url string, imageData []byte) error {
+	cacheDir, err := cache.GetCacheDir()
+	if err != nil {
+		return err
+	}
+
+	h := sha1.Sum([]byte(url))
+	urlHash := hex.EncodeToString(h[:])
+	cacheFile := filepath.Join(cacheDir, urlHash+".png")
+
+	if err := os.WriteFile(cacheFile, imageData, 0644); err != nil {
+		return fmt.Errorf("failed to write cache file: %w", err)
+	}
+
+	// Add to database
+	fileSize := int64(len(imageData))
+	if err := cache.AddCacheEntry(urlHash, url, cacheFile, fileSize); err != nil {
+		logger.Warn("Failed to add cache entry to database", zap.Error(err))
+		// Don't fail the whole operation if DB insertion fails
+	}
+
+	// Check cache size limits and cleanup if necessary
+	if err := cache.CleanupOversizeCache(); err != nil {
+		logger.Warn("Failed to cleanup oversized cache after adding new entry", zap.Error(err))
+	}
+
+	logger.Debug("saveImageToCache: saved to file and database", zap.String("file", cacheFile))
+	return nil
+}
 
 // getSystemDefaultFont はOSのデフォルトフォントを取得します
 func getSystemDefaultFont() ([]byte, error) {
@@ -219,32 +253,56 @@ func generateQR(text string, size int) (image.Image, error) {
 func downloadEmote(url string) (image.Image, error) {
 	logger.Info("downloadEmote: starting", zap.String("url", url))
 
-	// キャッシュディレクトリ準備
-	cacheDir := ".cache"
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		logger.Error("downloadEmote: failed to create cache dir", zap.Error(err))
-		return nil, err
-	}
-	// URLハッシュでファイル名生成
+
+	// URLハッシュでキャッシュをチェック
 	h := sha1.Sum([]byte(url))
-	cacheFile := filepath.Join(cacheDir, hex.EncodeToString(h[:]))
-	// キャッシュから読み込み
-	if data, err := os.ReadFile(cacheFile); err == nil {
-		logger.Debug("downloadEmote: loading from cache", zap.String("file", cacheFile))
-		img, _, err := image.Decode(bytes.NewReader(data))
-		if err != nil {
-			logger.Error("downloadEmote: failed to decode cached image", zap.Error(err))
+	urlHash := hex.EncodeToString(h[:])
+
+	// データベースからキャッシュエントリをチェック
+	if entry, err := cache.GetCacheEntry(urlHash); err == nil && entry != nil {
+		logger.Debug("downloadEmote: found cache entry", zap.String("file", entry.FilePath))
+		if data, err := os.ReadFile(entry.FilePath); err == nil {
+			img, _, err := image.Decode(bytes.NewReader(data))
+			if err != nil {
+				logger.Error("downloadEmote: failed to decode cached image", zap.Error(err))
+			} else {
+				logger.Debug("downloadEmote: successfully loaded from cache")
+				return img, nil
+			}
 		} else {
-			logger.Debug("downloadEmote: successfully loaded from cache")
+			logger.Warn("downloadEmote: cache file not found, removing from database", zap.String("file", entry.FilePath))
+			// TODO: Remove invalid cache entry from database
 		}
-		return img, err
 	}
 
 	// ネットワークから取得
 	logger.Debug("downloadEmote: fetching from network")
-	resp, err := http.Get(url)
+
+	// カスタムHTTPクライアントでヘッダーを設定
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		logger.Error("downloadEmote: HTTP GET failed", zap.String("url", url), zap.Error(err))
+		logger.Error("downloadEmote: failed to create request", zap.String("url", url), zap.Error(err))
+		return nil, err
+	}
+
+	// User-AgentとRefererを設定（ブラウザを模倣）
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+
+	// URLからドメインを抽出してRefererを設定
+	if strings.HasPrefix(url, "http") {
+		// URLをパースしてホスト部分を取得
+		if parsedURL, err := neturl.Parse(url); err == nil {
+			req.Header.Set("Referer", fmt.Sprintf("%s://%s/", parsedURL.Scheme, parsedURL.Host))
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Error("downloadEmote: HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -257,6 +315,14 @@ func downloadEmote(url string) (image.Image, error) {
 		logger.Error("downloadEmote: unexpected status code",
 			zap.Int("status", resp.StatusCode),
 			zap.String("url", url))
+
+		// 403エラーの場合、QRコード生成にフォールバック
+		if resp.StatusCode == 403 {
+			logger.Info("downloadEmote: 403 error, falling back to QR code",
+				zap.String("url", url))
+			return nil, fmt.Errorf("403 forbidden - access denied")
+		}
+
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
@@ -268,7 +334,7 @@ func downloadEmote(url string) (image.Image, error) {
 	logger.Debug("downloadEmote: received data", zap.Int("bytes", len(data)))
 
 	// キャッシュに保存（失敗しても処理継続）
-	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+	if err := saveImageToCache(url, data); err != nil {
 		logger.Warn("downloadEmote: failed to save cache", zap.Error(err))
 	}
 
@@ -314,6 +380,7 @@ func downloadEmote(url string) (image.Image, error) {
 	return img, decodeErr
 }
 
+
 // resizeToHeight は元画像を指定高さにアスペクト比維持でリサイズ
 func resizeToHeight(src image.Image, targetH int) image.Image {
 	b := src.Bounds()
@@ -347,6 +414,7 @@ func rotate90(src image.Image) image.Image {
 
 // MessageToImage creates an image from the message with optional color support
 func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor bool) (image.Image, error) {
+
 	// フォントマネージャーからフォントデータを取得（カスタムフォント必須）
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
@@ -567,8 +635,8 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 
 		x := 0
 		for _, frag := range line {
-			// URL-only 行：画像＋QR
-			if frag.Emote == nil && urlRe.MatchString(frag.Text) {
+			// URL-only 行：画像＋QR（単独行の場合のみ）
+			if len(line) == 1 && frag.Emote == nil && urlRe.MatchString(frag.Text) {
 				img0, err := downloadEmote(frag.Text)
 				if err == nil {
 					if img0.Bounds().Dx() > img0.Bounds().Dy() {

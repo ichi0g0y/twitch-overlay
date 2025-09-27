@@ -9,6 +9,8 @@ import {embed} from '../models';
 
 export function AddTrackToPlaylist(arg1:string,arg2:string,arg3:number):Promise<void>;
 
+export function ClearAllCache():Promise<void>;
+
 export function ConnectPrinter(arg1:string):Promise<void>;
 
 export function CreateMusicPlaylist(arg1:string,arg2:string):Promise<music.Playlist>;
@@ -26,6 +28,10 @@ export function GenerateFontPreview(arg1:string):Promise<string>;
 export function GetAllSettings():Promise<Record<string, any>>;
 
 export function GetAuthURL():Promise<string>;
+
+export function GetCacheSettings():Promise<Record<string, any>>;
+
+export function GetCacheStats():Promise<Record<string, any>>;
 
 export function GetEventSubStatus():Promise<Record<string, any>>;
 
@@ -65,13 +71,19 @@ export function ReconnectPrinter():Promise<void>;
 
 export function RemoveTrackFromPlaylist(arg1:string,arg2:string):Promise<void>;
 
+export function RunCacheCleanup():Promise<void>;
+
 export function SaveWindowPosition(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;
 
 export function ScanBluetoothDevices():Promise<Array<Record<string, any>>>;
 
 export function SetWebAssets(arg1:embed.FS):Promise<void>;
 
+export function TestChannelPointRedemption(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function TestPrint():Promise<void>;
+
+export function UpdateCacheSettings(arg1:Record<string, any>):Promise<void>;
 
 export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
 

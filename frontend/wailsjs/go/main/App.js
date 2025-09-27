@@ -6,6 +6,10 @@ export function AddTrackToPlaylist(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTrackToPlaylist'](arg1, arg2, arg3);
 }
 
+export function ClearAllCache() {
+  return window['go']['main']['App']['ClearAllCache']();
+}
+
 export function ConnectPrinter(arg1) {
   return window['go']['main']['App']['ConnectPrinter'](arg1);
 }
@@ -40,6 +44,14 @@ export function GetAllSettings() {
 
 export function GetAuthURL() {
   return window['go']['main']['App']['GetAuthURL']();
+}
+
+export function GetCacheSettings() {
+  return window['go']['main']['App']['GetCacheSettings']();
+}
+
+export function GetCacheStats() {
+  return window['go']['main']['App']['GetCacheStats']();
 }
 
 export function GetEventSubStatus() {
@@ -118,6 +130,10 @@ export function RemoveTrackFromPlaylist(arg1, arg2) {
   return window['go']['main']['App']['RemoveTrackFromPlaylist'](arg1, arg2);
 }
 
+export function RunCacheCleanup() {
+  return window['go']['main']['App']['RunCacheCleanup']();
+}
+
 export function SaveWindowPosition(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveWindowPosition'](arg1, arg2, arg3, arg4);
 }
@@ -130,8 +146,16 @@ export function SetWebAssets(arg1) {
   return window['go']['main']['App']['SetWebAssets'](arg1);
 }
 
+export function TestChannelPointRedemption(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TestChannelPointRedemption'](arg1, arg2, arg3);
+}
+
 export function TestPrint() {
   return window['go']['main']['App']['TestPrint']();
+}
+
+export function UpdateCacheSettings(arg1) {
+  return window['go']['main']['App']['UpdateCacheSettings'](arg1);
 }
 
 export function UpdateSettings(arg1) {

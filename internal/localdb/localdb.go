@@ -109,6 +109,30 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// cache_entriesテーブルを追加（キャッシュファイル管理）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS cache_entries (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		url_hash TEXT UNIQUE NOT NULL,
+		original_url TEXT NOT NULL,
+		file_path TEXT NOT NULL,
+		file_size INTEGER DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return nil, err
+	}
+
+	// キャッシュ設定のデフォルト値を設定
+	_, err = db.Exec(`INSERT OR IGNORE INTO settings (key, value, setting_type, is_required, description) VALUES
+		('cache_expiry_days', '7', 'cache', false, 'キャッシュファイルの有効期限（日数）'),
+		('cache_max_size_mb', '100', 'cache', false, '最大キャッシュサイズ（MB）'),
+		('cache_cleanup_enabled', 'true', 'cache', false, '自動クリーンアップの有効/無効'),
+		('cache_cleanup_on_start', 'true', 'cache', false, '起動時クリーンアップの実行')`)
+	if err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 

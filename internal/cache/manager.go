@@ -1,0 +1,482 @@
+package cache
+
+import (
+	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"go.uber.org/zap"
+)
+
+// CacheEntry represents a cache file entry
+type CacheEntry struct {
+	ID            int64     `json:"id"`
+	URLHash       string    `json:"url_hash"`
+	OriginalURL   string    `json:"original_url"`
+	FilePath      string    `json:"file_path"`
+	FileSize      int64     `json:"file_size"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastAccessedAt time.Time `json:"last_accessed_at"`
+}
+
+// CacheSettings represents cache configuration
+type CacheSettings struct {
+	ExpiryDays      int  `json:"expiry_days"`
+	MaxSizeMB       int  `json:"max_size_mb"`
+	CleanupEnabled  bool `json:"cleanup_enabled"`
+	CleanupOnStart  bool `json:"cleanup_on_start"`
+}
+
+// CacheStats represents cache statistics
+type CacheStats struct {
+	TotalFiles     int   `json:"total_files"`
+	TotalSizeMB    float64 `json:"total_size_mb"`
+	OldestFileDate time.Time `json:"oldest_file_date"`
+	ExpiredFiles   int   `json:"expired_files"`
+}
+
+// AddCacheEntry adds a new cache entry to the database
+func AddCacheEntry(urlHash, originalURL, filePath string, fileSize int64) error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Check if entry already exists
+	var existingID int64
+	err := db.QueryRow("SELECT id FROM cache_entries WHERE url_hash = ?", urlHash).Scan(&existingID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("failed to check existing entry: %w", err)
+	}
+
+	if err == nil {
+		// Update existing entry
+		_, err = db.Exec("UPDATE cache_entries SET last_accessed_at = CURRENT_TIMESTAMP, file_size = ? WHERE id = ?", fileSize, existingID)
+		if err != nil {
+			return fmt.Errorf("failed to update cache entry: %w", err)
+		}
+		logger.Debug("Updated cache entry", zap.String("url_hash", urlHash))
+		return nil
+	}
+
+	// Insert new entry
+	_, err = db.Exec(`INSERT INTO cache_entries (url_hash, original_url, file_path, file_size, created_at, last_accessed_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		urlHash, originalURL, filePath, fileSize)
+	if err != nil {
+		return fmt.Errorf("failed to insert cache entry: %w", err)
+	}
+
+	logger.Debug("Added cache entry", zap.String("url_hash", urlHash), zap.String("original_url", originalURL))
+	return nil
+}
+
+// GetCacheEntry gets a cache entry by URL hash
+func GetCacheEntry(urlHash string) (*CacheEntry, error) {
+	db := localdb.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	entry := &CacheEntry{}
+	err := db.QueryRow(`SELECT id, url_hash, original_url, file_path, file_size, created_at, last_accessed_at
+		FROM cache_entries WHERE url_hash = ?`, urlHash).Scan(
+		&entry.ID, &entry.URLHash, &entry.OriginalURL, &entry.FilePath,
+		&entry.FileSize, &entry.CreatedAt, &entry.LastAccessedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache entry: %w", err)
+	}
+
+	// Update last accessed time
+	_, err = db.Exec("UPDATE cache_entries SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?", entry.ID)
+	if err != nil {
+		logger.Warn("Failed to update last accessed time", zap.Error(err))
+	}
+
+	return entry, nil
+}
+
+// GetCacheSettings retrieves cache settings from database
+func GetCacheSettings() (*CacheSettings, error) {
+	db := localdb.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	settings := &CacheSettings{}
+
+	// Get expiry days
+	var expiryStr string
+	err := db.QueryRow("SELECT value FROM settings WHERE key = 'cache_expiry_days'").Scan(&expiryStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache expiry days: %w", err)
+	}
+	settings.ExpiryDays, _ = strconv.Atoi(expiryStr)
+
+	// Get max size
+	var maxSizeStr string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = 'cache_max_size_mb'").Scan(&maxSizeStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache max size: %w", err)
+	}
+	settings.MaxSizeMB, _ = strconv.Atoi(maxSizeStr)
+
+	// Get cleanup enabled
+	var cleanupEnabledStr string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = 'cache_cleanup_enabled'").Scan(&cleanupEnabledStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache cleanup enabled: %w", err)
+	}
+	settings.CleanupEnabled = cleanupEnabledStr == "true"
+
+	// Get cleanup on start
+	var cleanupOnStartStr string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = 'cache_cleanup_on_start'").Scan(&cleanupOnStartStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache cleanup on start: %w", err)
+	}
+	settings.CleanupOnStart = cleanupOnStartStr == "true"
+
+	return settings, nil
+}
+
+// UpdateCacheSettings updates cache settings in database
+func UpdateCacheSettings(settings *CacheSettings) error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update expiry days
+	_, err = tx.Exec("UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'cache_expiry_days'",
+		strconv.Itoa(settings.ExpiryDays))
+	if err != nil {
+		return fmt.Errorf("failed to update cache expiry days: %w", err)
+	}
+
+	// Update max size
+	_, err = tx.Exec("UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'cache_max_size_mb'",
+		strconv.Itoa(settings.MaxSizeMB))
+	if err != nil {
+		return fmt.Errorf("failed to update cache max size: %w", err)
+	}
+
+	// Update cleanup enabled
+	_, err = tx.Exec("UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'cache_cleanup_enabled'",
+		fmt.Sprintf("%t", settings.CleanupEnabled))
+	if err != nil {
+		return fmt.Errorf("failed to update cache cleanup enabled: %w", err)
+	}
+
+	// Update cleanup on start
+	_, err = tx.Exec("UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'cache_cleanup_on_start'",
+		fmt.Sprintf("%t", settings.CleanupOnStart))
+	if err != nil {
+		return fmt.Errorf("failed to update cache cleanup on start: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	logger.Info("Updated cache settings",
+		zap.Int("expiry_days", settings.ExpiryDays),
+		zap.Int("max_size_mb", settings.MaxSizeMB),
+		zap.Bool("cleanup_enabled", settings.CleanupEnabled),
+		zap.Bool("cleanup_on_start", settings.CleanupOnStart))
+
+	return nil
+}
+
+// GetCacheStats calculates cache statistics
+func GetCacheStats() (*CacheStats, error) {
+	db := localdb.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	stats := &CacheStats{}
+
+	// Get total files and size
+	err := db.QueryRow("SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM cache_entries").Scan(&stats.TotalFiles, &stats.TotalSizeMB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache stats: %w", err)
+	}
+
+	// Convert bytes to MB
+	stats.TotalSizeMB = stats.TotalSizeMB / (1024 * 1024)
+
+	// Get oldest file date
+	if stats.TotalFiles > 0 {
+		err = db.QueryRow("SELECT created_at FROM cache_entries ORDER BY created_at ASC LIMIT 1").Scan(&stats.OldestFileDate)
+		if err != nil {
+			logger.Warn("Failed to get oldest file date", zap.Error(err))
+		}
+	}
+
+	// Get expired files count
+	settings, err := GetCacheSettings()
+	if err != nil {
+		logger.Warn("Failed to get cache settings for expired count", zap.Error(err))
+	} else {
+		expiryTime := time.Now().AddDate(0, 0, -settings.ExpiryDays)
+		err = db.QueryRow("SELECT COUNT(*) FROM cache_entries WHERE created_at < ?", expiryTime).Scan(&stats.ExpiredFiles)
+		if err != nil {
+			logger.Warn("Failed to get expired files count", zap.Error(err))
+		}
+	}
+
+	return stats, nil
+}
+
+// CleanupExpiredEntries removes expired cache files
+func CleanupExpiredEntries() error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	settings, err := GetCacheSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get cache settings: %w", err)
+	}
+
+	if !settings.CleanupEnabled {
+		logger.Debug("Cache cleanup is disabled")
+		return nil
+	}
+
+	expiryTime := time.Now().AddDate(0, 0, -settings.ExpiryDays)
+
+	// Get expired entries
+	rows, err := db.Query("SELECT file_path FROM cache_entries WHERE created_at < ?", expiryTime)
+	if err != nil {
+		return fmt.Errorf("failed to query expired entries: %w", err)
+	}
+	defer rows.Close()
+
+	var filesToDelete []string
+	for rows.Next() {
+		var filePath string
+		if err := rows.Scan(&filePath); err != nil {
+			logger.Warn("Failed to scan file path", zap.Error(err))
+			continue
+		}
+		filesToDelete = append(filesToDelete, filePath)
+	}
+
+	// Delete files and database entries
+	deletedCount := 0
+	for _, filePath := range filesToDelete {
+		if err := os.Remove(filePath); err != nil {
+			logger.Warn("Failed to delete cache file", zap.String("path", filePath), zap.Error(err))
+		} else {
+			deletedCount++
+		}
+	}
+
+	// Remove database entries
+	result, err := db.Exec("DELETE FROM cache_entries WHERE created_at < ?", expiryTime)
+	if err != nil {
+		return fmt.Errorf("failed to delete expired database entries: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	logger.Info("Cleaned up expired cache entries",
+		zap.Int("files_deleted", deletedCount),
+		zap.Int64("db_entries_deleted", rowsAffected))
+
+	return nil
+}
+
+// ClearAllCache removes all cache files and database entries
+func ClearAllCache() error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Get all cache entries
+	rows, err := db.Query("SELECT file_path FROM cache_entries")
+	if err != nil {
+		return fmt.Errorf("failed to query cache entries: %w", err)
+	}
+	defer rows.Close()
+
+	var filesToDelete []string
+	for rows.Next() {
+		var filePath string
+		if err := rows.Scan(&filePath); err != nil {
+			logger.Warn("Failed to scan file path", zap.Error(err))
+			continue
+		}
+		filesToDelete = append(filesToDelete, filePath)
+	}
+
+	// Delete all files
+	deletedCount := 0
+	for _, filePath := range filesToDelete {
+		if err := os.Remove(filePath); err != nil {
+			logger.Warn("Failed to delete cache file", zap.String("path", filePath), zap.Error(err))
+		} else {
+			deletedCount++
+		}
+	}
+
+	// Clear database entries
+	result, err := db.Exec("DELETE FROM cache_entries")
+	if err != nil {
+		return fmt.Errorf("failed to clear cache entries: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	logger.Info("Cleared all cache",
+		zap.Int("files_deleted", deletedCount),
+		zap.Int64("db_entries_deleted", rowsAffected))
+
+	return nil
+}
+
+// CleanupOversizeCache removes oldest files when cache size exceeds limit
+func CleanupOversizeCache() error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	settings, err := GetCacheSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get cache settings: %w", err)
+	}
+
+	stats, err := GetCacheStats()
+	if err != nil {
+		return fmt.Errorf("failed to get cache stats: %w", err)
+	}
+
+	maxSizeBytes := int64(settings.MaxSizeMB) * 1024 * 1024
+	currentSizeBytes := int64(stats.TotalSizeMB * 1024 * 1024)
+
+	if currentSizeBytes <= maxSizeBytes {
+		return nil // No cleanup needed
+	}
+
+	logger.Info("Cache size exceeds limit, cleaning up oldest files",
+		zap.Float64("current_size_mb", stats.TotalSizeMB),
+		zap.Int("max_size_mb", settings.MaxSizeMB))
+
+	// Get oldest files until we're under the limit
+	targetSizeBytes := maxSizeBytes * 80 / 100 // Clean to 80% of limit
+	bytesToDelete := currentSizeBytes - targetSizeBytes
+
+	rows, err := db.Query(`SELECT id, file_path, file_size FROM cache_entries
+		ORDER BY last_accessed_at ASC`)
+	if err != nil {
+		return fmt.Errorf("failed to query cache entries for cleanup: %w", err)
+	}
+	defer rows.Close()
+
+	var filesToDelete []struct {
+		id       int64
+		path     string
+		size     int64
+	}
+	var deletedBytes int64
+
+	for rows.Next() && deletedBytes < bytesToDelete {
+		var id, size int64
+		var path string
+		if err := rows.Scan(&id, &path, &size); err != nil {
+			logger.Warn("Failed to scan cache entry for cleanup", zap.Error(err))
+			continue
+		}
+		filesToDelete = append(filesToDelete, struct {
+			id   int64
+			path string
+			size int64
+		}{id, path, size})
+		deletedBytes += size
+	}
+
+	// Delete files and database entries
+	deletedCount := 0
+	for _, file := range filesToDelete {
+		if err := os.Remove(file.path); err != nil {
+			logger.Warn("Failed to delete cache file", zap.String("path", file.path), zap.Error(err))
+		} else {
+			deletedCount++
+		}
+
+		// Remove from database
+		_, err := db.Exec("DELETE FROM cache_entries WHERE id = ?", file.id)
+		if err != nil {
+			logger.Warn("Failed to delete cache entry from database", zap.Int64("id", file.id), zap.Error(err))
+		}
+	}
+
+	logger.Info("Cleaned up oversized cache",
+		zap.Int("files_deleted", deletedCount),
+		zap.Int64("bytes_freed", deletedBytes))
+
+	return nil
+}
+
+// GetCacheDir returns the cache directory path
+func GetCacheDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	cacheDir := filepath.Join(homeDir, ".twitch-overlay", "cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	}
+	return cacheDir, nil
+}
+
+// InitializeCache performs initial cache setup and cleanup
+func InitializeCache() error {
+	logger.Info("Initializing cache system")
+
+	settings, err := GetCacheSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get cache settings during initialization: %w", err)
+	}
+
+	if settings.CleanupOnStart {
+		logger.Info("Running startup cache cleanup")
+		if err := CleanupExpiredEntries(); err != nil {
+			logger.Warn("Failed to cleanup expired entries on startup", zap.Error(err))
+		}
+		if err := CleanupOversizeCache(); err != nil {
+			logger.Warn("Failed to cleanup oversized cache on startup", zap.Error(err))
+		}
+	}
+
+	stats, err := GetCacheStats()
+	if err != nil {
+		logger.Warn("Failed to get cache stats during initialization", zap.Error(err))
+	} else {
+		logger.Info("Cache system initialized",
+			zap.Int("total_files", stats.TotalFiles),
+			zap.Float64("total_size_mb", stats.TotalSizeMB),
+			zap.Int("expired_files", stats.ExpiredFiles))
+	}
+
+	return nil
+}
