@@ -15,11 +15,13 @@ import (
 )
 
 var (
-	client *twitch.Client
-	shutdownChan = make(chan struct{})
-	isRunning    bool
-	isConnected  bool
-	lastError    error
+	client            *twitch.Client
+	shutdownChan      = make(chan struct{})
+	monitorDone       = make(chan struct{})
+	isRunning         bool
+	isConnected       bool
+	lastError         error
+	lastKeepAliveTime time.Time
 )
 
 // Start starts the EventSub client
@@ -85,15 +87,27 @@ func Start() error {
 				isConnected = false
 			}
 		}()
+
+		// Start connection monitor
+		go monitorConnection()
+
 		isRunning = true
 	}
-	
+
 	return nil
 }
 
 // Stop stops the EventSub client
 func Stop() {
 	if client != nil && isRunning {
+		// Stop monitor goroutine first
+		select {
+		case monitorDone <- struct{}{}:
+			logger.Debug("Sent stop signal to monitor goroutine")
+		default:
+			// Channel might be full or already stopped
+		}
+
 		client.Close()
 		isRunning = false
 		isConnected = false
@@ -283,6 +297,8 @@ func SetupEventSub(token *twitchtoken.Token) {
 	client.OnKeepAlive(func(message twitch.KeepAliveMessage) {
 		// EventSubのKeepAliveを受信 - 接続は正常
 		isConnected = true
+		lastKeepAliveTime = time.Now()
+		logger.Debug("EventSub KeepAlive received")
 	})
 	client.OnRevoke(func(message twitch.RevokeMessage) {
 		logger.Warn("EventSub subscription revoked", 
@@ -356,4 +372,97 @@ func Shutdown() {
 	if client != nil {
 		client.Close()
 	}
+}
+
+// monitorConnection monitors EventSub connection status and reconnects if necessary
+func monitorConnection() {
+	logger.Info("EventSub connection monitor started")
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	var consecutiveFailures int
+	const maxBackoff = 60 * time.Second
+	const baseBackoff = 2 * time.Second
+	const keepAliveTimeout = 30 * time.Second
+
+	for {
+		select {
+		case <-monitorDone:
+			logger.Info("EventSub connection monitor stopped")
+			return
+		case <-ticker.C:
+			// Check connection status
+			now := time.Now()
+
+			// Check if connected flag is false
+			if !isConnected {
+				logger.Warn("EventSub connection lost, attempting reconnection",
+					zap.Int("consecutive_failures", consecutiveFailures))
+
+				// Apply backoff strategy
+				if consecutiveFailures > 0 {
+					backoffDuration := time.Duration(1<<uint(consecutiveFailures-1)) * baseBackoff
+					if backoffDuration > maxBackoff {
+						backoffDuration = maxBackoff
+					}
+					logger.Info("Waiting before reconnection attempt",
+						zap.Duration("backoff", backoffDuration))
+					time.Sleep(backoffDuration)
+				}
+
+				// Attempt reconnection
+				if err := attemptReconnect(); err != nil {
+					logger.Error("Failed to reconnect EventSub", zap.Error(err))
+					consecutiveFailures++
+				} else {
+					logger.Info("EventSub reconnected successfully")
+					consecutiveFailures = 0
+				}
+				continue
+			}
+
+			// Check KeepAlive timeout (only if we've received at least one KeepAlive)
+			if !lastKeepAliveTime.IsZero() {
+				timeSinceLastKeepAlive := now.Sub(lastKeepAliveTime)
+				if timeSinceLastKeepAlive > keepAliveTimeout {
+					logger.Warn("EventSub KeepAlive timeout, reconnecting",
+						zap.Duration("time_since_last_keepalive", timeSinceLastKeepAlive))
+
+					if err := attemptReconnect(); err != nil {
+						logger.Error("Failed to reconnect after KeepAlive timeout", zap.Error(err))
+						consecutiveFailures++
+					} else {
+						logger.Info("EventSub reconnected successfully after KeepAlive timeout")
+						consecutiveFailures = 0
+					}
+					continue
+				}
+			}
+
+			// Connection is healthy
+			if consecutiveFailures > 0 {
+				logger.Debug("EventSub connection is healthy, resetting failure count")
+				consecutiveFailures = 0
+			}
+		}
+	}
+}
+
+// attemptReconnect attempts to reconnect EventSub
+func attemptReconnect() error {
+	logger.Info("Attempting EventSub reconnection")
+
+	// Stop current connection
+	Stop()
+
+	// Wait a bit before reconnecting
+	time.Sleep(1 * time.Second)
+
+	// Start new connection
+	if err := Start(); err != nil {
+		return fmt.Errorf("failed to start EventSub: %w", err)
+	}
+
+	return nil
 }
