@@ -210,6 +210,37 @@ func GetAllCachedEmotes() map[string]*EmoteInfo {
 	return result
 }
 
+// AddEmoteDynamically adds an emote to the cache dynamically (e.g., from chat messages)
+func AddEmoteDynamically(name, id, url string) {
+	if name == "" || id == "" {
+		return
+	}
+
+	emoteCache.mu.Lock()
+	defer emoteCache.mu.Unlock()
+
+	// Check if emote already exists
+	if _, exists := emoteCache.emotesByName[name]; exists {
+		return
+	}
+
+	// Create emote info
+	emoteInfo := &EmoteInfo{
+		ID:   id,
+		Name: name,
+		Images: EmoteImages{
+			URL4x: url,
+		},
+		EmoteType: "dynamic", // Mark as dynamically added
+	}
+
+	emoteCache.emotesByName[name] = emoteInfo
+	logger.Info("Dynamically added emote to cache",
+		zap.String("name", name),
+		zap.String("id", id),
+		zap.String("url", url))
+}
+
 // InitializeEmoteCache initializes the emote cache at startup
 func InitializeEmoteCache() {
 	logger.Info("InitializeEmoteCache: starting")

@@ -566,8 +566,10 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 
 				// Try to get URL from emote cache first (which has actual URLs from API)
 				var url string
+				wasInCache := false
 				if emoteInfo, ok := twitchapi.GetEmoteByID(frag.Emote.Id); ok && emoteInfo.Images.URL4x != "" {
 					url = emoteInfo.Images.URL4x
+					wasInCache = true
 					logger.Debug("MessageToImage: using cached emote URL in grid", zap.String("url", url))
 				} else {
 					// Fallback to constructing URL from ID
@@ -583,6 +585,11 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 						zap.String("emote_id", frag.Emote.Id),
 						zap.Error(err))
 					continue
+				}
+
+				// If emote was not in cache but download succeeded, add it to dynamic cache
+				if !wasInCache && frag.Text != "" {
+					twitchapi.AddEmoteDynamically(frag.Text, frag.Emote.Id, url)
 				}
 				// 正方形(cellW×cellW)にリサイズ
 				dst := image.NewRGBA(image.Rect(0, 0, cellW, cellW))
@@ -682,8 +689,10 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 
 				// Try to get URL from emote cache first (which has actual URLs from API)
 				var url string
+				wasInCache := false
 				if emoteInfo, ok := twitchapi.GetEmoteByID(frag.Emote.Id); ok && emoteInfo.Images.URL4x != "" {
 					url = emoteInfo.Images.URL4x
+					wasInCache = true
 					logger.Info("MessageToImage: using cached emote URL", zap.String("url", url), zap.String("emote_name", emoteInfo.Name))
 				} else {
 					// Fallback to constructing URL from ID
@@ -703,6 +712,11 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor 
 					continue
 				}
 				logger.Debug("MessageToImage: emote downloaded successfully")
+
+				// If emote was not in cache but download succeeded, add it to dynamic cache
+				if !wasInCache && frag.Text != "" {
+					twitchapi.AddEmoteDynamically(frag.Text, frag.Emote.Id, url)
+				}
 				eimg = resizeToHeight(eimg, lineHeight)
 				// カラーモードでない場合はグレースケール変換
 				var drawEmote image.Image = eimg

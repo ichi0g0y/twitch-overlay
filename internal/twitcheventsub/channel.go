@@ -8,10 +8,28 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
 
 func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
+	// Extract and cache emote information from chat messages
+	// This helps recognize emotes from other channels used in channel point redemptions
+	for _, fragment := range message.Message.Fragments {
+		if fragment.Emote != nil && fragment.Emote.Id != "" && fragment.Text != "" {
+			// Construct emote URL (use 3.0 format for high quality)
+			url := fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/3.0", fragment.Emote.Id)
+
+			// Add to dynamic cache
+			twitchapi.AddEmoteDynamically(fragment.Text, fragment.Emote.Id, url)
+
+			logger.Debug("Cached emote from chat message",
+				zap.String("name", fragment.Text),
+				zap.String("id", fragment.Emote.Id),
+				zap.String("user", message.Chatter.ChatterUserName))
+		}
+	}
+
 	// チャンネルポイント報酬はHandleChannelPointsCustomRedemptionAddで処理するため、
 	// ここでは処理しない（重複防止）
 	if message.ChannelPointsCustomRewardId != "" {
