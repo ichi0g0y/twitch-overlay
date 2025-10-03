@@ -75,9 +75,12 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 
 	err := c.Connect(address)
 	if err != nil {
-		// 接続失敗時は常にステータスを更新
-		// 再接続中でもエラー時は切断状態として扱う
-		status.SetPrinterConnected(false)
+		// 接続失敗時のステータス更新
+		// 再接続中の場合は、一時的なエラーの可能性があるためステータスを更新しない
+		// （オーバーレイ表示への影響を最小化）
+		if !isReconnecting {
+			status.SetPrinterConnected(false)
+		}
 		isConnected = false
 		// エラー時も再接続フラグをクリア
 		isReconnecting = false
@@ -141,6 +144,11 @@ func HasInitialPrintBeenDone() bool {
 // GetLatestPrinter returns the current printer client
 func GetLatestPrinter() *catprinter.Client {
 	return latestPrinter
+}
+
+// IsReconnecting returns whether the printer is in reconnection process
+func IsReconnecting() bool {
+	return isReconnecting
 }
 
 // SetupScannerClient creates a new client for scanning without affecting existing connection

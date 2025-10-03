@@ -72,7 +72,7 @@ const FaxReceiver = () => {
     }
   }, [faxState]);
 
-  // プリンター状態のポーリング
+  // プリンター状態の初期チェック（1回のみ）
   useEffect(() => {
     const checkPrinterStatus = async () => {
       try {
@@ -82,17 +82,14 @@ const FaxReceiver = () => {
           setIsPrinterConnected(data.printerConnected);
         }
       } catch (error) {
-        console.error('Failed to check printer status:', error);
+        console.error('Failed to check initial printer status:', error);
+        // エラー時はプリンター接続状態をfalseに設定しない
+        // （WebSocketイベントで更新されるため）
       }
     };
 
-    // 初回チェック
+    // 初回チェックのみ（ポーリングは廃止）
     checkPrinterStatus();
-
-    // 5秒ごとにチェック
-    const interval = setInterval(checkPrinterStatus, 5000);
-
-    return () => clearInterval(interval);
   }, []);
 
   // WebSocket接続の管理
@@ -148,12 +145,25 @@ const FaxReceiver = () => {
       // 必要に応じて処理を追加
     });
 
+    // プリンター接続状態の変更を監視
+    const unsubPrinterConnected = wsClient.on('printer_connected', () => {
+      console.log('Printer connected via WebSocket');
+      setIsPrinterConnected(true);
+    });
+
+    const unsubPrinterDisconnected = wsClient.on('printer_disconnected', () => {
+      console.log('Printer disconnected via WebSocket');
+      setIsPrinterConnected(false);
+    });
+
     return () => {
       // クリーンアップ: すべてのハンドラーを解除
       unsubConnect();
       unsubDisconnect();
       unsubFax();
       unsubStreamStatus();
+      unsubPrinterConnected();
+      unsubPrinterDisconnected();
       
       // タイムアウトをクリア
       messageIdTimeouts.current.forEach(timeout => clearTimeout(timeout));
