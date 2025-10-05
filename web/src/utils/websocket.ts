@@ -155,13 +155,13 @@ class WebSocketClient {
    */
   private startHeartbeat(): void {
     this.stopHeartbeat();
-    
-    // 30秒ごとにpingを送信
+
+    // 20秒ごとにpingを送信（サーバーのReadDeadline 120秒に対して余裕を持たせる）
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'ping' }));
       }
-    }, 30000);
+    }, 20000);
   }
 
   /**

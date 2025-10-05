@@ -222,9 +222,9 @@ func (c *WSClient) readPump() {
 		c.conn.Close()
 	}()
 
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 		return nil
 	})
 
@@ -237,7 +237,32 @@ func (c *WSClient) readPump() {
 			break
 		}
 
-		// クライアントからのメッセージを処理（必要に応じて実装）
+		// JSON形式のpingメッセージを認識してReadDeadlineを延長
+		var msg WSMessage
+		if err := json.Unmarshal(message, &msg); err == nil {
+			if msg.Type == "ping" {
+				c.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+				logger.Debug("Received ping from client, extended read deadline",
+					zap.String("clientId", c.clientID))
+
+				// pongレスポンスを返送
+				pongMsg := WSMessage{
+					Type: "pong",
+					Data: json.RawMessage(`{}`),
+				}
+				if data, err := json.Marshal(pongMsg); err == nil {
+					select {
+					case c.send <- data:
+					default:
+						logger.Debug("Failed to send pong: send buffer full",
+							zap.String("clientId", c.clientID))
+					}
+				}
+				continue
+			}
+		}
+
+		// その他のクライアントからのメッセージを処理
 		logger.Debug("Received WebSocket message from client",
 			zap.String("clientId", c.clientID),
 			zap.String("message", string(message)))
