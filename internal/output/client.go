@@ -20,24 +20,27 @@ func SetupPrinter() (*catprinter.Client, error) {
 	// 既存のクライアントがある場合は完全リセット（真のKeepAliveのため）
 	if latestPrinter != nil {
 		logger.Info("Resetting printer client for proper keep-alive")
-		
-		// 再接続中フラグを立てる
-		isReconnecting = true
-		
+
 		// 既存の接続を切断
 		if isConnected {
-			logger.Info("Disconnecting existing connection")
+			logger.Info("Disconnecting existing connection for keep-alive")
 			latestPrinter.Disconnect()
 			isConnected = false
-			// 再接続中はステータスを変更しない（接続中を維持）
-			// status.SetPrinterConnected(false) を呼ばない
+			// KeepAlive再接続中はステータスを変更しない（緑インジケーターを維持）
+			// 再接続フラグが立っている場合のみステータス更新をスキップ
+			if !isReconnecting {
+				logger.Info("Not in reconnecting state, updating printer status to disconnected")
+				status.SetPrinterConnected(false)
+			} else {
+				logger.Info("KeepAlive reconnection in progress, maintaining connected status (green indicator)")
+			}
 		}
-		
+
 		// BLEデバイスを完全に解放
 		logger.Info("Releasing BLE device")
 		latestPrinter.Stop()
 		latestPrinter = nil
-		
+
 		// Bluetoothリソースの解放を待つ
 		// Note: この待機時間により、BLEデバイスが完全に解放される
 		time.Sleep(500 * time.Millisecond)
@@ -149,6 +152,11 @@ func GetLatestPrinter() *catprinter.Client {
 // IsReconnecting returns whether the printer is in reconnection process
 func IsReconnecting() bool {
 	return isReconnecting
+}
+
+// SetReconnecting sets the reconnection flag
+func SetReconnecting(reconnecting bool) {
+	isReconnecting = reconnecting
 }
 
 // SetupScannerClient creates a new client for scanning without affecting existing connection

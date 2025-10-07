@@ -541,10 +541,10 @@ func keepAliveRoutine() {
 		// If more than KeepAliveInterval seconds have passed since last print
 		if timeSinceLastPrint > time.Duration(env.Value.KeepAliveInterval)*time.Second {
 			logger.Info("Keep-alive: waiting for printer access", zap.Int("seconds_since_last_print", int(timeSinceLastPrint.Seconds())))
-			
+
 			// Lock printer for exclusive access
 			printerMutex.Lock()
-			
+
 			logger.Info("Keep-alive: creating new connection")
 
 			// Check if printer address is configured before reconnecting
@@ -554,10 +554,15 @@ func keepAliveRoutine() {
 				continue
 			}
 
+			// KeepAlive再接続フラグを立てる（緑インジケーター維持のため）
+			SetReconnecting(true)
+			logger.Info("Keep-alive: set reconnecting flag to maintain green indicator")
+
 			// Setup printer (will disconnect if connected)
 			c, err := SetupPrinter()
 			if err != nil {
 				logger.Error("Keep-alive: failed to setup printer", zap.Error(err))
+				SetReconnecting(false) // エラー時はフラグをクリア
 				printerMutex.Unlock()
 				continue
 			}
@@ -565,25 +570,30 @@ func keepAliveRoutine() {
 			err = ConnectPrinter(c, *env.Value.PrinterAddress)
 			if err != nil {
 				logger.Error("Keep-alive: failed to connect printer", zap.Error(err))
+				SetReconnecting(false) // エラー時はフラグをクリア
 				printerMutex.Unlock()
 				continue
 			}
-			
+
 			// 接続成功 - カウンターをリセット
 			consecutiveFailures = 0
 			logger.Info("Keep-alive: new connection established")
-			
+
 			// Mark initial print as done if not already done
 			if !HasInitialPrintBeenDone() {
 				logger.Info("Keep-alive: marking initial print as done after reconnection")
 				MarkInitialPrintDone()
 			}
-			
+
 			// Update last print time
 			lastPrintMutex.Lock()
 			lastPrintTime = time.Now()
 			lastPrintMutex.Unlock()
-			
+
+			// 再接続フラグをクリア（ConnectPrinterが既にクリアしているが念のため）
+			SetReconnecting(false)
+			logger.Info("Keep-alive: cleared reconnecting flag")
+
 			// Release printer lock
 			printerMutex.Unlock()
 		}
