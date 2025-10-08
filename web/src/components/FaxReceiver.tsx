@@ -23,6 +23,7 @@ const FaxReceiver = () => {
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [faxState, setFaxState] = useState<FaxState | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
+  const [indicatorAnimation, setIndicatorAnimation] = useState<'hidden' | 'entering' | 'visible' | 'exiting'>('hidden');
   const { currentFax, addToQueue, onDisplayComplete } = useFaxQueue();
   
   // クライアントIDを保持（コンポーネントのライフサイクル中は同じIDを使用）
@@ -31,15 +32,15 @@ const FaxReceiver = () => {
   // 処理済みメッセージIDを保持（重複処理を防ぐ）
   const processedMessageIds = useRef<Set<string>>(new Set());
   const messageIdTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  
-  // ラベル位置をリセット
+
+  // FAX状態をリセット
   useEffect(() => {
     if (!currentFax) {
-      setLabelPosition(0);
       setFaxState(null);
+      // labelPosition はリセットしない（次のFAX表示時に自動的に更新される）
     }
   }, [currentFax]);
-  
+
   // Settings from context
   const { settings } = useSettings();
   
@@ -71,6 +72,32 @@ const FaxReceiver = () => {
       setIsShaking(false);
     }
   }, [faxState]);
+
+  // インジケーターのスライドアニメーション制御
+  useEffect(() => {
+    if (faxState && (faxState.state === 'waiting' || faxState.state === 'scrolling')) {
+      // すでに表示中（entering または visible）なら何もしない
+      if (indicatorAnimation === 'entering' || indicatorAnimation === 'visible') {
+        return;
+      }
+      // 初回のみスライドイン
+      setIndicatorAnimation('entering');
+      const timer = setTimeout(() => {
+        setIndicatorAnimation('visible');
+      }, LAYOUT.FAX_INDICATOR_SLIDE_DURATION);
+      return () => clearTimeout(timer);
+    } else if (!faxState) {
+      // 印刷終了: スライドアウト（すでにhiddenなら何もしない）
+      if (indicatorAnimation === 'exiting' || indicatorAnimation === 'hidden') {
+        return;
+      }
+      setIndicatorAnimation('exiting');
+      const timer = setTimeout(() => {
+        setIndicatorAnimation('hidden');
+      }, LAYOUT.FAX_INDICATOR_SLIDE_DURATION);
+      return () => clearTimeout(timer);
+    }
+  }, [faxState, indicatorAnimation]);
 
   // プリンター状態の初期チェック（1回のみ）
   useEffect(() => {
@@ -177,12 +204,23 @@ const FaxReceiver = () => {
   };
 
   // ラベルのスタイル
-  const labelStyle: DynamicStyles = { 
-    left: `${LAYOUT.LABEL_LEFT_MARGIN}px`, 
-    width: `${LAYOUT.FAX_WIDTH}px`, 
+  const labelStyle: DynamicStyles = {
+    left: `${LAYOUT.LABEL_LEFT_MARGIN}px`,
+    width: `${LAYOUT.FAX_WIDTH}px`,
     height: `${LAYOUT.LABEL_HEIGHT}px`,
-    top: `${labelPosition}px`,
-    transition: 'none' // 常にJavaScriptアニメーションを使用
+    top: `${labelPosition}px`, // FAX画像に追従
+    transition: 'none'
+  };
+
+  // インジケーターのアニメーションクラス
+  const getIndicatorClass = (): string => {
+    switch (indicatorAnimation) {
+      case 'hidden': return 'fax-indicator-hidden';
+      case 'entering': return 'fax-indicator-entering';
+      case 'visible': return '';
+      case 'exiting': return 'fax-indicator-exiting';
+      default: return '';
+    }
   };
 
   // LED のスタイル
@@ -201,8 +239,8 @@ const FaxReceiver = () => {
     <div className="h-screen text-white relative overflow-hidden" style={backgroundStyle}>
       {/* コントロールパネル */}
       {showFax && (
-        <div 
-          className="fixed z-10" 
+        <div
+          className={`fixed z-10 ${getIndicatorClass()}`}
           style={labelStyle}
         >
           <div className="flex items-center h-full px-2">

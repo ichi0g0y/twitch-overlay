@@ -31,6 +31,10 @@ export const LAYOUT = {
   // Shake animation
   SHAKE_DURATION: '0.2s',
 
+  // FAX indicator animation
+  FAX_INDICATOR_SLIDE_DURATION: 700, // 0.7 seconds
+  FAX_INDICATOR_HIDDEN_OFFSET: -60, // pixels above screen
+
   // Computed values - Getterメソッドを保持
   get TOTAL_HEIGHT(): number {
     return this.FAX_HEIGHT + this.LABEL_HEIGHT;

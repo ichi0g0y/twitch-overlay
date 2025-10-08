@@ -64,6 +64,37 @@ body {
   90% { transform: translate(-2px, 1px); }
 }
 
+/* FAX indicator slide animations */
+@keyframes fax-indicator-slide-in {
+  from {
+    transform: translateY(-60px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fax-indicator-slide-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-60px);
+  }
+}
+
+.fax-indicator-hidden {
+  transform: translateY(-60px);
+}
+
+.fax-indicator-entering {
+  animation: fax-indicator-slide-in 0.7s cubic-bezier(0.85, 0, 0.7, 1) forwards;
+}
+
+.fax-indicator-exiting {
+  animation: fax-indicator-slide-out 0.7s cubic-bezier(0.3, 0, 0.8, 0.15) forwards;
+}
+
 /* Clock styles */
 .clock-container {
   display: flex;

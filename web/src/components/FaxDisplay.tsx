@@ -11,7 +11,6 @@ const FaxDisplay = ({ faxData, onComplete, imageType, onLabelPositionUpdate, onA
   const [containerPosition, setContainerPosition] = useState<number>(0); // コンテナ全体の位置
   const [displayState, setDisplayState] = useState<FaxDisplayState>('loading'); // 'loading', 'waiting', 'scrolling', 'displaying', 'sliding', 'sliding-up', 'complete'
   const [scrollProgress, setScrollProgress] = useState<number>(0); // 0-100%
-  const [currentLabelPosition, setCurrentLabelPosition] = useState<number>(0); // ラベルの現在位置を保持
   const containerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const slideUpAnimationRef = useRef<number | null>(null);
@@ -73,16 +72,15 @@ const FaxDisplay = ({ faxData, onComplete, imageType, onLabelPositionUpdate, onA
       // スクロール進捗を計算（0-100%）
       const progress = Math.min(100, Math.max(0, ((currentImagePosition + imageHeight) / imageHeight) * 100));
       setScrollProgress(Math.round(progress));
-      
+
       // ラベル位置の計算
       // 画像と同じスピードで動くが、最大FAX高さまで（FAX文字とコンテンツ間にマージンを確保）
       const labelPosition = Math.min(Math.max(0, currentImagePosition + imageHeight + LAYOUT.FAX_CONTENT_TOP_MARGIN), LAYOUT.FAX_HEIGHT);
-      
-      setCurrentLabelPosition(labelPosition); // 現在位置を保存
+
       if (onLabelPositionUpdate) {
         onLabelPositionUpdate(Math.round(labelPosition));
       }
-      
+
       // 画像が完全に表示されるまで続行
       if (currentImagePosition < 0) {
         animationRef.current = requestAnimationFrame(updateAnimation);
@@ -136,39 +134,28 @@ const FaxDisplay = ({ faxData, onComplete, imageType, onLabelPositionUpdate, onA
     const totalDistance = Math.abs(targetDistance); // 320px
     const frames = totalDistance / pixelsPerFrame; // 約53フレーム
     const duration = frames * (1000 / 60); // 60fpsで約889ms
-    
+
     const startTime = performance.now();
     const initialLabelPosition = startLabelPosition; // 引数から取得
-    
+
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
       // イージングなしで一定速度
       const easedProgress = progress;
-      
+
       // コンテナとラベルを同時に更新
       const currentPosition = targetDistance * easedProgress;
       setContainerPosition(currentPosition);
-      
+
       // ラベルはコンテナと同じ速度で移動
-      // 単純に同じピクセル数だけ上に移動
+      // 単純に同じピクセル数だけ上に移動（負の値も許容して画面外に消える）
       const labelPos = initialLabelPosition + currentPosition; // currentPositionは負の値
-      
-      // デバッグ用ログ（最初と最後のフレームのみ）
-      if (progress === 0 || progress >= 0.99) {
-        console.log('SlideUp:', {
-          progress,
-          initialLabelPosition,
-          currentPosition,
-          labelPos,
-          finalLabelPos: Math.round(Math.max(0, labelPos))
-        });
-      }
-      
+
       if (onLabelPositionUpdate) {
-        onLabelPositionUpdate(Math.round(Math.max(0, labelPos)));
+        onLabelPositionUpdate(Math.round(labelPos));
       }
-      
+
       if (progress < 1) {
         slideUpAnimationRef.current = requestAnimationFrame(animate);
       } else {
@@ -181,7 +168,7 @@ const FaxDisplay = ({ faxData, onComplete, imageType, onLabelPositionUpdate, onA
         onComplete();
       }
     };
-    
+
     slideUpAnimationRef.current = requestAnimationFrame(animate);
   };
 
