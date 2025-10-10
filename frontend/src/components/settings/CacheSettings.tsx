@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { GetCacheSettings, UpdateCacheSettings, GetCacheStats, ClearAllCache, RunCacheCleanup } from '../../../wailsjs/go/main/App';
+import { GetCacheSettings, UpdateCacheSettings, GetCacheStats, ClearAllCache, RunCacheCleanup } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 interface CacheSettings {
   expiry_days: number;

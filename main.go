@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"log"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 //go:embed all:frontend/dist
@@ -16,38 +16,56 @@ var webAssets embed.FS
 
 func main() {
 	// Create an instance of the app structure
-	app := NewApp()
+	appInstance := NewApp()
 
 	// Set web assets for the web server
-	app.SetWebAssets(&webAssets)
+	appInstance.SetWebAssets(&webAssets)
 
-	// Create application with options
-	err := wails.Run(&options.App{
-		Title:  "twitch-overlay",
-		Width:  1024,
-		Height: 768,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	// Create a new Wails application
+	app := application.New(application.Options{
+		Name:        "twitch-overlay",
+		Description: "Twitch overlay application with thermal printer support",
+		Services: []application.Service{
+			application.NewService(appInstance),
 		},
-		BackgroundColour:  &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:         app.startup,
-		OnShutdown:        app.shutdown,
-		DisableResize:     false,
-		Frameless:         false,
-		MinWidth:          400,
-		MinHeight:         400,
-		AlwaysOnTop:       false,
-		HideWindowOnClose: false,
-		StartHidden:       true, // ウィンドウを隠した状態で起動
-		// UI状態復元関連の設定
-		EnableDefaultContextMenu: false,
-		EnableFraudulentWebsiteDetection: false,
-		Bind: []interface{}{
-			app,
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
+		},
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
 
+	// Store app reference for later use (notification windows, etc)
+	appInstance.wailsApp = app
+
+	// Create main window (Settings screen)
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Twitch Overlay Settings",
+		Width:            1024,
+		Height:           768,
+		MinWidth:         400,
+		MinHeight:        400,
+		BackgroundColour: application.NewRGB(27, 38, 54),
+		URL:              "/",
+		Mac: application.MacWindow{
+			InvisibleTitleBarHeight: 50,
+			Backdrop:                application.MacBackdropTranslucent,
+			TitleBar:                application.MacTitleBarHiddenInset,
+		},
+	})
+
+	// Store mainWindow reference
+	appInstance.mainWindow = mainWindow
+
+	// Call startup logic with a context
+	ctx := context.Background()
+	appInstance.startup(ctx)
+
+	// Run the application
+	err := app.Run()
+
 	if err != nil {
-		println("Error:", err.Error())
+		log.Fatal(err)
 	}
 }

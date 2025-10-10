@@ -7,8 +7,8 @@ import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
-import { GetMusicPlaylists, GetServerPort } from '../../../wailsjs/go/main/App';
-import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { Events } from '@wailsio/runtime';
 import { buildApiUrlAsync } from '../../utils/api';
 
 export const OverlaySettings: React.FC = () => {
@@ -71,7 +71,8 @@ export const OverlaySettings: React.FC = () => {
     fetchMusicStatus();
 
     // WebSocketでのリアルタイム更新
-    const unsubscribe = EventsOn('music_status_update', (status) => {
+    const unsubscribe = Events.On('music_status_update', (ev: any) => {
+      const status = ev?.data !== undefined ? ev.data : ev;
       context.setMusicStatus?.(status);
     });
 

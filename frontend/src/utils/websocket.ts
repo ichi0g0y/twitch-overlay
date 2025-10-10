@@ -1,5 +1,5 @@
 import { buildApiUrl } from './api';
-import { GetServerPort } from '../../wailsjs/go/main/App';
+import { GetServerPort } from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 type MessageHandler = (data: any) => void;
 type ConnectionHandler = () => void;

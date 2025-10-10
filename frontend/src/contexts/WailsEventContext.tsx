@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 
 interface WailsEventContextValue {
   isConnected: boolean;
@@ -23,8 +23,11 @@ export function WailsEventProvider({ children }: WailsEventProviderProps) {
     }
     handlers.get(event)!.add(handler);
 
-    // Wailsのイベントリスナーを登録
-    EventsOn(event, handler);
+    // Wailsのイベントリスナーを登録（WailsEventをラップ）
+    const unsubscribe = Events.On(event, (ev: any) => {
+      const data = ev?.data !== undefined ? ev.data : ev;
+      handler(data);
+    });
 
     // クリーンアップ関数を返す
     return () => {
@@ -35,7 +38,7 @@ export function WailsEventProvider({ children }: WailsEventProviderProps) {
           handlers.delete(event);
         }
       }
-      EventsOff(event);
+      unsubscribe();
     };
   }, [handlers]);
 
@@ -47,12 +50,13 @@ export function WailsEventProvider({ children }: WailsEventProviderProps) {
 
   useEffect(() => {
     // 接続状態の変更をリッスン
-    const unsubscribe = EventsOn('connection_status', (status: boolean) => {
+    const unsubscribe = Events.On('connection_status', (ev: any) => {
+      const status = ev?.data !== undefined ? ev.data : ev;
       setIsConnected(status);
     });
 
     return () => {
-      EventsOff('connection_status');
+      unsubscribe();
     };
   }, []);
 

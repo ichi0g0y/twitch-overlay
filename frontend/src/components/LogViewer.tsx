@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { buildApiUrl } from '../utils/api';
-import { GetServerPort } from '../../wailsjs/go/main/App';
+import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 interface LogEntry {
   timestamp: string;
@@ -46,7 +46,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
 
   const fetchLogs = async () => {
     try {
-      const port = await GetServerPort();
+      const port = await App.GetServerPort();
       const response = await fetch(`http://localhost:${port}/api/logs?limit=100`);
       if (!response.ok) throw new Error('Failed to fetch logs');
       
@@ -58,7 +58,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
   };
 
   const startStreaming = async () => {
-    const port = await GetServerPort();
+    const port = await App.GetServerPort();
     const wsUrl = `ws://localhost:${port}/api/logs/stream`;
     wsRef.current = new WebSocket(wsUrl);
 
@@ -97,7 +97,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
 
   const clearLogs = async () => {
     try {
-      const port = await GetServerPort();
+      const port = await App.GetServerPort();
       const response = await fetch(`http://localhost:${port}/api/logs/clear`, {
         method: 'POST',
       });
@@ -110,7 +110,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
   };
 
   const downloadLogs = async (format: 'json' | 'text') => {
-    const port = await GetServerPort();
+    const port = await App.GetServerPort();
     const url = `http://localhost:${port}/api/logs/download?format=${format}`;
     window.open(url, '_blank');
   };

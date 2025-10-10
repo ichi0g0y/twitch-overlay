@@ -54,7 +54,12 @@
       "Read(//tmp/**)",
       "Bash(git pull:*)",
       "Bash(task build)",
-      "Bash(git apply:*)"
+      "Bash(git apply:*)",
+      "WebFetch(domain:v3alpha.wails.io)",
+      "Bash(wails3 dev:*)",
+      "Bash(wails3 task:*)",
+      "Bash(lsof:*)",
+      "Bash(wails3 generate bindings:*)"
     ],
     "deny": []
   }

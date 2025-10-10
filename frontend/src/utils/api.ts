@@ -38,7 +38,7 @@ export async function buildApiUrlAsync(path: string): Promise<string> {
   // Wails環境では動的にポートを取得
   try {
     // GetServerPortをインポートして使用（循環参照を避けるため動的インポート）
-    const { GetServerPort } = await import('../../wailsjs/go/main/App');
+    const { GetServerPort } = await import('../../bindings/github.com/nantokaworks/twitch-overlay/app.js');
     const port = await GetServerPort();
     return `http://localhost:${port}${path}`;
   } catch (error) {

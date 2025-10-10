@@ -6,8 +6,8 @@ import {
   ScanBluetoothDevices,
   TestPrint,
   UpdateSettings, UploadFont
-} from '../../wailsjs/go/main/App';
-import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
+} from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { Browser, Events } from '@wailsio/runtime';
 import { useSettings } from '../contexts/SettingsContext';
 import {
   AuthStatus,
@@ -199,7 +199,7 @@ export const useSettingsPage = () => {
   const handleTwitchAuth = async () => {
     try {
       const authUrl = await GetAuthURL();
-      BrowserOpenURL(authUrl);
+      Browser.OpenURL(authUrl);
       toast.info('ブラウザでTwitchにログインしてください');
       setTimeout(async () => {
         await fetchAuthStatus();
@@ -313,12 +313,12 @@ export const useSettingsPage = () => {
 
   const handleOpenOverlay = async () => {
     const port = await GetServerPort();
-    BrowserOpenURL(`http://localhost:${port}/`);
+    Browser.OpenURL(`http://localhost:${port}/`);
   };
 
   const handleOpenOverlayDebug = async () => {
     const port = await GetServerPort();
-    BrowserOpenURL(`http://localhost:${port}/?debug=true`);
+    Browser.OpenURL(`http://localhost:${port}/?debug=true`);
   };
 
   // Bluetooth device functions
@@ -452,17 +452,17 @@ export const useSettingsPage = () => {
     fetchAllSettings();
     fetchAuthStatus();
 
-    const unsubscribePrinter = EventsOn('printer_connected', () => {
+    const unsubscribePrinter = Events.On('printer_connected', () => {
       fetchAllSettings();
       fetchPrinterStatus();
     });
 
-    const unsubscribeWebError = EventsOn('webserver_error', (data: { error: string; port: number }) => {
+    const unsubscribeWebError = Events.On('webserver_error', (data: { error: string; port: number }) => {
       setWebServerError(data);
       toast.error(`Webサーバーの起動に失敗しました: ${data.error}`);
     });
 
-    const unsubscribeWebStarted = EventsOn('webserver_started', (data: { port: number }) => {
+    const unsubscribeWebStarted = Events.On('webserver_started', (data: { port: number }) => {
       setWebServerError(null);
       setWebServerPort(data.port);
       toast.success(`Webサーバーがポート ${data.port} で起動しました`);

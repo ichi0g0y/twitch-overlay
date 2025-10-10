@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 
 interface WebSocketContextValue {
   isConnected: boolean;
@@ -27,11 +27,11 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     }
 
     // Wailsのイベントリスナーを登録
-    EventsOn(event, handler);
+    const unsubscribe = Events.On(event, handler);
 
     // クリーンアップ関数を保存
     const cleanup = () => {
-      EventsOff(event);
+      unsubscribe();
       eventCleanups.delete(event);
     };
     eventCleanups.set(event, cleanup);

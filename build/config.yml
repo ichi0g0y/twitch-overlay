@@ -1,0 +1,48 @@
+# Wails v3 configuration file
+version: '3'
+
+# Application information
+info:
+  companyName: "nantokaworks"
+  productName: "Twitch Overlay"
+  productIdentifier: "com.nantokaworks.twitch-overlay"
+  description: "Twitch overlay application with thermal printer support"
+  copyright: "Copyright © 2025 nantokaworks"
+  comments: "Twitch overlay application with thermal printer support"
+  version: "1.0.0"
+
+# Dev mode configuration
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend/node_modules
+      - web/node_modules
+      - bin
+      - build/bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: cd frontend && bun install
+      type: once
+    - cmd: cd web && bun run build
+      type: blocking
+    - cmd: go mod tidy
+      type: blocking
+    - cmd: wails3 generate bindings -clean=true
+      type: blocking
+    - cmd: cd frontend && bun run dev -- --port ${VITE_PORT:-9245} --strictPort
+      type: background
+    - cmd: go build -o build/bin/twitch-overlay
+      type: blocking
+    - cmd: ./build/bin/twitch-overlay
+      type: primary

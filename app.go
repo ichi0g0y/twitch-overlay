@@ -32,16 +32,27 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/twitcheventsub"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"github.com/nantokaworks/twitch-overlay/internal/webserver"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 )
 
 // App struct
 type App struct {
 	ctx              context.Context
+	wailsApp         *application.App
+	mainWindow       *application.WebviewWindow
 	streamStatus     status.StreamStatus
 	webAssets        *embed.FS
 	tokenRefreshDone chan struct{}
+}
+
+// TODO(v3): Temporary stub for runtime.Screen - replace with proper v3 screen API
+type Screen struct {
+	ID        string
+	Name      string
+	Width     int
+	Height    int
+	IsPrimary bool
 }
 
 // NewApp creates a new App application struct
@@ -134,13 +145,19 @@ func (a *App) startup(ctx context.Context) {
 	// ステータス変更のコールバックを設定
 	status.RegisterStatusChangeCallback(func(s status.StreamStatus) {
 		a.streamStatus = s
-		runtime.EventsEmit(a.ctx, "stream_status_changed", s)
+		// Emit event to frontend
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("stream_status_changed", s)
+		}
 	})
 
 	// プリンター状態変更のコールバックを設定
 	status.RegisterPrinterStatusChangeCallback(func(connected bool) {
 		logger.Info("Printer status changed (from callback)", zap.Bool("connected", connected))
-		runtime.EventsEmit(a.ctx, "printer_connected", connected)
+		// Emit event to frontend
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("printer_connected", connected)
+		}
 	})
 
 	// OAuth callbackサーバーは削除（メインWebサーバーで処理）
@@ -200,15 +217,19 @@ func (a *App) startup(ctx context.Context) {
 		if err := webserver.StartWebServer(port); err != nil {
 			logger.Error("Failed to start web server", zap.Error(err))
 			// Notify frontend about the error
-			runtime.EventsEmit(a.ctx, "webserver_error", map[string]interface{}{
-				"error": err.Error(),
-				"port":  port,
-			})
+			if a.mainWindow != nil {
+				a.mainWindow.EmitEvent("webserver_error", map[string]interface{}{
+					"error": err.Error(),
+					"port":  port,
+				})
+			}
 		} else {
 			// Notify frontend that server started successfully
-			runtime.EventsEmit(a.ctx, "webserver_started", map[string]interface{}{
-				"port": port,
-			})
+			if a.mainWindow != nil {
+				a.mainWindow.EmitEvent("webserver_started", map[string]interface{}{
+					"port": port,
+				})
+			}
 
 			// WebSocketクライアントを起動してバックエンドメッセージをフロントエンドに転送
 			go a.connectToWebSocketServer(port)
@@ -247,15 +268,19 @@ func (a *App) startup(ctx context.Context) {
 				zap.String("current", currentScreenHash),
 				zap.String("saved", savedScreenHash))
 			// 画面構成が変更された場合は中央に配置
-			runtime.WindowCenter(a.ctx)
-			runtime.WindowShow(a.ctx)
+			if a.mainWindow != nil {
+				a.mainWindow.Center()
+				a.mainWindow.Show()
+			}
 			return
 		}
 
 		// まずウィンドウサイズを復元
 		pos := a.GetWindowPosition()
 		if pos["width"] > 0 && pos["height"] > 0 {
-			runtime.WindowSetSize(a.ctx, pos["width"], pos["height"])
+			if a.mainWindow != nil {
+				a.mainWindow.SetSize(pos["width"], pos["height"])
+			}
 			logger.Info("Restored window size",
 				zap.Int("width", pos["width"]),
 				zap.Int("height", pos["height"]))
@@ -278,14 +303,18 @@ func (a *App) startup(ctx context.Context) {
 					// 絶対座標で移動
 					MoveWindowToAbsolutePosition(absoluteX, absoluteY)
 					logger.Info("Window moved to absolute position successfully")
-					runtime.WindowShow(a.ctx)
+					if a.mainWindow != nil {
+						a.mainWindow.Show()
+					}
 					return
 				} else {
 					logger.Warn("Saved screen index no longer exists, centering window",
 						zap.Int("savedIndex", screenIndex),
 						zap.Int("availableScreens", len(currentScreens)))
-					runtime.WindowCenter(a.ctx)
-					runtime.WindowShow(a.ctx)
+					if a.mainWindow != nil {
+						a.mainWindow.Center()
+						a.mainWindow.Show()
+					}
 					return
 				}
 			}
@@ -298,14 +327,20 @@ func (a *App) startup(ctx context.Context) {
 
 		if pos["x"] >= 0 && pos["y"] >= 0 {
 			if a.isPositionValid(pos["x"], pos["y"], pos["width"], pos["height"]) {
-				runtime.WindowSetPosition(a.ctx, pos["x"], pos["y"])
+				if a.mainWindow != nil {
+					a.mainWindow.SetPosition(pos["x"], pos["y"])
+				}
 			} else {
-				runtime.WindowCenter(a.ctx)
+				if a.mainWindow != nil {
+					a.mainWindow.Center()
+				}
 			}
 		}
 
 		// ウィンドウを表示
-		runtime.WindowShow(a.ctx)
+		if a.mainWindow != nil {
+			a.mainWindow.Show()
+		}
 	}()
 }
 
@@ -314,7 +349,9 @@ func (a *App) shutdown(ctx context.Context) {
 	logger.Info("Shutting down Twitch Overlay Desktop...")
 
 	// ウィンドウ位置を保存
-	runtime.EventsEmit(a.ctx, "save_window_position")
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("save_window_position")
+	}
 	// 保存処理を待つ
 	time.Sleep(100 * time.Millisecond)
 
@@ -396,7 +433,9 @@ func (a *App) checkInitialStreamStatus() {
 		status.UpdateStreamStatus(true, nil, streamInfo.ViewerCount)
 
 		// フロントエンドに通知
-		runtime.EventsEmit(a.ctx, "stream_status_changed", status.GetStreamStatus())
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("stream_status_changed", status.GetStreamStatus())
+		}
 
 		// AUTO_DRY_RUN_WHEN_OFFLINEの状態をログ出力
 		if env.Value.AutoDryRunWhenOffline {
@@ -429,7 +468,9 @@ func (a *App) initializePrinter() error {
 	client, err := output.SetupPrinter()
 	if err != nil {
 		logger.Error("Failed to setup printer", zap.Error(err))
-		runtime.EventsEmit(a.ctx, "printer_error", err.Error())
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("printer_error", err.Error())
+		}
 		return fmt.Errorf("failed to setup printer: %w", err)
 	}
 
@@ -444,11 +485,15 @@ func (a *App) initializePrinter() error {
 	// プリンターに接続
 	if err := output.ConnectPrinter(client, *env.Value.PrinterAddress); err != nil {
 		logger.Error("Failed to connect to printer", zap.Error(err))
-		runtime.EventsEmit(a.ctx, "printer_error", err.Error())
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("printer_error", err.Error())
+		}
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
 
-	runtime.EventsEmit(a.ctx, "printer_connected", true)
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("printer_connected", true)
+	}
 	logger.Info("Printer connected successfully")
 	return nil
 }
@@ -540,13 +585,11 @@ func (a *App) GetWindowPosition() map[string]int {
 }
 
 // GetScreens returns all available screens
-func (a *App) GetScreens() []runtime.Screen {
-	screens, err := runtime.ScreenGetAll(a.ctx)
-	if err != nil {
-		logger.Error("Failed to get screens", zap.Error(err))
-		return []runtime.Screen{}
-	}
-	return screens
+// TODO(v3): Implement proper v3 screen API
+func (a *App) GetScreens() []Screen {
+	// STUB: Return empty array for now
+	logger.Warn("GetScreens called but v3 API not yet implemented")
+	return []Screen{}
 }
 
 // generateScreenConfigHash generates a hash from the current screen configuration
@@ -669,7 +712,9 @@ func (a *App) ConnectPrinter(address string) error {
 // DisconnectPrinter disconnects from the printer
 func (a *App) DisconnectPrinter() {
 	output.Stop()
-	runtime.EventsEmit(a.ctx, "printer_connected", false)
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("printer_connected", false)
+	}
 }
 
 // ReconnectPrinter forces a complete reconnection to the printer
@@ -694,12 +739,16 @@ func (a *App) ReconnectPrinter() error {
 	// 強制的に再接続
 	if err := output.ReconnectPrinter(address); err != nil {
 		logger.Error("Failed to reconnect printer", zap.Error(err))
-		runtime.EventsEmit(a.ctx, "printer_error", err.Error())
-		runtime.EventsEmit(a.ctx, "printer_connected", false)
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("printer_error", err.Error())
+			a.mainWindow.EmitEvent("printer_connected", false)
+		}
 		return err
 	}
-	
-	runtime.EventsEmit(a.ctx, "printer_connected", true)
+
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("printer_connected", true)
+	}
 	logger.Info("Printer reconnected successfully")
 	return nil
 }
@@ -741,10 +790,12 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 	}
 	
 	logger.Info("Device scan completed", zap.Int("device_count", len(result)))
-	
+
 	// スキャン後に接続状態を通知（既存の接続状態は変わらない）
-	runtime.EventsEmit(a.ctx, "printer_connected", output.IsConnected())
-	
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("printer_connected", output.IsConnected())
+	}
+
 	return result, nil
 }
 
@@ -760,14 +811,18 @@ func (a *App) TestPrint() error {
 	go func() {
 		// 現在時刻を生成（時:分のフォーマット、秒は不要）
 		testTime := time.Now().Format("15:04")
-		
+
 		// 空のリーダーボード付きで強制印刷（第2引数:空のリーダーボード、第3引数:強制印刷）
 		if err := output.PrintClockWithOptionsForce(testTime, true, true); err != nil {
 			logger.Error("Failed to print test pattern", zap.Error(err))
-			runtime.EventsEmit(a.ctx, "print_error", err.Error())
+			if a.mainWindow != nil {
+				a.mainWindow.EmitEvent("print_error", err.Error())
+			}
 		} else {
 			logger.Info("Test print completed successfully (forced print)")
-			runtime.EventsEmit(a.ctx, "print_success", "Test print completed")
+			if a.mainWindow != nil {
+				a.mainWindow.EmitEvent("print_success", "Test print completed")
+			}
 		}
 	}()
 
@@ -902,7 +957,9 @@ func (a *App) HandleAuthCallback(code string) error {
 		go a.refreshTokenPeriodically()
 	}
 
-	runtime.EventsEmit(a.ctx, "auth_success", true)
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("auth_success", true)
+	}
 	return nil
 }
 
@@ -1026,10 +1083,12 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		logger.Error("Failed to reload environment from database", zap.Error(err))
 		return fmt.Errorf("failed to reload settings: %w", err)
 	}
-	
+
 	// Wailsフロントエンドへの通知
-	runtime.EventsEmit(a.ctx, "settings_updated", newSettings)
-	
+	if a.mainWindow != nil {
+		a.mainWindow.EmitEvent("settings_updated", newSettings)
+	}
+
 	// WebSocket経由でオーバーレイへ通知（統計情報の変更を含む）
 	if weightValue, hasWeight := newSettings["CLOCK_WEIGHT"]; hasWeight {
 		logger.Info("Broadcasting CLOCK_WEIGHT update", zap.Any("value", weightValue))
@@ -1167,23 +1226,33 @@ func (a *App) connectToWebSocketServer(port int) {
 				switch msgType {
 				case "music_status":
 					if data, ok := msg["data"].(map[string]interface{}); ok {
-						runtime.EventsEmit(a.ctx, "music_status_update", data)
+						if a.mainWindow != nil {
+							a.mainWindow.EmitEvent("music_status_update", data)
+						}
 					}
 				case "music_control":
 					if data, ok := msg["data"].(map[string]interface{}); ok {
-						runtime.EventsEmit(a.ctx, "music_control_command", data)
+						if a.mainWindow != nil {
+							a.mainWindow.EmitEvent("music_control_command", data)
+						}
 					}
 				case "fax":
 					if data, ok := msg["data"].(map[string]interface{}); ok {
-						runtime.EventsEmit(a.ctx, "fax_received", data)
+						if a.mainWindow != nil {
+							a.mainWindow.EmitEvent("fax_received", data)
+						}
 					}
 				case "eventsub":
 					if data, ok := msg["data"].(map[string]interface{}); ok {
-						runtime.EventsEmit(a.ctx, "eventsub_event", data)
+						if a.mainWindow != nil {
+							a.mainWindow.EmitEvent("eventsub_event", data)
+						}
 					}
 				default:
 					// その他のメッセージも転送
-					runtime.EventsEmit(a.ctx, msgType, msg["data"])
+					if a.mainWindow != nil {
+						a.mainWindow.EmitEvent(msgType, msg["data"])
+					}
 				}
 			}
 		}

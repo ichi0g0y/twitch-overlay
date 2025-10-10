@@ -4,7 +4,7 @@ import MusicUploadModal from './MusicUploadModal';
 import { Button } from '../ui/button';
 import { Upload, Plus, Trash2, Music as MusicIcon, ChevronLeft, ChevronRight, AlertTriangle, ListPlus } from 'lucide-react';
 import type { Track, Playlist } from '../../types/music';
-import { GetMusicPlaylists, GetMusicTracks, GetPlaylistTracks, CreateMusicPlaylist, DeleteMusicTrack, DeleteMusicPlaylist, AddTrackToPlaylist, RemoveTrackFromPlaylist, GetTrackArtwork } from '../../../wailsjs/go/main/App';
+import { GetMusicPlaylists, GetMusicTracks, GetPlaylistTracks, CreateMusicPlaylist, DeleteMusicTrack, DeleteMusicPlaylist, AddTrackToPlaylist, RemoveTrackFromPlaylist, GetTrackArtwork } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 const MusicManagerEmbed = () => {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -147,8 +147,8 @@ const MusicManagerEmbed = () => {
   const loadPlaylistTracks = async (playlistId: string) => {
     try {
       const tracks = await GetPlaylistTracks(playlistId);
-      // PlaylistTrackはすでにTrackの全プロパティを含んでいる
-      setPlaylistTracks(tracks || []);
+      // PlaylistTrackはすでにTrackの全プロパティを含んでいる、nullを除外
+      setPlaylistTracks((tracks || []).filter(t => t !== null) as Track[]);
     } catch (error) {
       console.error('Failed to load playlist tracks:', error);
     }
@@ -180,7 +180,9 @@ const MusicManagerEmbed = () => {
 
     try {
       const playlist = await CreateMusicPlaylist(newPlaylistName, '');
-      setPlaylists(prev => [...prev, playlist]);
+      if (playlist) {
+        setPlaylists(prev => [...prev, playlist]);
+      }
       setNewPlaylistName('');
       setIsCreatingPlaylist(false);
     } catch (error) {

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import { GetServerPort } from '../../wailsjs/go/main/App';
+import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 interface OverlaySettings {
   // 音楽プレイヤー設定
@@ -45,7 +45,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const port = await GetServerPort();
+        const port = await App.GetServerPort();
         const response = await fetch(`http://localhost:${port}/api/settings/overlay`);
         if (response.ok) {
           const data = await response.json();
@@ -84,9 +84,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!settings) return;
 
     const newSettings = { ...settings, ...updates };
-    
+
     try {
-      const port = await GetServerPort();
+      const port = await App.GetServerPort();
       const response = await fetch(`http://localhost:${port}/api/settings/overlay`, {
         method: 'POST',
         headers: {

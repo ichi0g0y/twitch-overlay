@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Wifi, Radio } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
-import { GetServerPort } from '../../wailsjs/go/main/App';
+import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 interface SystemStatusCardProps {
   featureStatus: FeatureStatus | null;
@@ -41,7 +41,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   const [currentPort, setCurrentPort] = React.useState<number>(8080);
 
   React.useEffect(() => {
-    GetServerPort()
+    App.GetServerPort()
       .then(port => setCurrentPort(port))
       .catch(error => console.error('Failed to get server port:', error));
   }, []);
