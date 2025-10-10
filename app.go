@@ -23,6 +23,7 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/music"
+	"github.com/nantokaworks/twitch-overlay/internal/notification"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
@@ -204,6 +205,25 @@ func (a *App) startup(ctx context.Context) {
 			}
 		}()
 	}
+
+	// 通知マネージャーを初期化（メインウインドウとは別管理）
+	notification.Initialize(a.wailsApp)
+	// 画面情報取得関数をnotificationパッケージに設定
+	notification.SetScreenInfoProvider(func() []notification.ScreenInfoExtended {
+		mainScreens := GetAllScreensWithPosition()
+		notifScreens := make([]notification.ScreenInfoExtended, len(mainScreens))
+		for i, s := range mainScreens {
+			notifScreens[i] = notification.ScreenInfoExtended{
+				X:         s.X,
+				Y:         s.Y,
+				Width:     s.Width,
+				Height:    s.Height,
+				IsPrimary: s.IsPrimary,
+				Index:     s.Index,
+			}
+		}
+		return notifScreens
+	})
 
 	// Webサーバーを起動（OBSオーバーレイ用）
 	go func() {
@@ -829,6 +849,19 @@ func (a *App) TestPrint() error {
 	return nil
 }
 
+// TestNotification sends a test notification
+func (a *App) TestNotification() error {
+	logger.Info("Sending test notification")
+
+	// テスト用の通知を表示
+	notification.ShowChatNotification(
+		"テストユーザー",
+		"これはテスト通知です！チャットが来ると、このようなウインドウが表示されます。",
+	)
+
+	return nil
+}
+
 // GetStreamStatus returns the current stream status
 func (a *App) GetStreamStatus() status.StreamStatus {
 	return a.streamStatus
@@ -1037,6 +1070,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"CLOCK_WALLET": true,
 			"CLOCK_SHOW_ICONS": true,
 			"FONT_FILENAME": true,
+			"NOTIFICATION_ENABLED": true,
 		}
 		
 		if !validKeys[dbKey] {

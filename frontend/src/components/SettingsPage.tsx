@@ -30,6 +30,7 @@ export const SettingsPage: React.FC = () => {
     refreshingStreamStatus,
     reconnectingPrinter,
     testingPrinter,
+    testingNotification,
     verifyingTwitch,
     webServerError,
     webServerPort,
@@ -46,6 +47,7 @@ export const SettingsPage: React.FC = () => {
     verifyTwitchConfig,
     handlePrinterReconnect,
     handleTestPrint,
+    handleTestNotification,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,
@@ -132,6 +134,8 @@ export const SettingsPage: React.FC = () => {
               previewImage={previewImage}
               handleFontPreview={handleFontPreview}
               handleDeleteFont={handleDeleteFont}
+              handleTestNotification={handleTestNotification}
+              testingNotification={testingNotification}
             />
           </TabsContent>
           <TabsContent value="twitch">

@@ -4,6 +4,7 @@ import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
   GetPrinterStatus, GetServerPort, ReconnectPrinter,
   ScanBluetoothDevices,
+  TestNotification,
   TestPrint,
   UpdateSettings, UploadFont
 } from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
@@ -45,6 +46,7 @@ export const useSettingsPage = () => {
   const [refreshingStreamStatus, setRefreshingStreamStatus] = useState(false);
   const [reconnectingPrinter, setReconnectingPrinter] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
+  const [testingNotification, setTestingNotification] = useState(false);
   const [verifyingTwitch, setVerifyingTwitch] = useState(false);
   const [webServerError, setWebServerError] = useState<{ error: string; port: number } | null>(null);
   const [webServerPort, setWebServerPort] = useState<number>(8080);
@@ -257,6 +259,17 @@ export const useSettingsPage = () => {
     }
   };
 
+  const handleTestNotification = async () => {
+    setTestingNotification(true);
+    try {
+      await TestNotification();
+      toast.success('テスト通知を送信しました');
+    } catch (err: any) {
+      toast.error(`テスト通知エラー: ${err.message}`);
+    } finally {
+      setTestingNotification(false);
+    }
+  };
 
   const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -509,6 +522,7 @@ export const useSettingsPage = () => {
     refreshingStreamStatus,
     reconnectingPrinter,
     testingPrinter,
+    testingNotification,
     verifyingTwitch,
     webServerError,
     webServerPort,
@@ -527,6 +541,7 @@ export const useSettingsPage = () => {
     verifyTwitchConfig,
     handlePrinterReconnect,
     handleTestPrint,
+    handleTestNotification,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, X } from 'lucide-react';
+import { Bell, RefreshCw, Upload, X } from 'lucide-react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -24,6 +24,8 @@ interface GeneralSettingsProps {
   previewImage: string | null;
   handleFontPreview: () => void;
   handleDeleteFont: () => void;
+  handleTestNotification: () => void;
+  testingNotification: boolean;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
@@ -41,6 +43,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   previewImage,
   handleFontPreview,
   handleDeleteFont,
+  handleTestNotification,
+  testingNotification,
 }) => {
   return (
     <div className="space-y-6">
@@ -158,6 +162,65 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 通知設定カード */}
+      <Card>
+        <CardHeader>
+          <CardTitle>通知設定</CardTitle>
+          <CardDescription>
+            Twitchチャット受信時の通知ウインドウを設定します
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>チャット通知を有効化</Label>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Twitchチャットを受信したときに通知ウインドウを表示します
+              </p>
+            </div>
+            <Switch
+              checked={getBooleanValue('NOTIFICATION_ENABLED')}
+              onCheckedChange={(checked) => handleSettingChange('NOTIFICATION_ENABLED', checked)}
+            />
+          </div>
+
+          {getBooleanValue('NOTIFICATION_ENABLED') && (
+            <div className="space-y-4">
+              <Alert>
+                <Bell className="h-4 w-4" />
+                <AlertDescription>
+                  通知が有効です。Twitchチャットを受信すると、ドラッグ可能な通知ウインドウが表示されます。
+                </AlertDescription>
+              </Alert>
+
+              <div>
+                <Button
+                  onClick={handleTestNotification}
+                  variant="outline"
+                  className="w-full"
+                  disabled={testingNotification}
+                >
+                  {testingNotification ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      テスト送信中...
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-4 h-4 mr-2" />
+                      テスト通知を送信
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  テスト通知ウインドウが表示されます。ドラッグして位置を変更できます。
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

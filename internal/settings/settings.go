@@ -228,6 +228,20 @@ var DefaultSettings = map[string]Setting{
 		Key: "OVERLAY_DEBUG_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable debug panel in overlay",
 	},
+
+	// 通知設定
+	"NOTIFICATION_ENABLED": {
+		Key: "NOTIFICATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable chat notification window",
+	},
+	"NOTIFICATION_WINDOW_X": {
+		Key: "NOTIFICATION_WINDOW_X", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window X position",
+	},
+	"NOTIFICATION_WINDOW_Y": {
+		Key: "NOTIFICATION_WINDOW_Y", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window Y position",
+	},
 }
 
 // 機能の有効性チェック
@@ -456,7 +470,7 @@ func ValidateSetting(key, value string) error {
 				return fmt.Errorf("must be an integer between 0 and 9999999")
 			}
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT":
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

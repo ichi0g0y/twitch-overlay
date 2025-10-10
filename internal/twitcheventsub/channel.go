@@ -6,6 +6,7 @@ import (
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
+	"github.com/nantokaworks/twitch-overlay/internal/notification"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
@@ -38,7 +39,16 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 			zap.String("rewardId", message.ChannelPointsCustomRewardId))
 		return
 	}
-	// 通常のチャットメッセージの処理（必要に応じて実装）
+
+	// 通知ウインドウに表示
+	notification.ShowChatNotification(
+		message.Chatter.ChatterUserName,
+		message.Message.Text,
+	)
+
+	logger.Debug("Chat message processed",
+		zap.String("user", message.Chatter.ChatterUserName),
+		zap.String("message", message.Message.Text))
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {

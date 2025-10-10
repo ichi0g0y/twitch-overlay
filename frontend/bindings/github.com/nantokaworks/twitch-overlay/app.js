@@ -385,6 +385,14 @@ export function TestChannelPointRedemption(userInput, userName, rewardTitle) {
 }
 
 /**
+ * TestNotification sends a test notification
+ * @returns {$CancellablePromise<void>}
+ */
+export function TestNotification() {
+    return $Call.ByID(2373108510);
+}
+
+/**
  * TestPrint sends a test pattern to the printer
  * @returns {$CancellablePromise<void>}
  */
