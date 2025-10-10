@@ -37,13 +37,22 @@ tasks:
     cmds:
       - echo "OBS用オーバーレイをビルド中..."
       - cd web && bun run build
-      - echo "プロダクションビルド中..."
-      - wails3 build
-      - echo "既存の署名を削除中..."
-      - codesign --remove-signature build/bin/twitch-overlay.app
-      - echo "新しい自己署名を適用中..."
-      - codesign --force --deep --sign - build/bin/twitch-overlay.app
-      - echo "ビルド完了 → build/bin/"
+      - echo "フロントエンド依存関係をインストール中..."
+      - cd frontend && bun install
+      - echo "バインディング生成中..."
+      - wails3 generate bindings -clean=true
+      - echo "フロントエンドをビルド中..."
+      - cd frontend && bun run build
+      - echo ".appバンドルを作成中..."
+      - mkdir -p build/bin/twitch-overlay.app/Contents/MacOS
+      - mkdir -p build/bin/twitch-overlay.app/Contents/Resources
+      - echo "Goバイナリをビルド中..."
+      - go build -tags production -ldflags "-w -s" -o build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay
+      - echo "Info.plistをコピー中..."
+      - cp build/darwin/Info.plist build/bin/twitch-overlay.app/Contents/
+      - echo "署名処理中（エンタイトルメント適用）..."
+      - codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay.app
+      - echo "ビルド完了 → build/bin/twitch-overlay.app"
 
   # デバッグビルド
   build:debug:
@@ -51,12 +60,16 @@ tasks:
     cmds:
       - echo "OBS用オーバーレイをビルド中..."
       - cd web && bun run build
-      - echo "デバッグビルド中..."
-      - wails3 build -debug
-      - echo "既存の署名を削除中..."
-      - codesign --remove-signature build/bin/twitch-overlay.app
-      - echo "新しい自己署名を適用中..."
-      - codesign --force --deep --sign - build/bin/twitch-overlay.app
+      - echo "フロントエンド依存関係をインストール中..."
+      - cd frontend && bun install
+      - echo "バインディング生成中..."
+      - wails3 generate bindings -clean=true
+      - echo "フロントエンドをビルド中（デバッグモード）..."
+      - cd frontend && bun run build:dev
+      - echo "Goバイナリをビルド中（デバッグモード）..."
+      - go build -tags debug -o build/bin/twitch-overlay
+      - echo "署名処理中（エンタイトルメント適用）..."
+      - codesign --force --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay
       - echo "デバッグビルド完了 → build/bin/"
 
   # クリーンアップ
@@ -91,7 +104,7 @@ tasks:
       - go test ./...
 
   # 配布用パッケージ作成（macOS）
-  package:
+  pkg:
     desc: 配布用パッケージを作成
     deps: [build]
     cmds:

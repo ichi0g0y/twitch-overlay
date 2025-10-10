@@ -59,7 +59,10 @@
       "Bash(wails3 dev:*)",
       "Bash(wails3 task:*)",
       "Bash(lsof:*)",
-      "Bash(wails3 generate bindings:*)"
+      "Bash(wails3 generate bindings:*)",
+      "Bash(task:*)",
+      "Bash(wails3 build:*)",
+      "Bash(plutil:*)"
     ],
     "deny": []
   }
