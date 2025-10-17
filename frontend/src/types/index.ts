@@ -218,3 +218,13 @@ export interface UpdateSettingsResponse {
   status: FeatureStatus;
   message: string;
 }
+
+// スクリーン情報（拡張版）
+export interface ScreenInfoExtended {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isPrimary: boolean;
+  index: number;
+}

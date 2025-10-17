@@ -157,6 +157,136 @@ void freeScreenInfo(ScreenInfo* info) {
         free(info);
     }
 }
+
+// Get notification window position by window title "Twitch Chat"
+void getNotificationWindowPosition(double* x, double* y, double* width, double* height) {
+    // Initialize output values
+    *x = 0;
+    *y = 0;
+    *width = 0;
+    *height = 0;
+
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        if (app == nil) {
+            return;
+        }
+
+        NSArray *windows = [app windows];
+        if (windows == nil) {
+            return;
+        }
+
+        for (NSWindow *window in windows) {
+            if ([[window title] isEqualToString:@"Twitch Chat"]) {
+                NSRect frame = [window frame];
+                *x = frame.origin.x;
+                *y = frame.origin.y;
+                *width = frame.size.width;
+                *height = frame.size.height;
+                return;
+            }
+        }
+    }
+}
+
+// Move notification window to absolute position by window title "Twitch Chat"
+void moveNotificationWindowToAbsolutePosition(double x, double y) {
+    // Ensure we're on the main thread
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            moveNotificationWindowToAbsolutePosition(x, y);
+        });
+        return;
+    }
+
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        if (app == nil) {
+            return;
+        }
+
+        NSArray *windows = [app windows];
+        if (windows == nil) {
+            return;
+        }
+
+        for (NSWindow *window in windows) {
+            if ([[window title] isEqualToString:@"Twitch Chat"]) {
+                NSRect frame = [window frame];
+                frame.origin.x = x;
+                frame.origin.y = y;
+                [window setFrame:frame display:YES animate:NO];
+                return;
+            }
+        }
+    }
+}
+
+// Get settings window position by window title "Twitch Overlay Settings"
+void getSettingsWindowPosition(double* x, double* y, double* width, double* height) {
+    // Initialize output values
+    *x = 0;
+    *y = 0;
+    *width = 0;
+    *height = 0;
+
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        if (app == nil) {
+            return;
+        }
+
+        NSArray *windows = [app windows];
+        if (windows == nil) {
+            return;
+        }
+
+        for (NSWindow *window in windows) {
+            if ([[window title] isEqualToString:@"Twitch Overlay Settings"]) {
+                NSRect frame = [window frame];
+                *x = frame.origin.x;
+                *y = frame.origin.y;
+                *width = frame.size.width;
+                *height = frame.size.height;
+                return;
+            }
+        }
+    }
+}
+
+// Move settings window to absolute position by window title "Twitch Overlay Settings"
+void moveSettingsWindowToAbsolutePosition(double x, double y) {
+    // Ensure we're on the main thread
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            moveSettingsWindowToAbsolutePosition(x, y);
+        });
+        return;
+    }
+
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        if (app == nil) {
+            return;
+        }
+
+        NSArray *windows = [app windows];
+        if (windows == nil) {
+            return;
+        }
+
+        for (NSWindow *window in windows) {
+            if ([[window title] isEqualToString:@"Twitch Overlay Settings"]) {
+                NSRect frame = [window frame];
+                frame.origin.x = x;
+                frame.origin.y = y;
+                [window setFrame:frame display:YES animate:NO];
+                return;
+            }
+        }
+    }
+}
 */
 import "C"
 import (
@@ -260,4 +390,34 @@ func FindScreenContainingWindow(windowX, windowY, windowWidth, windowHeight floa
 	}
 
 	return 0
+}
+
+// GetNotificationWindowPosition returns the notification window position in absolute coordinates
+func GetNotificationWindowPosition() (x, y, width, height float64) {
+	var cx, cy, cw, ch C.double
+	C.getNotificationWindowPosition(&cx, &cy, &cw, &ch)
+	return float64(cx), float64(cy), float64(cw), float64(ch)
+}
+
+// MoveNotificationWindowToAbsolutePosition moves the notification window to absolute coordinates
+func MoveNotificationWindowToAbsolutePosition(x, y float64) {
+	logger.Info("Moving notification window to absolute position",
+		zap.Float64("x", x),
+		zap.Float64("y", y))
+	C.moveNotificationWindowToAbsolutePosition(C.double(x), C.double(y))
+}
+
+// GetSettingsWindowPosition returns the settings window position in absolute coordinates
+func GetSettingsWindowPosition() (x, y, width, height float64) {
+	var cx, cy, cw, ch C.double
+	C.getSettingsWindowPosition(&cx, &cy, &cw, &ch)
+	return float64(cx), float64(cy), float64(cw), float64(ch)
+}
+
+// MoveSettingsWindowToAbsolutePosition moves the settings window to absolute coordinates
+func MoveSettingsWindowToAbsolutePosition(x, y float64) {
+	logger.Info("Moving settings window to absolute position",
+		zap.Float64("x", x),
+		zap.Float64("y", y))
+	C.moveSettingsWindowToAbsolutePosition(C.double(x), C.double(y))
 }

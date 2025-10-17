@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -39,15 +40,14 @@ func main() {
 	// Store app reference for later use (notification windows, etc)
 	appInstance.wailsApp = app
 
-	// Create main window (Settings screen)
+	// Create main window (Settings screen) - Hidden initially for position restoration
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Twitch Overlay Settings",
-		Width:            1024,
-		Height:           768,
 		MinWidth:         400,
 		MinHeight:        400,
 		BackgroundColour: application.NewRGB(27, 38, 54),
 		URL:              "/",
+		Hidden:           true, // Hide until position is restored
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -57,6 +57,12 @@ func main() {
 
 	// Store mainWindow reference
 	appInstance.mainWindow = mainWindow
+
+	// Register WindowRuntimeReady event handler for window state restoration
+	mainWindow.OnWindowEvent(events.Common.WindowRuntimeReady, func(e *application.WindowEvent) {
+		// Window runtime is ready - now we can safely restore position and show the window
+		appInstance.restoreWindowState()
+	})
 
 	// Call startup logic with a context
 	ctx := context.Background()

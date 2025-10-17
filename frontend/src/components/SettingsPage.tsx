@@ -31,6 +31,7 @@ export const SettingsPage: React.FC = () => {
     reconnectingPrinter,
     testingPrinter,
     testingNotification,
+    resettingNotificationPosition,
     verifyingTwitch,
     webServerError,
     webServerPort,
@@ -48,6 +49,7 @@ export const SettingsPage: React.FC = () => {
     handlePrinterReconnect,
     handleTestPrint,
     handleTestNotification,
+    handleResetNotificationPosition,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,
@@ -136,6 +138,8 @@ export const SettingsPage: React.FC = () => {
               handleDeleteFont={handleDeleteFont}
               handleTestNotification={handleTestNotification}
               testingNotification={testingNotification}
+              resettingNotificationPosition={resettingNotificationPosition}
+              handleResetNotificationPosition={handleResetNotificationPosition}
             />
           </TabsContent>
           <TabsContent value="twitch">

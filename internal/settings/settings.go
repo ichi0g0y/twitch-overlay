@@ -242,6 +242,30 @@ var DefaultSettings = map[string]Setting{
 		Key: "NOTIFICATION_WINDOW_Y", Value: "", Type: SettingTypeNormal, Required: false,
 		Description: "Notification window Y position",
 	},
+	"NOTIFICATION_WINDOW_WIDTH": {
+		Key: "NOTIFICATION_WINDOW_WIDTH", Value: "400", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window width",
+	},
+	"NOTIFICATION_WINDOW_HEIGHT": {
+		Key: "NOTIFICATION_WINDOW_HEIGHT", Value: "150", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window height",
+	},
+	"NOTIFICATION_WINDOW_ABSOLUTE_X": {
+		Key: "NOTIFICATION_WINDOW_ABSOLUTE_X", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window absolute X position",
+	},
+	"NOTIFICATION_WINDOW_ABSOLUTE_Y": {
+		Key: "NOTIFICATION_WINDOW_ABSOLUTE_Y", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window absolute Y position",
+	},
+	"NOTIFICATION_WINDOW_SCREEN_INDEX": {
+		Key: "NOTIFICATION_WINDOW_SCREEN_INDEX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window screen index",
+	},
+	"NOTIFICATION_WINDOW_SCREEN_HASH": {
+		Key: "NOTIFICATION_WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Screen configuration hash for notification window position validation",
+	},
 }
 
 // 機能の有効性チェック

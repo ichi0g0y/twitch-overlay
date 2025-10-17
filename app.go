@@ -34,6 +34,7 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"github.com/nantokaworks/twitch-overlay/internal/webserver"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.uber.org/zap"
 )
 
@@ -224,6 +225,12 @@ func (a *App) startup(ctx context.Context) {
 		}
 		return notifScreens
 	})
+	// ウィンドウ位置関数プロバイダーを設定
+	notification.SetWindowPositionProvider(
+		GetNotificationWindowPosition,
+		MoveNotificationWindowToAbsolutePosition,
+		FindScreenContainingWindow,
+	)
 
 	// Webサーバーを起動（OBSオーバーレイ用）
 	go func() {
@@ -256,112 +263,172 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}()
 
-	// ウィンドウ位置の復元
-	go func() {
-		// UIの初期化を待つ
-		time.Sleep(500 * time.Millisecond) // CGOの初期化のため少し長めに待つ
+	// Note: Window restoration is now handled by WindowRuntimeReady event in main.go
+}
 
-		// 現在の画面構成を取得
-		currentScreens := GetAllScreensWithPosition()
-		logger.Info("Current screen configuration", zap.Int("screenCount", len(currentScreens)))
+// restoreRelativePosition restores window using relative position (fallback method)
+func (a *App) restoreRelativePosition(pos map[string]int) {
+	logger.Info("Falling back to relative position restore",
+		zap.Int("x", pos["x"]), zap.Int("y", pos["y"]),
+		zap.Int("width", pos["width"]), zap.Int("height", pos["height"]))
 
-		// 現在の画面構成ハッシュを取得
-		currentScreenHash := a.generateScreenConfigHash()
-		logger.Info("Current screen configuration hash", zap.String("hash", currentScreenHash))
-
-		// 保存された情報を取得
-		db := localdb.GetDB()
-		if db == nil {
-			logger.Warn("Database not initialized, cannot restore window position")
-			return
-		}
-
-		settingsManager := settings.NewSettingsManager(db)
-		savedScreenHash, _ := settingsManager.GetRealValue("WINDOW_SCREEN_HASH")
-		absoluteXStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_X")
-		absoluteYStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_Y")
-		screenIndexStr, _ := settingsManager.GetRealValue("WINDOW_SCREEN_INDEX")
-
-		// 画面構成が変更されているかチェック
-		if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
-			logger.Warn("Screen configuration has changed, using default window position",
-				zap.String("current", currentScreenHash),
-				zap.String("saved", savedScreenHash))
-			// 画面構成が変更された場合は中央に配置
+	if pos["x"] >= 0 && pos["y"] >= 0 {
+		if a.isPositionValid(pos["x"], pos["y"], pos["width"], pos["height"]) {
+			if a.mainWindow != nil {
+				a.mainWindow.SetPosition(pos["x"], pos["y"])
+				logger.Info("Calling Show() to display window (relative position)")
+				a.mainWindow.Show()
+				logger.Info("Window shown at restored relative position")
+				a.registerWindowEventListeners()
+			}
+		} else {
+			logger.Warn("Saved position is invalid, centering window")
 			if a.mainWindow != nil {
 				a.mainWindow.Center()
+				logger.Info("Calling Show() to display window (invalid position)")
 				a.mainWindow.Show()
+				logger.Info("Window centered and shown (invalid position)")
+				a.registerWindowEventListeners()
+			}
+		}
+	} else {
+		logger.Info("No saved position, centering window")
+		if a.mainWindow != nil {
+			a.mainWindow.Center()
+			logger.Info("Calling Show() to display window (no saved position)")
+			a.mainWindow.Show()
+			logger.Info("Window centered and shown (no saved position)")
+			a.registerWindowEventListeners()
+		}
+	}
+}
+
+// restoreWindowState restores window position and size from saved settings
+// This method is called when the window runtime is ready (triggered by WindowRuntimeReady event)
+func (a *App) restoreWindowState() {
+	logger.Info("Starting window position restoration (WindowRuntimeReady triggered)")
+
+	// まず最初にウィンドウサイズを復元（全てのパスで共通処理）
+	pos := a.GetWindowPosition()
+	if pos["width"] > 0 && pos["height"] > 0 {
+		if a.mainWindow != nil {
+			a.mainWindow.SetSize(pos["width"], pos["height"])
+		}
+		logger.Info("Restored window size",
+			zap.Int("width", pos["width"]),
+			zap.Int("height", pos["height"]))
+	}
+
+	// 現在の画面構成を取得
+	currentScreens := GetAllScreensWithPosition()
+	logger.Info("Current screen configuration", zap.Int("screenCount", len(currentScreens)))
+
+	// 現在の画面構成ハッシュを取得
+	currentScreenHash := a.generateScreenConfigHash()
+	logger.Info("Current screen configuration hash", zap.String("hash", currentScreenHash))
+
+	// 保存された情報を取得
+	db := localdb.GetDB()
+	if db == nil {
+		logger.Warn("Database not initialized, centering window")
+		if a.mainWindow != nil {
+			a.mainWindow.Center()
+			logger.Info("Calling Show() to display window (no DB)")
+			a.mainWindow.Show()
+			// ウィンドウが表示された後にイベントリスナーを登録
+			a.registerWindowEventListeners()
+		}
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	savedScreenHash, _ := settingsManager.GetRealValue("WINDOW_SCREEN_HASH")
+	absoluteXStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_X")
+	absoluteYStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_Y")
+	screenIndexStr, _ := settingsManager.GetRealValue("WINDOW_SCREEN_INDEX")
+
+	// 画面構成が変更されているかチェック
+	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
+		logger.Warn("Screen configuration has changed, using default window position",
+			zap.String("current", currentScreenHash),
+			zap.String("saved", savedScreenHash))
+		// 画面構成が変更された場合は中央に配置
+		if a.mainWindow != nil {
+			a.mainWindow.Center()
+			logger.Info("Calling Show() to display window (screen config changed)")
+			a.mainWindow.Show()
+			a.registerWindowEventListeners()
+		}
+		return
+	}
+
+	// 絶対座標が保存されている場合は使用
+	if absoluteXStr != "" && absoluteYStr != "" {
+		absoluteX, errX := strconv.ParseFloat(absoluteXStr, 64)
+		absoluteY, errY := strconv.ParseFloat(absoluteYStr, 64)
+		screenIndex := parseIntOrDefault(screenIndexStr, 0)
+
+		if errX == nil && errY == nil {
+			logger.Info("Restoring window to absolute position",
+				zap.Float64("absoluteX", absoluteX),
+				zap.Float64("absoluteY", absoluteY),
+				zap.Int("screenIndex", screenIndex))
+
+			// 保存されたスクリーンが存在するか確認
+			if screenIndex < len(currentScreens) {
+				// 絶対座標で移動（設定ウィンドウ専用関数を使用）
+				MoveSettingsWindowToAbsolutePosition(absoluteX, absoluteY)
+				logger.Info("Window moved to absolute position, calling Show()")
+				if a.mainWindow != nil {
+					a.mainWindow.Show()
+					logger.Info("Window shown at restored absolute position")
+					a.registerWindowEventListeners()
+				}
+			} else {
+				logger.Warn("Saved screen index no longer exists, centering window",
+					zap.Int("savedIndex", screenIndex),
+					zap.Int("availableScreens", len(currentScreens)))
+				if a.mainWindow != nil {
+					a.mainWindow.Center()
+					logger.Info("Calling Show() to display window (invalid screen index)")
+					a.mainWindow.Show()
+					a.registerWindowEventListeners()
+				}
 			}
 			return
 		}
+	}
 
-		// まずウィンドウサイズを復元
-		pos := a.GetWindowPosition()
-		if pos["width"] > 0 && pos["height"] > 0 {
-			if a.mainWindow != nil {
-				a.mainWindow.SetSize(pos["width"], pos["height"])
-			}
-			logger.Info("Restored window size",
-				zap.Int("width", pos["width"]),
-				zap.Int("height", pos["height"]))
+	// 絶対座標がない、またはパースに失敗した場合は相対座標にフォールバック
+	a.restoreRelativePosition(pos)
+	logger.Info("Window position restoration completed")
+}
+
+// registerWindowEventListeners registers window event listeners for position tracking
+func (a *App) registerWindowEventListeners() {
+	if a.mainWindow == nil {
+		return
+	}
+
+	// ウィンドウ移動時のイベントリスナー
+	a.mainWindow.OnWindowEvent(events.Common.WindowDidMove, func(e *application.WindowEvent) {
+		// Wails APIで位置とサイズを取得
+		x, y := a.mainWindow.Position()
+		width, height := a.mainWindow.Size()
+
+		logger.Debug("WindowDidMove event triggered",
+			zap.Int("x", x), zap.Int("y", y),
+			zap.Int("width", width), zap.Int("height", height))
+
+		// 位置を保存
+		if err := a.SaveWindowPosition(x, y, width, height); err != nil {
+			logger.Error("Failed to save window position on move", zap.Error(err))
+		} else {
+			logger.Debug("Window position saved on move event")
 		}
+	})
 
-		// 絶対座標が保存されている場合は使用
-		if absoluteXStr != "" && absoluteYStr != "" {
-			absoluteX, errX := strconv.ParseFloat(absoluteXStr, 64)
-			absoluteY, errY := strconv.ParseFloat(absoluteYStr, 64)
-			screenIndex := parseIntOrDefault(screenIndexStr, 0)
-
-			if errX == nil && errY == nil {
-				logger.Info("Restoring window to absolute position",
-					zap.Float64("absoluteX", absoluteX),
-					zap.Float64("absoluteY", absoluteY),
-					zap.Int("screenIndex", screenIndex))
-
-				// 保存されたスクリーンが存在するか確認
-				if screenIndex < len(currentScreens) {
-					// 絶対座標で移動
-					MoveWindowToAbsolutePosition(absoluteX, absoluteY)
-					logger.Info("Window moved to absolute position successfully")
-					if a.mainWindow != nil {
-						a.mainWindow.Show()
-					}
-					return
-				} else {
-					logger.Warn("Saved screen index no longer exists, centering window",
-						zap.Int("savedIndex", screenIndex),
-						zap.Int("availableScreens", len(currentScreens)))
-					if a.mainWindow != nil {
-						a.mainWindow.Center()
-						a.mainWindow.Show()
-					}
-					return
-				}
-			}
-		}
-
-		// 絶対座標がない場合は従来の方法にフォールバック
-		logger.Info("Falling back to relative position restore",
-			zap.Int("x", pos["x"]), zap.Int("y", pos["y"]),
-			zap.Int("width", pos["width"]), zap.Int("height", pos["height"]))
-
-		if pos["x"] >= 0 && pos["y"] >= 0 {
-			if a.isPositionValid(pos["x"], pos["y"], pos["width"], pos["height"]) {
-				if a.mainWindow != nil {
-					a.mainWindow.SetPosition(pos["x"], pos["y"])
-				}
-			} else {
-				if a.mainWindow != nil {
-					a.mainWindow.Center()
-				}
-			}
-		}
-
-		// ウィンドウを表示
-		if a.mainWindow != nil {
-			a.mainWindow.Show()
-		}
-	}()
+	logger.Info("Window event listeners registered")
 }
 
 // shutdown is called when the app is shutting down
@@ -547,8 +614,8 @@ func (a *App) SaveWindowPosition(x, y, width, height int) error {
 	settingsManager.SetSetting("WINDOW_WIDTH", strconv.Itoa(width))
 	settingsManager.SetSetting("WINDOW_HEIGHT", strconv.Itoa(height))
 
-	// Get absolute position using CGO
-	absX, absY, _, _ := GetCurrentWindowPosition()
+	// Get absolute position using CGO (settings window specific)
+	absX, absY, _, _ := GetSettingsWindowPosition()
 	if absX != 0 || absY != 0 {
 		settingsManager.SetSetting("WINDOW_ABSOLUTE_X", strconv.FormatFloat(absX, 'f', -1, 64))
 		settingsManager.SetSetting("WINDOW_ABSOLUTE_Y", strconv.FormatFloat(absY, 'f', -1, 64))
@@ -605,32 +672,44 @@ func (a *App) GetWindowPosition() map[string]int {
 }
 
 // GetScreens returns all available screens
-// TODO(v3): Implement proper v3 screen API
 func (a *App) GetScreens() []Screen {
-	// STUB: Return empty array for now
-	logger.Warn("GetScreens called but v3 API not yet implemented")
-	return []Screen{}
+	screensExtended := GetAllScreensWithPosition()
+	screens := make([]Screen, len(screensExtended))
+
+	for i, s := range screensExtended {
+		screens[i] = Screen{
+			ID:        fmt.Sprintf("screen-%d", s.Index),
+			Name:      fmt.Sprintf("Display %d", s.Index+1),
+			Width:     int(s.Width),
+			Height:    int(s.Height),
+			IsPrimary: s.IsPrimary,
+		}
+	}
+
+	return screens
 }
 
 // generateScreenConfigHash generates a hash from the current screen configuration
 func (a *App) generateScreenConfigHash() string {
-	screens := a.GetScreens()
+	screens := GetAllScreensWithPosition()
 	if len(screens) == 0 {
 		return ""
 	}
 
-	// Sort screens by width, height for consistent hashing
+	// Sort screens by X, Y position for consistent hashing
 	sort.Slice(screens, func(i, j int) bool {
-		if screens[i].Width != screens[j].Width {
-			return screens[i].Width < screens[j].Width
+		if screens[i].X != screens[j].X {
+			return screens[i].X < screens[j].X
 		}
-		return screens[i].Height < screens[j].Height
+		return screens[i].Y < screens[j].Y
 	})
 
 	// Create a string representation of the screen configuration
 	var configStr string
 	for _, screen := range screens {
-		configStr += fmt.Sprintf("%dx%d-%v-", screen.Width, screen.Height, screen.IsPrimary)
+		configStr += fmt.Sprintf("%dx%d-%.0f,%.0f-%v-",
+			int(screen.Width), int(screen.Height),
+			screen.X, screen.Y, screen.IsPrimary)
 	}
 
 	// Generate MD5 hash
@@ -640,19 +719,8 @@ func (a *App) generateScreenConfigHash() string {
 
 // isPositionValid checks if a window position is valid for the current screen configuration
 func (a *App) isPositionValid(x, y, width, height int) bool {
-	screens := a.GetScreens()
+	screens := GetAllScreensWithPosition()
 	if len(screens) == 0 {
-		return false
-	}
-
-	// Without screen bounds info, we do a simpler check
-	// Check if position is within reasonable range
-	// For multi-monitor setup, negative coordinates are valid
-	maxCoordinate := 10000 // Reasonable max coordinate
-	minCoordinate := -10000 // Reasonable min coordinate
-
-	if x < minCoordinate || x > maxCoordinate ||
-	   y < minCoordinate || y > maxCoordinate {
 		return false
 	}
 
@@ -661,28 +729,35 @@ func (a *App) isPositionValid(x, y, width, height int) bool {
 		return false
 	}
 
-	// Additional check: window should at least partially fit on the total screen area
-	var totalWidth, totalHeight int
+	// Calculate window center point
+	centerX := float64(x) + float64(width)/2
+	centerY := float64(y) + float64(height)/2
+
+	// Check if window center is within any screen bounds
 	for _, screen := range screens {
-		if screen.IsPrimary {
-			// For now, we assume primary screen is at origin
-			// and other screens extend from there
-			totalWidth = max(totalWidth, screen.Width)
-			totalHeight = max(totalHeight, screen.Height)
+		if centerX >= screen.X && centerX < screen.X+screen.Width &&
+		   centerY >= screen.Y && centerY < screen.Y+screen.Height {
+			return true
 		}
 	}
 
-	// If window is too far outside the primary screen area, consider it invalid
-	if totalWidth > 0 && totalHeight > 0 {
-		if x > totalWidth*2 || y > totalHeight*2 {
-			return false
-		}
-		if x+width < -totalWidth || y+height < -totalHeight {
-			return false
+	// If center is not on any screen, check if window overlaps with any screen
+	for _, screen := range screens {
+		// Check if window rectangle overlaps with screen rectangle
+		windowRight := float64(x + width)
+		windowBottom := float64(y + height)
+		screenRight := screen.X + screen.Width
+		screenBottom := screen.Y + screen.Height
+
+		// Check for overlap
+		if float64(x) < screenRight && windowRight > screen.X &&
+		   float64(y) < screenBottom && windowBottom > screen.Y {
+			return true
 		}
 	}
 
-	return true
+	// Window is completely outside all screens
+	return false
 }
 
 // min returns the minimum of two integers
@@ -859,6 +934,13 @@ func (a *App) TestNotification() error {
 		"これはテスト通知です！チャットが来ると、このようなウインドウが表示されます。",
 	)
 
+	return nil
+}
+
+// CloseNotification closes the notification window
+func (a *App) CloseNotification() error {
+	logger.Info("Closing notification window from frontend")
+	notification.Close()
 	return nil
 }
 
@@ -1608,4 +1690,35 @@ func (a *App) RunCacheCleanup() error {
 		return err
 	}
 	return cache.CleanupOversizeCache()
+}
+
+// ResetNotificationWindowPosition 通知ウィンドウの保存された位置をクリア
+func (a *App) ResetNotificationWindowPosition() error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// 通知ウィンドウの位置関連の設定をクリア
+	positionKeys := []string{
+		"NOTIFICATION_WINDOW_X",
+		"NOTIFICATION_WINDOW_Y",
+		"NOTIFICATION_WINDOW_ABSOLUTE_X",
+		"NOTIFICATION_WINDOW_ABSOLUTE_Y",
+		"NOTIFICATION_WINDOW_SCREEN_INDEX",
+		"NOTIFICATION_WINDOW_SCREEN_HASH",
+	}
+
+	for _, key := range positionKeys {
+		if err := settingsManager.SetSetting(key, ""); err != nil {
+			logger.Error("Failed to clear notification window setting",
+				zap.String("key", key), zap.Error(err))
+			return fmt.Errorf("failed to clear %s: %w", key, err)
+		}
+	}
+
+	logger.Info("Notification window position reset successfully")
+	return nil
 }

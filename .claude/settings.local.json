@@ -62,7 +62,9 @@
       "Bash(wails3 generate bindings:*)",
       "Bash(task:*)",
       "Bash(wails3 build:*)",
-      "Bash(plutil:*)"
+      "Bash(plutil:*)",
+      "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/wails/**)",
+      "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/**)"
     ],
     "deny": []
   }

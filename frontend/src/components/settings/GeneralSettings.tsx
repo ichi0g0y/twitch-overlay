@@ -26,6 +26,8 @@ interface GeneralSettingsProps {
   handleDeleteFont: () => void;
   handleTestNotification: () => void;
   testingNotification: boolean;
+  resettingNotificationPosition: boolean;
+  handleResetNotificationPosition: () => void;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
@@ -45,6 +47,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleDeleteFont,
   handleTestNotification,
   testingNotification,
+  resettingNotificationPosition,
+  handleResetNotificationPosition,
 }) => {
   return (
     <div className="space-y-6">
@@ -192,7 +196,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               <Alert>
                 <Bell className="h-4 w-4" />
                 <AlertDescription>
-                  通知が有効です。Twitchチャットを受信すると、ドラッグ可能な通知ウインドウが表示されます。
+                  通知が有効です。Twitchチャットを受信すると、ドラッグ可能な通知ウインドウが表示されます。ドラッグして移動した位置が自動的に記憶されます。
                 </AlertDescription>
               </Alert>
 
@@ -217,6 +221,30 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 </Button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                   テスト通知ウインドウが表示されます。ドラッグして位置を変更できます。
+                </p>
+              </div>
+
+              <div>
+                <Button
+                  onClick={handleResetNotificationPosition}
+                  variant="outline"
+                  className="w-full"
+                  disabled={resettingNotificationPosition}
+                >
+                  {resettingNotificationPosition ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      リセット中...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      通知ウィンドウの位置をリセット
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  保存された通知ウィンドウの位置をクリアし、次回表示時にデフォルト位置で表示します
                 </p>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
   GetPrinterStatus, GetServerPort, ReconnectPrinter,
+  ResetNotificationWindowPosition,
   ScanBluetoothDevices,
   TestNotification,
   TestPrint,
@@ -47,6 +48,7 @@ export const useSettingsPage = () => {
   const [reconnectingPrinter, setReconnectingPrinter] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
   const [testingNotification, setTestingNotification] = useState(false);
+  const [resettingNotificationPosition, setResettingNotificationPosition] = useState(false);
   const [verifyingTwitch, setVerifyingTwitch] = useState(false);
   const [webServerError, setWebServerError] = useState<{ error: string; port: number } | null>(null);
   const [webServerPort, setWebServerPort] = useState<number>(8080);
@@ -268,6 +270,18 @@ export const useSettingsPage = () => {
       toast.error(`テスト通知エラー: ${err.message}`);
     } finally {
       setTestingNotification(false);
+    }
+  };
+
+  const handleResetNotificationPosition = async () => {
+    setResettingNotificationPosition(true);
+    try {
+      await ResetNotificationWindowPosition();
+      toast.success('通知ウィンドウの位置をリセットしました');
+    } catch (err: any) {
+      toast.error(`位置リセットエラー: ${err.message}`);
+    } finally {
+      setResettingNotificationPosition(false);
     }
   };
 
@@ -523,6 +537,7 @@ export const useSettingsPage = () => {
     reconnectingPrinter,
     testingPrinter,
     testingNotification,
+    resettingNotificationPosition,
     verifyingTwitch,
     webServerError,
     webServerPort,
@@ -542,6 +557,7 @@ export const useSettingsPage = () => {
     handlePrinterReconnect,
     handleTestPrint,
     handleTestNotification,
+    handleResetNotificationPosition,
     handleFontUpload,
     handleDeleteFont,
     handleFontPreview,

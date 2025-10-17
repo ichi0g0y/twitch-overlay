@@ -48,6 +48,14 @@ export function ClearAllCache() {
 }
 
 /**
+ * CloseNotification closes the notification window
+ * @returns {$CancellablePromise<void>}
+ */
+export function CloseNotification() {
+    return $Call.ByID(2151220900);
+}
+
+/**
  * ConnectPrinter connects to the printer with the given address
  * @param {string} address
  * @returns {$CancellablePromise<void>}
@@ -223,7 +231,6 @@ export function GetRecentFaxes(limit) {
 
 /**
  * GetScreens returns all available screens
- * TODO(v3): Implement proper v3 screen API
  * @returns {$CancellablePromise<$models.Screen[]>}
  */
 export function GetScreens() {
@@ -332,6 +339,14 @@ export function ReconnectPrinter() {
  */
 export function RemoveTrackFromPlaylist(playlistID, trackID) {
     return $Call.ByID(3077703482, playlistID, trackID);
+}
+
+/**
+ * ResetNotificationWindowPosition 通知ウィンドウの保存された位置をクリア
+ * @returns {$CancellablePromise<void>}
+ */
+export function ResetNotificationWindowPosition() {
+    return $Call.ByID(844694436);
 }
 
 /**
