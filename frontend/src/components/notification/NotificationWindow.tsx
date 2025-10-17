@@ -61,8 +61,13 @@ export function NotificationWindow() {
   }, []);
 
   return (
-    <div className="w-full h-full bg-[rgba(30,30,30,0.95)] overflow-hidden">
-      <div className="w-full h-full rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] flex flex-col">
+    <div
+      className="w-full min-h-screen bg-[rgba(30,30,30,0.95)] overflow-hidden"
+      style={{
+        fontFamily: '"Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif'
+      }}
+    >
+      <div className="w-full h-full rounded-xl flex flex-col">
         <div className="pt-8 px-4 pb-4 flex-1">
           {notification ? (
             <>

@@ -64,7 +64,10 @@
       "Bash(wails3 build:*)",
       "Bash(plutil:*)",
       "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/wails/**)",
-      "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/**)"
+      "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/**)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git restore:*)"
     ],
     "deny": []
   }

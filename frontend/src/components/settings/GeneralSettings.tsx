@@ -1,5 +1,6 @@
-import React from 'react';
+import { StreamStatus } from '@/types';
 import { Bell, RefreshCw, Upload, X } from 'lucide-react';
+import React from 'react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -7,7 +8,6 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
-import { StreamStatus } from '@/types';
 
 interface GeneralSettingsProps {
   getSettingValue: (key: string) => string;
@@ -51,7 +51,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleResetNotificationPosition,
 }) => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 focus:outline-none">
       <Card>
         <CardHeader>
           <CardTitle>基本設定</CardTitle>
