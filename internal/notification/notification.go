@@ -2,12 +2,12 @@ package notification
 
 import (
 	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
@@ -21,144 +21,41 @@ var (
 	notificationWindow *application.WebviewWindow
 )
 
-// HTML template for notification window
-const notificationHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-  body {
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    overflow: hidden;
-  }
-  .notification {
-    background: rgba(30, 30, 30, 0.95);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-  .drag-region {
-    -webkit-app-region: drag;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 10px 16px;
-    border-radius: 12px 12px 0 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: move;
-  }
-  .title {
-    color: white;
-    font-weight: 600;
-    font-size: 14px;
-  }
-  .close-btn {
-    -webkit-app-region: no-drag;
-    color: white;
-    cursor: pointer;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 16px;
-    transition: background 0.2s;
-  }
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-  .content {
-    padding: 16px;
-    color: white;
-    flex: 1;
-  }
-  .username {
-    font-weight: 700;
-    font-size: 15px;
-    margin-bottom: 8px;
-    color: #9147ff;
-  }
-  .message {
-    font-size: 14px;
-    line-height: 1.5;
-    word-wrap: break-word;
-  }
-</style>
-</head>
-<body>
-<div class="notification">
-  <div class="drag-region">
-    <div class="title">💬 Twitch Chat</div>
-    <div class="close-btn" onclick="closeWindow()">✕</div>
-  </div>
-  <div class="content">
-    <div class="username" id="username"></div>
-    <div class="message" id="message"></div>
-  </div>
-</div>
-<script>
-  function closeWindow() {
-    // Goの CloseNotification 関数を呼び出す
-    if (window.go && window.go.main && window.go.main.App && window.go.main.App.CloseNotification) {
-      window.go.main.App.CloseNotification();
-    }
-  }
-
-  function updateContent(username, message) {
-    document.getElementById('username').textContent = username;
-    document.getElementById('message').textContent = message;
-  }
-</script>
-</body>
-</html>
-`
-
 // Initialize initializes the notification manager with Wails app reference
 func Initialize(app *application.App) {
 	wailsApp = app
 	logger.Info("Notification manager initialized")
 }
 
-// ShowChatNotification shows a chat notification window
-func ShowChatNotification(username, message string) {
+// CreateNotificationWindow creates the notification window in hidden state
+// This should be called at app startup to ensure WebSocket connection is ready
+func CreateNotificationWindow() {
 	if wailsApp == nil {
 		logger.Error("Notification manager not initialized")
 		return
 	}
 
-	// 通知が無効な場合はスキップ
-	if !isNotificationEnabled() {
-		logger.Debug("Notification is disabled, skipping",
-			zap.String("username", username))
-		return
-	}
-
-	logger.Info("Showing chat notification",
-		zap.String("username", username),
-		zap.String("message", message))
-
-	// If notification window already exists, update content
 	if notificationWindow != nil {
-		updateWindowContent(username, message)
+		logger.Debug("Notification window already exists")
 		return
 	}
 
-	// Create new notification window (Hidden状態で作成し、位置設定後に表示)
+	logger.Info("Creating notification window (hidden)")
+
+	// Create new notification window (Hidden state)
 	notificationWindow = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:          "twitch-chat-notification",
 		Title:         "Twitch Chat",
 		Width:         400,
 		Height:        150,
-		Hidden:        true,
+		Hidden:        true, // Start hidden
 		Frameless:     false,
 		AlwaysOnTop:   true,
 		DisableResize: false,
-		HTML:          notificationHTML,
+		URL:           "/notification",
 		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 44,
-			TitleBar:                application.MacTitleBarHiddenInset,
+			TitleBar:                application.MacTitleBarHidden,
+			InvisibleTitleBarHeight: 40,
 		},
 	})
 
@@ -223,20 +120,18 @@ func ShowChatNotification(username, message string) {
 		MoveNotificationWindowToAbsolutePosition(float64(defaultX), float64(defaultY))
 	}
 
-	// Show window after positioning (similar to settings window behavior)
-	notificationWindow.Show()
-	logger.Info("Notification window shown at configured position")
-
 	// Wait for macOS to finish position adjustments before registering event listeners
-	// This prevents saving unintended positions during window initialization
 	time.Sleep(200 * time.Millisecond)
 
-	// Register window event handlers after showing
-	// Register window close handler
+	// Register window event handlers
+	// Register window close handler - allow the window to close and set to nil
 	notificationWindow.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		// Don't cancel - allow the window to close normally
+		// Save position before the window is destroyed
 		saveWindowPosition()
+		// Set to nil so it will be recreated on next notification
 		notificationWindow = nil
-		logger.Info("Notification window closed")
+		logger.Info("Notification window closing - will be recreated on next notification")
 	})
 
 	// Register window moved handler - save position when window is moved
@@ -251,35 +146,78 @@ func ShowChatNotification(username, message string) {
 		logger.Info("Notification window resized, size saved")
 	})
 
-	// Set initial content
-	updateWindowContent(username, message)
-
-	logger.Info("Notification window created successfully")
+	logger.Info("Notification window created successfully (hidden)")
 }
 
-// updateWindowContent updates the content of existing notification window
-func updateWindowContent(username, message string) {
-	if notificationWindow == nil {
+// ShowChatNotification shows a chat notification window
+func ShowChatNotification(username, message string) {
+	if wailsApp == nil {
+		logger.Error("Notification manager not initialized")
 		return
 	}
 
-	// Escape JSON strings
-	usernameJSON, _ := json.Marshal(username)
-	messageJSON, _ := json.Marshal(message)
+	// 通知が無効な場合はスキップ
+	if !isNotificationEnabled() {
+		logger.Debug("Notification is disabled, skipping",
+			zap.String("username", username))
+		return
+	}
 
-	jsCode := fmt.Sprintf("updateContent(%s, %s)", string(usernameJSON), string(messageJSON))
-	notificationWindow.ExecJS(jsCode)
+	// Create notification window if it doesn't exist (fallback)
+	if notificationWindow == nil {
+		logger.Warn("Notification window not created yet, creating now")
+		CreateNotificationWindow()
+		// Wait a bit for WebSocket initialization
+		time.Sleep(300 * time.Millisecond)
+	}
 
-	logger.Debug("Notification window content updated",
+	if notificationWindow == nil {
+		logger.Error("Failed to create notification window")
+		return
+	}
+
+	logger.Info("Showing chat notification",
 		zap.String("username", username),
 		zap.String("message", message))
+
+	// Show the window (if hidden)
+	notificationWindow.Show()
+
+	// Broadcast notification content via WebSocket
+	updateWindowContent(username, message)
+
+	logger.Info("Notification window shown with content")
 }
 
-// Close closes the notification window
+// updateWindowContent updates the content of existing notification window
+// Note: This should only be called after WindowRuntimeReady event or when window already exists
+func updateWindowContent(username, message string) {
+	if notificationWindow == nil {
+		logger.Warn("updateWindowContent: notification window is nil")
+		return
+	}
+
+	logger.Info("Updating notification window content",
+		zap.String("username", username),
+		zap.String("message", message))
+
+	// Broadcast notification via WebSocket to all connected clients
+	// This uses the same WebSocket connection as the settings window
+	// Using broadcast.Send() to avoid circular dependency
+	broadcast.Send(map[string]interface{}{
+		"type":     "chat-notification",
+		"username": username,
+		"message":  message,
+	})
+
+	logger.Info("Notification broadcast via WebSocket")
+}
+
+// Close hides the notification window (but keeps it alive for reuse)
 func Close() {
 	if notificationWindow != nil {
-		notificationWindow.Close()
-		notificationWindow = nil
+		notificationWindow.Hide()
+		logger.Info("Notification window hidden (not destroyed)")
 	}
 }
 

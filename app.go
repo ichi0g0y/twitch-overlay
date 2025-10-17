@@ -67,9 +67,10 @@ func (a *App) SetWebAssets(assets *embed.FS) {
 	a.webAssets = assets
 }
 
-// startup is called when the app starts. The context is saved
+// Startup is called when the app starts. The context is saved
 // so we can call the runtime methods
-func (a *App) startup(ctx context.Context) {
+// This is automatically called by Wails v3 when the app starts
+func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 
 	// Phase 8: 全ての処理を有効化（Webサーバー含む）
@@ -347,7 +348,18 @@ func (a *App) restoreWindowState() {
 	absoluteYStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_Y")
 	screenIndexStr, _ := settingsManager.GetRealValue("WINDOW_SCREEN_INDEX")
 
-	// 画面構成が変更されているかチェック
+	// 画面構成が変更されているかチェック（警告のみ、復帰は続行）
+	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
+		logger.Warn("Screen configuration has changed, but will try to restore position anyway",
+			zap.String("current", currentScreenHash),
+			zap.String("saved", savedScreenHash))
+		// 画面構成が変わってもとりあえず復帰を試みる
+		// isPositionValid()で位置の妥当性は別途チェックされる
+	}
+
+	// 以下のコメントアウトされたコードは、画面構成が変わると完全に復帰をスキップしていた
+	// これは過保護すぎるため、警告のみにして復帰処理を続けるように変更
+	/*
 	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
 		logger.Warn("Screen configuration has changed, using default window position",
 			zap.String("current", currentScreenHash),
@@ -361,6 +373,7 @@ func (a *App) restoreWindowState() {
 		}
 		return
 	}
+	*/
 
 	// 絶対座標が保存されている場合は使用
 	if absoluteXStr != "" && absoluteYStr != "" {
@@ -428,11 +441,30 @@ func (a *App) registerWindowEventListeners() {
 		}
 	})
 
+	// ウィンドウサイズ変更時のイベントリスナー
+	a.mainWindow.OnWindowEvent(events.Common.WindowDidResize, func(e *application.WindowEvent) {
+		// Wails APIで位置とサイズを取得
+		x, y := a.mainWindow.Position()
+		width, height := a.mainWindow.Size()
+
+		logger.Debug("WindowDidResize event triggered",
+			zap.Int("x", x), zap.Int("y", y),
+			zap.Int("width", width), zap.Int("height", height))
+
+		// サイズを保存
+		if err := a.SaveWindowPosition(x, y, width, height); err != nil {
+			logger.Error("Failed to save window position on resize", zap.Error(err))
+		} else {
+			logger.Debug("Window size saved on resize event")
+		}
+	})
+
 	logger.Info("Window event listeners registered")
 }
 
-// shutdown is called when the app is shutting down
-func (a *App) shutdown(ctx context.Context) {
+// Shutdown is called when the app is shutting down
+// This is automatically called by Wails v3 when the app quits
+func (a *App) Shutdown(ctx context.Context) {
 	logger.Info("Shutting down Twitch Overlay Desktop...")
 
 	// ウィンドウ位置を保存
@@ -657,11 +689,24 @@ func (a *App) GetWindowPosition() map[string]int {
 	width, _ := settingsManager.GetRealValue("WINDOW_WIDTH")
 	height, _ := settingsManager.GetRealValue("WINDOW_HEIGHT")
 
+	// Parse values with defaults
+	widthVal := parseIntOrDefault(width, 1024)
+	heightVal := parseIntOrDefault(height, 768)
+
+	// Ensure width and height are valid (not zero or negative)
+	// If invalid, use default values
+	if widthVal <= 0 {
+		widthVal = 1024
+	}
+	if heightVal <= 0 {
+		heightVal = 768
+	}
+
 	result := map[string]int{
 		"x": parseIntOrDefault(x, -1),
 		"y": parseIntOrDefault(y, -1),
-		"width": parseIntOrDefault(width, 1024),
-		"height": parseIntOrDefault(height, 768),
+		"width": widthVal,
+		"height": heightVal,
 	}
 
 	logger.Info("Retrieved window position",

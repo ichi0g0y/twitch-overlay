@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"embed"
+	"io/fs"
 	"log"
+	"net/http"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -14,6 +16,43 @@ var assets embed.FS
 
 //go:embed all:web/dist
 var webAssets embed.FS
+
+// spaHandler creates a custom HTTP handler that serves index.html for non-existent paths
+// This enables React Router to work correctly with client-side routing
+func spaHandler(embedFS embed.FS) http.Handler {
+	// Create a sub-filesystem for the frontend/dist directory
+	dist, err := fs.Sub(embedFS, "frontend/dist")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Try to open the requested file
+		file, err := dist.Open(path[1:]) // Remove leading slash
+		if err == nil {
+			// File exists, serve it
+			file.Close()
+			http.FileServer(http.FS(dist)).ServeHTTP(w, r)
+			return
+		}
+
+		// File doesn't exist, check if it's a directory
+		if path != "/" {
+			dirFile, dirErr := dist.Open(path[1:] + "/index.html")
+			if dirErr == nil {
+				dirFile.Close()
+				http.FileServer(http.FS(dist)).ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Neither file nor directory exists, serve index.html for SPA routing
+		r.URL.Path = "/"
+		http.FileServer(http.FS(dist)).ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	// Create an instance of the app structure
@@ -30,10 +69,10 @@ func main() {
 			application.NewService(appInstance),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: spaHandler(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 
@@ -64,9 +103,16 @@ func main() {
 		appInstance.restoreWindowState()
 	})
 
-	// Call startup logic with a context
+	// Register WindowClosing event handler to quit app when main window is closed
+	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		// Quit the application - Shutdown() will be automatically called
+		app.Quit()
+	})
+
+	// Initialize the application (database, etc.) before running
+	// This must be called before WindowRuntimeReady to ensure database is ready
 	ctx := context.Background()
-	appInstance.startup(ctx)
+	appInstance.Startup(ctx)
 
 	// Run the application
 	err := app.Run()
