@@ -8,6 +8,19 @@ import { initWebSocket } from '../../utils/websocket';
  */
 export function NotificationWindow() {
   const [notification, setNotification] = useState<ChatNotification | null>(null);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  // 新しい通知が来たときにフラッシュアニメーションを実行
+  useEffect(() => {
+    if (notification) {
+      setIsFlashing(true);
+      const timer = setTimeout(() => {
+        setIsFlashing(false);
+      }, 300); // 300ms後にフラッシュを終了
+
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   useEffect(() => {
     console.log('[NotificationWindow] Component mounted');
@@ -62,7 +75,9 @@ export function NotificationWindow() {
 
   return (
     <div
-      className="w-full min-h-screen bg-[rgba(30,30,30,0.95)] overflow-hidden"
+      className={`w-full min-h-screen overflow-hidden transition-colors duration-300 ${
+        isFlashing ? 'bg-[rgba(220,220,220,0.95)]' : 'bg-[rgba(30,30,30,0.95)]'
+      }`}
       style={{
         fontFamily: '"Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif'
       }}

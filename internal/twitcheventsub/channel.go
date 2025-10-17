@@ -37,11 +37,12 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 		logger.Debug("Skipping channel point redemption in chat message handler",
 			zap.String("user", message.Chatter.ChatterUserName),
 			zap.String("rewardId", message.ChannelPointsCustomRewardId))
+		// Note: 通知はHandleChannelPointsCustomRedemptionAddで行う
 		return
 	}
 
-	// 通知ウインドウに表示
-	notification.ShowChatNotification(
+	// 通知をキューに追加
+	notification.EnqueueNotification(
 		message.Chatter.ChatterUserName,
 		message.Message.Text,
 	)
@@ -52,7 +53,21 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
+	// 通知をキューに追加（全てのチャネポを通知）
+	notificationMessage := fmt.Sprintf("【%s】(%dpt) %s",
+		message.Reward.Title,
+		message.Reward.Cost,
+		message.UserInput)
+	notification.EnqueueNotification(
+		message.User.UserName,
+		notificationMessage,
+	)
+
+	// プリンター印刷は指定IDのチャネポのみ
 	if message.Reward.ID != *env.Value.TriggerCustomRewordID {
+		logger.Debug("Skipping print for non-configured reward",
+			zap.String("rewardId", message.Reward.ID),
+			zap.String("rewardTitle", message.Reward.Title))
 		return
 	}
 
@@ -103,6 +118,10 @@ func HandleChannelCheer(message twitch.EventChannelCheer) {
 	details := fmt.Sprintf("%d ビッツ", message.Bits)
 
 	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+	// 通知をキューに追加
+	notificationMessage := fmt.Sprintf("%s - %d ビッツ", title, message.Bits)
+	notification.EnqueueNotification(userName, notificationMessage)
 }
 func HandleChannelFollow(message twitch.EventChannelFollow) {
 	title := "フォローありがとう :)"
@@ -110,6 +129,9 @@ func HandleChannelFollow(message twitch.EventChannelFollow) {
 	details := "" // フォローの場合は詳細なし
 
 	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+	// 通知をキューに追加
+	notification.EnqueueNotification(userName, title)
 }
 func HandleChannelRaid(message twitch.EventChannelRaid) {
 	title := "レイドありがとう :)"
@@ -117,6 +139,10 @@ func HandleChannelRaid(message twitch.EventChannelRaid) {
 	details := fmt.Sprintf("%d 人", message.Viewers)
 
 	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+	// 通知をキューに追加
+	notificationMessage := fmt.Sprintf("%s - %d 人", title, message.Viewers)
+	notification.EnqueueNotification(userName, notificationMessage)
 }
 func HandleChannelShoutoutReceive(message twitch.EventChannelShoutoutReceive) {
 	title := "応援ありがとう :)"
@@ -124,6 +150,9 @@ func HandleChannelShoutoutReceive(message twitch.EventChannelShoutoutReceive) {
 	details := "" // シャウトアウトの場合は詳細なし
 
 	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+	// 通知をキューに追加
+	notification.EnqueueNotification(userName, title)
 }
 func HandleChannelSubscribe(message twitch.EventChannelSubscribe) {
 	if !message.IsGift {
@@ -132,12 +161,20 @@ func HandleChannelSubscribe(message twitch.EventChannelSubscribe) {
 		details := fmt.Sprintf("Tier %s", message.Tier)
 
 		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+		// 通知をキューに追加
+		notificationMessage := fmt.Sprintf("%s - Tier %s", title, message.Tier)
+		notification.EnqueueNotification(userName, notificationMessage)
 	} else {
 		title := "サブギフおめです :)"
 		userName := message.User.UserName
 		details := fmt.Sprintf("Tier %s", message.Tier)
 
 		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+		// 通知をキューに追加
+		notificationMessage := fmt.Sprintf("%s - Tier %s", title, message.Tier)
+		notification.EnqueueNotification(userName, notificationMessage)
 	}
 }
 
@@ -148,10 +185,18 @@ func HandleChannelSubscriptionGift(message twitch.EventChannelSubscriptionGift) 
 		userName := message.User.UserName
 		details := fmt.Sprintf("Tier %s | %d個", message.Tier, message.Total)
 		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+		// 通知をキューに追加
+		notificationMessage := fmt.Sprintf("%s - Tier %s | %d個", title, message.Tier, message.Total)
+		notification.EnqueueNotification(userName, notificationMessage)
 	} else {
 		userName := "匿名さん"
 		details := fmt.Sprintf("Tier %s | %d個", message.Tier, message.Total)
 		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+		// 通知をキューに追加
+		notificationMessage := fmt.Sprintf("%s - Tier %s | %d個", title, message.Tier, message.Total)
+		notification.EnqueueNotification(userName, notificationMessage)
 	}
 }
 
@@ -175,6 +220,23 @@ func HandleChannelSubscriptionMessage(message twitch.EventChannelSubscriptionMes
 
 	userName := message.User.UserName
 	output.PrintOutWithTitle(title, userName, extra, details, time.Now())
+
+	// 通知をキューに追加
+	var notificationMessage string
+	if message.CumulativeMonths > 1 {
+		if message.Message.Text != "" {
+			notificationMessage = fmt.Sprintf("%s - %d ヶ月目 - %s", title, message.CumulativeMonths, message.Message.Text)
+		} else {
+			notificationMessage = fmt.Sprintf("%s - %d ヶ月目", title, message.CumulativeMonths)
+		}
+	} else {
+		if message.Message.Text != "" {
+			notificationMessage = fmt.Sprintf("%s - %s", title, message.Message.Text)
+		} else {
+			notificationMessage = title
+		}
+	}
+	notification.EnqueueNotification(userName, notificationMessage)
 
 	logger.Info("サブスクメッセージ",
 		zap.String("user", message.User.UserName),

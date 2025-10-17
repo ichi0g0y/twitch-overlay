@@ -200,6 +200,27 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 </AlertDescription>
               </Alert>
 
+              <div className="space-y-2">
+                <Label htmlFor="notification_display_duration">通知表示時間（秒）</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="notification_display_duration"
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={getSettingValue('NOTIFICATION_DISPLAY_DURATION')}
+                    onChange={(e) => handleSettingChange('NOTIFICATION_DISPLAY_DURATION', e.target.value)}
+                    className="w-24"
+                  />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    通知を表示する秒数（1〜60秒）
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  複数の通知がある場合は、キューに入れて順番に表示されます
+                </p>
+              </div>
+
               <div>
                 <Button
                   onClick={handleTestNotification}

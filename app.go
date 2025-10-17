@@ -973,11 +973,21 @@ func (a *App) TestPrint() error {
 func (a *App) TestNotification() error {
 	logger.Info("Sending test notification")
 
-	// テスト用の通知を表示
-	notification.ShowChatNotification(
-		"テストユーザー",
-		"これはテスト通知です！チャットが来ると、このようなウインドウが表示されます。",
+	// テスト用の通知を3つキューに追加（キューイング動作確認のため）
+	notification.EnqueueNotification(
+		"テストユーザー1",
+		"これは1つ目のテスト通知です！",
 	)
+	notification.EnqueueNotification(
+		"テストユーザー2",
+		"これは2つ目のテスト通知です！キューに入って順番に表示されます。",
+	)
+	notification.EnqueueNotification(
+		"テストユーザー3",
+		"これは3つ目のテスト通知です！設定した秒数ごとに切り替わります。",
+	)
+
+	logger.Info("Enqueued 3 test notifications")
 
 	return nil
 }
@@ -1198,6 +1208,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"CLOCK_SHOW_ICONS": true,
 			"FONT_FILENAME": true,
 			"NOTIFICATION_ENABLED": true,
+			"NOTIFICATION_DISPLAY_DURATION": true,
 		}
 		
 		if !validKeys[dbKey] {

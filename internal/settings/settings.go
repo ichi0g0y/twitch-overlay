@@ -266,6 +266,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "NOTIFICATION_WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
 		Description: "Screen configuration hash for notification window position validation",
 	},
+	"NOTIFICATION_DISPLAY_DURATION": {
+		Key: "NOTIFICATION_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
+		Description: "Notification display duration in seconds",
+	},
 }
 
 // 機能の有効性チェック
@@ -493,6 +497,11 @@ func ValidateSetting(key, value string) error {
 			if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 9999999 {
 				return fmt.Errorf("must be an integer between 0 and 9999999")
 			}
+		}
+	case "NOTIFICATION_DISPLAY_DURATION":
+		// 表示秒数のチェック（1〜60秒）
+		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 60 {
+			return fmt.Errorf("must be integer between 1 and 60 seconds")
 		}
 	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED":
 		// boolean値のチェック

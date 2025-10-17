@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
@@ -16,15 +17,136 @@ import (
 	"go.uber.org/zap"
 )
 
+// ChatNotification represents a chat notification to be displayed
+type ChatNotification struct {
+	Username string
+	Message  string
+}
+
 var (
-	wailsApp           *application.App
-	notificationWindow *application.WebviewWindow
+	wailsApp              *application.App
+	notificationWindow    *application.WebviewWindow
+	notificationQueue     chan ChatNotification
+	queueProcessorRunning bool
+	queueProcessorMutex   sync.Mutex
+	queueProcessorDone    chan struct{}
 )
 
 // Initialize initializes the notification manager with Wails app reference
 func Initialize(app *application.App) {
 	wailsApp = app
-	logger.Info("Notification manager initialized")
+
+	// キューの初期化（buffered channel、容量100）
+	notificationQueue = make(chan ChatNotification, 100)
+	queueProcessorDone = make(chan struct{})
+
+	// キュー処理goroutineの起動
+	go startQueueProcessor()
+
+	logger.Info("Notification manager initialized with queue processor")
+}
+
+// startQueueProcessor はキューから通知を取り出して順番に表示するgoroutine
+func startQueueProcessor() {
+	queueProcessorMutex.Lock()
+	queueProcessorRunning = true
+	queueProcessorMutex.Unlock()
+
+	logger.Info("Queue processor started")
+
+	for {
+		select {
+		case notification := <-notificationQueue:
+			// キューから通知を取り出す
+			logger.Info("Processing queued notification",
+				zap.String("username", notification.Username),
+				zap.String("message", notification.Message),
+				zap.Int("queue_size", len(notificationQueue)))
+
+			// 通知を表示
+			ShowChatNotification(notification.Username, notification.Message)
+
+			// 設定から表示秒数を取得
+			displayDuration := getDisplayDuration()
+
+			// 指定秒数待機
+			logger.Info("Waiting for display duration",
+				zap.Duration("duration", displayDuration))
+			time.Sleep(displayDuration)
+
+			// 通知ウィンドウを非表示にする
+			Close()
+			logger.Info("Notification hidden after display duration")
+
+		case <-queueProcessorDone:
+			// シャットダウンシグナルを受信
+			logger.Info("Queue processor shutting down")
+			queueProcessorMutex.Lock()
+			queueProcessorRunning = false
+			queueProcessorMutex.Unlock()
+			return
+		}
+	}
+}
+
+// EnqueueNotification は通知をキューに追加する
+// この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
+func EnqueueNotification(username, message string) {
+	if wailsApp == nil {
+		logger.Error("Notification manager not initialized")
+		return
+	}
+
+	// 通知が無効な場合はスキップ
+	if !isNotificationEnabled() {
+		logger.Debug("Notification is disabled, skipping",
+			zap.String("username", username))
+		return
+	}
+
+	// キューに追加
+	notification := ChatNotification{
+		Username: username,
+		Message:  message,
+	}
+
+	select {
+	case notificationQueue <- notification:
+		logger.Info("Notification enqueued",
+			zap.String("username", username),
+			zap.Int("queue_size", len(notificationQueue)))
+	default:
+		// キューが満杯の場合
+		logger.Warn("Notification queue is full, dropping notification",
+			zap.String("username", username))
+	}
+}
+
+// getDisplayDuration は設定から通知の表示秒数を取得する
+func getDisplayDuration() time.Duration {
+	db := localdb.GetDB()
+	if db == nil {
+		// デフォルトは5秒
+		return 5 * time.Second
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	durationStr, _ := settingsManager.GetRealValue("NOTIFICATION_DISPLAY_DURATION")
+
+	// 設定がない場合はデフォルトで5秒
+	if durationStr == "" {
+		return 5 * time.Second
+	}
+
+	// 設定値をパース
+	duration, err := strconv.Atoi(durationStr)
+	if err != nil || duration < 1 || duration > 60 {
+		logger.Warn("Invalid NOTIFICATION_DISPLAY_DURATION, using default",
+			zap.String("value", durationStr))
+		return 5 * time.Second
+	}
+
+	return time.Duration(duration) * time.Second
 }
 
 // CreateNotificationWindow creates the notification window in hidden state

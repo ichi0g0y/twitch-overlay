@@ -389,6 +389,25 @@ export function SetWebAssets(assets) {
 }
 
 /**
+ * Shutdown is called when the app is shutting down
+ * This is automatically called by Wails v3 when the app quits
+ * @returns {$CancellablePromise<void>}
+ */
+export function Shutdown() {
+    return $Call.ByID(2987688963);
+}
+
+/**
+ * Startup is called when the app starts. The context is saved
+ * so we can call the runtime methods
+ * This is automatically called by Wails v3 when the app starts
+ * @returns {$CancellablePromise<void>}
+ */
+export function Startup() {
+    return $Call.ByID(2154875234);
+}
+
+/**
  * TestChannelPointRedemption テスト用のチャンネルポイント報酬を発行
  * @param {string} userInput
  * @param {string} userName
