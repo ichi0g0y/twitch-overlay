@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChatNotification } from '../../types/notification';
 import { initWebSocket } from '../../utils/websocket';
+import { MessageContent } from './MessageContent';
 
 /**
  * NotificationWindow component
@@ -42,10 +43,14 @@ export function NotificationWindow() {
             setNotification({
               username: String(data.username),
               message: String(data.message),
+              fragments: data.fragments, // フラグメントデータを含める
+              fontSize: data.fontSize || 14, // フォントサイズ（デフォルト14px）
             });
             console.log('[NotificationWindow] Notification state updated', {
               username: data.username,
               message: data.message,
+              fragments: data.fragments,
+              fontSize: data.fontSize,
             });
           } else {
             console.error('[NotificationWindow] Invalid notification data', data);
@@ -88,15 +93,21 @@ export function NotificationWindow() {
             <>
               <div
                 id="username"
-                className="font-bold text-[15px] mb-2 text-[#9147ff]"
+                className="font-bold mb-2 text-[#9147ff]"
+                style={{ fontSize: `${(notification.fontSize || 14) + 1}px` }}
               >
                 {notification.username}
               </div>
               <div
                 id="message"
-                className="text-[14px] leading-[1.5] break-words text-white"
+                className="leading-[1.5] break-words text-white"
+                style={{ fontSize: `${notification.fontSize || 14}px` }}
               >
-                {notification.message}
+                <MessageContent
+                  message={notification.message}
+                  fragments={notification.fragments}
+                  fontSize={notification.fontSize}
+                />
               </div>
             </>
           ) : (

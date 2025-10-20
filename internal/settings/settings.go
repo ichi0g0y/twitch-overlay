@@ -270,6 +270,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "NOTIFICATION_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
 		Description: "Notification display duration in seconds",
 	},
+	"NOTIFICATION_FONT_SIZE": {
+		Key: "NOTIFICATION_FONT_SIZE", Value: "14", Type: SettingTypeNormal, Required: false,
+		Description: "Notification window font size in pixels",
+	},
 }
 
 // 機能の有効性チェック

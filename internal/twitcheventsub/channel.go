@@ -41,15 +41,60 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 		return
 	}
 
-	// 通知をキューに追加
-	notification.EnqueueNotification(
+	// フラグメント情報を構築（通知用）
+	fragments := buildFragmentsForNotification(message.Message.Fragments)
+
+	// 通知をキューに追加（フラグメント付き）
+	notification.EnqueueNotificationWithFragments(
 		message.Chatter.ChatterUserName,
 		message.Message.Text,
+		fragments,
 	)
 
 	logger.Debug("Chat message processed",
 		zap.String("user", message.Chatter.ChatterUserName),
-		zap.String("message", message.Message.Text))
+		zap.String("message", message.Message.Text),
+		zap.Int("fragments_count", len(fragments)))
+}
+
+// buildFragmentsForNotification converts Twitch message fragments to notification fragments
+func buildFragmentsForNotification(fragments []twitch.ChatMessageFragment) []notification.FragmentInfo {
+	var result []notification.FragmentInfo
+
+	for _, frag := range fragments {
+		if frag.Emote != nil && frag.Emote.Id != "" {
+			// エモートフラグメント
+			// Try to get URL from emote cache first (which has actual URLs from API)
+			var url string
+			if emoteInfo, ok := twitchapi.GetEmoteByID(frag.Emote.Id); ok && emoteInfo.Images.URL4x != "" {
+				url = emoteInfo.Images.URL4x
+				logger.Debug("buildFragmentsForNotification: using cached emote URL",
+					zap.String("emote_id", frag.Emote.Id),
+					zap.String("url", url))
+			} else {
+				// Fallback to constructing URL from ID (use 2.0 for notification window size)
+				url = fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/static/light/2.0", frag.Emote.Id)
+				logger.Debug("buildFragmentsForNotification: using constructed emote URL",
+					zap.String("emote_id", frag.Emote.Id),
+					zap.String("url", url))
+			}
+
+			result = append(result, notification.FragmentInfo{
+				Type:     "emote",
+				Text:     frag.Text,
+				EmoteID:  frag.Emote.Id,
+				EmoteURL: url,
+			})
+		} else {
+			// テキストフラグメント
+			result = append(result, notification.FragmentInfo{
+				Type: "text",
+				Text: frag.Text,
+			})
+		}
+	}
+
+	return result
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {

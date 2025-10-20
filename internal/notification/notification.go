@@ -17,10 +17,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// FragmentInfo represents a message fragment (text or emote)
+type FragmentInfo struct {
+	Type     string `json:"type"`      // "text" or "emote"
+	Text     string `json:"text"`      // Display text
+	EmoteID  string `json:"emoteId"`   // Emote ID (if type is "emote")
+	EmoteURL string `json:"emoteUrl"`  // Emote image URL (if type is "emote")
+}
+
 // ChatNotification represents a chat notification to be displayed
 type ChatNotification struct {
-	Username string
-	Message  string
+	Username  string         `json:"username"`
+	Message   string         `json:"message"`
+	Fragments []FragmentInfo `json:"fragments,omitempty"` // Optional: enhanced message with emotes
+	FontSize  int            `json:"fontSize,omitempty"`  // Optional: font size in pixels
 }
 
 var (
@@ -64,7 +74,7 @@ func startQueueProcessor() {
 				zap.Int("queue_size", len(notificationQueue)))
 
 			// 通知を表示
-			ShowChatNotification(notification.Username, notification.Message)
+			ShowChatNotificationWithFragments(notification.Username, notification.Message, notification.Fragments)
 
 			// 設定から表示秒数を取得
 			displayDuration := getDisplayDuration()
@@ -92,6 +102,12 @@ func startQueueProcessor() {
 // EnqueueNotification は通知をキューに追加する
 // この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
 func EnqueueNotification(username, message string) {
+	EnqueueNotificationWithFragments(username, message, nil)
+}
+
+// EnqueueNotificationWithFragments は通知をキューに追加する（フラグメント付き）
+// この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
+func EnqueueNotificationWithFragments(username, message string, fragments []FragmentInfo) {
 	if wailsApp == nil {
 		logger.Error("Notification manager not initialized")
 		return
@@ -106,14 +122,16 @@ func EnqueueNotification(username, message string) {
 
 	// キューに追加
 	notification := ChatNotification{
-		Username: username,
-		Message:  message,
+		Username:  username,
+		Message:   message,
+		Fragments: fragments,
 	}
 
 	select {
 	case notificationQueue <- notification:
 		logger.Info("Notification enqueued",
 			zap.String("username", username),
+			zap.Int("fragments_count", len(fragments)),
 			zap.Int("queue_size", len(notificationQueue)))
 	default:
 		// キューが満杯の場合
@@ -273,6 +291,11 @@ func CreateNotificationWindow() {
 
 // ShowChatNotification shows a chat notification window
 func ShowChatNotification(username, message string) {
+	ShowChatNotificationWithFragments(username, message, nil)
+}
+
+// ShowChatNotificationWithFragments shows a chat notification window with fragments
+func ShowChatNotificationWithFragments(username, message string, fragments []FragmentInfo) {
 	if wailsApp == nil {
 		logger.Error("Notification manager not initialized")
 		return
@@ -300,13 +323,14 @@ func ShowChatNotification(username, message string) {
 
 	logger.Info("Showing chat notification",
 		zap.String("username", username),
-		zap.String("message", message))
+		zap.String("message", message),
+		zap.Int("fragments_count", len(fragments)))
 
 	// Show the window (if hidden)
 	notificationWindow.Show()
 
 	// Broadcast notification content via WebSocket
-	updateWindowContent(username, message)
+	updateWindowContentWithFragments(username, message, fragments)
 
 	logger.Info("Notification window shown with content")
 }
@@ -314,25 +338,71 @@ func ShowChatNotification(username, message string) {
 // updateWindowContent updates the content of existing notification window
 // Note: This should only be called after WindowRuntimeReady event or when window already exists
 func updateWindowContent(username, message string) {
+	updateWindowContentWithFragments(username, message, nil)
+}
+
+// updateWindowContentWithFragments updates the content of existing notification window with fragments
+// Note: This should only be called after WindowRuntimeReady event or when window already exists
+func updateWindowContentWithFragments(username, message string, fragments []FragmentInfo) {
 	if notificationWindow == nil {
 		logger.Warn("updateWindowContent: notification window is nil")
 		return
 	}
 
+	// Get font size from settings
+	fontSize := getNotificationFontSize()
+
 	logger.Info("Updating notification window content",
 		zap.String("username", username),
-		zap.String("message", message))
+		zap.String("message", message),
+		zap.Int("fragments_count", len(fragments)),
+		zap.Int("font_size", fontSize))
 
 	// Broadcast notification via WebSocket to all connected clients
 	// This uses the same WebSocket connection as the settings window
 	// Using broadcast.Send() to avoid circular dependency
-	broadcast.Send(map[string]interface{}{
+	payload := map[string]interface{}{
 		"type":     "chat-notification",
 		"username": username,
 		"message":  message,
-	})
+		"fontSize": fontSize,
+	}
+
+	// フラグメントがある場合は追加
+	if len(fragments) > 0 {
+		payload["fragments"] = fragments
+	}
+
+	broadcast.Send(payload)
 
 	logger.Info("Notification broadcast via WebSocket")
+}
+
+// getNotificationFontSize は設定から通知のフォントサイズを取得する
+func getNotificationFontSize() int {
+	db := localdb.GetDB()
+	if db == nil {
+		// デフォルトは14px
+		return 14
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	fontSizeStr, _ := settingsManager.GetRealValue("NOTIFICATION_FONT_SIZE")
+
+	// 設定がない場合はデフォルトで14px
+	if fontSizeStr == "" {
+		return 14
+	}
+
+	// 設定値をパース
+	fontSize, err := strconv.Atoi(fontSizeStr)
+	if err != nil || fontSize < 10 || fontSize > 24 {
+		logger.Warn("Invalid NOTIFICATION_FONT_SIZE, using default",
+			zap.String("value", fontSizeStr))
+		return 14
+	}
+
+	return fontSize
 }
 
 // Close hides the notification window (but keeps it alive for reuse)

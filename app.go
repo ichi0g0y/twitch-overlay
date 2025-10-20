@@ -1209,6 +1209,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"FONT_FILENAME": true,
 			"NOTIFICATION_ENABLED": true,
 			"NOTIFICATION_DISPLAY_DURATION": true,
+			"NOTIFICATION_FONT_SIZE": true,
 		}
 		
 		if !validKeys[dbKey] {

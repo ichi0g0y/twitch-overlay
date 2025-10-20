@@ -221,6 +221,33 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 </p>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="notification_font_size">文字サイズ</Label>
+                <div className="flex items-center space-x-2">
+                  <Select
+                    value={getSettingValue('NOTIFICATION_FONT_SIZE') || '14'}
+                    onValueChange={(value) => handleSettingChange('NOTIFICATION_FONT_SIZE', value)}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="サイズを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10px（小）</SelectItem>
+                      <SelectItem value="12">12px</SelectItem>
+                      <SelectItem value="14">14px（標準）</SelectItem>
+                      <SelectItem value="16">16px</SelectItem>
+                      <SelectItem value="18">18px（大）</SelectItem>
+                      <SelectItem value="20">20px</SelectItem>
+                      <SelectItem value="22">22px</SelectItem>
+                      <SelectItem value="24">24px（特大）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    通知ウインドウの文字サイズ（エモートも連動）
+                  </p>
+                </div>
+              </div>
+
               <div>
                 <Button
                   onClick={handleTestNotification}
