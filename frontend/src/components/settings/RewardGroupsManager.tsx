@@ -18,9 +18,13 @@ export interface RewardGroup {
 
 interface RewardGroupsManagerProps {
   onGroupsChanged?: () => void;
+  availableRewardIds?: string[]; // 実際に取得されたリワードIDリスト
 }
 
-export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({ onGroupsChanged }) => {
+export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
+  onGroupsChanged,
+  availableRewardIds = []
+}) => {
   const [groups, setGroups] = useState<RewardGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +33,11 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({ onGrou
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+
+  // グループ内の実際に存在するリワード数を計算
+  const getActiveRewardCount = (rewardIds: string[]) => {
+    return rewardIds.filter(id => availableRewardIds.includes(id)).length;
+  };
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -315,7 +324,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({ onGrou
                           {group.name}
                         </h3>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {group.reward_ids.length}個のリワード
+                          {getActiveRewardCount(group.reward_ids)}個のリワード
                         </span>
                       </div>
                     )}

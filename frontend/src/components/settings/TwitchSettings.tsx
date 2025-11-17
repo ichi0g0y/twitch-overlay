@@ -245,6 +245,7 @@ export const TwitchSettings: React.FC = () => {
       {/* リワードグループ管理 */}
       <RewardGroupsManager
         onGroupsChanged={() => setRefreshTrigger(prev => prev + 1)}
+        availableRewardIds={rewards.map(r => r.id)}
       />
 
       {/* Custom Rewards一覧 */}
