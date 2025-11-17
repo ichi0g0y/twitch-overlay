@@ -40,14 +40,10 @@ interface CustomRewardsResponse {
 }
 
 interface CustomRewardsListProps {
-  currentTriggerRewardId?: string;
-  onRewardSelect: (rewardId: string) => void;
   refreshTrigger?: number;
 }
 
 export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
-  currentTriggerRewardId,
-  onRewardSelect,
   refreshTrigger = 0,
 }) => {
   const [rewards, setRewards] = useState<CustomReward[]>([]);
@@ -294,23 +290,14 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-              FAX送信のトリガーとして使用するカスタムリワードを選択してください
-            </p>
             {rewards.map((reward) => {
-              const isSelected = currentTriggerRewardId === reward.id;
               return (
                 <div
                   key={reward.id}
-                  className={`border dark:border-gray-700 rounded-lg p-4 transition-colors relative ${
-                    isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-500'
-                      : ''
-                  }`}
+                  className="border dark:border-gray-700 rounded-lg p-4 transition-colors relative"
                 >
-                  {/* ON/OFFスイッチとFAXトリガー選択（右上） */}
-                  <div className="absolute top-4 right-4 flex flex-col items-end space-y-2">
-                    {/* ON/OFFスイッチ */}
+                  {/* ON/OFFスイッチ（右上） */}
+                  <div className="absolute top-4 right-4">
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <span className="text-xs text-gray-600 dark:text-gray-400">
                         {reward.is_enabled ? 'ON' : 'OFF'}
@@ -331,17 +318,6 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                           reward.is_enabled ? 'translate-x-5' : 'translate-x-0'
                         }`}></div>
                       </div>
-                    </label>
-
-                    {/* FAXトリガー選択 */}
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">FAXトリガー</span>
-                      <input
-                        type="radio"
-                        checked={isSelected}
-                        onChange={() => onRewardSelect(reward.id)}
-                        className="w-4 h-4 text-blue-600 cursor-pointer"
-                      />
                     </label>
                   </div>
 
