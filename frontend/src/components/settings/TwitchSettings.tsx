@@ -163,33 +163,15 @@ export const TwitchSettings: React.FC = () => {
                 </button>
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="reward_id">カスタムリワードID *</Label>
-              <div className="relative">
-                <Input
-                  id="reward_id"
-                  type={showSecrets['TRIGGER_CUSTOM_REWORD_ID'] ? "text" : "password"}
-                  placeholder={settings['TRIGGER_CUSTOM_REWORD_ID']?.has_value ? "（設定済み）" : "FAX送信トリガーのカスタムリワードID"}
-                  value={unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] !== undefined ? unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] : getSettingValue('TRIGGER_CUSTOM_REWORD_ID')}
-                  onChange={(e) => handleSettingChange('TRIGGER_CUSTOM_REWORD_ID', e.target.value)}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSecrets(prev => ({ ...prev, TRIGGER_CUSTOM_REWORD_ID: !prev.TRIGGER_CUSTOM_REWORD_ID }))}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                >
-                  {showSecrets['TRIGGER_CUSTOM_REWORD_ID'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Custom Rewards一覧 */}
-      <CustomRewardsList />
+      <CustomRewardsList
+        currentTriggerRewardId={getSettingValue('TRIGGER_CUSTOM_REWORD_ID')}
+        onRewardSelect={(rewardId) => handleSettingChange('TRIGGER_CUSTOM_REWORD_ID', rewardId)}
+      />
     </div>
   );
 };
