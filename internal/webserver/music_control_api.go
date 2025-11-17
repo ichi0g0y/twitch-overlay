@@ -37,12 +37,6 @@ type Track struct {
 }
 
 var (
-	musicControlClients = make(map[chan MusicControlCommand]bool)
-	musicControlMutex   sync.RWMutex
-	
-	musicStatusClients = make(map[chan MusicStatusUpdate]bool)
-	musicStatusMutex   sync.RWMutex
-	
 	// 現在の音楽再生状態
 	currentMusicState = MusicStatusUpdate{
 		PlaybackStatus: "stopped",
@@ -52,84 +46,19 @@ var (
 	musicStateMutex sync.RWMutex
 )
 
-// SSEクライアントを登録
-func addMusicControlClient(client chan MusicControlCommand) {
-	musicControlMutex.Lock()
-	defer musicControlMutex.Unlock()
-	musicControlClients[client] = true
-	logger.Debug("Music control SSE client connected", zap.Int("total_clients", len(musicControlClients)))
-}
-
-// SSEクライアントを削除
-func removeMusicControlClient(client chan MusicControlCommand) {
-	musicControlMutex.Lock()
-	defer musicControlMutex.Unlock()
-	delete(musicControlClients, client)
-	close(client)
-	logger.Debug("Music control SSE client disconnected", zap.Int("remaining_clients", len(musicControlClients)))
-}
-
 // 全クライアントにコマンドを送信
 func broadcastMusicCommand(cmd MusicControlCommand) {
 	// WebSocketクライアントに送信
 	BroadcastWSMessage("music_control", cmd)
 
-	// SSEクライアントにも送信（互換性のため）
-	musicControlMutex.RLock()
-	defer musicControlMutex.RUnlock()
-	
-	clientCount := len(musicControlClients)
-	logger.Info("Broadcasting music command", 
-		zap.String("command", cmd.Type), 
-		zap.Int("sse_client_count", clientCount))
-	
-	sentCount := 0
-	for client := range musicControlClients {
-		select {
-		case client <- cmd:
-			sentCount++
-		default:
-			// クライアントがブロックされている場合はスキップ
-			logger.Warn("Music control client blocked, skipping")
-		}
-	}
-	
-	logger.Info("Music command broadcast completed", 
-		zap.Int("sent_to_sse_clients", sentCount),
-		zap.Int("total_sse_clients", clientCount))
-}
-
-// SSEクライアントを登録（ステータス用）
-func addMusicStatusClient(client chan MusicStatusUpdate) {
-	musicStatusMutex.Lock()
-	defer musicStatusMutex.Unlock()
-	musicStatusClients[client] = true
-}
-
-// SSEクライアントを削除（ステータス用）
-func removeMusicStatusClient(client chan MusicStatusUpdate) {
-	musicStatusMutex.Lock()
-	defer musicStatusMutex.Unlock()
-	delete(musicStatusClients, client)
-	close(client)
+	logger.Info("Broadcasting music command",
+		zap.String("command", cmd.Type))
 }
 
 // 全クライアントにステータスを送信
 func broadcastMusicStatus(status MusicStatusUpdate) {
 	// WebSocketクライアントに送信
 	BroadcastWSMessage("music_status", status)
-
-	// SSEクライアントにも送信（互換性のため）
-	musicStatusMutex.RLock()
-	defer musicStatusMutex.RUnlock()
-	
-	for client := range musicStatusClients {
-		select {
-		case client <- status:
-		default:
-			// クライアントがブロックされている場合はスキップ
-		}
-	}
 }
 
 // POST /api/music/control/play
@@ -327,49 +256,6 @@ func handleMusicLoad(w http.ResponseWriter, r *http.Request) {
 }
 
 // SSE: /api/music/control/events
-func handleMusicControlEvents(w http.ResponseWriter, r *http.Request) {
-	// SSEヘッダー設定
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	// クライアントチャンネル作成
-	client := make(chan MusicControlCommand)
-	addMusicControlClient(client)
-	defer removeMusicControlClient(client)
-
-	// クライアント切断検知
-	ctx := r.Context()
-
-	for {
-		select {
-		case cmd := <-client:
-			data, err := json.Marshal(cmd)
-			if err != nil {
-				logger.Error("Failed to marshal music command", zap.Error(err))
-				continue
-			}
-			
-			// SSEフォーマットで送信
-			_, err = w.Write([]byte("data: " + string(data) + "\n\n"))
-			if err != nil {
-				logger.Debug("Client disconnected from music control SSE")
-				return
-			}
-			
-			// フラッシュしてリアルタイム送信
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-			
-		case <-ctx.Done():
-			logger.Debug("Music control SSE connection closed")
-			return
-		}
-	}
-}
-
 // POST /api/music/status/update
 func handleMusicStatusUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -440,49 +326,6 @@ func handleMusicStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // SSE: /api/music/status/events
-func handleMusicStatusEvents(w http.ResponseWriter, r *http.Request) {
-	// SSEヘッダー設定
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	// クライアントチャンネル作成
-	client := make(chan MusicStatusUpdate)
-	addMusicStatusClient(client)
-	defer removeMusicStatusClient(client)
-
-	// クライアント切断検知
-	ctx := r.Context()
-
-	for {
-		select {
-		case status := <-client:
-			data, err := json.Marshal(status)
-			if err != nil {
-				logger.Error("Failed to marshal music status", zap.Error(err))
-				continue
-			}
-			
-			// SSEフォーマットで送信
-			_, err = w.Write([]byte("data: " + string(data) + "\n\n"))
-			if err != nil {
-				logger.Debug("Client disconnected from music status SSE")
-				return
-			}
-			
-			// フラッシュしてリアルタイム送信
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-			
-		case <-ctx.Done():
-			logger.Debug("Music status SSE connection closed")
-			return
-		}
-	}
-}
-
 // RegisterMusicControlRoutes 音楽制御用のルートを登録
 func RegisterMusicControlRoutes(mux *http.ServeMux) {
 	// 制御エンドポイント
@@ -496,11 +339,11 @@ func RegisterMusicControlRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/music/control/seek", corsMiddleware(handleMusicSeek))
 	mux.HandleFunc("/api/music/control/load", corsMiddleware(handleMusicLoad))
 	
-	// SSEエンドポイント
-	mux.HandleFunc("/api/music/control/events", corsMiddleware(handleMusicControlEvents))
+	// SSEエンドポイント（削除済み - WebSocket一本化）
+	// mux.HandleFunc("/api/music/control/events", corsMiddleware(handleMusicControlEvents))
 
 	// 状態同期エンドポイント
 	mux.HandleFunc("/api/music/status", corsMiddleware(handleMusicStatus))
 	mux.HandleFunc("/api/music/status/update", corsMiddleware(handleMusicStatusUpdate))
-	mux.HandleFunc("/api/music/status/events", corsMiddleware(handleMusicStatusEvents))
+	// mux.HandleFunc("/api/music/status/events", corsMiddleware(handleMusicStatusEvents))
 }

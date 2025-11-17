@@ -206,12 +206,25 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
 
     // 自動再生が有効な場合（autoPlayパラメータまたは既存のstate.isPlaying）
     if (autoPlay || state.playbackStatus === 'playing') {
-      audioRef.current.play().catch(err => {
+      audioRef.current.play().then(() => {
+        // 再生成功時に状態を更新
+        setState(prev => ({
+          ...prev,
+          playbackStatus: 'playing',
+          isPlaying: true,
+          isLoading: false  // ローディング完了
+        }));
+      }).catch(err => {
         console.error('Failed to auto-play:', err);
-        setState(prev => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
+        setState(prev => ({
+          ...prev,
+          playbackStatus: 'paused',
+          isPlaying: false,
+          isLoading: false  // エラー時もローディング解除
+        }));
       });
     }
-  }, [state.isPlaying]);
+  }, [state.playbackStatus]);
 
   // 再生
   const play = useCallback(() => {
@@ -221,16 +234,24 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
     if (!state.currentTrack && state.playlist.length > 0) {
       const firstTrack = getNextRandomTrack();
       if (firstTrack) {
-        loadTrack(firstTrack);
+        loadTrack(firstTrack, true);
       }
+      return;
     }
 
+    // 停止状態からの再生の場合は、トラックを再読み込み
+    if (state.playbackStatus === 'stopped' && state.currentTrack) {
+      loadTrack(state.currentTrack, true);
+      return;
+    }
+
+    // 一時停止からの再生の場合は、そのまま再生
     audioRef.current.play().then(() => {
       setState(prev => ({ ...prev, playbackStatus: 'playing', isPlaying: true }));
     }).catch(err => {
       console.error('Failed to play:', err);
     });
-  }, [state.currentTrack, state.playlist, getNextRandomTrack, loadTrack]);
+  }, [state.currentTrack, state.playlist, state.playbackStatus, getNextRandomTrack, loadTrack]);
 
   // 一時停止
   const pause = useCallback(() => {
@@ -244,6 +265,9 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      // MediaElementSourceNodeの接続を切断するため、srcをクリアしてリセット
+      audioRef.current.src = '';
+      audioRef.current.load();
     }
     setState(prev => ({
       ...prev,

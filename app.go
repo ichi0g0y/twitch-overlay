@@ -260,7 +260,8 @@ func (a *App) Startup(ctx context.Context) {
 			}
 
 			// WebSocketクライアントを起動してバックエンドメッセージをフロントエンドに転送
-			go a.connectToWebSocketServer(port)
+			// NOTE: Settings画面が直接WebSocketに接続するようになったため、このブリッジは不要
+			// go a.connectToWebSocketServer(port)
 		}
 	}()
 

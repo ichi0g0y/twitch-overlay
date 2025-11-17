@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 interface MusicVisualizerProps {
   audioElement: HTMLAudioElement | null;
   isPlaying: boolean;
-  artworkUrl?: string;
+  artworkUrl?: string | undefined;
 }
 
 const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualizerProps) => {
@@ -127,11 +127,27 @@ const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualize
   useEffect(() => {
     if (!audioElement || !canvasRef.current) return;
 
+    // Audio要素のsrcが空の場合（停止状態）は接続をリセット
+    if (audioElement.src === '' || audioElement.src === window.location.href) {
+      console.log('Audio element has no source, resetting connection');
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {
+          console.log('Disconnect failed (already disconnected)');
+        }
+        sourceRef.current = null;
+      }
+      isConnectedRef.current = false;
+      lastAudioElementRef.current = null;
+      return;
+    }
+
     // AudioContextの初期化とaudio要素の接続
     // audioElementが変更された場合のみ再接続（同じ要素の場合はスキップ）
     if (!isConnectedRef.current || (audioElement !== lastAudioElementRef.current && audioElement)) {
       console.log('Initializing/Updating AudioContext for Visualizer');
-      
+
       // 初回のみAudioContextを作成
       if (!audioContextRef.current) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -154,7 +170,11 @@ const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualize
       try {
         // 既存のソースがある場合は切断
         if (sourceRef.current) {
-          sourceRef.current.disconnect();
+          try {
+            sourceRef.current.disconnect();
+          } catch (e) {
+            console.log('Disconnect failed (already disconnected)');
+          }
           sourceRef.current = null;
         }
 
@@ -193,6 +213,7 @@ const MusicVisualizer = ({ audioElement, isPlaying, artworkUrl }: MusicVisualize
       if (!analyserRef.current || !dataArrayRef.current || !ctx) return;
 
       // 周波数データ取得
+      // @ts-ignore - TypeScriptの厳密な型チェックを回避（ArrayBufferLike vs ArrayBuffer）
       analyserRef.current.getByteFrequencyData(dataArrayRef.current);
 
       // Canvasクリア

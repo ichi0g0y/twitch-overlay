@@ -8,7 +8,6 @@ import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
-import { Events } from '@wailsio/runtime';
 import { buildApiUrlAsync } from '../../utils/api';
 
 export const OverlaySettings: React.FC = () => {
@@ -70,14 +69,38 @@ export const OverlaySettings: React.FC = () => {
     // 初回取得
     fetchMusicStatus();
 
-    // WebSocketでのリアルタイム更新
-    const unsubscribe = Events.On('music_status_update', (ev: any) => {
-      const status = ev?.data !== undefined ? ev.data : ev;
-      context.setMusicStatus?.(status);
-    });
+    // WebSocketでのリアルタイム更新（直接WebSocketに接続）
+    let unsubscribe: (() => void) | null = null;
+
+    const setupWebSocket = async () => {
+      try {
+        const { getWebSocketClient } = await import('../../utils/websocket');
+        const wsClient = getWebSocketClient();
+
+        // WebSocket接続を開始
+        await wsClient.connect();
+
+        // music_statusメッセージを購読
+        unsubscribe = wsClient.on('music_status', (status: any) => {
+          console.log('Received music_status from WebSocket:', status);
+          // オーバーレイ設定のボリュームをマージ
+          const mergedStatus = {
+            ...status,
+            volume: status.volume !== undefined ? status.volume : (overlaySettings?.music_volume ?? 100)
+          };
+          context.setMusicStatus?.(mergedStatus);
+        });
+      } catch (error) {
+        console.error('Failed to setup WebSocket:', error);
+      }
+    };
+
+    setupWebSocket();
 
     return () => {
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
