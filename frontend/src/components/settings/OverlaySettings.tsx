@@ -380,45 +380,98 @@ export const OverlaySettings: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* 統計情報設定 */}
+      {/* 時計表示設定 */}
       <Card>
         <CardHeader>
-          <CardTitle>統計情報表示</CardTitle>
+          <CardTitle>時計表示</CardTitle>
           <CardDescription>
-            オーバーレイに表示する統計情報の値を設定
+            オーバーレイの時計表示設定
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="clock-weight">おもさ (kg)</Label>
-            <Input
-              id="clock-weight"
-              type="text"
-              placeholder="例: 75.4"
-              value={getSettingValue('CLOCK_WEIGHT') || '75.4'}
-              onChange={(e) =>
-                handleSettingChange('CLOCK_WEIGHT', e.target.value)
+          <div className="flex items-center justify-between">
+            <Label htmlFor="clock-enabled" className="flex flex-col">
+              <span>時計を表示</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                オーバーレイに時計を表示します
+              </span>
+            </Label>
+            <Switch
+              id="clock-enabled"
+              checked={overlaySettings?.clock_enabled ?? true}
+              onCheckedChange={(checked) =>
+                updateOverlaySettings({ clock_enabled: checked })
               }
-              className="font-mono"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="clock-wallet">さいふ (えん)</Label>
-            <Input
-              id="clock-wallet"
-              type="text"
-              placeholder="例: 10387"
-              value={getSettingValue('CLOCK_WALLET') || '10387'}
-              onChange={(e) =>
-                handleSettingChange('CLOCK_WALLET', e.target.value)
-              }
-              className="font-mono"
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              数値のみ入力してください。自動的にカンマ区切りで表示されます。
-            </p>
-          </div>
+          {(overlaySettings?.clock_enabled ?? true) && (
+            <>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="location-enabled" className="flex flex-col">
+                  <span>場所を表示</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Hyogo, Japan
+                  </span>
+                </Label>
+                <Switch
+                  id="location-enabled"
+                  checked={overlaySettings?.location_enabled ?? true}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({ location_enabled: checked })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="date-enabled" className="flex flex-col">
+                  <span>日付を表示</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    年月日と曜日
+                  </span>
+                </Label>
+                <Switch
+                  id="date-enabled"
+                  checked={overlaySettings?.date_enabled ?? true}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({ date_enabled: checked })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="time-enabled" className="flex flex-col">
+                  <span>時刻を表示</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    時:分
+                  </span>
+                </Label>
+                <Switch
+                  id="time-enabled"
+                  checked={overlaySettings?.time_enabled ?? true}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({ time_enabled: checked })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="clock-show-icons" className="flex flex-col">
+                  <span>アイコンを表示</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    場所・日付・時刻のアイコン
+                  </span>
+                </Label>
+                <Switch
+                  id="clock-show-icons"
+                  checked={overlaySettings?.clock_show_icons ?? true}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({ clock_show_icons: checked })
+                  }
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

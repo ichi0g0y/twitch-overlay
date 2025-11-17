@@ -6,14 +6,22 @@ interface OverlaySettings {
   // 音楽プレイヤー設定
   music_playlist: string | null;
   music_volume: number;
-  
+
   // FAX表示設定
   fax_enabled: boolean;
   fax_image_type: 'mono' | 'color';
-  
+
+  // 時計表示設定
+  clock_enabled?: boolean;
+  clock_format?: string;
+  clock_show_icons?: boolean;
+  location_enabled?: boolean;
+  date_enabled?: boolean;
+  time_enabled?: boolean;
+
   // 開発者設定
   debug_enabled: boolean;
-  
+
   updated_at: string;
 }
 

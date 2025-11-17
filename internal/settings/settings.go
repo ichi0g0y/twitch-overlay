@@ -100,14 +100,6 @@ var DefaultSettings = map[string]Setting{
 		Key: "CLOCK_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable clock printing",
 	},
-	"CLOCK_WEIGHT": {
-		Key: "CLOCK_WEIGHT", Value: "75.4", Type: SettingTypeNormal, Required: false,
-		Description: "Weight to display on clock (kg)",
-	},
-	"CLOCK_WALLET": {
-		Key: "CLOCK_WALLET", Value: "10387", Type: SettingTypeNormal, Required: false,
-		Description: "Wallet amount to display on clock (yen)",
-	},
 	"CLOCK_SHOW_ICONS": {
 		Key: "CLOCK_SHOW_ICONS", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Show icons in clock display",
@@ -219,10 +211,6 @@ var DefaultSettings = map[string]Setting{
 	"OVERLAY_TIME_ENABLED": {
 		Key: "OVERLAY_TIME_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Show time in overlay",
-	},
-	"OVERLAY_STATS_ENABLED": {
-		Key: "OVERLAY_STATS_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Show stats in overlay",
 	},
 	"OVERLAY_DEBUG_ENABLED": {
 		Key: "OVERLAY_DEBUG_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
@@ -486,20 +474,6 @@ func ValidateSetting(key, value string) error {
 		if value != "" {
 			if _, err := time.LoadLocation(value); err != nil {
 				return fmt.Errorf("invalid timezone: %v", err)
-			}
-		}
-	case "CLOCK_WEIGHT":
-		// 数値形式のチェック（0.1〜999.9）
-		if value != "" {
-			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.1 || val > 999.9 {
-				return fmt.Errorf("must be a number between 0.1 and 999.9")
-			}
-		}
-	case "CLOCK_WALLET":
-		// 整数形式のチェック（0〜9999999）
-		if value != "" {
-			if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 9999999 {
-				return fmt.Errorf("must be an integer between 0 and 9999999")
 			}
 		}
 	case "NOTIFICATION_DISPLAY_DURATION":

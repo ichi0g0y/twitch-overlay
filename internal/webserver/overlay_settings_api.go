@@ -38,7 +38,6 @@ type OverlaySettings struct {
 	LocationEnabled bool   `json:"location_enabled"`
 	DateEnabled     bool   `json:"date_enabled"`
 	TimeEnabled     bool   `json:"time_enabled"`
-	StatsEnabled    bool   `json:"stats_enabled"`
 
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
@@ -100,7 +99,6 @@ func loadOverlaySettingsFromDB() {
 		LocationEnabled:   getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
 		DateEnabled:       getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
 		TimeEnabled:       getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
-		StatsEnabled:      getBoolSetting(allSettings, "OVERLAY_STATS_ENABLED", true),
 		ShowDebugInfo:     false, // 廃止予定
 		DebugEnabled:      getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 		UpdatedAt:         time.Now(),
@@ -171,7 +169,6 @@ func useDefaultSettings() {
 		LocationEnabled:   true,
 		DateEnabled:       true,
 		TimeEnabled:       true,
-		StatsEnabled:      true,
 		ShowDebugInfo:     false,
 		DebugEnabled:      false,
 		UpdatedAt:         time.Now(),
@@ -246,7 +243,6 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"OVERLAY_LOCATION_ENABLED": strconv.FormatBool(overlaySettings.LocationEnabled),
 		"OVERLAY_DATE_ENABLED":    strconv.FormatBool(overlaySettings.DateEnabled),
 		"OVERLAY_TIME_ENABLED":    strconv.FormatBool(overlaySettings.TimeEnabled),
-		"OVERLAY_STATS_ENABLED":   strconv.FormatBool(overlaySettings.StatsEnabled),
 		"OVERLAY_DEBUG_ENABLED":   strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 
@@ -358,7 +354,6 @@ func handleOverlaySettingsGet(w http.ResponseWriter, r *http.Request) {
 			LocationEnabled:   true,
 			DateEnabled:       true,
 			TimeEnabled:       true,
-			StatsEnabled:      true,
 		}
 	}
 

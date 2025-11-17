@@ -3,6 +3,7 @@ import { useFaxQueue } from '../hooks/useFaxQueue';
 import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
 import MusicPlayer from './music/MusicPlayer';
+import ClockDisplay from './ClockDisplay';
 import { LAYOUT } from '../constants/layout';
 import { buildApiUrl } from '../utils/api';
 import { initWebSocket } from '../utils/websocket';
@@ -55,6 +56,24 @@ const FaxReceiver = () => {
   // FAX表示はURLパラメータを優先、なければ設定値を使用
   const showFax = params.get('fax') !== 'false' && (settings?.fax_enabled ?? true);
   const playlistName = settings?.music_playlist || undefined;
+
+  // 時計表示の設定を取得
+  const showClock = settings?.clock_enabled ?? true;
+  const showLocation = settings?.location_enabled ?? true;
+  const showDate = settings?.date_enabled ?? true;
+  const showTime = settings?.time_enabled ?? true;
+
+  // デバッグ: 時計表示設定を確認
+  useEffect(() => {
+    console.log('🕐 Clock settings:', {
+      settings,
+      showClock,
+      clock_enabled: settings?.clock_enabled,
+      showLocation,
+      showDate,
+      showTime
+    });
+  }, [settings, showClock, showLocation, showDate, showTime]);
   
   
   // デバッグ情報をコンソールに出力
@@ -237,6 +256,17 @@ const FaxReceiver = () => {
 
   return (
     <div className="h-screen text-white relative overflow-hidden" style={backgroundStyle}>
+      {/* 時計表示（右上） */}
+      {showClock && (
+        <div className="fixed top-0 right-0 z-20">
+          <ClockDisplay
+            showLocation={showLocation}
+            showDate={showDate}
+            showTime={showTime}
+          />
+        </div>
+      )}
+
       {/* コントロールパネル */}
       {showFax && (
         <div
@@ -246,16 +276,16 @@ const FaxReceiver = () => {
           <div className="flex items-center h-full px-2">
             <span
               className={`text-outline ${
-                !isConnected ? 'text-red-500' : 
-                !isPrinterConnected ? 'text-yellow-500' : 
+                !isConnected ? 'text-red-500' :
+                !isPrinterConnected ? 'text-yellow-500' :
                 'text-green-500'
               }`}
               style={ledStyle}
             >
               ◆
             </span>
-            <span 
-              className="text-outline" 
+            <span
+              className="text-outline"
               style={faxTextStyle}
             >
               FAX
@@ -282,7 +312,7 @@ const FaxReceiver = () => {
       )}
 
       {/* 音楽プレイヤー */}
-      <MusicPlayer 
+      <MusicPlayer
         playlist={playlistName || undefined}
       />
     </div>

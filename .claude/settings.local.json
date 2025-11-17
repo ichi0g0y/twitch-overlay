@@ -67,7 +67,8 @@
       "Read(//Users/toka/go/pkg/mod/github.com/wailsapp/**)",
       "Bash(git show:*)",
       "Bash(git branch:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
