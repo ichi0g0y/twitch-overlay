@@ -6,20 +6,18 @@ interface ClockDisplayProps {
   showLocation?: boolean;
   showDate?: boolean;
   showTime?: boolean;
+  showIcons?: boolean;
 }
 
 const ClockDisplay: React.FC<ClockDisplayProps> = ({
   showLocation = true,
   showDate = true,
-  showTime = true
+  showTime = true,
+  showIcons = true
 }) => {
   const { year, month, date, day, hour, min, flashing } = useClock();
 
   const today = `${year}.${month}.${date} ${day}`;
-
-  // URLパラメータからアイコン表示設定を取得
-  const params = new URLSearchParams(window.location.search);
-  const showIcons = params.get('icon') !== 'false';
 
   return (
     <div className="clock-container text-2xl">

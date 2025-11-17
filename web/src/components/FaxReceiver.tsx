@@ -62,6 +62,7 @@ const FaxReceiver = () => {
   const showLocation = settings?.location_enabled ?? true;
   const showDate = settings?.date_enabled ?? true;
   const showTime = settings?.time_enabled ?? true;
+  const showClockIcons = settings?.clock_show_icons ?? true;
 
   // デバッグ: 時計表示設定を確認
   useEffect(() => {
@@ -263,6 +264,7 @@ const FaxReceiver = () => {
             showLocation={showLocation}
             showDate={showDate}
             showTime={showTime}
+            showIcons={showClockIcons}
           />
         </div>
       )}
