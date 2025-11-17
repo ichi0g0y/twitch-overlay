@@ -1,8 +1,10 @@
 package twitchapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -217,4 +219,59 @@ func GetUserAvatar(userID string) (string, error) {
 	}
 
 	return result.Data[0].ProfileImageURL, nil
+}
+
+// UpdateCustomRewardEnabled updates a custom reward's enabled status via Twitch API
+func UpdateCustomRewardEnabled(broadcasterID, rewardID string, enabled bool, accessToken string) error {
+	reqURL := fmt.Sprintf("https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
+		url.QueryEscape(broadcasterID), url.QueryEscape(rewardID))
+
+	// Create request body
+	body := map[string]interface{}{
+		"is_enabled": enabled,
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	logger.Debug("Twitch API PATCH request",
+		zap.String("url", reqURL),
+		zap.String("body", string(bodyJSON)),
+		zap.String("client_id", *env.Value.ClientID))
+
+	// Create PATCH request with body
+	req, err := http.NewRequest("PATCH", reqURL, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Client-Id", *env.Value.ClientID)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response
+	if resp.StatusCode != http.StatusOK {
+		// Read response body for error details
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Error("Twitch API returned error",
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(bodyBytes)))
+		return fmt.Errorf("twitch API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	logger.Info("Custom reward updated successfully via Twitch API",
+		zap.String("reward_id", rewardID),
+		zap.Bool("enabled", enabled))
+
+	return nil
 }

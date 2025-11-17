@@ -1780,3 +1780,32 @@ func (a *App) ResetNotificationWindowPosition() error {
 	logger.Info("Notification window position reset successfully")
 	return nil
 }
+
+// ToggleCustomReward toggles a custom reward's enabled status
+func (a *App) ToggleCustomReward(rewardID string, isEnabled bool) error {
+	logger.Info("Toggling custom reward", zap.String("reward_id", rewardID), zap.Bool("is_enabled", isEnabled))
+
+	// Get current token
+	token, valid, err := twitchtoken.GetLatestToken()
+	if err != nil || !valid {
+		logger.Error("Failed to get valid token", zap.Error(err))
+		return fmt.Errorf("Twitch認証が必要です")
+	}
+
+	// Get broadcaster ID from environment
+	broadcasterID := env.Value.TwitchUserID
+	if broadcasterID == nil || *broadcasterID == "" {
+		logger.Error("TWITCH_USER_ID not configured")
+		return fmt.Errorf("TWITCH_USER_IDが設定されていません")
+	}
+
+	// Call Twitch API via twitchapi package
+	err = twitchapi.UpdateCustomRewardEnabled(*broadcasterID, rewardID, isEnabled, token.AccessToken)
+	if err != nil {
+		logger.Error("Failed to update custom reward", zap.Error(err))
+		return fmt.Errorf("リワードの更新に失敗しました: %w", err)
+	}
+
+	logger.Info("Custom reward toggled successfully", zap.String("reward_id", rewardID), zap.Bool("is_enabled", isEnabled))
+	return nil
+}

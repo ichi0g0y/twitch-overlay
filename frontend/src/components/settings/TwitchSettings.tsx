@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { Eye, EyeOff, RefreshCw, Wifi } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
@@ -6,6 +6,7 @@ import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { CustomRewardsList } from './CustomRewardsList';
+import { RewardGroupsManager } from './RewardGroupsManager';
 
 export const TwitchSettings: React.FC = () => {
   const context = useContext(SettingsPageContext);
@@ -25,6 +26,8 @@ export const TwitchSettings: React.FC = () => {
     handleTokenRefresh,
     setUnsavedChanges,
   } = context;
+
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   return (
     <div className="space-y-6">
@@ -167,10 +170,16 @@ export const TwitchSettings: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* リワードグループ管理 */}
+      <RewardGroupsManager
+        onGroupsChanged={() => setRefreshTrigger(prev => prev + 1)}
+      />
+
       {/* Custom Rewards一覧 */}
       <CustomRewardsList
         currentTriggerRewardId={getSettingValue('TRIGGER_CUSTOM_REWORD_ID')}
         onRewardSelect={(rewardId) => handleSettingChange('TRIGGER_CUSTOM_REWORD_ID', rewardId)}
+        refreshTrigger={refreshTrigger}
       />
     </div>
   );

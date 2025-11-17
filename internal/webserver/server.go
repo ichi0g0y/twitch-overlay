@@ -48,7 +48,7 @@ func (w *webSocketBroadcaster) BroadcastMessage(message interface{}) {
 func corsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		if r.Method == http.MethodOptions {
@@ -209,8 +209,25 @@ func StartWebServer(port int) error {
 	// Twitch API endpoints
 	mux.HandleFunc("/api/twitch/verify", corsMiddleware(handleTwitchVerify))
 	mux.HandleFunc("/api/twitch/refresh-token", corsMiddleware(handleTwitchRefreshToken))
+	mux.HandleFunc("/api/twitch/custom-rewards/create", corsMiddleware(handleCreateCustomReward))
 	mux.HandleFunc("/api/twitch/custom-rewards", corsMiddleware(handleTwitchCustomRewards))
 	mux.HandleFunc("/api/stream/status", corsMiddleware(handleStreamStatus))
+
+	// Reward Groups API endpoints
+	mux.HandleFunc("/api/twitch/reward-groups", corsMiddleware(handleRewardGroups))
+	mux.HandleFunc("/api/twitch/reward-groups/by-reward", corsMiddleware(handleGetRewardGroupsByRewardID))
+	mux.HandleFunc("/api/twitch/reward-groups/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		// Route based on path
+		if strings.HasSuffix(r.URL.Path, "/toggle") {
+			handleToggleRewardGroup(w, r)
+		} else if strings.Contains(r.URL.Path, "/rewards/") {
+			handleRewardGroupMembers(w, r)
+		} else if strings.Contains(r.URL.Path, "/rewards") {
+			handleRewardGroupMembers(w, r)
+		} else {
+			handleRewardGroupByID(w, r)
+		}
+	}))
 
 	// Handle all other routes (SPA fallback) - 最後に登録
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

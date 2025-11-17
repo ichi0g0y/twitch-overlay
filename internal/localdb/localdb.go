@@ -138,10 +138,55 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to insert default cache settings: %w", err)
 	}
 
+	// reward_groupsテーブルを追加（カスタムリワードのグループ管理）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS reward_groups (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE,
+		is_enabled BOOLEAN NOT NULL DEFAULT true,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		logger.Error("Failed to create reward_groups table", zap.Error(err))
+		return nil, fmt.Errorf("failed to create reward_groups table: %w", err)
+	}
+
+	// reward_group_membersテーブルを追加（グループとリワードの多対多関係）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS reward_group_members (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		group_id INTEGER NOT NULL,
+		reward_id TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(group_id, reward_id),
+		FOREIGN KEY (group_id) REFERENCES reward_groups(id) ON DELETE CASCADE
+	)`)
+	if err != nil {
+		logger.Error("Failed to create reward_group_members table", zap.Error(err))
+		return nil, fmt.Errorf("failed to create reward_group_members table: %w", err)
+	}
+
 	return db, nil
 }
 
 // GetDB は現在のデータベース接続を返します
 func GetDB() *sql.DB {
 	return DBClient
+}
+
+// DeleteAllTokens deletes all tokens from the database
+// This is used when OAuth scopes are updated and re-authentication is required
+func DeleteAllTokens() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	_, err := db.Exec("DELETE FROM tokens")
+	if err != nil {
+		logger.Error("Failed to delete tokens", zap.Error(err))
+		return fmt.Errorf("failed to delete tokens: %w", err)
+	}
+
+	logger.Info("All tokens have been deleted (scope update requires re-authentication)")
+	return nil
 }

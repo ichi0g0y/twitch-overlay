@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check } from 'lucide-react';
+import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { RewardGroupBadge } from './RewardGroupBadge';
+import { AddToGroupDropdown } from './AddToGroupDropdown';
+import { CreateRewardDialog } from './CreateRewardDialog';
+import type { RewardGroup } from './RewardGroupsManager';
 
 interface CustomReward {
   id: string;
@@ -37,16 +41,20 @@ interface CustomRewardsResponse {
 interface CustomRewardsListProps {
   currentTriggerRewardId?: string;
   onRewardSelect: (rewardId: string) => void;
+  refreshTrigger?: number;
 }
 
 export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   currentTriggerRewardId,
   onRewardSelect,
+  refreshTrigger = 0,
 }) => {
   const [rewards, setRewards] = useState<CustomReward[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [rewardGroups, setRewardGroups] = useState<Map<string, RewardGroup[]>>(new Map());
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const fetchRewards = async () => {
     setLoading(true);
@@ -63,6 +71,9 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
       const data: CustomRewardsResponse = await response.json();
       setRewards(data.data || []);
+
+      // Fetch groups for each reward
+      await fetchRewardGroups(data.data || []);
     } catch (err) {
       console.error('Failed to fetch custom rewards:', err);
       setError(err instanceof Error ? err.message : 'カスタムリワードの取得に失敗しました');
@@ -71,9 +82,70 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
     }
   };
 
+  const fetchRewardGroups = async (rewardsList: CustomReward[]) => {
+    const port = await GetServerPort();
+    const groupsMap = new Map<string, RewardGroup[]>();
+
+    for (const reward of rewardsList) {
+      try {
+        const response = await fetch(
+          `http://localhost:${port}/api/twitch/reward-groups/by-reward?reward_id=${reward.id}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          groupsMap.set(reward.id, data.data || []);
+        }
+      } catch (err) {
+        console.error(`Failed to fetch groups for reward ${reward.id}:`, err);
+      }
+    }
+
+    setRewardGroups(groupsMap);
+  };
+
+  const handleRemoveFromGroup = async (rewardId: string, groupId: number) => {
+    try {
+      const port = await GetServerPort();
+      const response = await fetch(
+        `http://localhost:${port}/api/twitch/reward-groups/${groupId}/rewards/${rewardId}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'グループからの削除に失敗しました');
+      }
+
+      // Refresh groups for this reward
+      await fetchRewardGroups(rewards);
+    } catch (err) {
+      console.error('Failed to remove reward from group:', err);
+      setError(err instanceof Error ? err.message : 'グループからの削除に失敗しました');
+    }
+  };
+
+  const handleToggleReward = async (rewardId: string, currentEnabled: boolean) => {
+    try {
+      // Use Wails binding instead of HTTP API to avoid CORS issues
+      await ToggleCustomReward(rewardId, !currentEnabled);
+
+      // Update local state
+      setRewards((prev) =>
+        prev.map((r) =>
+          r.id === rewardId ? { ...r, is_enabled: !currentEnabled } : r
+        )
+      );
+    } catch (err) {
+      console.error('Failed to toggle reward:', err);
+      // Show error as an alert instead of replacing the entire list
+      alert(err instanceof Error ? err.message : 'リワードの切り替えに失敗しました');
+    }
+  };
+
   useEffect(() => {
     fetchRewards();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleCopyId = async (id: string) => {
     try {
@@ -107,7 +179,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
     );
   }
 
-  if (error) {
+  if (error && rewards.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -134,24 +206,44 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center space-x-2">
-              <Award className="w-5 h-5" />
-              <span>カスタムリワード一覧</span>
-            </CardTitle>
-            <CardDescription>
-              チャンネルポイントで引き換え可能なカスタムリワード
-            </CardDescription>
+    <>
+      <CreateRewardDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreated={() => {
+          fetchRewards();
+        }}
+      />
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center space-x-2">
+                <Award className="w-5 h-5" />
+                <span>カスタムリワード一覧</span>
+              </CardTitle>
+              <CardDescription>
+                チャンネルポイントで引き換え可能なカスタムリワード
+              </CardDescription>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => setIsCreateDialogOpen(true)}
+                variant="default"
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                新規作成
+              </Button>
+              <Button onClick={fetchRewards} variant="outline" size="sm">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                更新
+              </Button>
+            </div>
           </div>
-          <Button onClick={fetchRewards} variant="outline" size="sm">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            更新
-          </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent>
         {rewards.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
@@ -167,25 +259,50 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
               return (
                 <div
                   key={reward.id}
-                  onClick={() => onRewardSelect(reward.id)}
-                  className={`border dark:border-gray-700 rounded-lg p-4 cursor-pointer transition-colors ${
+                  className={`border dark:border-gray-700 rounded-lg p-4 transition-colors relative ${
                     isSelected
                       ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-500'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                      : ''
                   }`}
                 >
-                  <div className="flex items-start space-x-3">
-                    {/* ラジオボタン */}
-                    <div className="flex items-center pt-1">
+                  {/* ON/OFFスイッチとFAXトリガー選択（右上） */}
+                  <div className="absolute top-4 right-4 flex flex-col items-end space-y-2">
+                    {/* ON/OFFスイッチ */}
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {reward.is_enabled ? 'ON' : 'OFF'}
+                      </span>
+                      <div className="relative inline-block w-10 h-5">
+                        <input
+                          type="checkbox"
+                          checked={reward.is_enabled}
+                          onChange={() => handleToggleReward(reward.id, reward.is_enabled)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${
+                          reward.is_enabled
+                            ? 'bg-blue-600'
+                            : 'bg-gray-300 dark:bg-gray-600'
+                        }`}></div>
+                        <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                          reward.is_enabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}></div>
+                      </div>
+                    </label>
+
+                    {/* FAXトリガー選択 */}
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <span className="text-xs text-gray-600 dark:text-gray-400">FAXトリガー</span>
                       <input
                         type="radio"
                         checked={isSelected}
                         onChange={() => onRewardSelect(reward.id)}
                         className="w-4 h-4 text-blue-600 cursor-pointer"
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </div>
+                    </label>
+                  </div>
 
+                  <div className="flex items-start space-x-3 pr-24">
                     {/* リワード情報 */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-1">
@@ -196,11 +313,6 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                         <h3 className="font-semibold dark:text-white">
                           {reward.title}
                         </h3>
-                        {isSelected && (
-                          <span className="text-xs px-2 py-1 bg-blue-500 text-white rounded">
-                            FAXトリガー
-                          </span>
-                        )}
                         {!reward.is_enabled && (
                           <span className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded">
                             無効
@@ -217,7 +329,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                           {reward.prompt}
                         </p>
                       )}
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
                         <span className="font-medium">{reward.cost.toLocaleString()} pts</span>
                         {reward.is_user_input_required && (
                           <span>テキスト入力必須</span>
@@ -225,6 +337,22 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                         {reward.redemptions_redeemed_current_stream !== undefined && (
                           <span>今日の引き換え: {reward.redemptions_redeemed_current_stream}</span>
                         )}
+                      </div>
+
+                      {/* グループバッジ */}
+                      <div className="flex items-center flex-wrap gap-2">
+                        {(rewardGroups.get(reward.id) || []).map((group) => (
+                          <RewardGroupBadge
+                            key={group.id}
+                            groupName={group.name}
+                            onRemove={() => handleRemoveFromGroup(reward.id, group.id)}
+                          />
+                        ))}
+                        <AddToGroupDropdown
+                          rewardId={reward.id}
+                          currentGroups={rewardGroups.get(reward.id) || []}
+                          onAdded={() => fetchRewardGroups(rewards)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -284,5 +412,6 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
         )}
       </CardContent>
     </Card>
+    </>
   );
 };

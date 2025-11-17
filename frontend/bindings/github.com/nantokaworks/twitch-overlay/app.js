@@ -435,6 +435,16 @@ export function TestPrint() {
 }
 
 /**
+ * ToggleCustomReward toggles a custom reward's enabled status
+ * @param {string} rewardID
+ * @param {boolean} isEnabled
+ * @returns {$CancellablePromise<void>}
+ */
+export function ToggleCustomReward(rewardID, isEnabled) {
+    return $Call.ByID(520951513, rewardID, isEnabled);
+}
+
+/**
  * UpdateCacheSettings キャッシュ設定を更新
  * @param {{ [_: string]: any }} settingsMap
  * @returns {$CancellablePromise<void>}

@@ -196,10 +196,14 @@ func GetAuthURL() string {
 		clientID = *env.Value.ClientID
 	}
 	redirectURI := getCallbackURL()
-	return fmt.Sprintf(
-		"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=%s",
+
+	// force_verifyパラメータを追加してスコープ確認画面を強制表示
+	authURL := fmt.Sprintf(
+		"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=%s&force_verify=true",
 		url.QueryEscape(clientID),
 		url.QueryEscape(redirectURI),
 		url.QueryEscape(strings.Join(scopes, " ")),
 	)
+
+	return authURL
 }
