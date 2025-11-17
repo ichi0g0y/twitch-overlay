@@ -209,6 +209,7 @@ func StartWebServer(port int) error {
 	// Twitch API endpoints
 	mux.HandleFunc("/api/twitch/verify", corsMiddleware(handleTwitchVerify))
 	mux.HandleFunc("/api/twitch/refresh-token", corsMiddleware(handleTwitchRefreshToken))
+	mux.HandleFunc("/api/twitch/custom-rewards", corsMiddleware(handleTwitchCustomRewards))
 	mux.HandleFunc("/api/stream/status", corsMiddleware(handleStreamStatus))
 
 	// Handle all other routes (SPA fallback) - 最後に登録

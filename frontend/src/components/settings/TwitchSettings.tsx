@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
+import { CustomRewardsList } from './CustomRewardsList';
 
 export const TwitchSettings: React.FC = () => {
   const context = useContext(SettingsPageContext);
@@ -186,6 +187,9 @@ export const TwitchSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Custom Rewards一覧 */}
+      <CustomRewardsList />
     </div>
   );
 };
