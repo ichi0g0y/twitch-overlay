@@ -165,6 +165,17 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create reward_group_members table: %w", err)
 	}
 
+	// app_created_rewardsテーブルを追加（このアプリで作成したリワードを記録）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS app_created_rewards (
+		reward_id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		logger.Error("Failed to create app_created_rewards table", zap.Error(err))
+		return nil, fmt.Errorf("failed to create app_created_rewards table: %w", err)
+	}
+
 	return db, nil
 }
 
@@ -189,4 +200,66 @@ func DeleteAllTokens() error {
 
 	logger.Info("All tokens have been deleted (scope update requires re-authentication)")
 	return nil
+}
+
+// RecordAppCreatedReward records that this app created a reward
+func RecordAppCreatedReward(rewardID, title string) error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	_, err := db.Exec(`INSERT OR REPLACE INTO app_created_rewards (reward_id, title, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+		rewardID, title)
+	if err != nil {
+		logger.Error("Failed to record app created reward", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to record app created reward: %w", err)
+	}
+
+	logger.Info("Recorded app created reward", zap.String("reward_id", rewardID), zap.String("title", title))
+	return nil
+}
+
+// IsAppCreatedReward checks if a reward was created by this app
+func IsAppCreatedReward(rewardID string) (bool, error) {
+	db := GetDB()
+	if db == nil {
+		return false, fmt.Errorf("database not initialized")
+	}
+
+	var exists int
+	err := db.QueryRow(`SELECT COUNT(*) FROM app_created_rewards WHERE reward_id = ?`, rewardID).Scan(&exists)
+	if err != nil {
+		logger.Error("Failed to check if reward is app created", zap.Error(err), zap.String("reward_id", rewardID))
+		return false, fmt.Errorf("failed to check if reward is app created: %w", err)
+	}
+
+	return exists > 0, nil
+}
+
+// GetAllAppCreatedRewardIDs returns all reward IDs created by this app
+func GetAllAppCreatedRewardIDs() ([]string, error) {
+	db := GetDB()
+	if db == nil {
+		return []string{}, fmt.Errorf("database not initialized")
+	}
+
+	rows, err := db.Query(`SELECT reward_id FROM app_created_rewards ORDER BY created_at DESC`)
+	if err != nil {
+		logger.Error("Failed to get app created rewards", zap.Error(err))
+		return []string{}, fmt.Errorf("failed to get app created rewards: %w", err)
+	}
+	defer rows.Close()
+
+	rewardIDs := []string{}
+	for rows.Next() {
+		var rewardID string
+		if err := rows.Scan(&rewardID); err != nil {
+			logger.Error("Failed to scan reward ID", zap.Error(err))
+			continue
+		}
+		rewardIDs = append(rewardIDs, rewardID)
+	}
+
+	return rewardIDs, nil
 }

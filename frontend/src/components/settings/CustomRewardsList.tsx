@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus } from 'lucide-react';
+import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
@@ -18,6 +18,7 @@ interface CustomReward {
   is_user_input_required: boolean;
   is_paused: boolean;
   is_in_stock: boolean;
+  is_manageable?: boolean;
   redemptions_redeemed_current_stream?: number;
   max_per_stream_setting: {
     is_enabled: boolean;
@@ -55,6 +56,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [rewardGroups, setRewardGroups] = useState<Map<string, RewardGroup[]>>(new Map());
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [deleteClickedId, setDeleteClickedId] = useState<string | null>(null);
 
   const fetchRewards = async () => {
     setLoading(true);
@@ -140,6 +142,47 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
       console.error('Failed to toggle reward:', err);
       // Show error as an alert instead of replacing the entire list
       alert(err instanceof Error ? err.message : 'リワードの切り替えに失敗しました');
+    }
+  };
+
+  const handleDeleteClick = (rewardId: string) => {
+    if (deleteClickedId === rewardId) {
+      // 2回目のクリック - 削除実行
+      handleDeleteReward(rewardId);
+    } else {
+      // 1回目のクリック - 状態を保存
+      setDeleteClickedId(rewardId);
+      // 3秒後に状態をリセット
+      setTimeout(() => {
+        setDeleteClickedId(null);
+      }, 3000);
+    }
+  };
+
+  const handleDeleteReward = async (rewardId: string) => {
+    console.log('handleDeleteReward called', { rewardId });
+
+    try {
+      const port = await GetServerPort();
+      const url = `http://localhost:${port}/api/twitch/custom-rewards/${rewardId}`;
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'リワードの削除に失敗しました');
+      }
+
+      console.log('Delete successful, updating local state...');
+
+      // ページをスクロールさせずにローカル状態を更新
+      setRewards((prevRewards) => prevRewards.filter((r) => r.id !== rewardId));
+      setDeleteClickedId(null);
+    } catch (err) {
+      console.error('Failed to delete reward:', err);
+      alert(err instanceof Error ? err.message : 'リワードの削除に失敗しました');
     }
   };
 
@@ -313,6 +356,31 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                         <h3 className="font-semibold dark:text-white">
                           {reward.title}
                         </h3>
+                        {reward.is_manageable && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                              このアプリで作成
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(reward.id);
+                              }}
+                              className={`p-1 rounded transition-colors ${
+                                deleteClickedId === reward.id
+                                  ? 'bg-red-500 text-white hover:bg-red-600'
+                                  : 'text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20'
+                              }`}
+                              title={
+                                deleteClickedId === reward.id
+                                  ? 'もう一度クリックで削除'
+                                  : 'クリックして削除（2回クリック必要）'
+                              }
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                         {!reward.is_enabled && (
                           <span className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded">
                             無効

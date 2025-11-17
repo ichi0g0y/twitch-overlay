@@ -210,6 +210,7 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/twitch/verify", corsMiddleware(handleTwitchVerify))
 	mux.HandleFunc("/api/twitch/refresh-token", corsMiddleware(handleTwitchRefreshToken))
 	mux.HandleFunc("/api/twitch/custom-rewards/create", corsMiddleware(handleCreateCustomReward))
+	mux.HandleFunc("/api/twitch/custom-rewards/", corsMiddleware(handleTwitchCustomRewards))
 	mux.HandleFunc("/api/twitch/custom-rewards", corsMiddleware(handleTwitchCustomRewards))
 	mux.HandleFunc("/api/stream/status", corsMiddleware(handleStreamStatus))
 

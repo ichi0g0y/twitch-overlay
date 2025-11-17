@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nantokaworks/twitch-overlay/internal/env"
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"go.uber.org/zap"
@@ -196,6 +197,8 @@ func handleTwitchCustomRewards(w http.ResponseWriter, r *http.Request) {
 		handleGetCustomRewards(w, r)
 	case http.MethodPatch:
 		handlePatchCustomReward(w, r)
+	case http.MethodDelete:
+		handleDeleteCustomReward(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -291,11 +294,46 @@ func handleGetCustomRewards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get list of app-created rewards
+	appCreatedIDs, err := localdb.GetAllAppCreatedRewardIDs()
+	if err != nil {
+		logger.Error("Failed to get app created reward IDs", zap.Error(err))
+		// Continue anyway, just treat all as not app-created
+		appCreatedIDs = []string{}
+	}
+	logger.Info("App created reward IDs from DB", zap.Int("count", len(appCreatedIDs)), zap.Strings("ids", appCreatedIDs))
+
+	// Create a map for quick lookup
+	appCreatedMap := make(map[string]bool)
+	for _, id := range appCreatedIDs {
+		appCreatedMap[id] = true
+	}
+
+	// Create response with is_manageable field
+	type RewardWithManageable struct {
+		TwitchCustomReward
+		IsManageable bool `json:"is_manageable"`
+	}
+
+	rewardsWithManageable := make([]RewardWithManageable, len(rewardsResp.Data))
+	for i, reward := range rewardsResp.Data {
+		isManageable := appCreatedMap[reward.ID]
+		rewardsWithManageable[i] = RewardWithManageable{
+			TwitchCustomReward: reward,
+			IsManageable:       isManageable,
+		}
+		if isManageable {
+			logger.Info("Reward marked as manageable", zap.String("reward_id", reward.ID), zap.String("title", reward.Title))
+		}
+	}
+
 	// Return custom rewards
 	logger.Info("Custom rewards fetched successfully", zap.Int("count", len(rewardsResp.Data)))
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rewardsResp)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": rewardsWithManageable,
+	})
 }
 
 // CreateRewardRequest represents the request body for creating a custom reward
@@ -500,12 +538,22 @@ func handleCreateCustomReward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record that this app created the reward
+	createdReward := createResp.Data[0]
+	logger.Info("Recording app created reward", zap.String("reward_id", createdReward.ID), zap.String("title", createdReward.Title))
+	if err := localdb.RecordAppCreatedReward(createdReward.ID, createdReward.Title); err != nil {
+		logger.Error("Failed to record app created reward", zap.Error(err))
+		// Don't fail the request, just log the error
+	} else {
+		logger.Info("Successfully recorded app created reward", zap.String("reward_id", createdReward.ID))
+	}
+
 	// Return created reward
-	logger.Info("Custom reward created successfully", zap.String("id", createResp.Data[0].ID), zap.String("title", createResp.Data[0].Title))
+	logger.Info("Custom reward created successfully", zap.String("id", createdReward.ID), zap.String("title", createdReward.Title))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createResp.Data[0])
+	json.NewEncoder(w).Encode(createdReward)
 }
 
 // handlePatchCustomReward handles PATCH request for toggling a custom reward
@@ -676,4 +724,148 @@ func handlePatchCustomReward(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updateResp.Data[0])
+}
+
+// handleDeleteCustomReward handles DELETE request for deleting a custom reward
+func handleDeleteCustomReward(w http.ResponseWriter, r *http.Request) {
+	// Extract reward ID from path: /api/twitch/custom-rewards/{id}
+	logger.Info("DELETE request received", zap.String("path", r.URL.Path))
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/twitch/custom-rewards/")
+	rewardID := strings.TrimSuffix(path, "/")
+
+	logger.Info("Extracted reward ID", zap.String("path_after_trim", path), zap.String("reward_id", rewardID))
+
+	if rewardID == "" {
+		logger.Error("Reward ID is empty")
+		http.Error(w, "Reward ID required", http.StatusBadRequest)
+		return
+	}
+
+	logger.Info("Deleting custom reward", zap.String("reward_id", rewardID))
+
+	// Check if this reward was created by this app
+	isAppCreated, err := localdb.IsAppCreatedReward(rewardID)
+	if err != nil {
+		logger.Error("Failed to check if reward is app created", zap.Error(err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "リワードの確認に失敗しました",
+		})
+		return
+	}
+
+	if !isAppCreated {
+		logger.Warn("Attempted to delete reward not created by this app", zap.String("reward_id", rewardID))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "このアプリで作成したリワードのみ削除できます",
+		})
+		return
+	}
+
+	// Get current token
+	token, valid, err := twitchtoken.GetLatestToken()
+	if err != nil || !valid {
+		logger.Error("Failed to get valid token", zap.Error(err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Twitch認証が必要です",
+		})
+		return
+	}
+
+	// Get broadcaster ID from environment
+	broadcasterID := env.Value.TwitchUserID
+	if broadcasterID == nil || *broadcasterID == "" {
+		logger.Error("TWITCH_USER_ID not configured")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "TWITCH_USER_IDが設定されていません",
+		})
+		return
+	}
+
+	// Call Twitch API to delete reward
+	url := fmt.Sprintf("https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=%s&id=%s", *broadcasterID, rewardID)
+	httpReq, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		logger.Error("Failed to create HTTP request", zap.Error(err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "リクエストの作成に失敗しました",
+		})
+		return
+	}
+
+	// Set headers
+	httpReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	httpReq.Header.Set("Client-Id", *env.Value.ClientID)
+
+	// Send request
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		logger.Error("Failed to send request", zap.Error(err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Twitch APIへのリクエストに失敗しました",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Error("Twitch API returned error",
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(bodyBytes)))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+
+		var errorMessage string
+		if resp.StatusCode == http.StatusUnauthorized {
+			errorMessage = "認証エラー: トークンが無効です"
+		} else if resp.StatusCode == http.StatusForbidden {
+			errorMessage = "アクセス権限がありません。このClient IDで作成したリワードではありません"
+		} else if resp.StatusCode == http.StatusNotFound {
+			errorMessage = "リワードが見つかりません"
+		} else {
+			errorMessage = fmt.Sprintf("リワードの削除に失敗しました (ステータス: %d)", resp.StatusCode)
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": errorMessage,
+		})
+		return
+	}
+
+	// Remove from app_created_rewards table
+	db := localdb.GetDB()
+	if db != nil {
+		_, err := db.Exec("DELETE FROM app_created_rewards WHERE reward_id = ?", rewardID)
+		if err != nil {
+			logger.Error("Failed to remove reward from app_created_rewards", zap.Error(err))
+			// Don't fail the request, just log the error
+		} else {
+			logger.Info("Removed reward from app_created_rewards", zap.String("reward_id", rewardID))
+		}
+	}
+
+	// Return success
+	logger.Info("Custom reward deleted successfully", zap.String("id", rewardID))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "リワードを削除しました",
+	})
 }
