@@ -33,6 +33,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [togglingGroupId, setTogglingGroupId] = useState<number | null>(null);
 
   // グループ内の実際に存在するリワード数を計算
   const getActiveRewardCount = (rewardIds: string[]) => {
@@ -155,6 +156,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
 
   const handleToggleGroup = async (groupId: number, enabled: boolean) => {
     setError(null);
+    setTogglingGroupId(groupId);
 
     try {
       const port = await GetServerPort();
@@ -176,6 +178,8 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     } catch (err) {
       console.error('Failed to toggle reward group:', err);
       setError(err instanceof Error ? err.message : 'グループの切り替えに失敗しました');
+    } finally {
+      setTogglingGroupId(null);
     }
   };
 
@@ -333,19 +337,30 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
                   {editingGroupId !== group.id && (
                     <div className="flex items-center space-x-2">
                       <div className="flex items-center space-x-2">
-                        <Label htmlFor={`group-${group.id}-toggle`} className="text-sm">
-                          {group.is_enabled ? 'ON' : 'OFF'}
-                        </Label>
-                        <Switch
-                          id={`group-${group.id}-toggle`}
-                          checked={group.is_enabled}
-                          onCheckedChange={(checked) => handleToggleGroup(group.id, checked)}
-                        />
+                        {togglingGroupId === group.id ? (
+                          <div className="flex items-center space-x-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                            <span className="text-sm text-gray-500">適用中...</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Label htmlFor={`group-${group.id}-toggle`} className="text-sm">
+                              {group.is_enabled ? 'ON' : 'OFF'}
+                            </Label>
+                            <Switch
+                              id={`group-${group.id}-toggle`}
+                              checked={group.is_enabled}
+                              onCheckedChange={(checked) => handleToggleGroup(group.id, checked)}
+                              disabled={togglingGroupId !== null}
+                            />
+                          </>
+                        )}
                       </div>
                       <Button
                         onClick={() => startEditing(group)}
                         variant="ghost"
                         size="sm"
+                        disabled={togglingGroupId !== null}
                       >
                         <Edit2 className="w-4 h-4" />
                       </Button>
@@ -353,6 +368,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
                         onClick={() => handleDeleteGroup(group.id)}
                         variant="ghost"
                         size="sm"
+                        disabled={togglingGroupId !== null}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
