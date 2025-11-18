@@ -176,6 +176,11 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create app_created_rewards table: %w", err)
 	}
 
+	// reward_redemption_countsテーブルを追加（リワード引き換え回数のカウント）
+	if err := SetupRewardCountsTable(db); err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 

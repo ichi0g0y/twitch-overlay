@@ -215,3 +215,23 @@ export interface UpdateSettingsResponse {
   status: FeatureStatus;
   message: string;
 }
+
+// リワードカウント関連の型定義
+export interface RewardCount {
+  reward_id: string;
+  count: number;
+  display_name: string;
+  title: string; // リワードの実際の名前（Twitch API由来）
+  last_reset_at: string;
+  updated_at: string;
+}
+
+// リワードカウント表示アイテムの状態
+export type RewardCountState = 'entering' | 'visible' | 'exiting' | 'hidden';
+
+export interface RewardCountItemState {
+  rewardId: string;
+  count: number;
+  displayName: string;
+  state: RewardCountState;
+}

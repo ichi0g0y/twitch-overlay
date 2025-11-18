@@ -39,9 +39,13 @@ type OverlaySettings struct {
 	DateEnabled     bool   `json:"date_enabled"`
 	TimeEnabled     bool   `json:"time_enabled"`
 
+	// リワードカウント表示設定
+	RewardCountEnabled bool `json:"reward_count_enabled"` // カウント表示の有効/無効
+	RewardCountGroupID *int `json:"reward_count_group_id"` // 表示対象のグループID（nilの場合は全て）
+
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
-	
+
 	// 開発者設定
 	DebugEnabled bool `json:"debug_enabled"`
 
@@ -86,22 +90,24 @@ func loadOverlaySettingsFromDB() {
 
 	// データベースから設定を読み込んでOverlaySettings構造体に変換
 	overlaySettings := &OverlaySettings{
-		MusicEnabled:      getBoolSetting(allSettings, "MUSIC_ENABLED", true),
-		MusicPlaylist:     getStringSetting(allSettings, "MUSIC_PLAYLIST"),
-		MusicVolume:       getIntSetting(allSettings, "MUSIC_VOLUME", 70),
-		MusicAutoPlay:     getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
-		FaxEnabled:        getBoolSetting(allSettings, "FAX_ENABLED", true),
-		FaxAnimationSpeed: getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
-		FaxImageType:      getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
-		ClockEnabled:      getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
-		ClockFormat:       getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
-		ClockShowIcons:    getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
-		LocationEnabled:   getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
-		DateEnabled:       getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
-		TimeEnabled:       getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
-		ShowDebugInfo:     false, // 廃止予定
-		DebugEnabled:      getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
-		UpdatedAt:         time.Now(),
+		MusicEnabled:       getBoolSetting(allSettings, "MUSIC_ENABLED", true),
+		MusicPlaylist:      getStringSetting(allSettings, "MUSIC_PLAYLIST"),
+		MusicVolume:        getIntSetting(allSettings, "MUSIC_VOLUME", 70),
+		MusicAutoPlay:      getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
+		FaxEnabled:         getBoolSetting(allSettings, "FAX_ENABLED", true),
+		FaxAnimationSpeed:  getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
+		FaxImageType:       getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
+		ClockEnabled:       getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
+		ClockFormat:        getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
+		ClockShowIcons:     getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
+		LocationEnabled:    getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
+		DateEnabled:        getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
+		TimeEnabled:        getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
+		RewardCountEnabled: getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
+		RewardCountGroupID: getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
+		ShowDebugInfo:      false, // 廃止予定
+		DebugEnabled:       getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
+		UpdatedAt:          time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -152,6 +158,15 @@ func getStringSettingWithDefault(settings map[string]settings.Setting, key strin
 		return setting.Value
 	}
 	return defaultValue
+}
+
+func getIntPointerSetting(settings map[string]settings.Setting, key string) *int {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		if val, err := strconv.Atoi(setting.Value); err == nil {
+			return &val
+		}
+	}
+	return nil
 }
 
 func useDefaultSettings() {
@@ -231,19 +246,27 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 
 	// 各設定を保存
 	settingsToSave := map[string]string{
-		"MUSIC_ENABLED":           strconv.FormatBool(overlaySettings.MusicEnabled),
-		"MUSIC_VOLUME":            strconv.Itoa(overlaySettings.MusicVolume),
-		"MUSIC_AUTO_PLAY":         strconv.FormatBool(overlaySettings.MusicAutoPlay),
-		"FAX_ENABLED":             strconv.FormatBool(overlaySettings.FaxEnabled),
-		"FAX_ANIMATION_SPEED":     fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
-		"FAX_IMAGE_TYPE":          overlaySettings.FaxImageType,
-		"OVERLAY_CLOCK_ENABLED":   strconv.FormatBool(overlaySettings.ClockEnabled),
-		"OVERLAY_CLOCK_FORMAT":    overlaySettings.ClockFormat,
-		"CLOCK_SHOW_ICONS":        strconv.FormatBool(overlaySettings.ClockShowIcons),
-		"OVERLAY_LOCATION_ENABLED": strconv.FormatBool(overlaySettings.LocationEnabled),
-		"OVERLAY_DATE_ENABLED":    strconv.FormatBool(overlaySettings.DateEnabled),
-		"OVERLAY_TIME_ENABLED":    strconv.FormatBool(overlaySettings.TimeEnabled),
-		"OVERLAY_DEBUG_ENABLED":   strconv.FormatBool(overlaySettings.DebugEnabled),
+		"MUSIC_ENABLED":             strconv.FormatBool(overlaySettings.MusicEnabled),
+		"MUSIC_VOLUME":              strconv.Itoa(overlaySettings.MusicVolume),
+		"MUSIC_AUTO_PLAY":           strconv.FormatBool(overlaySettings.MusicAutoPlay),
+		"FAX_ENABLED":               strconv.FormatBool(overlaySettings.FaxEnabled),
+		"FAX_ANIMATION_SPEED":       fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
+		"FAX_IMAGE_TYPE":            overlaySettings.FaxImageType,
+		"OVERLAY_CLOCK_ENABLED":     strconv.FormatBool(overlaySettings.ClockEnabled),
+		"OVERLAY_CLOCK_FORMAT":      overlaySettings.ClockFormat,
+		"CLOCK_SHOW_ICONS":          strconv.FormatBool(overlaySettings.ClockShowIcons),
+		"OVERLAY_LOCATION_ENABLED":  strconv.FormatBool(overlaySettings.LocationEnabled),
+		"OVERLAY_DATE_ENABLED":      strconv.FormatBool(overlaySettings.DateEnabled),
+		"OVERLAY_TIME_ENABLED":      strconv.FormatBool(overlaySettings.TimeEnabled),
+		"REWARD_COUNT_ENABLED":      strconv.FormatBool(overlaySettings.RewardCountEnabled),
+		"OVERLAY_DEBUG_ENABLED":     strconv.FormatBool(overlaySettings.DebugEnabled),
+	}
+
+	// RewardCountGroupIDはnilの場合は空文字列として保存
+	if overlaySettings.RewardCountGroupID != nil {
+		settingsToSave["REWARD_COUNT_GROUP_ID"] = strconv.Itoa(*overlaySettings.RewardCountGroupID)
+	} else {
+		settingsToSave["REWARD_COUNT_GROUP_ID"] = ""
 	}
 
 	// MusicPlaylistはnilの場合は空文字列として保存

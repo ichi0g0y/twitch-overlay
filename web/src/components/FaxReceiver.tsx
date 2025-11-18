@@ -4,6 +4,7 @@ import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
 import MusicPlayer from './music/MusicPlayer';
 import ClockDisplay from './ClockDisplay';
+import RewardCountDisplay from './RewardCountDisplay';
 import { LAYOUT } from '../constants/layout';
 import { buildApiUrl } from '../utils/api';
 import { initWebSocket } from '../utils/websocket';
@@ -269,10 +270,13 @@ const FaxReceiver = () => {
         </div>
       )}
 
+      {/* リワードカウント表示（左側中央） */}
+      <RewardCountDisplay />
+
       {/* コントロールパネル */}
       {showFax && (
         <div
-          className={`fixed z-10 ${getIndicatorClass()}`}
+          className={`fixed z-[15] ${getIndicatorClass()}`}
           style={labelStyle}
         >
           <div className="flex items-center h-full px-2">

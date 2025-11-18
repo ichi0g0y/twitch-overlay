@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
+	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/notification"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
@@ -98,6 +100,22 @@ func buildFragmentsForNotification(fragments []twitch.ChatMessageFragment) []not
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
+	// リワードカウントを増やす（全てのリワードをカウント）
+	if err := localdb.IncrementRewardCount(message.Reward.ID); err != nil {
+		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", message.Reward.ID))
+	} else {
+		// カウント更新をbroadcastで通知
+		count, err := localdb.GetRewardCount(message.Reward.ID)
+		if err == nil {
+			// リワードのタイトルを含める
+			count.Title = message.Reward.Title
+			broadcast.Send(map[string]interface{}{
+				"type": "reward_count_updated",
+				"data": count,
+			})
+		}
+	}
+
 	// 通知をキューに追加（全てのチャネポを通知）
 	notificationMessage := fmt.Sprintf("【%s】(%dpt) %s",
 		message.Reward.Title,

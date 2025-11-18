@@ -1806,6 +1806,12 @@ func (a *App) ToggleCustomReward(rewardID string, isEnabled bool) error {
 		return fmt.Errorf("リワードの更新に失敗しました: %w", err)
 	}
 
+	// Save the enabled state to local database for persistence
+	if err := localdb.SetRewardEnabled(rewardID, isEnabled); err != nil {
+		logger.Error("Failed to save reward enabled state to database", zap.Error(err))
+		// Don't fail the request, just log the error
+	}
+
 	logger.Info("Custom reward toggled successfully", zap.String("reward_id", rewardID), zap.Bool("is_enabled", isEnabled))
 	return nil
 }

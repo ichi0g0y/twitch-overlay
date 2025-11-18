@@ -32,6 +32,7 @@ export const OverlaySettings: React.FC = () => {
   } = context;
 
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+  const [rewardGroups, setRewardGroups] = useState<Array<{id: number, name: string}>>([]);
 
   // プレイリストを取得
   useEffect(() => {
@@ -44,6 +45,24 @@ export const OverlaySettings: React.FC = () => {
       }
     };
     fetchPlaylists();
+  }, []);
+
+  // リワードグループを取得
+  useEffect(() => {
+    const fetchRewardGroups = async () => {
+      try {
+        const url = await buildApiUrlAsync('/api/twitch/reward-groups');
+        const response = await fetch(url);
+        if (response.ok) {
+          const result = await response.json();
+          // APIレスポンスは { data: [...] } の形式
+          setRewardGroups(result.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch reward groups:', error);
+      }
+    };
+    fetchRewardGroups();
   }, []);
 
   // 音楽ステータスの更新を監視
@@ -471,6 +490,84 @@ export const OverlaySettings: React.FC = () => {
                 />
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* リワードカウント表示設定 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>リワードカウント表示</CardTitle>
+          <CardDescription>
+            使用されたリワードの回数を蓄積表示します
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="reward-count-enabled" className="flex flex-col">
+              <span>カウント表示を有効化</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                オーバーレイ左側にリワード使用回数を表示します
+              </span>
+            </Label>
+            <Switch
+              id="reward-count-enabled"
+              checked={overlaySettings?.reward_count_enabled ?? false}
+              onCheckedChange={(checked) =>
+                updateOverlaySettings({ reward_count_enabled: checked })
+              }
+            />
+          </div>
+
+          {(overlaySettings?.reward_count_enabled ?? false) && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reward-count-group">表示対象グループ</Label>
+                <Select
+                  value={overlaySettings?.reward_count_group_id?.toString() || 'all'}
+                  onValueChange={(value) =>
+                    updateOverlaySettings({
+                      reward_count_group_id: value === 'all' ? null : parseInt(value)
+                    })
+                  }
+                >
+                  <SelectTrigger id="reward-count-group">
+                    <SelectValue placeholder="すべてのリワード" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">すべてのリワード</SelectItem>
+                    {rewardGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id.toString()}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  特定のグループのリワードのみカウント表示します
+                </p>
+              </div>
+
+              <div className="pt-2 border-t">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (confirm('すべてのリワードカウントをリセットしますか？')) {
+                      try {
+                        const url = await buildApiUrlAsync('/api/twitch/reward-counts/reset');
+                        await fetch(url, { method: 'POST' });
+                        alert('カウントをリセットしました');
+                      } catch (error) {
+                        console.error('Failed to reset counts:', error);
+                        alert('リセットに失敗しました');
+                      }
+                    }
+                  }}
+                >
+                  すべてのカウントをリセット
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -309,19 +309,36 @@ func handleGetCustomRewards(w http.ResponseWriter, r *http.Request) {
 		appCreatedMap[id] = true
 	}
 
-	// Create response with is_manageable field
+	// Create response with is_manageable field and saved settings
 	type RewardWithManageable struct {
 		TwitchCustomReward
-		IsManageable bool `json:"is_manageable"`
+		IsManageable     bool    `json:"is_manageable"`
+		SavedDisplayName *string `json:"saved_display_name,omitempty"`
+		SavedIsEnabled   *bool   `json:"saved_is_enabled,omitempty"`
 	}
 
 	rewardsWithManageable := make([]RewardWithManageable, len(rewardsResp.Data))
 	for i, reward := range rewardsResp.Data {
 		isManageable := appCreatedMap[reward.ID]
-		rewardsWithManageable[i] = RewardWithManageable{
+
+		// Get saved settings from database
+		savedDisplayName, _ := localdb.GetRewardDisplayName(reward.ID)
+		savedIsEnabled, _ := localdb.GetRewardEnabled(reward.ID)
+
+		rewardData := RewardWithManageable{
 			TwitchCustomReward: reward,
 			IsManageable:       isManageable,
 		}
+
+		if savedDisplayName != "" {
+			rewardData.SavedDisplayName = &savedDisplayName
+		}
+		if savedIsEnabled != nil {
+			rewardData.SavedIsEnabled = savedIsEnabled
+		}
+
+		rewardsWithManageable[i] = rewardData
+
 		if isManageable {
 			logger.Info("Reward marked as manageable", zap.String("reward_id", reward.ID), zap.String("title", reward.Title))
 		}

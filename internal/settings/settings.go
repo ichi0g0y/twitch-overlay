@@ -216,6 +216,14 @@ var DefaultSettings = map[string]Setting{
 		Key: "OVERLAY_DEBUG_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable debug panel in overlay",
 	},
+	"REWARD_COUNT_ENABLED": {
+		Key: "REWARD_COUNT_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable reward count display in overlay",
+	},
+	"REWARD_COUNT_GROUP_ID": {
+		Key: "REWARD_COUNT_GROUP_ID", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Reward group ID to display counts for (empty for all)",
+	},
 
 	// 通知設定
 	"NOTIFICATION_ENABLED": {
@@ -481,7 +489,7 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 60 {
 			return fmt.Errorf("must be integer between 1 and 60 seconds")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED":
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

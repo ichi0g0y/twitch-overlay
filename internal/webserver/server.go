@@ -221,12 +221,31 @@ func StartWebServer(port int) error {
 		// Route based on path
 		if strings.HasSuffix(r.URL.Path, "/toggle") {
 			handleToggleRewardGroup(w, r)
+		} else if strings.Contains(r.URL.Path, "/counts") {
+			// Handle group-specific reward counts
+			handleGetGroupRewardCounts(w, r)
 		} else if strings.Contains(r.URL.Path, "/rewards/") {
 			handleRewardGroupMembers(w, r)
 		} else if strings.Contains(r.URL.Path, "/rewards") {
 			handleRewardGroupMembers(w, r)
 		} else {
 			handleRewardGroupByID(w, r)
+		}
+	}))
+
+	// Reward Counts API endpoints
+	mux.HandleFunc("/api/twitch/reward-counts", corsMiddleware(handleGetAllRewardCounts))
+	mux.HandleFunc("/api/twitch/reward-counts/reset", corsMiddleware(handleResetAllRewardCounts))
+	mux.HandleFunc("/api/twitch/reward-counts/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		// Handle individual reward count reset
+		if strings.HasSuffix(r.URL.Path, "/reset") {
+			handleResetRewardCount(w, r)
+		}
+	}))
+	mux.HandleFunc("/api/twitch/rewards/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		// Handle display name updates
+		if strings.HasSuffix(r.URL.Path, "/display-name") {
+			handleSetRewardDisplayName(w, r)
 		}
 	}))
 

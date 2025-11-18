@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2 } from 'lucide-react';
+import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { RewardGroupBadge } from './RewardGroupBadge';
 import { AddToGroupDropdown } from './AddToGroupDropdown';
@@ -19,6 +20,8 @@ interface CustomReward {
   is_paused: boolean;
   is_in_stock: boolean;
   is_manageable?: boolean;
+  saved_display_name?: string;
+  saved_is_enabled?: boolean;
   redemptions_redeemed_current_stream?: number;
   max_per_stream_setting: {
     is_enabled: boolean;
@@ -53,6 +56,8 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   const [rewardGroups, setRewardGroups] = useState<Map<string, RewardGroup[]>>(new Map());
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deleteClickedId, setDeleteClickedId] = useState<string | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState<string | null>(null);
+  const [editingDisplayNameValue, setEditingDisplayNameValue] = useState<string>('');
 
   const fetchRewards = async () => {
     setLoading(true);
@@ -196,6 +201,38 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
     }
   };
 
+  const handleSaveDisplayName = async (rewardId: string, displayName: string) => {
+    try {
+      const port = await GetServerPort();
+      const response = await fetch(
+        `http://localhost:${port}/api/twitch/rewards/${rewardId}/display-name`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save display name');
+      }
+
+      // Update local state
+      setRewards((prev) =>
+        prev.map((r) =>
+          r.id === rewardId ? { ...r, saved_display_name: displayName } : r
+        )
+      );
+
+      // Close editing mode
+      setEditingDisplayName(null);
+      setEditingDisplayNameValue('');
+    } catch (err) {
+      console.error('Failed to save display name:', err);
+      alert('カスタム名称の保存に失敗しました');
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -331,6 +368,11 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                         />
                         <h3 className="font-semibold dark:text-white">
                           {reward.title}
+                          {reward.saved_display_name && (
+                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                              → {reward.saved_display_name}
+                            </span>
+                          )}
                         </h3>
                         {reward.is_manageable && (
                           <div className="flex items-center space-x-2">
@@ -430,6 +472,61 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
                         )}
                       </Button>
                     </div>
+                    {/* カスタム表示名 */}
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        カスタム表示名 (リワードカウント表示用)
+                      </div>
+                      {editingDisplayName === reward.id ? (
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            value={editingDisplayNameValue}
+                            onChange={(e) => setEditingDisplayNameValue(e.target.value)}
+                            placeholder={reward.title}
+                            className="flex-1 h-8 text-sm"
+                            autoFocus
+                          />
+                          <Button
+                            onClick={() => handleSaveDisplayName(reward.id, editingDisplayNameValue)}
+                            variant="default"
+                            size="sm"
+                            className="h-8 px-2"
+                          >
+                            <Save className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setEditingDisplayName(null);
+                              setEditingDisplayNameValue('');
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1 text-sm text-gray-600 dark:text-gray-400 py-1">
+                            {reward.saved_display_name || <span className="italic">未設定（実際の名前を使用）</span>}
+                          </div>
+                          <Button
+                            onClick={() => {
+                              setEditingDisplayName(reward.id);
+                              setEditingDisplayNameValue(reward.saved_display_name || '');
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                          >
+                            <Edit2 className="w-3 h-3 mr-1" />
+                            <span className="text-xs">編集</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
                     {/* 詳細情報 */}
                     <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
                       {reward.max_per_stream_setting.is_enabled && (

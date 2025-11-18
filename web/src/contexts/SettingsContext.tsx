@@ -19,6 +19,10 @@ interface OverlaySettings {
   date_enabled?: boolean;
   time_enabled?: boolean;
 
+  // リワードカウント表示設定
+  reward_count_enabled?: boolean;
+  reward_count_group_id?: number | null;
+
   // 開発者設定
   debug_enabled: boolean;
 
