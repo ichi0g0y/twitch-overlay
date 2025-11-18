@@ -30,9 +30,27 @@ export const RewardCountItem: React.FC<RewardCountItemProps> = ({
 
   return (
     <div className={`reward-count-item ${getStateClass()}`}>
-      <div className="reward-count-content">
-        <span className="reward-count-name">{displayName}</span>
-        <span className="reward-count-value">x{count}</span>
+      {/* 3x3グリッドでドット絵風のボーダーを作成 */}
+      <div className="reward-count-grid">
+        {/* 上段 */}
+        <div className="reward-count-corner" /> {/* 左上：透明 */}
+        <div className="reward-count-border-h" /> {/* 上：白 */}
+        <div className="reward-count-corner" /> {/* 右上：透明 */}
+
+        {/* 中段 */}
+        <div className="reward-count-border-v" /> {/* 左：白 */}
+        <div className="reward-count-content-container"> {/* 中央：黒背景 + コンテンツ */}
+          <div className="reward-count-content">
+            <span className="reward-count-name">{displayName}</span>
+            <span className="reward-count-value">x{count}</span>
+          </div>
+        </div>
+        <div className="reward-count-border-v" /> {/* 右：白 */}
+
+        {/* 下段 */}
+        <div className="reward-count-corner" /> {/* 左下：透明 */}
+        <div className="reward-count-border-h" /> {/* 下：白 */}
+        <div className="reward-count-corner" /> {/* 右下：透明 */}
       </div>
     </div>
   );

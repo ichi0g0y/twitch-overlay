@@ -291,12 +291,42 @@ body {
 
 /* リワードカウント表示のスタイル */
 .reward-count-item {
-  background: rgba(0, 0, 0, 0.8);
-  border: 2px solid #ffffff;
-  padding: 8px 16px;
-  border-radius: 4px;
+  position: relative;
   transition: all 0.3s ease;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* 3x3グリッド */
+.reward-count-grid {
+  display: grid;
+  grid-template-columns: 4px 1fr 4px;
+  grid-template-rows: 4px 1fr 4px;
   min-width: 200px;
+}
+
+/* 四隅：透明 */
+.reward-count-corner {
+  background: transparent;
+}
+
+/* 上下のボーダー：白 */
+.reward-count-border-h {
+  background: #ffffff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* 左右のボーダー：白 */
+.reward-count-border-v {
+  background: #ffffff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* 中央：黒背景 + コンテンツ */
+.reward-count-content-container {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
 }
 
@@ -319,6 +349,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  image-rendering: pixelated;
 }
 
 .reward-count-value {
@@ -332,6 +363,7 @@ body {
     2px 2px 0 #000;
   min-width: 40px;
   text-align: right;
+  image-rendering: pixelated;
 }
 
 /* リワードカウントアニメーション */
