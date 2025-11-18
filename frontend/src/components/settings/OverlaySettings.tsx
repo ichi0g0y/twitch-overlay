@@ -93,14 +93,61 @@ export const OverlaySettings: React.FC = () => {
 
   // リワードカウント表示が有効な場合、カウントを取得
   useEffect(() => {
-    if (overlaySettings?.reward_count_enabled) {
-      fetchRewardCounts();
-      // 定期的に更新
-      const interval = setInterval(fetchRewardCounts, 5000);
-      return () => clearInterval(interval);
-    } else {
+    if (!overlaySettings?.reward_count_enabled) {
       setRewardCounts([]);
+      return;
     }
+
+    // 初回取得
+    fetchRewardCounts();
+
+    // WebSocketでのリアルタイム更新
+    let unsubUpdated: (() => void) | null = null;
+    let unsubReset: (() => void) | null = null;
+
+    const setupWebSocket = async () => {
+      try {
+        const { getWebSocketClient } = await import('../../utils/websocket');
+        const wsClient = getWebSocketClient();
+
+        // WebSocket接続を開始
+        await wsClient.connect();
+
+        // reward_count_updatedメッセージを購読（個別リワードの更新）
+        unsubUpdated = wsClient.on('reward_count_updated', (data: any) => {
+          console.log('Received reward_count_updated from WebSocket:', data);
+          setRewardCounts(prev => {
+            // 既存のリワードを除外
+            const filtered = prev.filter(c => c.reward_id !== data.reward_id);
+            // カウントが0より大きい場合のみ追加
+            if (data.count > 0) {
+              return [...filtered, {
+                reward_id: data.reward_id,
+                count: data.count,
+                title: data.title,
+                display_name: data.display_name
+              }].sort((a, b) => b.count - a.count);
+            }
+            return filtered;
+          });
+        });
+
+        // reward_counts_resetメッセージを購読（全リセット）
+        unsubReset = wsClient.on('reward_counts_reset', () => {
+          console.log('Received reward_counts_reset from WebSocket');
+          setRewardCounts([]);
+        });
+      } catch (error) {
+        console.error('Failed to setup WebSocket for reward counts:', error);
+      }
+    };
+
+    setupWebSocket();
+
+    return () => {
+      if (unsubUpdated) unsubUpdated();
+      if (unsubReset) unsubReset();
+    };
   }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
 
   // 音楽ステータスの更新を監視
