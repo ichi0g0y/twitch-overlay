@@ -13,6 +13,15 @@ const RewardCountDisplay: React.FC = () => {
   const isEnabled = settings?.reward_count_enabled ?? false;
   const groupId = settings?.reward_count_group_id;
 
+  // アラート音声を再生する関数
+  const playAlertSound = useCallback(() => {
+    const audio = new Audio('/alert.mp3');
+    audio.volume = 0.5; // 音量を50%に設定
+    audio.play().catch((err) => {
+      console.error('Failed to play alert sound:', err);
+    });
+  }, []);
+
   // カウントデータの初期ロード
   useEffect(() => {
     if (!isEnabled) return;
@@ -65,7 +74,7 @@ const RewardCountDisplay: React.FC = () => {
         const newCounts = new Map(prev);
 
         if (data.count === 0) {
-          // カウントが0になった場合は削除アニメーション
+          // カウントが0になった場合は削除アニメーション（音声は再生しない）
           const existing = newCounts.get(data.reward_id);
           if (existing) {
             newCounts.set(data.reward_id, { ...existing, state: 'exiting' });
@@ -79,7 +88,9 @@ const RewardCountDisplay: React.FC = () => {
             }, 300); // アニメーション時間と合わせる
           }
         } else {
-          // カウント追加または更新
+          // カウント追加または更新（音声を再生）
+          playAlertSound();
+
           const existing = newCounts.get(data.reward_id);
           if (existing) {
             // 既存アイテムを更新
@@ -137,7 +148,7 @@ const RewardCountDisplay: React.FC = () => {
       unsubCountUpdated();
       unsubCountsReset();
     };
-  }, [isEnabled]);
+  }, [isEnabled, playAlertSound]);
 
   if (!isEnabled) {
     return null;
