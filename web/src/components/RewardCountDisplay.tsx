@@ -34,6 +34,7 @@ const RewardCountDisplay: React.FC = () => {
               newCounts.set(item.reward_id, {
                 rewardId: item.reward_id,
                 count: item.count,
+                userNames: item.user_names || [],
                 displayName: item.display_name || item.title || '未設定',
                 state: 'visible',
               });
@@ -85,6 +86,7 @@ const RewardCountDisplay: React.FC = () => {
             newCounts.set(data.reward_id, {
               ...existing,
               count: data.count,
+              userNames: data.user_names || [],
               displayName: data.display_name || data.title || existing.displayName,
             });
           } else {
@@ -92,6 +94,7 @@ const RewardCountDisplay: React.FC = () => {
             newCounts.set(data.reward_id, {
               rewardId: data.reward_id,
               count: data.count,
+              userNames: data.user_names || [],
               displayName: data.display_name || data.title || '未設定',
               state: 'entering',
             });
@@ -151,7 +154,7 @@ const RewardCountDisplay: React.FC = () => {
       {countArray.map((item) => (
         <RewardCountItem
           key={item.rewardId}
-          count={item.count}
+          userNames={item.userNames}
           displayName={item.displayName}
           state={item.state}
         />

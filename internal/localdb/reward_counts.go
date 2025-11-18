@@ -2,6 +2,7 @@ package localdb
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 type RewardCount struct {
 	RewardID    string    `json:"reward_id"`
 	Count       int       `json:"count"`
+	UserNames   []string  `json:"user_names"`   // リワードを使用したユーザー名のリスト
 	DisplayName string    `json:"display_name"` // 表示用文字列（未設定の場合は空文字列）
 	Title       string    `json:"title"`        // リワードの実際の名前（Twitch API由来）
 	LastResetAt time.Time `json:"last_reset_at"`
@@ -24,6 +26,7 @@ func SetupRewardCountsTable(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS reward_redemption_counts (
 		reward_id TEXT PRIMARY KEY,
 		count INTEGER NOT NULL DEFAULT 0,
+		user_names TEXT DEFAULT '[]',
 		display_name TEXT DEFAULT '',
 		is_enabled BOOLEAN DEFAULT NULL,
 		last_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -36,6 +39,8 @@ func SetupRewardCountsTable(db *sql.DB) error {
 
 	// 既存のテーブルに is_enabled カラムを追加（既に存在する場合はエラーを無視）
 	db.Exec(`ALTER TABLE reward_redemption_counts ADD COLUMN is_enabled BOOLEAN DEFAULT NULL`)
+	// 既存のテーブルに user_names カラムを追加（既に存在する場合はエラーを無視）
+	db.Exec(`ALTER TABLE reward_redemption_counts ADD COLUMN user_names TEXT DEFAULT '[]'`)
 
 	return nil
 }
@@ -48,17 +53,19 @@ func GetRewardCount(rewardID string) (*RewardCount, error) {
 	}
 
 	var count RewardCount
+	var userNamesJSON string
 	err := db.QueryRow(
-		`SELECT reward_id, count, display_name, last_reset_at, updated_at
+		`SELECT reward_id, count, COALESCE(user_names, '[]'), display_name, last_reset_at, updated_at
 		FROM reward_redemption_counts WHERE reward_id = ?`,
 		rewardID,
-	).Scan(&count.RewardID, &count.Count, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
+	).Scan(&count.RewardID, &count.Count, &userNamesJSON, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		// レコードが存在しない場合は0を返す
 		return &RewardCount{
 			RewardID:    rewardID,
 			Count:       0,
+			UserNames:   []string{},
 			DisplayName: "",
 			LastResetAt: time.Now(),
 			UpdatedAt:   time.Now(),
@@ -67,6 +74,12 @@ func GetRewardCount(rewardID string) (*RewardCount, error) {
 	if err != nil {
 		logger.Error("Failed to get reward count", zap.Error(err), zap.String("reward_id", rewardID))
 		return nil, fmt.Errorf("failed to get reward count: %w", err)
+	}
+
+	// JSON文字列をスライスに変換
+	if err := json.Unmarshal([]byte(userNamesJSON), &count.UserNames); err != nil {
+		logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		count.UserNames = []string{}
 	}
 
 	return &count, nil
@@ -80,7 +93,7 @@ func GetAllRewardCounts() ([]RewardCount, error) {
 	}
 
 	rows, err := db.Query(
-		`SELECT reward_id, count, display_name, last_reset_at, updated_at
+		`SELECT reward_id, count, COALESCE(user_names, '[]'), display_name, last_reset_at, updated_at
 		FROM reward_redemption_counts ORDER BY updated_at DESC`,
 	)
 	if err != nil {
@@ -92,11 +105,19 @@ func GetAllRewardCounts() ([]RewardCount, error) {
 	counts := []RewardCount{}
 	for rows.Next() {
 		var count RewardCount
-		err := rows.Scan(&count.RewardID, &count.Count, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
+		var userNamesJSON string
+		err := rows.Scan(&count.RewardID, &count.Count, &userNamesJSON, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
 		if err != nil {
 			logger.Error("Failed to scan reward count", zap.Error(err))
 			continue
 		}
+
+		// JSON文字列をスライスに変換
+		if err := json.Unmarshal([]byte(userNamesJSON), &count.UserNames); err != nil {
+			logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", count.RewardID))
+			count.UserNames = []string{}
+		}
+
 		counts = append(counts, count)
 	}
 
@@ -111,7 +132,7 @@ func GetGroupRewardCounts(groupID int) ([]RewardCount, error) {
 	}
 
 	rows, err := db.Query(`
-		SELECT rc.reward_id, rc.count, rc.display_name, rc.last_reset_at, rc.updated_at
+		SELECT rc.reward_id, rc.count, COALESCE(rc.user_names, '[]'), rc.display_name, rc.last_reset_at, rc.updated_at
 		FROM reward_redemption_counts rc
 		INNER JOIN reward_group_members rgm ON rc.reward_id = rgm.reward_id
 		WHERE rgm.group_id = ?
@@ -126,38 +147,75 @@ func GetGroupRewardCounts(groupID int) ([]RewardCount, error) {
 	counts := []RewardCount{}
 	for rows.Next() {
 		var count RewardCount
-		err := rows.Scan(&count.RewardID, &count.Count, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
+		var userNamesJSON string
+		err := rows.Scan(&count.RewardID, &count.Count, &userNamesJSON, &count.DisplayName, &count.LastResetAt, &count.UpdatedAt)
 		if err != nil {
 			logger.Error("Failed to scan reward count", zap.Error(err))
 			continue
 		}
+
+		// JSON文字列をスライスに変換
+		if err := json.Unmarshal([]byte(userNamesJSON), &count.UserNames); err != nil {
+			logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", count.RewardID))
+			count.UserNames = []string{}
+		}
+
 		counts = append(counts, count)
 	}
 
 	return counts, nil
 }
 
-// IncrementRewardCount increments the count for a reward
-func IncrementRewardCount(rewardID string) error {
+// IncrementRewardCount increments the count for a reward and adds the user name
+func IncrementRewardCount(rewardID string, userName string) error {
 	db := GetDB()
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
-	_, err := db.Exec(`
-		INSERT INTO reward_redemption_counts (reward_id, count, updated_at)
-		VALUES (?, 1, ?)
+	// 既存のユーザー名リストを取得
+	var userNamesJSON string
+	err := db.QueryRow(`SELECT COALESCE(user_names, '[]') FROM reward_redemption_counts WHERE reward_id = ?`, rewardID).Scan(&userNamesJSON)
+
+	var userNames []string
+	if err == sql.ErrNoRows {
+		// 新規レコードの場合
+		userNames = []string{userName}
+	} else if err != nil {
+		logger.Error("Failed to get existing user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to get existing user_names: %w", err)
+	} else {
+		// 既存レコードの場合、JSONをパース
+		if err := json.Unmarshal([]byte(userNamesJSON), &userNames); err != nil {
+			logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
+			userNames = []string{}
+		}
+		// ユーザー名を追加
+		userNames = append(userNames, userName)
+	}
+
+	// JSON文字列に変換
+	updatedUserNamesJSON, err := json.Marshal(userNames)
+	if err != nil {
+		logger.Error("Failed to marshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to marshal user_names: %w", err)
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO reward_redemption_counts (reward_id, count, user_names, updated_at)
+		VALUES (?, 1, ?, ?)
 		ON CONFLICT(reward_id) DO UPDATE SET
 			count = count + 1,
+			user_names = ?,
 			updated_at = ?
-	`, rewardID, time.Now(), time.Now())
+	`, rewardID, string(updatedUserNamesJSON), time.Now(), string(updatedUserNamesJSON), time.Now())
 
 	if err != nil {
 		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", rewardID))
 		return fmt.Errorf("failed to increment reward count: %w", err)
 	}
 
-	logger.Debug("Incremented reward count", zap.String("reward_id", rewardID))
+	logger.Debug("Incremented reward count", zap.String("reward_id", rewardID), zap.String("user_name", userName))
 	return nil
 }
 
@@ -170,7 +228,7 @@ func ResetRewardCount(rewardID string) error {
 
 	_, err := db.Exec(`
 		UPDATE reward_redemption_counts
-		SET count = 0, last_reset_at = ?, updated_at = ?
+		SET count = 0, user_names = '[]', last_reset_at = ?, updated_at = ?
 		WHERE reward_id = ?
 	`, time.Now(), time.Now(), rewardID)
 
@@ -192,7 +250,7 @@ func ResetAllRewardCounts() error {
 
 	_, err := db.Exec(`
 		UPDATE reward_redemption_counts
-		SET count = 0, last_reset_at = ?, updated_at = ?
+		SET count = 0, user_names = '[]', last_reset_at = ?, updated_at = ?
 	`, time.Now(), time.Now())
 
 	if err != nil {

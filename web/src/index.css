@@ -8,7 +8,7 @@ body {
 }
 
 .font-flat {
-  font-family: 'DotGothic16', monospace;
+  font-family: 'Press Start 2P', 'BestTenDot';
 }
 
 .text-outline {
@@ -336,27 +336,29 @@ body {
 
 .reward-count-content {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.reward-count-name {
+.reward-count-header {
   font-size: 14px;
+  line-height: 1.4;
   color: #ffffff;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: bold;
   image-rendering: pixelated;
 }
 
-.reward-count-value {
-  font-size: 14px;
+.reward-count-users {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reward-count-user {
+  font-size: 12px;
+  line-height: 1.4;
   color: #ffd700;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding-left: 8px;
   image-rendering: pixelated;
 }
 

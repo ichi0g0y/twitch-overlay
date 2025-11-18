@@ -101,8 +101,9 @@ func buildFragmentsForNotification(fragments []twitch.ChatMessageFragment) []not
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
 	// リワードカウントを増やす（全てのリワードをカウント）
-	if err := localdb.IncrementRewardCount(message.Reward.ID); err != nil {
-		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", message.Reward.ID))
+	// ユーザー名も記録する
+	if err := localdb.IncrementRewardCount(message.Reward.ID, message.User.UserName); err != nil {
+		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", message.Reward.ID), zap.String("user_name", message.User.UserName))
 	} else {
 		// カウント更新をbroadcastで通知
 		count, err := localdb.GetRewardCount(message.Reward.ID)

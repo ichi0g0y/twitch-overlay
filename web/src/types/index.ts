@@ -220,6 +220,7 @@ export interface UpdateSettingsResponse {
 export interface RewardCount {
   reward_id: string;
   count: number;
+  user_names: string[]; // リワードを使用したユーザー名のリスト
   display_name: string;
   title: string; // リワードの実際の名前（Twitch API由来）
   last_reset_at: string;
@@ -232,6 +233,7 @@ export type RewardCountState = 'entering' | 'visible' | 'exiting' | 'hidden';
 export interface RewardCountItemState {
   rewardId: string;
   count: number;
+  userNames: string[]; // リワードを使用したユーザー名のリスト
   displayName: string;
   state: RewardCountState;
 }

@@ -2,13 +2,13 @@ import React from 'react';
 import { RewardCountState } from '../types';
 
 interface RewardCountItemProps {
-  count: number;
+  userNames: string[];
   displayName: string;
   state: RewardCountState;
 }
 
 export const RewardCountItem: React.FC<RewardCountItemProps> = ({
-  count,
+  userNames,
   displayName,
   state,
 }) => {
@@ -41,8 +41,12 @@ export const RewardCountItem: React.FC<RewardCountItemProps> = ({
         <div className="reward-count-border-v" /> {/* 左：白 */}
         <div className="reward-count-content-container"> {/* 中央：黒背景 + コンテンツ */}
           <div className="reward-count-content">
-            <span className="reward-count-name">{displayName}</span>
-            <span className="reward-count-value">x{count}</span>
+            <div className="reward-count-header">{displayName}</div>
+            <div className="reward-count-users">
+              {userNames.map((userName, index) => (
+                <div key={index} className="reward-count-user">{userName}</div>
+              ))}
+            </div>
           </div>
         </div>
         <div className="reward-count-border-v" /> {/* 右：白 */}
