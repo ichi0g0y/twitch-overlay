@@ -29,7 +29,7 @@ export const RewardCountItem: React.FC<RewardCountItemProps> = ({
   };
 
   return (
-    <div className={`reward-count-item ${getStateClass()}`}>
+    <div className={`font-flat reward-count-item ${getStateClass()}`}>
       {/* 3x3グリッドでドット絵風のボーダーを作成 */}
       <div className="reward-count-grid">
         {/* 上段 */}

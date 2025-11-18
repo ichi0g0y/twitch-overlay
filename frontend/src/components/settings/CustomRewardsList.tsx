@@ -58,6 +58,9 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   const [deleteClickedId, setDeleteClickedId] = useState<string | null>(null);
   const [editingDisplayName, setEditingDisplayName] = useState<string | null>(null);
   const [editingDisplayNameValue, setEditingDisplayNameValue] = useState<string>('');
+  const [allGroups, setAllGroups] = useState<RewardGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [showUngroupedOnly, setShowUngroupedOnly] = useState(false);
 
   const fetchRewards = async () => {
     setLoading(true);
@@ -82,6 +85,20 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
       setError(err instanceof Error ? err.message : 'カスタムリワードの取得に失敗しました');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllGroups = async () => {
+    try {
+      const port = await GetServerPort();
+      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`);
+
+      if (response.ok) {
+        const data = await response.json();
+        setAllGroups(data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch all groups:', err);
     }
   };
 
@@ -189,6 +206,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   useEffect(() => {
     fetchRewards();
+    fetchAllGroups();
   }, [refreshTrigger]);
 
   const handleCopyId = async (id: string) => {
@@ -232,6 +250,19 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
       alert('カスタム名称の保存に失敗しました');
     }
   };
+
+  // フィルタリングされたリワードを取得
+  const filteredRewards = showUngroupedOnly
+    ? rewards.filter(reward => {
+        const groups = rewardGroups.get(reward.id) || [];
+        return groups.length === 0;
+      })
+    : selectedGroupId === null
+    ? rewards
+    : rewards.filter(reward => {
+        const groups = rewardGroups.get(reward.id) || [];
+        return groups.some(g => g.id === selectedGroupId);
+      });
 
   if (loading) {
     return (
@@ -321,13 +352,70 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
           </div>
         </CardHeader>
       <CardContent>
-        {rewards.length === 0 ? (
+        {/* グループフィルター */}
+        {allGroups.length > 0 && (
+          <div className="mb-4 pb-4 border-b dark:border-gray-700">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              グループでフィルター
+            </div>
+            <div className="flex items-center flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setSelectedGroupId(null);
+                  setShowUngroupedOnly(false);
+                }}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  selectedGroupId === null && !showUngroupedOnly
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                すべて
+              </button>
+              {allGroups.map((group) => (
+                <button
+                  key={group.id}
+                  onClick={() => {
+                    setSelectedGroupId(group.id);
+                    setShowUngroupedOnly(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    selectedGroupId === group.id && !showUngroupedOnly
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {group.name}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setSelectedGroupId(null);
+                  setShowUngroupedOnly(true);
+                }}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  showUngroupedOnly
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                グループなし
+              </button>
+            </div>
+          </div>
+        )}
+
+        {filteredRewards.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            カスタムリワードが見つかりません
+            {showUngroupedOnly
+              ? 'グループに属していないリワードが見つかりません'
+              : selectedGroupId === null
+              ? 'カスタムリワードが見つかりません'
+              : 'このグループに属するリワードが見つかりません'}
           </div>
         ) : (
           <div className="space-y-3">
-            {rewards.map((reward) => {
+            {filteredRewards.map((reward) => {
               return (
                 <div
                   key={reward.id}

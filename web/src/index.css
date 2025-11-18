@@ -7,6 +7,10 @@ body {
   font-family: 'MOTHER PIXEL2', 'Press Start 2P', 'DotGothic16', monospace;
 }
 
+.font-flat {
+  font-family: 'DotGothic16', monospace;
+}
+
 .text-outline {
   text-shadow:
     -4px -4px 0 #000000,
@@ -333,18 +337,13 @@ body {
 .reward-count-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   gap: 12px;
 }
 
 .reward-count-name {
   font-size: 14px;
   color: #ffffff;
-  text-shadow:
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -353,16 +352,11 @@ body {
 }
 
 .reward-count-value {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 14px;
   color: #ffd700;
-  text-shadow:
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000;
-  min-width: 40px;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   image-rendering: pixelated;
 }
 
