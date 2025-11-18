@@ -146,13 +146,17 @@ func handleResetAllRewardCounts(w http.ResponseWriter, r *http.Request) {
 
 // handleResetRewardCount resets a specific reward count to 0
 func handleResetRewardCount(w http.ResponseWriter, r *http.Request) {
+	logger.Info("handleResetRewardCount called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
+
 	// Extract reward ID from URL: /api/twitch/reward-counts/{id}/reset
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/twitch/reward-counts/"), "/")
 	if len(parts) < 1 {
+		logger.Error("Invalid URL - no parts", zap.String("path", r.URL.Path))
 		http.Error(w, "Invalid URL", http.StatusBadRequest)
 		return
 	}
 	rewardID := parts[0]
+	logger.Info("Resetting reward count", zap.String("reward_id", rewardID))
 
 	if err := localdb.ResetRewardCount(rewardID); err != nil {
 		logger.Error("Failed to reset reward count", zap.Error(err), zap.String("reward_id", rewardID))

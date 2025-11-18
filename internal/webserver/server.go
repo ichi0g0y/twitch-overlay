@@ -237,16 +237,25 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/twitch/reward-counts", corsMiddleware(handleGetAllRewardCounts))
 	mux.HandleFunc("/api/twitch/reward-counts/reset", corsMiddleware(handleResetAllRewardCounts))
 	mux.HandleFunc("/api/twitch/reward-counts/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("reward-counts handler called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
 		// Handle individual reward count reset
-		if strings.HasSuffix(r.URL.Path, "/reset") {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reset") {
+			logger.Info("Matched /reset suffix with POST method, calling handleResetRewardCount")
 			handleResetRewardCount(w, r)
+			return
 		}
+		// リクエストパスが不正な場合
+		logger.Warn("No handler matched for path", zap.String("path", r.URL.Path), zap.String("method", r.Method))
+		http.Error(w, "Not found", http.StatusNotFound)
 	}))
 	mux.HandleFunc("/api/twitch/rewards/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		// Handle display name updates
 		if strings.HasSuffix(r.URL.Path, "/display-name") {
 			handleSetRewardDisplayName(w, r)
+			return
 		}
+		// リクエストパスが不正な場合
+		http.Error(w, "Not found", http.StatusNotFound)
 	}))
 
 	// Handle all other routes (SPA fallback) - 最後に登録

@@ -1,14 +1,13 @@
-import React, { useContext, useEffect, useState } from 'react';
 import { Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Button } from '../ui/button';
-import { Switch } from '../ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { SettingsPageContext } from '../../hooks/useSettingsPage';
+import React, { useContext, useEffect, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrlAsync } from '../../utils/api';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Switch } from '../ui/switch';
 
 export const OverlaySettings: React.FC = () => {
   const context = useContext(SettingsPageContext);
@@ -33,6 +32,14 @@ export const OverlaySettings: React.FC = () => {
 
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [rewardGroups, setRewardGroups] = useState<Array<{id: number, name: string}>>([]);
+  const [rewardCounts, setRewardCounts] = useState<Array<{
+    reward_id: string;
+    count: number;
+    title?: string;
+    display_name?: string;
+  }>>([]);
+  const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
+  const [resetAllConfirm, setResetAllConfirm] = useState(false);
 
   // プレイリストを取得
   useEffect(() => {
@@ -64,6 +71,37 @@ export const OverlaySettings: React.FC = () => {
     };
     fetchRewardGroups();
   }, []);
+
+  // リワードカウントを取得
+  const fetchRewardCounts = async () => {
+    try {
+      const groupId = overlaySettings?.reward_count_group_id;
+      const endpoint = groupId
+        ? `/api/twitch/reward-groups/${groupId}/counts`
+        : '/api/twitch/reward-counts';
+      const url = await buildApiUrlAsync(endpoint);
+      const response = await fetch(url);
+      if (response.ok) {
+        const counts = await response.json();
+        // カウントが0より大きいものだけフィルタ
+        setRewardCounts((counts || []).filter((c: any) => c.count > 0));
+      }
+    } catch (error) {
+      console.error('Failed to fetch reward counts:', error);
+    }
+  };
+
+  // リワードカウント表示が有効な場合、カウントを取得
+  useEffect(() => {
+    if (overlaySettings?.reward_count_enabled) {
+      fetchRewardCounts();
+      // 定期的に更新
+      const interval = setInterval(fetchRewardCounts, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setRewardCounts([]);
+    }
+  }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
 
   // 音楽ステータスの更新を監視
   useEffect(() => {
@@ -548,23 +586,109 @@ export const OverlaySettings: React.FC = () => {
                 </p>
               </div>
 
-              <div className="pt-2 border-t">
+              {/* 現在のカウント一覧 */}
+              {rewardCounts.length > 0 && (
+                <div className="space-y-2">
+                  <Label>現在表示中のリワード</Label>
+                  <div className="max-h-60 overflow-y-auto border rounded-md divide-y divide-gray-200 dark:divide-gray-700">
+                    {rewardCounts.map((reward) => (
+                      <div
+                        key={reward.reward_id}
+                        className="flex items-start justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm text-left">
+                            {reward.display_name || reward.title || reward.reward_id}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-left">
+                            カウント: {reward.count}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant={resetConfirmId === reward.reward_id ? "destructive" : "outline"}
+                          size="sm"
+                          className="ml-3 flex-shrink-0"
+                          onClick={async () => {
+                            console.log('🔘 Button clicked:', { reward_id: reward.reward_id, resetConfirmId });
+
+                            // 1回目のクリック: 確認状態にする
+                            if (resetConfirmId !== reward.reward_id) {
+                              console.log('🔄 Setting confirm state');
+                              setResetConfirmId(reward.reward_id);
+                              return;
+                            }
+
+                            // 2回目のクリック: 実際にリセット
+                            console.log('🔥 Executing reset');
+                            try {
+                              const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/reset`);
+                              console.log('🔄 Resetting reward count:', { url, reward_id: reward.reward_id });
+                              const response = await fetch(url, { method: 'POST' });
+                              console.log('✅ Reset response:', response.status, response.statusText);
+
+                              if (!response.ok) {
+                                const errorText = await response.text();
+                                throw new Error(`HTTP ${response.status}: ${errorText}`);
+                              }
+
+                              // 即座に再取得
+                              await fetchRewardCounts();
+                              setResetConfirmId(null);
+                              alert('リセットしました');
+                            } catch (error) {
+                              console.error('❌ Failed to reset count:', error);
+                              setResetConfirmId(null);
+                              alert(`リセットに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+                            }
+                          }}
+                        >
+                          {resetConfirmId === reward.reward_id ? '本当にリセット？' : 'リセット'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2">
                 <Button
-                  variant="outline"
+                  variant={resetAllConfirm ? "destructive" : "outline"}
                   onClick={async () => {
-                    if (confirm('すべてのリワードカウントをリセットしますか？')) {
-                      try {
-                        const url = await buildApiUrlAsync('/api/twitch/reward-counts/reset');
-                        await fetch(url, { method: 'POST' });
-                        alert('カウントをリセットしました');
-                      } catch (error) {
-                        console.error('Failed to reset counts:', error);
-                        alert('リセットに失敗しました');
+                    console.log('🔘 Reset all button clicked:', { resetAllConfirm });
+
+                    // 1回目のクリック: 確認状態にする
+                    if (!resetAllConfirm) {
+                      console.log('🔄 Setting reset all confirm state');
+                      setResetAllConfirm(true);
+                      return;
+                    }
+
+                    // 2回目のクリック: 実際にリセット
+                    console.log('🔥 Executing reset all');
+                    try {
+                      const url = await buildApiUrlAsync('/api/twitch/reward-counts/reset');
+                      console.log('🔄 Resetting all reward counts:', url);
+                      const response = await fetch(url, { method: 'POST' });
+                      console.log('✅ Reset all response:', response.status, response.statusText);
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
                       }
+
+                      // 即座に再取得
+                      await fetchRewardCounts();
+                      setResetAllConfirm(false);
+                      alert('カウントをリセットしました');
+                    } catch (error) {
+                      console.error('❌ Failed to reset counts:', error);
+                      setResetAllConfirm(false);
+                      alert(`リセットに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
                     }
                   }}
                 >
-                  すべてのカウントをリセット
+                  {resetAllConfirm ? '本当に全リセット？' : 'すべてのカウントをリセット'}
                 </Button>
               </div>
             </div>

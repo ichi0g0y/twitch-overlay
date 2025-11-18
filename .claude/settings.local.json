@@ -71,7 +71,8 @@
       "Bash(git commit:*)",
       "Bash(./build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay:*)",
       "Bash(rm:*)",
-      "Bash(go clean:*)"
+      "Bash(go clean:*)",
+      "Bash(tee:*)"
     ],
     "deny": []
   }
