@@ -23,10 +23,15 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return DBClient, nil
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	// WALモードとBusy Timeoutを設定（Race Condition対策）
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}
+
+	// SQLiteは単一ライターなので接続プールを1に制限
+	db.SetMaxOpenConns(1)
+
 	DBClient = db
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS tokens (

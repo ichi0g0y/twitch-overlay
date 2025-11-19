@@ -100,21 +100,40 @@ func buildFragmentsForNotification(fragments []twitch.ChatMessageFragment) []not
 }
 
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
-	// リワードカウントを増やす（全てのリワードをカウント）
-	// ユーザー名も記録する
-	if err := localdb.IncrementRewardCount(message.Reward.ID, message.User.UserName); err != nil {
-		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", message.Reward.ID), zap.String("user_name", message.User.UserName))
-	} else {
-		// カウント更新をbroadcastで通知
-		count, err := localdb.GetRewardCount(message.Reward.ID)
+	// リワードカウントを増やす（リトライ付き、最大3回、指数バックオフ）
+	maxRetries := 3
+	var lastErr error
+
+	for i := 0; i < maxRetries; i++ {
+		err := localdb.IncrementRewardCount(message.Reward.ID, message.User.UserName)
 		if err == nil {
-			// リワードのタイトルを含める
-			count.Title = message.Reward.Title
-			broadcast.Send(map[string]interface{}{
-				"type": "reward_count_updated",
-				"data": count,
-			})
+			// 成功：通知を送信
+			count, err := localdb.GetRewardCount(message.Reward.ID)
+			if err == nil {
+				count.Title = message.Reward.Title
+				broadcast.Send(map[string]interface{}{
+					"type": "reward_count_updated",
+					"data": count,
+				})
+			}
+			break
 		}
+
+		lastErr = err
+		logger.Warn("Failed to increment reward count, retrying...",
+			zap.Error(err),
+			zap.Int("attempt", i+1),
+			zap.String("reward_id", message.Reward.ID))
+
+		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond) // 指数バックオフ（50ms, 100ms, 150ms）
+	}
+
+	if lastErr != nil {
+		logger.Error("Failed to increment reward count after retries",
+			zap.Error(lastErr),
+			zap.String("reward_id", message.Reward.ID),
+			zap.String("user_name", message.User.UserName),
+			zap.Int("maxRetries", maxRetries))
 	}
 
 	// 通知をキューに追加（全てのチャネポを通知）

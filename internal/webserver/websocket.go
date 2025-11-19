@@ -50,7 +50,7 @@ var wsHub = &WSHub{
 	clients:    make(map[*WSClient]bool),
 	register:   make(chan *WSClient),
 	unregister: make(chan *WSClient),
-	broadcast:  make(chan WSMessage, 256),
+	broadcast:  make(chan WSMessage, 2048), // 256 → 2048に拡大（リワード大量発生時のドロップ防止）
 }
 
 // StartWSHub WebSocketハブを起動
@@ -180,10 +180,24 @@ func BroadcastWSMessage(msgType string, data interface{}) {
 		zap.Int("dataSize", len(jsonData)),
 		zap.String("dataPreview", string(jsonData[:min(100, len(jsonData))])))
 
-	select {
-	case wsHub.broadcast <- msg:
-	default:
-		logger.Warn("WebSocket broadcast channel full, message dropped")
+	// リトライ付き送信（最大3回、10msバックオフ）
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		select {
+		case wsHub.broadcast <- msg:
+			logger.Debug("WebSocket message sent", zap.String("type", msgType))
+			return
+		default:
+			if i < maxRetries-1 {
+				logger.Warn("WebSocket broadcast channel full, retrying...",
+					zap.Int("attempt", i+1))
+				time.Sleep(10 * time.Millisecond)
+			} else {
+				logger.Error("WebSocket broadcast failed after retries",
+					zap.String("type", msgType),
+					zap.Int("maxRetries", maxRetries))
+			}
+		}
 	}
 }
 

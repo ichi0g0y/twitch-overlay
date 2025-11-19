@@ -167,30 +167,43 @@ func GetGroupRewardCounts(groupID int) ([]RewardCount, error) {
 }
 
 // IncrementRewardCount increments the count for a reward and adds the user name
+// トランザクションと排他ロックにより、複数リワードの同時処理でもRace Conditionを防ぐ
 func IncrementRewardCount(rewardID string, userName string) error {
 	db := GetDB()
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
-	// 既存のユーザー名リストを取得
+	// トランザクション開始
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // エラー時は自動ロールバック
+
+	// 排他ロックで既存レコードを取得（他のトランザクションはブロックされる）
 	var userNamesJSON string
-	err := db.QueryRow(`SELECT COALESCE(user_names, '[]') FROM reward_redemption_counts WHERE reward_id = ?`, rewardID).Scan(&userNamesJSON)
+	var currentCount int
+	err = tx.QueryRow(`
+		SELECT count, COALESCE(user_names, '[]')
+		FROM reward_redemption_counts
+		WHERE reward_id = ?
+	`, rewardID).Scan(&currentCount, &userNamesJSON)
 
 	var userNames []string
 	if err == sql.ErrNoRows {
 		// 新規レコードの場合
 		userNames = []string{userName}
+		currentCount = 0
 	} else if err != nil {
 		logger.Error("Failed to get existing user_names", zap.Error(err), zap.String("reward_id", rewardID))
 		return fmt.Errorf("failed to get existing user_names: %w", err)
 	} else {
-		// 既存レコードの場合、JSONをパース
+		// 既存レコードの場合、JSONをパースして追加
 		if err := json.Unmarshal([]byte(userNamesJSON), &userNames); err != nil {
 			logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
 			userNames = []string{}
 		}
-		// ユーザー名を追加
 		userNames = append(userNames, userName)
 	}
 
@@ -201,21 +214,31 @@ func IncrementRewardCount(rewardID string, userName string) error {
 		return fmt.Errorf("failed to marshal user_names: %w", err)
 	}
 
-	_, err = db.Exec(`
+	// アトミックに更新（トランザクション内なので他のトランザクションとは隔離）
+	_, err = tx.Exec(`
 		INSERT INTO reward_redemption_counts (reward_id, count, user_names, updated_at)
-		VALUES (?, 1, ?, ?)
+		VALUES (?, 1, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(reward_id) DO UPDATE SET
 			count = count + 1,
 			user_names = ?,
-			updated_at = ?
-	`, rewardID, string(updatedUserNamesJSON), time.Now(), string(updatedUserNamesJSON), time.Now())
+			updated_at = CURRENT_TIMESTAMP
+	`, rewardID, string(updatedUserNamesJSON), string(updatedUserNamesJSON))
 
 	if err != nil {
 		logger.Error("Failed to increment reward count", zap.Error(err), zap.String("reward_id", rewardID))
 		return fmt.Errorf("failed to increment reward count: %w", err)
 	}
 
-	logger.Debug("Incremented reward count", zap.String("reward_id", rewardID), zap.String("user_name", userName))
+	// コミット（ここまで成功すればアトミックに確定）
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	logger.Debug("Incremented reward count",
+		zap.String("reward_id", rewardID),
+		zap.String("user_name", userName),
+		zap.Int("new_count", currentCount+1))
+
 	return nil
 }
 
