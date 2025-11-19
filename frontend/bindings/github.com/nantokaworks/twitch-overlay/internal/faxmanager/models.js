@@ -44,6 +44,14 @@ export class Fax {
              */
             this["ImageURL"] = "";
         }
+        if (!("AvatarURL" in $$source)) {
+            /**
+             * User avatar URL
+             * @member
+             * @type {string}
+             */
+            this["AvatarURL"] = "";
+        }
         if (!("Timestamp" in $$source)) {
             /**
              * @member
