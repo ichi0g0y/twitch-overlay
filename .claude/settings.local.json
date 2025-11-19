@@ -72,7 +72,9 @@
       "Bash(./build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay:*)",
       "Bash(rm:*)",
       "Bash(go clean:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": []
   }

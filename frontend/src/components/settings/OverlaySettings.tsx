@@ -230,7 +230,7 @@ export const OverlaySettings: React.FC = () => {
   }, [musicStatus.current_track]);
 
   return (
-    <div className="columns-1 lg:columns-2 gap-4 outline-none border-none space-y-4">
+    <div className="columns-1 lg:columns-2 gap-4 space-y-4 [&:focus]:outline-none [&:focus-visible]:outline-none">
       {/* 音楽プレイヤーコントロール */}
       <Card className="break-inside-avoid mb-4">
         <CardHeader>
