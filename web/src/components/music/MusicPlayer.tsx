@@ -13,7 +13,21 @@ interface MusicPlayerProps {
 const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
   const player = useMusicPlayerContext();
   const { settings } = useSettings();
-  const [debugPanelPosition, setDebugPanelPosition] = useState({ x: 10, y: window.innerHeight / 2 - 50 });
+
+  // localStorageから保存された位置を復元、なければデフォルト値
+  const getInitialPosition = () => {
+    const saved = localStorage.getItem('debugPanelPosition');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { x: 10, y: window.innerHeight / 2 - 50 };
+      }
+    }
+    return { x: 10, y: window.innerHeight / 2 - 50 };
+  };
+
+  const [debugPanelPosition, setDebugPanelPosition] = useState(getInitialPosition);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [animationState, setAnimationState] = useState<'entering' | 'idle' | 'exiting'>('idle');
@@ -149,14 +163,17 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      setDebugPanelPosition({
+      const newPosition = {
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
-      });
+      };
+      setDebugPanelPosition(newPosition);
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      // ドラッグ終了時に位置をlocalStorageに保存
+      localStorage.setItem('debugPanelPosition', JSON.stringify(debugPanelPosition));
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -166,7 +183,7 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, [isDragging, dragStart, debugPanelPosition]);
   
   // 音楽状態をサーバーに送信
   useEffect(() => {
