@@ -94,16 +94,12 @@ const RewardCountDisplay: React.FC = () => {
     // reward_count_updated イベントを購読
     const unsubCountUpdated = wsClient.on('reward_count_updated', (data: RewardCount) => {
       console.log('📊 Reward count updated:', data);
-      console.log('Current groupId:', groupId);
-      console.log('Current groupRewardIds:', Array.from(groupRewardIds));
-      console.log('Received reward_id:', data.reward_id);
 
       // グループフィルタが有効な場合、グループに属するリワードかチェック
       if (groupId && groupRewardIds.size > 0 && !groupRewardIds.has(data.reward_id)) {
-        console.log('❌ Ignoring reward: not in selected group', data.reward_id);
+        console.log('Ignoring reward: not in selected group', data.reward_id);
         return;
       }
-      console.log('✅ Processing reward:', data.reward_id);
 
       setCounts((prev) => {
         const newCounts = new Map(prev);
