@@ -8,6 +8,7 @@ import { RewardCountItem } from './RewardCountItem';
 const RewardCountDisplay: React.FC = () => {
   const { settings } = useSettings();
   const [counts, setCounts] = useState<Map<string, RewardCountItemState>>(new Map());
+  const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
 
   // 設定が有効かチェック
   const isEnabled = settings?.reward_count_enabled ?? false;
@@ -21,6 +22,30 @@ const RewardCountDisplay: React.FC = () => {
       console.error('Failed to play alert sound:', err);
     });
   }, []);
+
+  // グループのリワードIDリストを取得
+  useEffect(() => {
+    if (!isEnabled || !groupId) {
+      setGroupRewardIds(new Set());
+      return;
+    }
+
+    const fetchGroupRewardIds = async () => {
+      try {
+        const url = buildApiUrl(`/api/twitch/reward-groups/${groupId}`);
+        const response = await fetch(url);
+        if (response.ok) {
+          const group = await response.json();
+          setGroupRewardIds(new Set(group.reward_ids || []));
+        }
+      } catch (error) {
+        console.error('Failed to fetch group reward IDs:', error);
+        setGroupRewardIds(new Set());
+      }
+    };
+
+    fetchGroupRewardIds();
+  }, [isEnabled, groupId]);
 
   // カウントデータの初期ロード
   useEffect(() => {
@@ -69,6 +94,16 @@ const RewardCountDisplay: React.FC = () => {
     // reward_count_updated イベントを購読
     const unsubCountUpdated = wsClient.on('reward_count_updated', (data: RewardCount) => {
       console.log('📊 Reward count updated:', data);
+      console.log('Current groupId:', groupId);
+      console.log('Current groupRewardIds:', Array.from(groupRewardIds));
+      console.log('Received reward_id:', data.reward_id);
+
+      // グループフィルタが有効な場合、グループに属するリワードかチェック
+      if (groupId && groupRewardIds.size > 0 && !groupRewardIds.has(data.reward_id)) {
+        console.log('❌ Ignoring reward: not in selected group', data.reward_id);
+        return;
+      }
+      console.log('✅ Processing reward:', data.reward_id);
 
       setCounts((prev) => {
         const newCounts = new Map(prev);
@@ -88,7 +123,10 @@ const RewardCountDisplay: React.FC = () => {
             }, 300); // アニメーション時間と合わせる
           }
         } else {
-          // カウント追加または更新（音声を再生）
+          // カウント追加または更新
+          // アラート音声の再生条件：
+          // - reward_count_enabled が true（isEnabledで既にチェック済み）
+          // - グループフィルタが無効、またはグループに属するリワード（上でチェック済み）
           playAlertSound();
 
           const existing = newCounts.get(data.reward_id);
@@ -148,7 +186,7 @@ const RewardCountDisplay: React.FC = () => {
       unsubCountUpdated();
       unsubCountsReset();
     };
-  }, [isEnabled, playAlertSound]);
+  }, [isEnabled, groupId, groupRewardIds, playAlertSound]);
 
   if (!isEnabled) {
     return null;

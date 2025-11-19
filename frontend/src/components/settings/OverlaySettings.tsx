@@ -39,6 +39,7 @@ export const OverlaySettings: React.FC = () => {
     display_name?: string;
     user_names?: string[];
   }>>([]);
+  const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
   const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
 
@@ -117,10 +118,10 @@ export const OverlaySettings: React.FC = () => {
         // reward_count_updatedメッセージを購読（個別リワードの更新）
         unsubUpdated = wsClient.on('reward_count_updated', (data: any) => {
           console.log('Received reward_count_updated from WebSocket:', data);
+
+          // リワードカウントを更新（グループフィルタは設定画面では適用しない）
           setRewardCounts(prev => {
-            // 既存のリワードを除外
             const filtered = prev.filter(c => c.reward_id !== data.reward_id);
-            // カウントが0より大きい場合のみ追加
             if (data.count > 0) {
               return [...filtered, {
                 reward_id: data.reward_id,
@@ -699,7 +700,7 @@ export const OverlaySettings: React.FC = () => {
 
                         {/* ユーザー名リスト */}
                         {reward.user_names && reward.user_names.length > 0 && (
-                          <div className="mt-3">
+                          <div>
                             <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 text-left">
                               使用者:
                             </div>

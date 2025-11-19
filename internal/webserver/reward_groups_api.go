@@ -100,6 +100,8 @@ func handleRewardGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		handleGetRewardGroup(w, r, groupID)
 	case http.MethodPut:
 		handleUpdateRewardGroup(w, r, groupID)
 	case http.MethodDelete:
@@ -107,6 +109,34 @@ func handleRewardGroupByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleGetRewardGroup returns a single reward group with its members
+func handleGetRewardGroup(w http.ResponseWriter, r *http.Request, groupID int) {
+	group, err := localdb.GetRewardGroup(groupID)
+	if err != nil {
+		logger.Error("Failed to get reward group", zap.Error(err), zap.Int("group_id", groupID))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "グループが見つかりません",
+		})
+		return
+	}
+
+	rewardIDs, err := localdb.GetGroupRewards(groupID)
+	if err != nil {
+		logger.Error("Failed to get group rewards", zap.Error(err), zap.Int("group_id", groupID))
+		rewardIDs = []string{}
+	}
+
+	groupWithRewards := localdb.RewardGroupWithRewards{
+		RewardGroup: *group,
+		RewardIDs:   rewardIDs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(groupWithRewards)
 }
 
 // handleUpdateRewardGroup updates a reward group's name
