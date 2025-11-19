@@ -219,6 +219,70 @@ func IncrementRewardCount(rewardID string, userName string) error {
 	return nil
 }
 
+// RemoveOneUserFromRewardCount removes one instance of a user from the reward count
+func RemoveOneUserFromRewardCount(rewardID string, index int) error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// 既存のユーザー名リストを取得
+	var userNamesJSON string
+	var currentCount int
+	err := db.QueryRow(`SELECT COALESCE(user_names, '[]'), count FROM reward_redemption_counts WHERE reward_id = ?`, rewardID).Scan(&userNamesJSON, &currentCount)
+
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("reward not found: %s", rewardID)
+	}
+	if err != nil {
+		logger.Error("Failed to get existing user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to get existing user_names: %w", err)
+	}
+
+	// JSONをパース
+	var userNames []string
+	if err := json.Unmarshal([]byte(userNamesJSON), &userNames); err != nil {
+		logger.Error("Failed to unmarshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to unmarshal user_names: %w", err)
+	}
+
+	// インデックスのバリデーション
+	if index < 0 || index >= len(userNames) {
+		return fmt.Errorf("invalid index: %d (array length: %d)", index, len(userNames))
+	}
+
+	// 指定されたインデックスの要素を削除
+	removedUser := userNames[index]
+	userNames = append(userNames[:index], userNames[index+1:]...)
+
+	// JSON文字列に変換
+	updatedUserNamesJSON, err := json.Marshal(userNames)
+	if err != nil {
+		logger.Error("Failed to marshal user_names", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to marshal user_names: %w", err)
+	}
+
+	// カウントを1減少させる（最小値は0）
+	newCount := currentCount - 1
+	if newCount < 0 {
+		newCount = 0
+	}
+
+	_, err = db.Exec(`
+		UPDATE reward_redemption_counts
+		SET count = ?, user_names = ?, updated_at = ?
+		WHERE reward_id = ?
+	`, newCount, string(updatedUserNamesJSON), time.Now(), rewardID)
+
+	if err != nil {
+		logger.Error("Failed to remove user from reward count", zap.Error(err), zap.String("reward_id", rewardID))
+		return fmt.Errorf("failed to remove user from reward count: %w", err)
+	}
+
+	logger.Info("Removed user from reward count", zap.String("reward_id", rewardID), zap.String("user_name", removedUser), zap.Int("index", index))
+	return nil
+}
+
 // ResetRewardCount resets the count for a specific reward to 0
 func ResetRewardCount(rewardID string) error {
 	db := GetDB()

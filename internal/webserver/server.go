@@ -238,6 +238,14 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/twitch/reward-counts/reset", corsMiddleware(handleResetAllRewardCounts))
 	mux.HandleFunc("/api/twitch/reward-counts/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		logger.Info("reward-counts handler called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
+
+		// Handle user removal: DELETE /api/twitch/reward-counts/{reward_id}/users/{index}
+		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/users/") {
+			logger.Info("Matched /users/ path with DELETE method, calling handleRemoveUserFromRewardCount")
+			handleRemoveUserFromRewardCount(w, r)
+			return
+		}
+
 		// Handle individual reward count reset
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reset") {
 			logger.Info("Matched /reset suffix with POST method, calling handleResetRewardCount")

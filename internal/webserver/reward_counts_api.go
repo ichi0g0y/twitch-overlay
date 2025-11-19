@@ -224,3 +224,50 @@ func handleSetRewardDisplayName(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
+
+// handleRemoveUserFromRewardCount removes one user instance from a reward count
+func handleRemoveUserFromRewardCount(w http.ResponseWriter, r *http.Request) {
+	logger.Info("handleRemoveUserFromRewardCount called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
+
+	// Extract reward ID and index from URL: /api/twitch/reward-counts/{reward_id}/users/{index}
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/twitch/reward-counts/"), "/")
+	if len(parts) < 3 || parts[1] != "users" {
+		logger.Error("Invalid URL format", zap.String("path", r.URL.Path))
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+
+	rewardID := parts[0]
+	indexStr := parts[2]
+
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		logger.Error("Invalid index", zap.String("index", indexStr), zap.Error(err))
+		http.Error(w, "Invalid index", http.StatusBadRequest)
+		return
+	}
+
+	logger.Info("Removing user from reward count", zap.String("reward_id", rewardID), zap.Int("index", index))
+
+	if err := localdb.RemoveOneUserFromRewardCount(rewardID, index); err != nil {
+		logger.Error("Failed to remove user from reward count", zap.Error(err), zap.String("reward_id", rewardID), zap.Int("index", index))
+		http.Error(w, fmt.Sprintf("Failed to remove user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// カウント更新をWebSocketで通知
+	count, err := localdb.GetRewardCount(rewardID)
+	if err == nil {
+		// リワードタイトルを取得して追加
+		titleMap, err := fetchRewardTitles()
+		if err == nil {
+			if title, ok := titleMap[rewardID]; ok {
+				count.Title = title
+			}
+		}
+		BroadcastWSMessage("reward_count_updated", count)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}

@@ -28,6 +28,18 @@ export const RewardCountItem: React.FC<RewardCountItemProps> = ({
     }
   };
 
+  // ユーザー名を集約してカウント表示
+  const aggregatedUsers = React.useMemo(() => {
+    const countMap = new Map<string, number>();
+    userNames.forEach(name => {
+      countMap.set(name, (countMap.get(name) || 0) + 1);
+    });
+    return Array.from(countMap.entries()).map(([name, count]) => ({
+      name,
+      count
+    }));
+  }, [userNames]);
+
   return (
     <div className={`font-flat reward-count-item ${getStateClass()}`}>
       {/* 3x3グリッドでドット絵風のボーダーを作成 */}
@@ -43,8 +55,10 @@ export const RewardCountItem: React.FC<RewardCountItemProps> = ({
           <div className="reward-count-content">
             <div className="reward-count-header">{displayName}</div>
             <div className="reward-count-users">
-              {userNames.map((userName, index) => (
-                <div key={index} className="reward-count-user">{userName}</div>
+              {aggregatedUsers.map((user, index) => (
+                <div key={index} className="reward-count-user">
+                  {user.count > 1 ? `${user.name} x${user.count}` : user.name}
+                </div>
               ))}
             </div>
           </div>

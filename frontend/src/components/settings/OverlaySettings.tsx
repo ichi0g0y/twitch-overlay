@@ -37,6 +37,7 @@ export const OverlaySettings: React.FC = () => {
     count: number;
     title?: string;
     display_name?: string;
+    user_names?: string[];
   }>>([]);
   const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
@@ -125,7 +126,8 @@ export const OverlaySettings: React.FC = () => {
                 reward_id: data.reward_id,
                 count: data.count,
                 title: data.title,
-                display_name: data.display_name
+                display_name: data.display_name,
+                user_names: data.user_names
               }].sort((a, b) => b.count - a.count);
             }
             return filtered;
@@ -227,7 +229,7 @@ export const OverlaySettings: React.FC = () => {
   }, [musicStatus.current_track]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 outline-none">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 outline-none border-none">
       {/* 音楽プレイヤーコントロール */}
       <Card>
         <CardHeader>
@@ -641,57 +643,102 @@ export const OverlaySettings: React.FC = () => {
                     {rewardCounts.map((reward) => (
                       <div
                         key={reward.reward_id}
-                        className="flex items-start justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm text-left">
-                            {reward.display_name || reward.title || reward.reward_id}
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-left">
+                              {reward.display_name || reward.title || reward.reward_id}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-left">
+                              カウント: {reward.count}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-left">
-                            カウント: {reward.count}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant={resetConfirmId === reward.reward_id ? "destructive" : "outline"}
-                          size="sm"
-                          className="ml-3 flex-shrink-0"
-                          onClick={async () => {
-                            console.log('🔘 Button clicked:', { reward_id: reward.reward_id, resetConfirmId });
+                          <Button
+                            type="button"
+                            variant={resetConfirmId === reward.reward_id ? "destructive" : "outline"}
+                            size="sm"
+                            className="ml-3 flex-shrink-0"
+                            onClick={async () => {
+                              console.log('🔘 Button clicked:', { reward_id: reward.reward_id, resetConfirmId });
 
-                            // 1回目のクリック: 確認状態にする
-                            if (resetConfirmId !== reward.reward_id) {
-                              console.log('🔄 Setting confirm state');
-                              setResetConfirmId(reward.reward_id);
-                              return;
-                            }
-
-                            // 2回目のクリック: 実際にリセット
-                            console.log('🔥 Executing reset');
-                            try {
-                              const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/reset`);
-                              console.log('🔄 Resetting reward count:', { url, reward_id: reward.reward_id });
-                              const response = await fetch(url, { method: 'POST' });
-                              console.log('✅ Reset response:', response.status, response.statusText);
-
-                              if (!response.ok) {
-                                const errorText = await response.text();
-                                throw new Error(`HTTP ${response.status}: ${errorText}`);
+                              // 1回目のクリック: 確認状態にする
+                              if (resetConfirmId !== reward.reward_id) {
+                                console.log('🔄 Setting confirm state');
+                                setResetConfirmId(reward.reward_id);
+                                return;
                               }
 
-                              // 即座に再取得
-                              await fetchRewardCounts();
-                              setResetConfirmId(null);
-                              alert('リセットしました');
-                            } catch (error) {
-                              console.error('❌ Failed to reset count:', error);
-                              setResetConfirmId(null);
-                              alert(`リセットに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
-                            }
-                          }}
-                        >
-                          {resetConfirmId === reward.reward_id ? '本当にリセット？' : 'リセット'}
-                        </Button>
+                              // 2回目のクリック: 実際にリセット
+                              console.log('🔥 Executing reset');
+                              try {
+                                const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/reset`);
+                                console.log('🔄 Resetting reward count:', { url, reward_id: reward.reward_id });
+                                const response = await fetch(url, { method: 'POST' });
+                                console.log('✅ Reset response:', response.status, response.statusText);
+
+                                if (!response.ok) {
+                                  const errorText = await response.text();
+                                  throw new Error(`HTTP ${response.status}: ${errorText}`);
+                                }
+
+                                // 即座に再取得
+                                await fetchRewardCounts();
+                                setResetConfirmId(null);
+                                alert('リセットしました');
+                              } catch (error) {
+                                console.error('❌ Failed to reset count:', error);
+                                setResetConfirmId(null);
+                                alert(`リセットに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+                              }
+                            }}
+                          >
+                            {resetConfirmId === reward.reward_id ? '本当にリセット？' : 'リセット'}
+                          </Button>
+                        </div>
+
+                        {/* ユーザー名リスト */}
+                        {reward.user_names && reward.user_names.length > 0 && (
+                          <div className="mt-3">
+                            <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 text-left">
+                              使用者:
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {reward.user_names.map((userName, index) => (
+                                <div
+                                  key={index}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs"
+                                >
+                                  <span className="text-gray-700 dark:text-gray-300">{userName}</span>
+                                  <button
+                                    type="button"
+                                    className="ml-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                                    onClick={async () => {
+                                      try {
+                                        const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/users/${index}`);
+                                        const response = await fetch(url, { method: 'DELETE' });
+
+                                        if (!response.ok) {
+                                          const errorText = await response.text();
+                                          throw new Error(`HTTP ${response.status}: ${errorText}`);
+                                        }
+
+                                        // 即座に再取得
+                                        await fetchRewardCounts();
+                                      } catch (error) {
+                                        console.error('Failed to remove user:', error);
+                                        alert(`ユーザー削除に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+                                      }
+                                    }}
+                                    aria-label={`${userName}を削除`}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
