@@ -230,9 +230,9 @@ export const OverlaySettings: React.FC = () => {
   }, [musicStatus.current_track]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 outline-none border-none">
+    <div className="columns-1 lg:columns-2 gap-4 outline-none border-none space-y-4">
       {/* 音楽プレイヤーコントロール */}
-      <Card>
+      <Card className="break-inside-avoid mb-4">
         <CardHeader>
           <CardTitle>再生コントロール</CardTitle>
           <CardDescription>
@@ -426,7 +426,7 @@ export const OverlaySettings: React.FC = () => {
       </Card>
 
       {/* FAX表示設定 */}
-      <Card>
+      <Card className="break-inside-avoid mb-4">
         <CardHeader>
           <CardTitle>FAX表示</CardTitle>
           <CardDescription>
@@ -488,7 +488,7 @@ export const OverlaySettings: React.FC = () => {
       </Card>
 
       {/* 時計表示設定 */}
-      <Card>
+      <Card className="break-inside-avoid mb-4">
         <CardHeader>
           <CardTitle>時計表示</CardTitle>
           <CardDescription>
@@ -583,7 +583,7 @@ export const OverlaySettings: React.FC = () => {
       </Card>
 
       {/* リワードカウント表示設定 */}
-      <Card>
+      <Card className="break-inside-avoid mb-4">
         <CardHeader>
           <CardTitle>リワードカウント表示</CardTitle>
           <CardDescription>
@@ -760,41 +760,6 @@ export const OverlaySettings: React.FC = () => {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 開発者設定 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>開発者設定</CardTitle>
-          <CardDescription>
-            開発・デバッグ用の設定
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="debug-enabled" className="flex flex-col">
-              <span>デバッグモード</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                デバッグパネルを表示してテスト機能を有効化します
-              </span>
-            </Label>
-            <Switch
-              id="debug-enabled"
-              checked={overlaySettings?.debug_enabled ?? false}
-              onCheckedChange={(checked) =>
-                updateOverlaySettings({ debug_enabled: checked })
-              }
-            />
-          </div>
-
-          {(overlaySettings?.debug_enabled ?? false) && (
-            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                デバッグモードが有効です。オーバーレイ画面でデバッグパネルが表示されます。
-              </p>
             </div>
           )}
         </CardContent>
