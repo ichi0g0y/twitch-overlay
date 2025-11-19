@@ -113,22 +113,14 @@ const MusicPlayer = ({ playlist: propPlaylist }: MusicPlayerProps) => {
     }
   }, [player.currentTrack?.id]);
   
-  // 初期化時に保存された状態を復元
+  // 初期化時にプレイリストを読み込む（サーバーから復元される）
   useEffect(() => {
-    if (!playlist) {
-      // URLパラメータでプレイリストが指定されていない場合、保存されたプレイリストを復元
-      const savedPlaylistName = localStorage.getItem('musicPlayer.playlistName');
-      if (savedPlaylistName) {
-        const parsedName = JSON.parse(savedPlaylistName);
-        console.log('🔄 Restoring saved playlist:', parsedName || 'All tracks');
-        player.loadPlaylist(parsedName);
-      } else {
-        // 初回起動時はすべてのトラックを読み込む
-        player.loadPlaylist(undefined);
-      }
-    } else if (playlist) {
-      // URLパラメータで指定されている場合はそれを優先
+    if (playlist) {
+      // URLパラメータまたはSettingsで指定されている場合はそれを使用
       player.loadPlaylist(playlist);
+    } else {
+      // 指定がない場合はサーバーから状態を復元（プレイリスト名含む）
+      player.loadPlaylist(undefined);
     }
   }, []); // 初回のみ実行
   
