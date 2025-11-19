@@ -317,19 +317,19 @@ body {
 
 /* 上下のボーダー：白 */
 .reward-count-border-h {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.8);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* 左右のボーダー：白 */
 .reward-count-border-v {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.8);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* 中央：黒背景 + コンテンツ */
 .reward-count-content-container {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.5);
   padding: 8px 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
 }
