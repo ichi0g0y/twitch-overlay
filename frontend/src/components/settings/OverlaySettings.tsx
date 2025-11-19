@@ -158,15 +158,21 @@ export const OverlaySettings: React.FC = () => {
     const fetchMusicStatus = async () => {
       try {
         const port = await GetServerPort();
-        const response = await fetch(`http://localhost:${port}/api/music/status`);
+        // オーバーレイ未接続時でも永続化された状態を取得するため /api/music/state を使用
+        const response = await fetch(`http://localhost:${port}/api/music/state`);
         if (response.ok) {
-          const status = await response.json();
-          // オーバーレイ設定のボリュームをマージ
-          const mergedStatus = {
-            ...status,
-            volume: status.volume !== undefined ? status.volume : (overlaySettings?.music_volume ?? 100)
+          const state = await response.json();
+          // PlaybackState形式をMusicStatusUpdate形式に変換
+          const status = {
+            playback_status: state.playback_status ?? 'stopped',
+            is_playing: state.is_playing ?? false,
+            current_track: null, // /api/music/stateにはcurrent_trackが含まれていない
+            current_time: state.position ?? 0,
+            duration: state.duration ?? 0,
+            volume: state.volume !== undefined ? state.volume : (overlaySettings?.music_volume ?? 100),
+            playlist_name: state.playlist_name ?? undefined,
           };
-          context.setMusicStatus?.(mergedStatus);
+          context.setMusicStatus?.(status);
         }
       } catch (error) {
         console.error('Failed to fetch music status:', error);
