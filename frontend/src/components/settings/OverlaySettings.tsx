@@ -686,7 +686,7 @@ export const OverlaySettings: React.FC = () => {
                   <div className="space-y-3">
                     {rewardCounts.map((reward) => (
                       <Card key={reward.reward_id}>
-                        <CardHeader>
+                        <CardHeader className="pb-2">
                           <CardTitle className="text-base text-left">
                             {reward.display_name || reward.title || reward.reward_id}
                           </CardTitle>
