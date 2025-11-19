@@ -694,7 +694,7 @@ export const OverlaySettings: React.FC = () => {
                             カウント: {reward.count}
                           </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-2">
+                        <CardContent className="space-y-1">
                           {/* ユーザー名リスト */}
                           {reward.user_names && reward.user_names.length > 0 && (
                             <div className="flex flex-wrap gap-2">
