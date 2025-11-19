@@ -17,7 +17,9 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
+	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/status"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
@@ -58,6 +60,30 @@ func corsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 
 		handler(w, r)
 	}
+}
+
+// getDebugUserAvatar はデバッグエンドポイント用のアバターURLを取得する
+// 常に配信者（toka）のアバターを使用する
+func getDebugUserAvatar() (string, error) {
+	// 設定からTWITCH_USER_IDを取得
+	db := localdb.GetDB()
+	if db == nil {
+		return "", fmt.Errorf("database not initialized")
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	twitchUserID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+	if err != nil || twitchUserID == "" {
+		logger.Warn("Failed to get TWITCH_USER_ID for debug mode",
+			zap.Error(err))
+		return "", fmt.Errorf("TWITCH_USER_ID not configured")
+	}
+
+	logger.Debug("Using broadcaster's avatar for debug endpoint",
+		zap.String("broadcaster_id", twitchUserID))
+
+	// 配信者のアバターを取得
+	return twitchapi.GetUserAvatar(twitchUserID)
 }
 
 // BroadcastMessage sends a message to all connected WebSocket clients
@@ -507,8 +533,15 @@ func handleDebugFax(w http.ResponseWriter, r *http.Request) {
 		zap.String("message", req.Message),
 		zap.String("imageUrl", req.ImageURL))
 
+	// Get avatar for debug mode
+	avatarURL, err := getDebugUserAvatar()
+	if err != nil {
+		logger.Warn("Failed to get debug user avatar", zap.Error(err))
+		avatarURL = "" // Continue without avatar
+	}
+
 	// Call PrintOut directly (same as custom reward handling)
-	err = output.PrintOut(req.Username, fragments, time.Now())
+	err = output.PrintOut(req.Username, fragments, avatarURL, time.Now())
 	if err != nil {
 		logger.Error("Failed to process debug fax", zap.Error(err))
 		http.Error(w, "Failed to process fax", http.StatusInternalServerError)
@@ -589,8 +622,15 @@ func handleDebugChannelPoints(w http.ResponseWriter, r *http.Request) {
 		zap.String("username", req.Username),
 		zap.String("userInput", req.UserInput))
 
+	// Get avatar for debug mode
+	avatarURL, err := getDebugUserAvatar()
+	if err != nil {
+		logger.Warn("Failed to get debug user avatar", zap.Error(err))
+		avatarURL = "" // Continue without avatar
+	}
+
 	// Call PrintOut directly (same as channel points handling)
-	err = output.PrintOut(req.Username, fragments, time.Now())
+	err = output.PrintOut(req.Username, fragments, avatarURL, time.Now())
 	if err != nil {
 		logger.Error("Failed to process debug channel points", zap.Error(err))
 		http.Error(w, "Failed to process channel points redemption", http.StatusInternalServerError)

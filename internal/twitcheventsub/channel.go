@@ -2,6 +2,7 @@ package twitcheventsub
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
@@ -10,10 +11,41 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/notification"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
+	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
+
+// getUserAvatar はユーザーのアバターURLを取得する
+// デバッグモード（UserIDが"debug-"で始まる）の場合は、設定からTWITCH_USER_IDを取得してそのアバターを使う
+func getUserAvatar(userID string) (string, error) {
+	// デバッグモードの判定
+	if strings.HasPrefix(userID, "debug-") {
+		// デバッグモードの場合は設定からTWITCH_USER_IDを取得
+		db := localdb.GetDB()
+		if db == nil {
+			return "", fmt.Errorf("database not initialized")
+		}
+
+		settingsManager := settings.NewSettingsManager(db)
+		twitchUserID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+		if err != nil || twitchUserID == "" {
+			logger.Warn("Failed to get TWITCH_USER_ID for debug mode",
+				zap.Error(err))
+			return "", fmt.Errorf("TWITCH_USER_ID not configured")
+		}
+
+		logger.Debug("Using broadcaster's avatar for debug mode",
+			zap.String("broadcaster_id", twitchUserID))
+
+		// 配信者のアバターを取得
+		return twitchapi.GetUserAvatar(twitchUserID)
+	}
+
+	// 通常モードの場合はそのままユーザーのアバターを取得
+	return twitchapi.GetUserAvatar(userID)
+}
 
 func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 	// Extract and cache emote information from chat messages
@@ -185,14 +217,28 @@ func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPo
 		}
 	}
 
-	// Print the message with emotes
-	output.PrintOut(message.User.UserName, fragments, time.Now())
+	// アバターURLを取得
+	avatarURL := ""
+	if message.User.UserID != "" {
+		avatar, err := getUserAvatar(message.User.UserID)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for channel points event",
+				zap.String("user_id", message.User.UserID),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
+
+	// Print the message with emotes and avatar
+	output.PrintOut(message.User.UserName, fragments, avatarURL, time.Now())
 
 	logger.Info("チャネポ処理完了",
 		zap.String("user", message.User.UserName),
 		zap.String("reward", message.Reward.Title),
 		zap.String("userInput", message.UserInput),
-		zap.Int("fragments", len(fragments)))
+		zap.Int("fragments", len(fragments)),
+		zap.String("avatar_url", avatarURL))
 }
 
 func HandleChannelCheer(message twitch.EventChannelCheer) {
@@ -200,42 +246,98 @@ func HandleChannelCheer(message twitch.EventChannelCheer) {
 	userName := message.User.UserName
 	details := fmt.Sprintf("%d ビッツ", message.Bits)
 
-	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+	// アバターURLを取得
+	avatarURL := ""
+	if message.User.UserID != "" {
+		avatar, err := getUserAvatar(message.User.UserID)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for cheer event",
+				zap.String("user_id", message.User.UserID),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
 
-	// 通知をキューに追加
+	// FAX印刷（アバター付き）
+	output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+	// 通知をキューに追加（アバター付き）
 	notificationMessage := fmt.Sprintf("%s - %d ビッツ", title, message.Bits)
-	notification.EnqueueNotification(userName, notificationMessage)
+	notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 }
 func HandleChannelFollow(message twitch.EventChannelFollow) {
 	title := "フォローありがとう :)"
 	userName := message.User.UserName
 	details := "" // フォローの場合は詳細なし
 
-	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+	// アバターURLを取得
+	avatarURL := ""
+	if message.User.UserID != "" {
+		avatar, err := getUserAvatar(message.User.UserID)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for follow event",
+				zap.String("user_id", message.User.UserID),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
 
-	// 通知をキューに追加
-	notification.EnqueueNotification(userName, title)
+	// FAX印刷（アバター付き）
+	output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+	// 通知をキューに追加（アバター付き）
+	notification.EnqueueNotificationWithFragmentsAndAvatar(userName, title, nil, avatarURL)
 }
 func HandleChannelRaid(message twitch.EventChannelRaid) {
 	title := "レイドありがとう :)"
 	userName := message.FromBroadcasterUserName
 	details := fmt.Sprintf("%d 人", message.Viewers)
 
-	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+	// アバターURLを取得
+	avatarURL := ""
+	if message.FromBroadcasterUserId != "" {
+		avatar, err := getUserAvatar(message.FromBroadcasterUserId)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for raid event",
+				zap.String("user_id", message.FromBroadcasterUserId),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
 
-	// 通知をキューに追加
+	// FAX印刷（アバター付き）
+	output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+	// 通知をキューに追加（アバター付き）
 	notificationMessage := fmt.Sprintf("%s - %d 人", title, message.Viewers)
-	notification.EnqueueNotification(userName, notificationMessage)
+	notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 }
 func HandleChannelShoutoutReceive(message twitch.EventChannelShoutoutReceive) {
 	title := "応援ありがとう :)"
 	userName := message.FromBroadcasterUserName
 	details := "" // シャウトアウトの場合は詳細なし
 
-	output.PrintOutWithTitle(title, userName, "", details, time.Now())
+	// アバターURLを取得
+	avatarURL := ""
+	if message.FromBroadcasterUserId != "" {
+		avatar, err := getUserAvatar(message.FromBroadcasterUserId)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for shoutout event",
+				zap.String("user_id", message.FromBroadcasterUserId),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
 
-	// 通知をキューに追加
-	notification.EnqueueNotification(userName, title)
+	// FAX印刷（アバター付き）
+	output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+	// 通知をキューに追加（アバター付き）
+	notification.EnqueueNotificationWithFragmentsAndAvatar(userName, title, nil, avatarURL)
 }
 func HandleChannelSubscribe(message twitch.EventChannelSubscribe) {
 	if !message.IsGift {
@@ -243,21 +345,49 @@ func HandleChannelSubscribe(message twitch.EventChannelSubscribe) {
 		userName := message.User.UserName
 		details := fmt.Sprintf("Tier %s", message.Tier)
 
-		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+		// アバターURLを取得
+		avatarURL := ""
+		if message.User.UserID != "" {
+			avatar, err := getUserAvatar(message.User.UserID)
+			if err != nil {
+				logger.Warn("Failed to get user avatar for subscribe event",
+					zap.String("user_id", message.User.UserID),
+					zap.Error(err))
+			} else {
+				avatarURL = avatar
+			}
+		}
 
-		// 通知をキューに追加
+		// FAX印刷（アバター付き）
+		output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+		// 通知をキューに追加（アバター付き）
 		notificationMessage := fmt.Sprintf("%s - Tier %s", title, message.Tier)
-		notification.EnqueueNotification(userName, notificationMessage)
+		notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 	} else {
 		title := "サブギフおめです :)"
 		userName := message.User.UserName
 		details := fmt.Sprintf("Tier %s", message.Tier)
 
-		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+		// アバターURLを取得
+		avatarURL := ""
+		if message.User.UserID != "" {
+			avatar, err := getUserAvatar(message.User.UserID)
+			if err != nil {
+				logger.Warn("Failed to get user avatar for gift sub event",
+					zap.String("user_id", message.User.UserID),
+					zap.Error(err))
+			} else {
+				avatarURL = avatar
+			}
+		}
 
-		// 通知をキューに追加
+		// FAX印刷（アバター付き）
+		output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+		// 通知をキューに追加（アバター付き）
 		notificationMessage := fmt.Sprintf("%s - Tier %s", title, message.Tier)
-		notification.EnqueueNotification(userName, notificationMessage)
+		notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 	}
 }
 
@@ -267,15 +397,32 @@ func HandleChannelSubscriptionGift(message twitch.EventChannelSubscriptionGift) 
 	if !message.IsAnonymous {
 		userName := message.User.UserName
 		details := fmt.Sprintf("Tier %s | %d個", message.Tier, message.Total)
-		output.PrintOutWithTitle(title, userName, "", details, time.Now())
 
-		// 通知をキューに追加
+		// アバターURLを取得
+		avatarURL := ""
+		if message.User.UserID != "" {
+			avatar, err := getUserAvatar(message.User.UserID)
+			if err != nil {
+				logger.Warn("Failed to get user avatar for subscription gift event",
+					zap.String("user_id", message.User.UserID),
+					zap.Error(err))
+			} else {
+				avatarURL = avatar
+			}
+		}
+
+		// FAX印刷（アバター付き）
+		output.PrintOutWithTitle(title, userName, "", details, avatarURL, time.Now())
+
+		// 通知をキューに追加（アバター付き）
 		notificationMessage := fmt.Sprintf("%s - Tier %s | %d個", title, message.Tier, message.Total)
-		notification.EnqueueNotification(userName, notificationMessage)
+		notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 	} else {
 		userName := "匿名さん"
 		details := fmt.Sprintf("Tier %s | %d個", message.Tier, message.Total)
-		output.PrintOutWithTitle(title, userName, "", details, time.Now())
+
+		// 匿名はアバターなし
+		output.PrintOutWithTitle(title, userName, "", details, "", time.Now())
 
 		// 通知をキューに追加
 		notificationMessage := fmt.Sprintf("%s - Tier %s | %d個", title, message.Tier, message.Total)
@@ -302,7 +449,22 @@ func HandleChannelSubscriptionMessage(message twitch.EventChannelSubscriptionMes
 	}
 
 	userName := message.User.UserName
-	output.PrintOutWithTitle(title, userName, extra, details, time.Now())
+
+	// アバターURLを取得
+	avatarURL := ""
+	if message.User.UserID != "" {
+		avatar, err := getUserAvatar(message.User.UserID)
+		if err != nil {
+			logger.Warn("Failed to get user avatar for resub event",
+				zap.String("user_id", message.User.UserID),
+				zap.Error(err))
+		} else {
+			avatarURL = avatar
+		}
+	}
+
+	// FAX印刷（アバター付き）
+	output.PrintOutWithTitle(title, userName, extra, details, avatarURL, time.Now())
 
 	// 通知をキューに追加
 	var notificationMessage string
@@ -319,7 +481,7 @@ func HandleChannelSubscriptionMessage(message twitch.EventChannelSubscriptionMes
 			notificationMessage = title
 		}
 	}
-	notification.EnqueueNotification(userName, notificationMessage)
+	notification.EnqueueNotificationWithFragmentsAndAvatar(userName, notificationMessage, nil, avatarURL)
 
 	logger.Info("サブスクメッセージ",
 		zap.String("user", message.User.UserName),

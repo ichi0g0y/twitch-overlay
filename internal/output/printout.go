@@ -217,8 +217,8 @@ func PrintClockWithOptionsForce(timeStr string, forceEmptyLeaderboard bool, forc
 		return fmt.Errorf("failed to create monochrome clock image: %w", err)
 	}
 
-	// Save fax with faxmanager (use "System" as username for clock)
-	fax, err := faxmanager.SaveFax("🕐 Clock", timeStr, "", colorImg, monoImg)
+	// Save fax with faxmanager (use "System" as username for clock, no avatar)
+	fax, err := faxmanager.SaveFax("🕐 Clock", timeStr, "", "", colorImg, monoImg)
 	if err != nil {
 		return fmt.Errorf("failed to save clock fax: %w", err)
 	}
@@ -239,15 +239,15 @@ func PrintClockWithOptionsForce(timeStr string, forceEmptyLeaderboard bool, forc
 	return nil
 }
 
-func PrintOut(userName string, message []twitch.ChatMessageFragment, timestamp time.Time) error {
+func PrintOut(userName string, message []twitch.ChatMessageFragment, avatarURL string, timestamp time.Time) error {
 	// Generate color version
-	colorImg, err := MessageToImage(userName, message, true)
+	colorImg, err := MessageToImage(userName, message, avatarURL, true)
 	if err != nil {
 		return fmt.Errorf("failed to create color image: %w", err)
 	}
 
 	// Generate monochrome version for printing
-	monoImg, err := MessageToImage(userName, message, false)
+	monoImg, err := MessageToImage(userName, message, avatarURL, false)
 	if err != nil {
 		return fmt.Errorf("failed to create monochrome image: %w", err)
 	}
@@ -261,7 +261,7 @@ func PrintOut(userName string, message []twitch.ChatMessageFragment, timestamp t
 	}
 
 	// Save fax with faxmanager
-	fax, err := faxmanager.SaveFax(userName, messageText, "", colorImg, monoImg)
+	fax, err := faxmanager.SaveFax(userName, messageText, "", avatarURL, colorImg, monoImg)
 	if err != nil {
 		return fmt.Errorf("failed to save fax: %w", err)
 	}
@@ -283,15 +283,15 @@ func PrintOut(userName string, message []twitch.ChatMessageFragment, timestamp t
 }
 
 // PrintOutWithTitle sends fax output with separate title and details to printer and frontend
-func PrintOutWithTitle(title, userName, extra, details string, timestamp time.Time) error {
+func PrintOutWithTitle(title, userName, extra, details string, avatarURL string, timestamp time.Time) error {
 	// Generate color version
-	colorImg, err := MessageToImageWithTitle(title, userName, extra, details, true)
+	colorImg, err := MessageToImageWithTitle(title, userName, extra, details, avatarURL, true)
 	if err != nil {
 		return fmt.Errorf("failed to create color image: %w", err)
 	}
 
 	// Generate monochrome version for printing
-	monoImg, err := MessageToImageWithTitle(title, userName, extra, details, false)
+	monoImg, err := MessageToImageWithTitle(title, userName, extra, details, avatarURL, false)
 	if err != nil {
 		return fmt.Errorf("failed to create monochrome image: %w", err)
 	}
@@ -306,7 +306,7 @@ func PrintOutWithTitle(title, userName, extra, details string, timestamp time.Ti
 	}
 
 	// Save fax with faxmanager
-	fax, err := faxmanager.SaveFax(userName, messageText, "", colorImg, monoImg)
+	fax, err := faxmanager.SaveFax(userName, messageText, "", avatarURL, colorImg, monoImg)
 	if err != nil {
 		return fmt.Errorf("failed to save fax: %w", err)
 	}

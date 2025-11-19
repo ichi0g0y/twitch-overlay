@@ -413,7 +413,7 @@ func rotate90(src image.Image) image.Image {
 }
 
 // MessageToImage creates an image from the message with optional color support
-func MessageToImage(userName string, msg []twitch.ChatMessageFragment, useColor bool) (image.Image, error) {
+func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL string, useColor bool) (image.Image, error) {
 
 	// フォントマネージャーからフォントデータを取得（カスタムフォント必須）
 	fontData, err := fontmanager.GetFont(nil)
@@ -1581,8 +1581,8 @@ func GenerateTimeImageWithStatsColorOptions(timeStr string, forceEmptyLeaderboar
 
 // GeneratePreviewImage creates a preview image for font testing
 func GeneratePreviewImage(userName string, msg []twitch.ChatMessageFragment) (string, error) {
-	// Generate image using current font
-	img, err := MessageToImage(userName, msg, false)
+	// Generate image using current font (no avatar for preview)
+	img, err := MessageToImage(userName, msg, "", false)
 	if err != nil {
 		return "", err
 	}
@@ -1643,7 +1643,7 @@ func wrapText(text string, face font.Face, maxWidth int) []string {
 }
 
 // MessageToImageWithTitle creates an image with title and details layout
-func MessageToImageWithTitle(title, userName, extra, details string, useColor bool) (image.Image, error) {
+func MessageToImageWithTitle(title, userName, extra, details string, avatarURL string, useColor bool) (image.Image, error) {
 	// フォントマネージャーからフォントデータを取得（カスタムフォント必須）
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
@@ -1694,7 +1694,17 @@ func MessageToImageWithTitle(title, userName, extra, details string, useColor bo
 	imgHeight := padding * 2
 	hasContent := false
 
+	// アバターがある場合は128px分の高さを追加
+	avatarSize := 128
+	if avatarURL != "" {
+		imgHeight += avatarSize + 10 // アバター + 余白
+		hasContent = true
+	}
+
 	if len(titleLines) > 0 {
+		if hasContent {
+			imgHeight += spacing
+		}
 		imgHeight += len(titleLines) * lineHeight
 		hasContent = true
 	}
@@ -1740,6 +1750,25 @@ func MessageToImageWithTitle(title, userName, extra, details string, useColor bo
 	}
 
 	yPos := padding
+
+	// アバターを描画（ある場合）
+	if avatarURL != "" {
+		var avatarImg image.Image
+		var err error
+		if useColor {
+			avatarImg, err = downloadAndResizeAvatarColor(avatarURL, avatarSize)
+		} else {
+			avatarImg, err = downloadAndResizeAvatarGray(avatarURL, avatarSize)
+		}
+		if err == nil {
+			avatarX := (PaperWidth - avatarSize) / 2
+			draw.Draw(img, image.Rect(avatarX, yPos, avatarX+avatarSize, yPos+avatarSize),
+				avatarImg, image.Point{}, draw.Over)
+			yPos += avatarSize + 10 // アバター + 余白
+		} else {
+			logger.Warn("Failed to download avatar for fax", zap.String("url", avatarURL), zap.Error(err))
+		}
+	}
 
 	// タイトルを描画（中央揃え、複数行対応）
 	for _, line := range titleLines {

@@ -19,6 +19,7 @@ type Fax struct {
 	UserName  string
 	Message   string
 	ImageURL  string
+	AvatarURL string // User avatar URL
 	Timestamp time.Time
 	ColorPath string
 	MonoPath  string
@@ -69,7 +70,7 @@ func GenerateID() (string, error) {
 }
 
 // SaveFax saves both color and mono images and registers them
-func SaveFax(userName string, message string, imageURL string, colorImg, monoImg image.Image) (*Fax, error) {
+func SaveFax(userName string, message string, imageURL string, avatarURL string, colorImg, monoImg image.Image) (*Fax, error) {
 	id, err := GenerateID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID: %w", err)
@@ -90,6 +91,7 @@ func SaveFax(userName string, message string, imageURL string, colorImg, monoImg
 		UserName:  userName,
 		Message:   message,
 		ImageURL:  imageURL,
+		AvatarURL: avatarURL,
 		Timestamp: time.Now(),
 		ColorPath: colorPath,
 		MonoPath:  monoPath,

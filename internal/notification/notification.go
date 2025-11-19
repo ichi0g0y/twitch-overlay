@@ -31,6 +31,7 @@ type ChatNotification struct {
 	Message   string         `json:"message"`
 	Fragments []FragmentInfo `json:"fragments,omitempty"` // Optional: enhanced message with emotes
 	FontSize  int            `json:"fontSize,omitempty"`  // Optional: font size in pixels
+	AvatarURL string         `json:"avatarUrl,omitempty"` // Optional: user avatar URL
 }
 
 var (
@@ -71,10 +72,11 @@ func startQueueProcessor() {
 			logger.Info("Processing queued notification",
 				zap.String("username", notification.Username),
 				zap.String("message", notification.Message),
+				zap.String("avatar_url", notification.AvatarURL),
 				zap.Int("queue_size", len(notificationQueue)))
 
-			// 通知を表示
-			ShowChatNotificationWithFragments(notification.Username, notification.Message, notification.Fragments)
+			// 通知を表示（アバターURL付き）
+			ShowChatNotificationWithFragmentsAndAvatar(notification.Username, notification.Message, notification.Fragments, notification.AvatarURL)
 
 			// 設定から表示秒数を取得
 			displayDuration := getDisplayDuration()
@@ -108,6 +110,12 @@ func EnqueueNotification(username, message string) {
 // EnqueueNotificationWithFragments は通知をキューに追加する（フラグメント付き）
 // この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
 func EnqueueNotificationWithFragments(username, message string, fragments []FragmentInfo) {
+	EnqueueNotificationWithFragmentsAndAvatar(username, message, fragments, "")
+}
+
+// EnqueueNotificationWithFragmentsAndAvatar は通知をキューに追加する（フラグメント+アバター付き）
+// この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
+func EnqueueNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
 	if wailsApp == nil {
 		logger.Error("Notification manager not initialized")
 		return
@@ -125,6 +133,7 @@ func EnqueueNotificationWithFragments(username, message string, fragments []Frag
 		Username:  username,
 		Message:   message,
 		Fragments: fragments,
+		AvatarURL: avatarURL,
 	}
 
 	select {
@@ -132,6 +141,7 @@ func EnqueueNotificationWithFragments(username, message string, fragments []Frag
 		logger.Info("Notification enqueued",
 			zap.String("username", username),
 			zap.Int("fragments_count", len(fragments)),
+			zap.String("avatar_url", avatarURL),
 			zap.Int("queue_size", len(notificationQueue)))
 	default:
 		// キューが満杯の場合
@@ -296,6 +306,11 @@ func ShowChatNotification(username, message string) {
 
 // ShowChatNotificationWithFragments shows a chat notification window with fragments
 func ShowChatNotificationWithFragments(username, message string, fragments []FragmentInfo) {
+	ShowChatNotificationWithFragmentsAndAvatar(username, message, fragments, "")
+}
+
+// ShowChatNotificationWithFragmentsAndAvatar shows a chat notification window with fragments and avatar
+func ShowChatNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
 	if wailsApp == nil {
 		logger.Error("Notification manager not initialized")
 		return
@@ -324,13 +339,14 @@ func ShowChatNotificationWithFragments(username, message string, fragments []Fra
 	logger.Info("Showing chat notification",
 		zap.String("username", username),
 		zap.String("message", message),
-		zap.Int("fragments_count", len(fragments)))
+		zap.Int("fragments_count", len(fragments)),
+		zap.String("avatar_url", avatarURL))
 
 	// Show the window (if hidden)
 	notificationWindow.Show()
 
 	// Broadcast notification content via WebSocket
-	updateWindowContentWithFragments(username, message, fragments)
+	updateWindowContentWithFragmentsAndAvatar(username, message, fragments, avatarURL)
 
 	logger.Info("Notification window shown with content")
 }
@@ -344,6 +360,12 @@ func updateWindowContent(username, message string) {
 // updateWindowContentWithFragments updates the content of existing notification window with fragments
 // Note: This should only be called after WindowRuntimeReady event or when window already exists
 func updateWindowContentWithFragments(username, message string, fragments []FragmentInfo) {
+	updateWindowContentWithFragmentsAndAvatar(username, message, fragments, "")
+}
+
+// updateWindowContentWithFragmentsAndAvatar updates the content of existing notification window with fragments and avatar
+// Note: This should only be called after WindowRuntimeReady event or when window already exists
+func updateWindowContentWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
 	if notificationWindow == nil {
 		logger.Warn("updateWindowContent: notification window is nil")
 		return
@@ -356,11 +378,13 @@ func updateWindowContentWithFragments(username, message string, fragments []Frag
 		zap.String("username", username),
 		zap.String("message", message),
 		zap.Int("fragments_count", len(fragments)),
+		zap.String("avatar_url", avatarURL),
 		zap.Int("font_size", fontSize))
 
 	// Broadcast notification via WebSocket to all connected clients
 	// This uses the same WebSocket connection as the settings window
 	// Using broadcast.Send() to avoid circular dependency
+
 	payload := map[string]interface{}{
 		"type":     "chat-notification",
 		"username": username,
@@ -371,6 +395,11 @@ func updateWindowContentWithFragments(username, message string, fragments []Frag
 	// フラグメントがある場合は追加
 	if len(fragments) > 0 {
 		payload["fragments"] = fragments
+	}
+
+	// アバターURLがある場合は追加
+	if avatarURL != "" {
+		payload["avatarUrl"] = avatarURL
 	}
 
 	broadcast.Send(payload)

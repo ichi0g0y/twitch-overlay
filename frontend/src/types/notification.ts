@@ -16,4 +16,5 @@ export interface ChatNotification {
   message: string;
   fragments?: Fragment[];
   fontSize?: number;
+  avatarUrl?: string;
 }
