@@ -30,6 +30,9 @@ func Start() error {
 		return nil
 	}
 
+	// リワードイベント処理ワーカーを起動（初回のみ）
+	StartRewardQueueWorker()
+
 	token, valid, err := twitchtoken.GetLatestToken()
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)

@@ -3,6 +3,7 @@ package twitcheventsub
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
@@ -16,6 +17,33 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
+
+// RewardEvent はリワードイベントをキューで処理するための構造体
+type RewardEvent struct {
+	Message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd
+}
+
+// リワードイベント処理用のキュー
+var (
+	rewardQueue     = make(chan RewardEvent, 1000)
+	rewardQueueOnce sync.Once
+)
+
+// StartRewardQueueWorker はリワードイベント処理ワーカーを起動する
+// アプリケーション起動時に一度だけ呼ばれる
+func StartRewardQueueWorker() {
+	rewardQueueOnce.Do(func() {
+		go processRewardQueue()
+		logger.Info("Reward queue worker started")
+	})
+}
+
+// processRewardQueue はキューからリワードイベントを取り出して順次処理する
+func processRewardQueue() {
+	for event := range rewardQueue {
+		processRewardEvent(event.Message)
+	}
+}
 
 // getUserAvatar はユーザーのアバターURLを取得する
 // デバッグモード（UserIDが"debug-"で始まる）の場合は、設定からTWITCH_USER_IDを取得してそのアバターを使う
@@ -131,7 +159,24 @@ func buildFragmentsForNotification(fragments []twitch.ChatMessageFragment) []not
 	return result
 }
 
+// HandleChannelPointsCustomRedemptionAdd はリワードイベントをキューに追加する
 func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
+	// キューに追加（ノンブロッキング）
+	select {
+	case rewardQueue <- RewardEvent{Message: message}:
+		logger.Debug("Reward event queued",
+			zap.String("reward_id", message.Reward.ID),
+			zap.String("user_name", message.User.UserName))
+	default:
+		logger.Error("Reward queue full, dropping event",
+			zap.String("reward_id", message.Reward.ID),
+			zap.String("user_name", message.User.UserName),
+			zap.Int("queue_size", 1000))
+	}
+}
+
+// processRewardEvent はキューから取り出したリワードイベントを処理する
+func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRedemptionAdd) {
 	// リワードカウントを増やす（リトライ付き、最大3回、指数バックオフ）
 	maxRetries := 3
 	var lastErr error
@@ -141,7 +186,21 @@ func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPo
 		if err == nil {
 			// 成功：通知を送信
 			count, err := localdb.GetRewardCount(message.Reward.ID)
-			if err == nil {
+			if err != nil {
+				logger.Error("Failed to get reward count after increment",
+					zap.Error(err),
+					zap.String("reward_id", message.Reward.ID))
+				// エラーでも最低限の通知を送る
+				broadcast.Send(map[string]interface{}{
+					"type": "reward_count_updated",
+					"data": map[string]interface{}{
+						"reward_id": message.Reward.ID,
+						"title":     message.Reward.Title,
+						"count":     -1, // エラーを示す特殊値
+						"error":     true,
+					},
+				})
+			} else {
 				count.Title = message.Reward.Title
 				broadcast.Send(map[string]interface{}{
 					"type": "reward_count_updated",
@@ -166,6 +225,7 @@ func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPo
 			zap.String("reward_id", message.Reward.ID),
 			zap.String("user_name", message.User.UserName),
 			zap.Int("maxRetries", maxRetries))
+		return // エラー時はここで終了（通知・プリンター処理をスキップ）
 	}
 
 	// 通知をキューに追加（全てのチャネポを通知）

@@ -36,6 +36,12 @@ type WSHub struct {
 	mu         sync.RWMutex
 }
 
+// WSRetryQueue は送信失敗したメッセージを保存するキュー
+type WSRetryQueue struct {
+	messages []WSMessage
+	mu       sync.Mutex
+}
+
 var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		// 開発環境では全てのオリジンを許可
@@ -53,9 +59,39 @@ var wsHub = &WSHub{
 	broadcast:  make(chan WSMessage, 2048), // 256 → 2048に拡大（リワード大量発生時のドロップ防止）
 }
 
+var wsRetryQueue = &WSRetryQueue{
+	messages: []WSMessage{},
+}
+
 // StartWSHub WebSocketハブを起動
 func StartWSHub() {
 	go wsHub.run()
+	go retryFailedMessages()
+	logger.Info("WebSocket hub and retry worker started")
+}
+
+// retryFailedMessages は送信失敗したメッセージの再送を試みる
+func retryFailedMessages() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		wsRetryQueue.mu.Lock()
+		if len(wsRetryQueue.messages) > 0 {
+			msg := wsRetryQueue.messages[0]
+			select {
+			case wsHub.broadcast <- msg:
+				// 送信成功：キューから削除
+				wsRetryQueue.messages = wsRetryQueue.messages[1:]
+				logger.Debug("Retry message sent successfully",
+					zap.String("type", msg.Type),
+					zap.Int("remaining", len(wsRetryQueue.messages)))
+			default:
+				// まだフル：次回再試行
+			}
+		}
+		wsRetryQueue.mu.Unlock()
+	}
 }
 
 func (h *WSHub) run() {
@@ -193,9 +229,16 @@ func BroadcastWSMessage(msgType string, data interface{}) {
 					zap.Int("attempt", i+1))
 				time.Sleep(10 * time.Millisecond)
 			} else {
-				logger.Error("WebSocket broadcast failed after retries",
+				// リトライ失敗：リトライキューに追加
+				wsRetryQueue.mu.Lock()
+				wsRetryQueue.messages = append(wsRetryQueue.messages, msg)
+				queueSize := len(wsRetryQueue.messages)
+				wsRetryQueue.mu.Unlock()
+
+				logger.Warn("WebSocket broadcast failed after retries, added to retry queue",
 					zap.String("type", msgType),
-					zap.Int("maxRetries", maxRetries))
+					zap.Int("maxRetries", maxRetries),
+					zap.Int("retryQueueSize", queueSize))
 			}
 		}
 	}

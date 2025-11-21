@@ -77,19 +77,6 @@ const RewardCountDisplay: React.FC = () => {
           });
 
           setCounts(newCounts);
-
-          // entering状態を visible に変更
-          setTimeout(() => {
-            setCounts((current) => {
-              const updated = new Map(current);
-              updated.forEach((item, key) => {
-                if (item.state === 'entering') {
-                  updated.set(key, { ...item, state: 'visible' });
-                }
-              });
-              return updated;
-            });
-          }, 350);
         }
       } catch (error) {
         console.error('Failed to fetch reward counts:', error);
@@ -157,17 +144,6 @@ const RewardCountDisplay: React.FC = () => {
               displayName: data.display_name || data.title || '未設定',
               state: 'entering',
             });
-            // entering状態を visible に変更
-            setTimeout(() => {
-              setCounts((current) => {
-                const updated = new Map(current);
-                const item = updated.get(data.reward_id);
-                if (item && item.state === 'entering') {
-                  updated.set(data.reward_id, { ...item, state: 'visible' });
-                }
-                return updated;
-              });
-            }, 350);
           }
         }
 
@@ -197,6 +173,84 @@ const RewardCountDisplay: React.FC = () => {
       unsubCountsReset();
     };
   }, [isEnabled, groupId, groupRewardIds, playAlertSound]);
+
+  // entering状態のアイテムをvisibleに変更するEffect
+  useEffect(() => {
+    const enteringItems = Array.from(counts.entries()).filter(
+      ([_, item]) => item.state === 'entering'
+    );
+
+    if (enteringItems.length === 0) return;
+
+    const timer = setTimeout(() => {
+      setCounts((current) => {
+        const updated = new Map(current);
+        enteringItems.forEach(([rewardId, _]) => {
+          const item = updated.get(rewardId);
+          if (item && item.state === 'entering') {
+            updated.set(rewardId, { ...item, state: 'visible' });
+          }
+        });
+        return updated;
+      });
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [counts]);
+
+  // ポーリングフォールバック：WebSocketメッセージがドロップされた場合の補正
+  useEffect(() => {
+    if (!isEnabled) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const url = groupId
+          ? buildApiUrl(`/api/twitch/reward-groups/${groupId}/counts`)
+          : buildApiUrl('/api/twitch/reward-counts');
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data: RewardCount[] = await response.json();
+          setCounts((prev) => {
+            const newCounts = new Map(prev);
+
+            // APIから取得したデータと現在の表示を比較して差分を補正
+            data.forEach((item) => {
+              if (item.count > 0) {
+                const existing = newCounts.get(item.reward_id);
+                if (!existing) {
+                  // WebSocketで受信していない新規アイテムを追加
+                  console.log('🔄 Polling: Adding missing reward', item.reward_id);
+                  newCounts.set(item.reward_id, {
+                    rewardId: item.reward_id,
+                    count: item.count,
+                    userNames: item.user_names || [],
+                    displayName: item.display_name || item.title || '未設定',
+                    state: 'entering',
+                  });
+                } else if (existing.count !== item.count) {
+                  // カウントがずれている場合は補正
+                  console.log('🔄 Polling: Correcting count mismatch', item.reward_id, existing.count, '→', item.count);
+                  newCounts.set(item.reward_id, {
+                    ...existing,
+                    count: item.count,
+                    userNames: item.user_names || [],
+                    displayName: item.display_name || item.title || existing.displayName,
+                  });
+                }
+              }
+            });
+
+            return newCounts;
+          });
+        }
+      } catch (error) {
+        console.error('Failed to sync reward counts via polling:', error);
+      }
+    }, 5000); // 5秒ごとに同期
+
+    return () => clearInterval(intervalId);
+  }, [isEnabled, groupId]);
 
   if (!isEnabled) {
     return null;
