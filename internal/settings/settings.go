@@ -224,6 +224,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "REWARD_COUNT_GROUP_ID", Value: "", Type: SettingTypeNormal, Required: false,
 		Description: "Reward group ID to display counts for (empty for all)",
 	},
+	"REWARD_COUNT_POSITION": {
+		Key: "REWARD_COUNT_POSITION", Value: "left", Type: SettingTypeNormal, Required: false,
+		Description: "Reward count display position (left or right)",
+	},
 
 	// 通知設定
 	"NOTIFICATION_ENABLED": {
@@ -488,6 +492,11 @@ func ValidateSetting(key, value string) error {
 		// 表示秒数のチェック（1〜60秒）
 		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 60 {
 			return fmt.Errorf("must be integer between 1 and 60 seconds")
+		}
+	case "REWARD_COUNT_POSITION":
+		// 位置のチェック（left or right）
+		if value != "left" && value != "right" {
+			return fmt.Errorf("must be 'left' or 'right'")
 		}
 	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
 		// boolean値のチェック

@@ -24,6 +24,7 @@ interface OverlaySettings {
   // リワードカウント表示設定
   reward_count_enabled?: boolean;
   reward_count_group_id?: number | null;
+  reward_count_position?: 'left' | 'right';
 
   // 開発者設定
   debug_enabled: boolean;

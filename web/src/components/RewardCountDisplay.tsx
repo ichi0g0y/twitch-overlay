@@ -13,6 +13,7 @@ const RewardCountDisplay: React.FC = () => {
   // 設定が有効かチェック
   const isEnabled = settings?.reward_count_enabled ?? false;
   const groupId = settings?.reward_count_group_id;
+  const position = settings?.reward_count_position ?? 'left'; // デフォルトは左
 
   // アラート音声を再生する関数
   const playAlertSound = useCallback(() => {
@@ -70,12 +71,25 @@ const RewardCountDisplay: React.FC = () => {
                 count: item.count,
                 userNames: item.user_names || [],
                 displayName: item.display_name || item.title || '未設定',
-                state: 'visible',
+                state: 'entering',
               });
             }
           });
 
           setCounts(newCounts);
+
+          // entering状態を visible に変更
+          setTimeout(() => {
+            setCounts((current) => {
+              const updated = new Map(current);
+              updated.forEach((item, key) => {
+                if (item.state === 'entering') {
+                  updated.set(key, { ...item, state: 'visible' });
+                }
+              });
+              return updated;
+            });
+          }, 350);
         }
       } catch (error) {
         console.error('Failed to fetch reward counts:', error);
@@ -153,7 +167,7 @@ const RewardCountDisplay: React.FC = () => {
                 }
                 return updated;
               });
-            }, 50);
+            }, 350);
           }
         }
 
@@ -194,14 +208,20 @@ const RewardCountDisplay: React.FC = () => {
     return 0; // 挿入順を維持（Mapは挿入順を保持）
   });
 
+  // 位置に応じたCSSクラスを生成
+  const positionClass = position === 'right'
+    ? 'fixed right-4 top-1/2 -translate-y-1/2 z-[5] space-y-2'
+    : 'fixed left-4 top-1/2 -translate-y-1/2 z-[5] space-y-2';
+
   return (
-    <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[5] space-y-2">
+    <div className={positionClass}>
       {countArray.map((item) => (
         <RewardCountItem
           key={item.rewardId}
           userNames={item.userNames}
           displayName={item.displayName}
           state={item.state}
+          position={position}
         />
       ))}
     </div>

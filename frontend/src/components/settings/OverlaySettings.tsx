@@ -601,7 +601,7 @@ export const OverlaySettings: React.FC = () => {
             <Label htmlFor="reward-count-enabled" className="flex flex-col">
               <span>カウント表示を有効化</span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                オーバーレイ左側にリワード使用回数を表示します
+                オーバーレイにリワード使用回数を表示します
               </span>
             </Label>
             <Switch
@@ -615,6 +615,24 @@ export const OverlaySettings: React.FC = () => {
 
           {(overlaySettings?.reward_count_enabled ?? false) && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="reward-count-position" className="flex flex-col">
+                  <span>右側に表示</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    オフの場合は左側に表示されます
+                  </span>
+                </Label>
+                <Switch
+                  id="reward-count-position"
+                  checked={(overlaySettings?.reward_count_position || 'left') === 'right'}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({
+                      reward_count_position: checked ? 'right' : 'left'
+                    })
+                  }
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="reward-count-group">表示対象グループ</Label>
                 <Select

@@ -40,8 +40,9 @@ type OverlaySettings struct {
 	TimeEnabled     bool   `json:"time_enabled"`
 
 	// リワードカウント表示設定
-	RewardCountEnabled bool `json:"reward_count_enabled"` // カウント表示の有効/無効
-	RewardCountGroupID *int `json:"reward_count_group_id"` // 表示対象のグループID（nilの場合は全て）
+	RewardCountEnabled  bool   `json:"reward_count_enabled"`  // カウント表示の有効/無効
+	RewardCountGroupID  *int   `json:"reward_count_group_id"` // 表示対象のグループID（nilの場合は全て）
+	RewardCountPosition string `json:"reward_count_position"` // 表示位置 ("left" or "right")
 
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
@@ -102,10 +103,11 @@ func loadOverlaySettingsFromDB() {
 		ClockShowIcons:     getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
 		LocationEnabled:    getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
 		DateEnabled:        getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
-		TimeEnabled:        getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
-		RewardCountEnabled: getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
-		RewardCountGroupID: getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
-		ShowDebugInfo:      false, // 廃止予定
+		TimeEnabled:         getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
+		RewardCountEnabled:  getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
+		RewardCountGroupID:  getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
+		RewardCountPosition: getStringSettingWithDefault(allSettings, "REWARD_COUNT_POSITION", "left"),
+		ShowDebugInfo:       false, // 廃止予定
 		DebugEnabled:       getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 		UpdatedAt:          time.Now(),
 	}
@@ -259,6 +261,7 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"OVERLAY_DATE_ENABLED":      strconv.FormatBool(overlaySettings.DateEnabled),
 		"OVERLAY_TIME_ENABLED":      strconv.FormatBool(overlaySettings.TimeEnabled),
 		"REWARD_COUNT_ENABLED":      strconv.FormatBool(overlaySettings.RewardCountEnabled),
+		"REWARD_COUNT_POSITION":     overlaySettings.RewardCountPosition,
 		"OVERLAY_DEBUG_ENABLED":     strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 

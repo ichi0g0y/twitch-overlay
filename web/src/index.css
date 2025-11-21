@@ -362,7 +362,7 @@ body {
   image-rendering: pixelated;
 }
 
-/* リワードカウントアニメーション */
+/* リワードカウントアニメーション - 左側 */
 @keyframes reward-count-slide-in {
   from {
     transform: translateX(-120%);
@@ -385,8 +385,35 @@ body {
   }
 }
 
+/* リワードカウントアニメーション - 右側 */
+@keyframes reward-count-slide-in-right {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes reward-count-slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
 .reward-count-item-entering {
-  animation: reward-count-slide-in 0.3s ease-out forwards;
+  animation: reward-count-slide-in 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-entering-right {
+  animation: reward-count-slide-in-right 0.3s ease-in-out forwards;
 }
 
 .reward-count-item-visible {
@@ -395,7 +422,11 @@ body {
 }
 
 .reward-count-item-exiting {
-  animation: reward-count-slide-out 0.3s ease-in forwards;
+  animation: reward-count-slide-out 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-exiting-right {
+  animation: reward-count-slide-out-right 0.3s ease-in-out forwards;
 }
 
 .reward-count-item-hidden {

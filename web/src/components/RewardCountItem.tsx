@@ -5,22 +5,25 @@ interface RewardCountItemProps {
   userNames: string[];
   displayName: string;
   state: RewardCountState;
+  position: 'left' | 'right'; // 表示位置
 }
 
 export const RewardCountItem: React.FC<RewardCountItemProps> = ({
   userNames,
   displayName,
   state,
+  position,
 }) => {
-  // アニメーション用のクラス
+  // アニメーション用のクラス（位置に応じて変更）
   const getStateClass = () => {
+    const suffix = position === 'right' ? '-right' : '';
     switch (state) {
       case 'entering':
-        return 'reward-count-item-entering';
+        return `reward-count-item-entering${suffix}`;
       case 'visible':
         return 'reward-count-item-visible';
       case 'exiting':
-        return 'reward-count-item-exiting';
+        return `reward-count-item-exiting${suffix}`;
       case 'hidden':
         return 'reward-count-item-hidden';
       default:
