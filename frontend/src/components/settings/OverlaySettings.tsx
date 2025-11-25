@@ -665,10 +665,28 @@ export const OverlaySettings: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>現在表示中のリワード</Label>
-                    <Button
-                      variant={resetAllConfirm ? "destructive" : "outline"}
-                      size="sm"
-                      onClick={async () => {
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            // 設定画面のカウントデータを再取得
+                            await fetchRewardCounts();
+                            // オーバーレイに設定を再送信（強制リフレッシュ）
+                            const url = await buildApiUrlAsync('/api/overlay/refresh');
+                            await fetch(url, { method: 'POST' });
+                          } catch (error) {
+                            console.error('Failed to refresh:', error);
+                          }
+                        }}
+                      >
+                        🔄
+                      </Button>
+                      <Button
+                        variant={resetAllConfirm ? "destructive" : "outline"}
+                        size="sm"
+                        onClick={async () => {
                         console.log('🔘 Reset all button clicked:', { resetAllConfirm });
 
                         // 1回目のクリック: 確認状態にする
@@ -704,6 +722,7 @@ export const OverlaySettings: React.FC = () => {
                     >
                       {resetAllConfirm ? '本当に全リセット？' : 'すべてのカウントをリセット'}
                     </Button>
+                    </div>
                   </div>
 
                   {/* 各リワードをCardで表示 */}

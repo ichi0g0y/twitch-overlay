@@ -456,4 +456,28 @@ func RegisterOverlaySettingsRoutes(mux *http.ServeMux) {
 		}
 	}))
 	mux.HandleFunc("/api/settings/overlay/events", corsMiddleware(handleOverlaySettingsEvents))
+	mux.HandleFunc("/api/overlay/refresh", corsMiddleware(handleOverlayRefresh))
+}
+
+// handleOverlayRefresh はオーバーレイに現在の設定を再送信する
+func handleOverlayRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	logger.Info("Refreshing overlay settings for all clients")
+
+	// 現在のオーバーレイ設定を全クライアントに再ブロードキャスト
+	overlaySettingsMutex.RLock()
+	settings := currentOverlaySettings
+	overlaySettingsMutex.RUnlock()
+
+	BroadcastWSMessage("settings", settings)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Overlay settings refreshed",
+	})
 }

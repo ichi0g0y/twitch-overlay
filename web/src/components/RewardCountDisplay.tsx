@@ -24,7 +24,7 @@ const RewardCountDisplay: React.FC = () => {
     });
   }, []);
 
-  // グループのリワードIDリストを取得
+  // グループのリワードIDリストを取得（初回＋定期更新）
   useEffect(() => {
     if (!isEnabled || !groupId) {
       setGroupRewardIds(new Set());
@@ -38,6 +38,7 @@ const RewardCountDisplay: React.FC = () => {
         if (response.ok) {
           const group = await response.json();
           setGroupRewardIds(new Set(group.reward_ids || []));
+          console.log('🔄 Group reward IDs updated:', group.reward_ids?.length || 0);
         }
       } catch (error) {
         console.error('Failed to fetch group reward IDs:', error);
@@ -45,7 +46,13 @@ const RewardCountDisplay: React.FC = () => {
       }
     };
 
+    // 初回取得
     fetchGroupRewardIds();
+
+    // 30秒ごとに定期更新（グループメンバーシップの変更に対応）
+    const intervalId = setInterval(fetchGroupRewardIds, 30000);
+
+    return () => clearInterval(intervalId);
   }, [isEnabled, groupId]);
 
   // カウントデータの初期ロード
