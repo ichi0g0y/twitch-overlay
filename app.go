@@ -240,6 +240,10 @@ func (a *App) Startup(ctx context.Context) {
 			port = env.Value.ServerPort
 		}
 		logger.Info("Starting web server for OBS overlay", zap.Int("port", port))
+
+		// オーバーレイ設定を初期化（DBから読み込みとデフォルト値の保存）
+		webserver.InitOverlaySettings()
+
 		// 埋め込みアセットをWebサーバーに設定
 		webserver.SetWebAssets(a.webAssets)
 		if err := webserver.StartWebServer(port); err != nil {

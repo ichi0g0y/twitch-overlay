@@ -44,6 +44,12 @@ type OverlaySettings struct {
 	RewardCountGroupID  *int   `json:"reward_count_group_id"` // 表示対象のグループID（nilの場合は全て）
 	RewardCountPosition string `json:"reward_count_position"` // 表示位置 ("left" or "right")
 
+	// プレゼントルーレット設定
+	LotteryEnabled         bool    `json:"lottery_enabled"`          // ルーレット機能の有効/無効
+	LotteryRewardID        *string `json:"lottery_reward_id"`        // 対象リワードID
+	LotteryDisplayDuration int     `json:"lottery_display_duration"` // 表示時間（秒）
+	LotteryAnimationSpeed  float64 `json:"lottery_animation_speed"`  // アニメーション速度
+
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
 
@@ -91,25 +97,29 @@ func loadOverlaySettingsFromDB() {
 
 	// データベースから設定を読み込んでOverlaySettings構造体に変換
 	overlaySettings := &OverlaySettings{
-		MusicEnabled:       getBoolSetting(allSettings, "MUSIC_ENABLED", true),
-		MusicPlaylist:      getStringSetting(allSettings, "MUSIC_PLAYLIST"),
-		MusicVolume:        getIntSetting(allSettings, "MUSIC_VOLUME", 70),
-		MusicAutoPlay:      getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
-		FaxEnabled:         getBoolSetting(allSettings, "FAX_ENABLED", true),
-		FaxAnimationSpeed:  getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
-		FaxImageType:       getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
-		ClockEnabled:       getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
-		ClockFormat:        getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
-		ClockShowIcons:     getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
-		LocationEnabled:    getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
-		DateEnabled:        getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
-		TimeEnabled:         getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
-		RewardCountEnabled:  getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
-		RewardCountGroupID:  getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
-		RewardCountPosition: getStringSettingWithDefault(allSettings, "REWARD_COUNT_POSITION", "left"),
-		ShowDebugInfo:       false, // 廃止予定
-		DebugEnabled:       getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
-		UpdatedAt:          time.Now(),
+		MusicEnabled:           getBoolSetting(allSettings, "MUSIC_ENABLED", true),
+		MusicPlaylist:          getStringSetting(allSettings, "MUSIC_PLAYLIST"),
+		MusicVolume:            getIntSetting(allSettings, "MUSIC_VOLUME", 70),
+		MusicAutoPlay:          getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
+		FaxEnabled:             getBoolSetting(allSettings, "FAX_ENABLED", true),
+		FaxAnimationSpeed:      getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
+		FaxImageType:           getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
+		ClockEnabled:           getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
+		ClockFormat:            getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
+		ClockShowIcons:         getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
+		LocationEnabled:        getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
+		DateEnabled:            getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
+		TimeEnabled:            getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
+		RewardCountEnabled:     getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
+		RewardCountGroupID:     getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
+		RewardCountPosition:    getStringSettingWithDefault(allSettings, "REWARD_COUNT_POSITION", "left"),
+		LotteryEnabled:         getBoolSetting(allSettings, "LOTTERY_ENABLED", false),
+		LotteryRewardID:        getStringSetting(allSettings, "LOTTERY_REWARD_ID"),
+		LotteryDisplayDuration: getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
+		LotteryAnimationSpeed:  getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
+		ShowDebugInfo:          false, // 廃止予定
+		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
+		UpdatedAt:              time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -262,6 +272,9 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"OVERLAY_TIME_ENABLED":      strconv.FormatBool(overlaySettings.TimeEnabled),
 		"REWARD_COUNT_ENABLED":      strconv.FormatBool(overlaySettings.RewardCountEnabled),
 		"REWARD_COUNT_POSITION":     overlaySettings.RewardCountPosition,
+		"LOTTERY_ENABLED":          strconv.FormatBool(overlaySettings.LotteryEnabled),
+		"LOTTERY_DISPLAY_DURATION": strconv.Itoa(overlaySettings.LotteryDisplayDuration),
+		"LOTTERY_ANIMATION_SPEED":  fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
 		"OVERLAY_DEBUG_ENABLED":     strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 
@@ -270,6 +283,13 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		settingsToSave["REWARD_COUNT_GROUP_ID"] = strconv.Itoa(*overlaySettings.RewardCountGroupID)
 	} else {
 		settingsToSave["REWARD_COUNT_GROUP_ID"] = ""
+	}
+
+	// LotteryRewardIDはnilの場合は空文字列として保存
+	if overlaySettings.LotteryRewardID != nil {
+		settingsToSave["LOTTERY_REWARD_ID"] = *overlaySettings.LotteryRewardID
+	} else {
+		settingsToSave["LOTTERY_REWARD_ID"] = ""
 	}
 
 	// MusicPlaylistはnilの場合は空文字列として保存

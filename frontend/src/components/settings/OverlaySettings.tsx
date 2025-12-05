@@ -1,4 +1,4 @@
-import { Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { Gift, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
@@ -28,10 +28,12 @@ export const OverlaySettings: React.FC = () => {
     handleSeek,
     formatTime,
     webServerPort,
+    authStatus,
   } = context;
 
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [rewardGroups, setRewardGroups] = useState<Array<{id: number, name: string}>>([]);
+  const [customRewards, setCustomRewards] = useState<Array<{id: string, title: string, cost: number}>>([]);
   const [rewardCounts, setRewardCounts] = useState<Array<{
     reward_id: string;
     count: number;
@@ -73,6 +75,27 @@ export const OverlaySettings: React.FC = () => {
     };
     fetchRewardGroups();
   }, []);
+
+  // カスタムリワード一覧を取得
+  useEffect(() => {
+    const fetchCustomRewards = async () => {
+      try {
+        const url = await buildApiUrlAsync('/api/twitch/custom-rewards');
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setCustomRewards(data.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch custom rewards:', error);
+      }
+    };
+
+    // 認証済みの場合のみ取得
+    if (authStatus?.authenticated) {
+      fetchCustomRewards();
+    }
+  }, [authStatus?.authenticated]);
 
   // リワードカウントを取得
   const fetchRewardCounts = async () => {
@@ -804,6 +827,133 @@ export const OverlaySettings: React.FC = () => {
                 </div>
               )}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* プレゼントルーレット設定 */}
+      <Card className="break-inside-avoid mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="w-5 h-5" />
+            プレゼントルーレット
+          </CardTitle>
+          <CardDescription>
+            チャンネルポイントリワードを使った抽選機能の設定
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="lottery-enabled" className="flex flex-col">
+              <span>ルーレット機能を有効化</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                オーバーレイにルーレット抽選機能を表示します
+              </span>
+            </Label>
+            <Switch
+              id="lottery-enabled"
+              checked={overlaySettings?.lottery_enabled ?? false}
+              onCheckedChange={(checked) =>
+                updateOverlaySettings({ lottery_enabled: checked })
+              }
+            />
+          </div>
+
+          {(overlaySettings?.lottery_enabled ?? false) && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="lottery-reward">抽選対象リワード</Label>
+                {customRewards.length > 0 ? (
+                  <Select
+                    value={overlaySettings?.lottery_reward_id || ''}
+                    onValueChange={(value) =>
+                      updateOverlaySettings({
+                        lottery_reward_id: value || null
+                      })
+                    }
+                  >
+                    <SelectTrigger id="lottery-reward">
+                      <SelectValue placeholder="リワードを選択..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customRewards.map(reward => (
+                        <SelectItem key={reward.id} value={reward.id}>
+                          {reward.title} ({reward.cost}pt)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm text-gray-500 dark:text-gray-400">
+                    {authStatus?.authenticated
+                      ? 'リワードを読み込み中...'
+                      : 'Twitchタブで認証してください'}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  このリワードを使用したユーザーが抽選対象になります
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lottery-duration">
+                  表示時間: {overlaySettings?.lottery_display_duration ?? 5}秒
+                </Label>
+                <input
+                  type="range"
+                  id="lottery-duration"
+                  min="3"
+                  max="15"
+                  value={overlaySettings?.lottery_display_duration ?? 5}
+                  onChange={(e) =>
+                    updateOverlaySettings({ lottery_display_duration: parseInt(e.target.value) })
+                  }
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ルーレット表示時間を設定します（3〜15秒）
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lottery-speed">
+                  アニメーション速度: {((overlaySettings?.lottery_animation_speed ?? 1.0) * 100).toFixed(0)}%
+                </Label>
+                <input
+                  type="range"
+                  id="lottery-speed"
+                  min="50"
+                  max="200"
+                  value={(overlaySettings?.lottery_animation_speed ?? 1.0) * 100}
+                  onChange={(e) =>
+                    updateOverlaySettings({ lottery_animation_speed: parseInt(e.target.value) / 100 })
+                  }
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ルーレットのアニメーション速度を調整します
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={async () => {
+                    // TODO: 抽選ロジック実装後に有効化
+                    alert('テスト機能は抽選ロジック実装後に利用可能になります');
+                  }}
+                  disabled={!overlaySettings?.lottery_reward_id}
+                >
+                  ルーレットをテスト実行
+                </Button>
+                {!overlaySettings?.lottery_reward_id && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                    リワードを選択してください
+                  </p>
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

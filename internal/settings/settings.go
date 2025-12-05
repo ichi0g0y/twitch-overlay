@@ -229,6 +229,24 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 
+	// プレゼントルーレット設定
+	"LOTTERY_ENABLED": {
+		Key: "LOTTERY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable lottery/roulette feature in overlay",
+	},
+	"LOTTERY_REWARD_ID": {
+		Key: "LOTTERY_REWARD_ID", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Target reward ID for lottery feature",
+	},
+	"LOTTERY_DISPLAY_DURATION": {
+		Key: "LOTTERY_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
+		Description: "Lottery display duration in seconds",
+	},
+	"LOTTERY_ANIMATION_SPEED": {
+		Key: "LOTTERY_ANIMATION_SPEED", Value: "1.0", Type: SettingTypeNormal, Required: false,
+		Description: "Lottery animation speed multiplier",
+	},
+
 	// 通知設定
 	"NOTIFICATION_ENABLED": {
 		Key: "NOTIFICATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
@@ -498,7 +516,17 @@ func ValidateSetting(key, value string) error {
 		if value != "left" && value != "right" {
 			return fmt.Errorf("must be 'left' or 'right'")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
+	case "LOTTERY_DISPLAY_DURATION":
+		// 表示秒数のチェック（3〜15秒）
+		if val, err := strconv.Atoi(value); err != nil || val < 3 || val > 15 {
+			return fmt.Errorf("must be integer between 3 and 15 seconds")
+		}
+	case "LOTTERY_ANIMATION_SPEED":
+		// アニメーション速度のチェック（0.5〜2.0）
+		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.5 || val > 2.0 {
+			return fmt.Errorf("must be float between 0.5 and 2.0")
+		}
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

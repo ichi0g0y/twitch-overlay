@@ -26,6 +26,12 @@ interface OverlaySettings {
   reward_count_group_id?: number | null;
   reward_count_position?: 'left' | 'right';
 
+  // プレゼントルーレット設定
+  lottery_enabled?: boolean;
+  lottery_reward_id?: string | null;
+  lottery_display_duration?: number;
+  lottery_animation_speed?: number;
+
   // 開発者設定
   debug_enabled: boolean;
 
