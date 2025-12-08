@@ -894,65 +894,6 @@ export const OverlaySettings: React.FC = () => {
                   このリワードを使用したユーザーが抽選対象になります
                 </p>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lottery-duration">
-                  表示時間: {overlaySettings?.lottery_display_duration ?? 5}秒
-                </Label>
-                <input
-                  type="range"
-                  id="lottery-duration"
-                  min="3"
-                  max="15"
-                  value={overlaySettings?.lottery_display_duration ?? 5}
-                  onChange={(e) =>
-                    updateOverlaySettings({ lottery_display_duration: parseInt(e.target.value) })
-                  }
-                  className="w-full"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ルーレット表示時間を設定します（3〜15秒）
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lottery-speed">
-                  アニメーション速度: {((overlaySettings?.lottery_animation_speed ?? 1.0) * 100).toFixed(0)}%
-                </Label>
-                <input
-                  type="range"
-                  id="lottery-speed"
-                  min="50"
-                  max="200"
-                  value={(overlaySettings?.lottery_animation_speed ?? 1.0) * 100}
-                  onChange={(e) =>
-                    updateOverlaySettings({ lottery_animation_speed: parseInt(e.target.value) / 100 })
-                  }
-                  className="w-full"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ルーレットのアニメーション速度を調整します
-                </p>
-              </div>
-
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={async () => {
-                    // TODO: 抽選ロジック実装後に有効化
-                    alert('テスト機能は抽選ロジック実装後に利用可能になります');
-                  }}
-                  disabled={!overlaySettings?.lottery_reward_id}
-                >
-                  ルーレットをテスト実行
-                </Button>
-                {!overlaySettings?.lottery_reward_id && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-                    リワードを選択してください
-                  </p>
-                )}
-              </div>
             </>
           )}
         </CardContent>

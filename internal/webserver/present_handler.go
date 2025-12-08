@@ -327,18 +327,27 @@ func handlePresentParticipants(w http.ResponseWriter, r *http.Request) {
 
 	settingsManager := settings.NewSettingsManager(db)
 	enabled, err := settingsManager.GetRealValue("LOTTERY_ENABLED")
-	if err != nil || enabled != "true" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enabled":      false,
-			"participants": []types.PresentParticipant{},
-		})
-		return
+	isEnabled := (err == nil && enabled == "true")
+
+	// DBから最新の参加者リストを読み込んでメモリも更新
+	participants, err := localdb.GetAllLotteryParticipants()
+	if err != nil {
+		logger.Error("Failed to load participants from database", zap.Error(err))
+		// エラー時はメモリ上のデータを返す
+	} else {
+		// メモリ上の参加者リストを更新
+		currentLottery.Participants = participants
+		logger.Info("Participants loaded from database",
+			zap.Int("count", len(participants)))
 	}
+
+	logger.Info("Returning participants to frontend",
+		zap.Int("count", len(currentLottery.Participants)),
+		zap.Bool("enabled", isEnabled))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"enabled":      true,
+		"enabled":      isEnabled,
 		"is_running":   currentLottery.IsRunning,
 		"participants": currentLottery.Participants,
 		"winner":       currentLottery.Winner,

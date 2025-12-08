@@ -77,17 +77,20 @@ export const PresentPage: React.FC = () => {
 
   // 参加者クリア
   const handleClear = async () => {
-    if (!confirm('参加者リストをクリアしますか？この操作は取り消せません。')) {
-      return;
-    }
+    console.log('handleClear called, participants count:', lotteryState.participants.length);
+    console.log('Sending clear request to:', buildApiUrl('/api/present/clear'));
 
     try {
       const response = await fetch(buildApiUrl('/api/present/clear'), {
         method: 'POST',
       });
+      console.log('Clear response status:', response.status);
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Clear failed with status:', response.status, 'body:', errorText);
         throw new Error('Failed to clear participants');
       }
+      console.log('Clear successful');
     } catch (error) {
       console.error('Error clearing participants:', error);
       alert('参加者リストのクリアに失敗しました');
@@ -169,16 +172,22 @@ export const PresentPage: React.FC = () => {
   // 初回ロード時に参加者リストを取得
   useEffect(() => {
     const fetchParticipants = async () => {
+      console.log('Fetching participants from:', buildApiUrl('/api/present/participants'));
       try {
         const response = await fetch(buildApiUrl('/api/present/participants'));
+        console.log('Fetch participants response status:', response.status);
         if (response.ok) {
           const data = await response.json();
+          console.log('Participants data:', data);
           setLotteryState({
             enabled: data.enabled,
             is_running: data.is_running,
             participants: data.participants || [],
             winner: data.winner || null,
           });
+          console.log('Lottery state updated, participants count:', data.participants?.length || 0);
+        } else {
+          console.error('Failed to fetch participants, status:', response.status);
         }
       } catch (error) {
         console.error('Failed to fetch participants:', error);
