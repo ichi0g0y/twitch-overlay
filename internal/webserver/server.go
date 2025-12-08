@@ -182,6 +182,9 @@ func StartWebServer(port int) error {
 	RegisterPlaybackRoutes(mux)
 	RegisterOverlaySettingsRoutes(mux)
 
+	// Present Lottery endpoints
+	RegisterPresentRoutes(mux)
+
 	// Settings API endpoints - 最初に登録してAPIが優先されるようにする
 	mux.HandleFunc("/api/settings/v2", corsMiddleware(handleSettingsV2))
 	mux.HandleFunc("/api/settings/status", corsMiddleware(handleSettingsStatus))

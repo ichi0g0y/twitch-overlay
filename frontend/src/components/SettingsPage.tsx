@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, HardDrive, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
 import React from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
@@ -55,6 +55,8 @@ export const SettingsPage: React.FC = () => {
     handleFontPreview,
     handleOpenOverlay,
     handleOpenOverlayDebug,
+    handleOpenPresent,
+    handleOpenPresentDebug,
   } = contextValue;
 
   return (
@@ -80,6 +82,18 @@ export const SettingsPage: React.FC = () => {
                   className="flex items-center space-x-1">
                   <Bug className="w-3 h-3" />
                   <span>オーバーレイ表示(デバッグ)</span>
+                </Button>
+                <Button size="sm" variant="outline"
+                  onClick={handleOpenPresent}
+                  className="flex items-center space-x-1">
+                  <Gift className="w-3 h-3" />
+                  <span>プレゼントルーレット</span>
+                </Button>
+                <Button size="sm" variant="outline"
+                  onClick={handleOpenPresentDebug}
+                  className="flex items-center space-x-1">
+                  <Gift className="w-3 h-3" />
+                  <span>プレゼント(デバッグ)</span>
                 </Button>
               </div>
             </div>

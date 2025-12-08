@@ -348,6 +348,16 @@ export const useSettingsPage = () => {
     Browser.OpenURL(`http://localhost:${port}/?debug=true`);
   };
 
+  const handleOpenPresent = async () => {
+    const port = await GetServerPort();
+    Browser.OpenURL(`http://localhost:${port}/present`);
+  };
+
+  const handleOpenPresentDebug = async () => {
+    const port = await GetServerPort();
+    Browser.OpenURL(`http://localhost:${port}/present?debug=true`);
+  };
+
   // Bluetooth device functions
   const sortBluetoothDevices = (devices: BluetoothDevice[]): BluetoothDevice[] => {
     return devices.sort((a, b) => {
@@ -563,6 +573,8 @@ export const useSettingsPage = () => {
     handleFontPreview,
     handleOpenOverlay,
     handleOpenOverlayDebug,
+    handleOpenPresent,
+    handleOpenPresentDebug,
     handleTokenRefresh,
 
     // Bluetooth related
