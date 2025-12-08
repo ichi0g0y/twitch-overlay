@@ -275,3 +275,69 @@ func UpdateCustomRewardEnabled(broadcasterID, rewardID string, enabled bool, acc
 
 	return nil
 }
+
+// UserChatColor represents a user's chat color information
+type UserChatColor struct {
+	UserID    string `json:"user_id"`
+	UserName  string `json:"user_name"`
+	UserLogin string `json:"user_login"`
+	Color     string `json:"color"`
+}
+
+// GetUserChatColors retrieves chat colors for specified users
+// Returns colors for all provided user IDs. If a user has no color set, the Color field will be empty.
+// Maximum 100 user IDs per request.
+func GetUserChatColors(userIDs []string) ([]UserChatColor, error) {
+	if len(userIDs) == 0 {
+		return []UserChatColor{}, nil
+	}
+
+	// Limit to 100 users per request (Twitch API limit)
+	if len(userIDs) > 100 {
+		logger.Warn("Too many user IDs provided, limiting to 100", zap.Int("provided", len(userIDs)))
+		userIDs = userIDs[:100]
+	}
+
+	// Build URL with multiple user_id query parameters
+	u, err := url.Parse("https://api.twitch.tv/helix/chat/color")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	q := u.Query()
+	for _, id := range userIDs {
+		q.Add("user_id", id)
+	}
+	u.RawQuery = q.Encode()
+
+	reqURL := u.String()
+	logger.Debug("Getting user chat colors", zap.Int("user_count", len(userIDs)))
+
+	resp, err := makeAuthenticatedGetRequest(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user chat colors: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Error("Twitch API returned error for chat colors",
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(bodyBytes)))
+		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []UserChatColor `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	logger.Debug("Successfully retrieved user chat colors",
+		zap.Int("requested", len(userIDs)),
+		zap.Int("received", len(result.Data)))
+
+	return result.Data, nil
+}

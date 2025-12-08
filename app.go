@@ -100,6 +100,13 @@ func (a *App) Startup(ctx context.Context) {
 	// 環境変数を読み込み（DBが初期化された後）
 	env.LoadEnv()
 
+	// プレゼントルーレット参加者をDBから復元
+	// 注意: Twitch APIを呼び出すため、env.LoadEnv()の後に実行する必要がある
+	if err := webserver.LoadLotteryParticipantsFromDB(); err != nil {
+		logger.Warn("Failed to load lottery participants from database", zap.Error(err))
+		// エラーがあっても起動は続行
+	}
+
 	// ロガーを再初期化（デバッグモード設定を反映）
 	if env.Value.DebugMode {
 		logger.Init(true)

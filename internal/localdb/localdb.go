@@ -186,6 +186,11 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// lottery_participantsテーブルを追加（プレゼントルーレット参加者管理）
+	if err := SetupLotteryParticipantsTable(db); err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 

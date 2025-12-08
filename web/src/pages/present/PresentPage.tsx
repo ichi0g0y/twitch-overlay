@@ -15,6 +15,7 @@ export interface PresentParticipant {
   subscribed_months: number;
   subscriber_tier: string; // "1000", "2000", "3000"
   entry_count: number; // 購入口数（最大3口）
+  assigned_color: string; // ルーレットセグメントの色（非サブスクの場合）
 }
 
 interface LotteryState {

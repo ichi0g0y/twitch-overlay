@@ -152,7 +152,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     // セグメント情報をrefに保存（停止時の当選者計算に使用）
     segmentsRef.current = segments;
 
-    // 基本色パレット
+    // 基本色パレット（フォールバック用）
     const baseColors = [
       '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6',
       '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#a855f7',
@@ -162,20 +162,9 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     segments.forEach((segment, index) => {
       const { participant, startAngle, endAngle } = segment;
 
-      // サブスクの場合は色を明るく、グラデーション効果を追加
-      let baseColor = baseColors[index % baseColors.length];
-      let fillColor = baseColor;
-
-      if (participant.is_subscriber) {
-        // サブスクの場合はTier別の色
-        if (participant.subscriber_tier === '3000') {
-          fillColor = '#9333ea'; // Tier 3: 紫
-        } else if (participant.subscriber_tier === '2000') {
-          fillColor = '#ec4899'; // Tier 2: ピンク
-        } else {
-          fillColor = '#3b82f6'; // Tier 1: 青
-        }
-      }
+      // 全参加者でバックエンドから割り当てられた色を使用
+      // Twitch APIで取得した色、またはフォールバックとしてパレット色
+      const fillColor = participant.assigned_color || baseColors[index % baseColors.length];
 
       // セグメント描画
       ctx.beginPath();

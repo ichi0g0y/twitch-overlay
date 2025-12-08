@@ -10,37 +10,219 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
+	"github.com/nantokaworks/twitch-overlay/internal/types"
 	"go.uber.org/zap"
 )
 
-// PresentParticipant は抽選参加者の情報
-type PresentParticipant struct {
-	UserID           string    `json:"user_id"`
-	Username         string    `json:"username"`
-	DisplayName      string    `json:"display_name"`
-	AvatarURL        string    `json:"avatar_url"`
-	RedeemedAt       time.Time `json:"redeemed_at"`
-	IsSubscriber     bool      `json:"is_subscriber"`
-	SubscribedMonths int       `json:"subscribed_months"`
-	SubscriberTier   string    `json:"subscriber_tier"` // "1000", "2000", "3000"
-	EntryCount       int       `json:"entry_count"`     // 購入口数（最大3口）
-}
-
-// PresentLottery は抽選の状態
-type PresentLottery struct {
-	IsRunning    bool                 `json:"is_running"`
-	Participants []PresentParticipant `json:"participants"`
-	Winner       *PresentParticipant  `json:"winner,omitempty"`
-	StartedAt    *time.Time           `json:"started_at,omitempty"`
-}
-
 var (
 	// 現在の抽選状態（メモリ上で管理）
-	currentLottery = &PresentLottery{
+	currentLottery = &types.PresentLottery{
 		IsRunning:    false,
-		Participants: []PresentParticipant{},
+		Participants: []types.PresentParticipant{},
+	}
+
+	// ルーレット用の色パレット（サブスク以外の参加者用）
+	colorPalette = []string{
+		"#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6",
+		"#ec4899", "#14b8a6", "#f97316", "#06b6d4", "#a855f7",
 	}
 )
+
+// assignColorToParticipant は参加者に色を割り当てる
+// Twitch APIでユーザーのチャット色を取得し、取得できない場合はパレットから割り当てる
+func assignColorToParticipant(participant types.PresentParticipant) string {
+	// user_idが数値かチェック（Twitch APIは数値のみ受け付ける）
+	isNumeric := len(participant.UserID) > 0
+	for _, c := range participant.UserID {
+		if c < '0' || c > '9' {
+			isNumeric = false
+			break
+		}
+	}
+
+	// 数値のuser_idの場合のみTwitch APIで色を取得
+	if isNumeric {
+		colors, err := twitchapi.GetUserChatColors([]string{participant.UserID})
+		if err != nil {
+			logger.Warn("Failed to get user chat color from Twitch API, using palette",
+				zap.String("user_id", participant.UserID),
+				zap.Error(err))
+		} else if len(colors) > 0 && colors[0].Color != "" {
+			// 色が取得できた場合はその色を使用
+			logger.Debug("Using Twitch chat color for participant",
+				zap.String("user_id", participant.UserID),
+				zap.String("color", colors[0].Color))
+			return colors[0].Color
+		}
+	} else {
+		logger.Debug("Non-numeric user_id, skipping Twitch API",
+			zap.String("user_id", participant.UserID))
+	}
+
+	// Twitch APIで色が取得できなかった、または未設定/非数値の場合はパレットから割り当て
+	logger.Debug("Twitch color not available, using palette",
+		zap.String("user_id", participant.UserID))
+
+	// 既存の参加者が使用している色を収集
+	usedColors := make(map[string]bool)
+	for _, p := range currentLottery.Participants {
+		if p.AssignedColor != "" {
+			usedColors[p.AssignedColor] = true
+		}
+	}
+
+	// 未使用の色を探す
+	for _, color := range colorPalette {
+		if !usedColors[color] {
+			return color
+		}
+	}
+
+	// 全ての色が使用済みの場合は、user_idのハッシュで決定
+	hash := 0
+	for _, c := range participant.UserID {
+		hash = hash*31 + int(c)
+	}
+	return colorPalette[hash%len(colorPalette)]
+}
+
+// LoadLotteryParticipantsFromDB はDBから参加者を復元する（起動時に呼ばれる）
+func LoadLotteryParticipantsFromDB() error {
+	participants, err := localdb.GetAllLotteryParticipants()
+	if err != nil {
+		logger.Error("Failed to load participants from database", zap.Error(err))
+		return err
+	}
+
+	currentLottery.Participants = participants
+
+	logger.Info("Lottery participants loaded from database",
+		zap.Int("count", len(participants)))
+
+	// 参加者がいない場合は処理不要
+	if len(participants) == 0 {
+		return nil
+	}
+
+	// 全参加者のuser_idを収集（数値のみ）
+	// Twitch APIは数値のuser_idのみを受け付けるため、テストデータなどの文字列IDは除外
+	userIDs := make([]string, 0, len(participants))
+	for _, p := range participants {
+		// user_idが数値かチェック（すべての文字が数字であることを確認）
+		isNumeric := len(p.UserID) > 0
+		for _, c := range p.UserID {
+			if c < '0' || c > '9' {
+				isNumeric = false
+				break
+			}
+		}
+		if isNumeric {
+			userIDs = append(userIDs, p.UserID)
+		} else {
+			logger.Debug("Skipping non-numeric user_id for Twitch API call",
+				zap.String("user_id", p.UserID),
+				zap.String("username", p.Username))
+		}
+	}
+
+	// 取得した色をマップに変換（user_id -> color）
+	colorMap := make(map[string]string)
+
+	// 数値のuser_idがある場合のみTwitch APIを呼び出し
+	if len(userIDs) > 0 {
+		// Twitch APIでバッチ取得（最大100件）
+		colors, err := twitchapi.GetUserChatColors(userIDs)
+		if err != nil {
+			logger.Warn("Failed to batch get user chat colors, participants will use existing colors",
+				zap.Error(err))
+			// エラーがあっても処理は継続（パレット色割り当てに進む）
+		} else {
+			// 取得した色をマップに格納
+			for _, c := range colors {
+				if c.Color != "" {
+					colorMap[c.UserID] = c.Color
+				}
+			}
+			logger.Info("Batch retrieved user chat colors",
+				zap.Int("total_participants", len(participants)),
+				zap.Int("numeric_user_ids", len(userIDs)),
+				zap.Int("colors_retrieved", len(colorMap)))
+		}
+	} else {
+		logger.Info("No numeric user_ids found, skipping Twitch API call",
+			zap.Int("total_participants", len(participants)))
+	}
+
+	// この時点でcolorMapには取得できた色が入っている（空の場合もある）
+	// 以下は全参加者に対する色割り当て処理
+
+	// 参加者の色を更新
+	needsColorAssignment := []int{} // パレットから色を割り当てる必要がある参加者のインデックス
+	for i := range currentLottery.Participants {
+		if color, ok := colorMap[currentLottery.Participants[i].UserID]; ok {
+			// Twitch色が取得できた場合
+			currentLottery.Participants[i].AssignedColor = color
+			logger.Debug("Updated participant color from Twitch",
+				zap.String("user_id", currentLottery.Participants[i].UserID),
+				zap.String("color", color))
+		} else if currentLottery.Participants[i].AssignedColor == "" {
+			// Twitch色が取得できず、DBにも保存されていない場合
+			needsColorAssignment = append(needsColorAssignment, i)
+		}
+		// DBに保存されている色がある場合はそのまま使用
+	}
+
+	// パレットから色を割り当てる必要がある参加者に色を割り当て
+	if len(needsColorAssignment) > 0 {
+		usedColors := make(map[string]bool)
+		for _, p := range currentLottery.Participants {
+			if p.AssignedColor != "" {
+				usedColors[p.AssignedColor] = true
+			}
+		}
+
+		for _, idx := range needsColorAssignment {
+			// 未使用の色を探す
+			assigned := false
+			for _, color := range colorPalette {
+				if !usedColors[color] {
+					currentLottery.Participants[idx].AssignedColor = color
+					usedColors[color] = true
+					assigned = true
+					logger.Debug("Assigned palette color to participant",
+						zap.String("user_id", currentLottery.Participants[idx].UserID),
+						zap.String("color", color))
+					break
+				}
+			}
+
+			// 全ての色が使用済みの場合はハッシュで決定
+			if !assigned {
+				hash := 0
+				for _, c := range currentLottery.Participants[idx].UserID {
+					hash = hash*31 + int(c)
+				}
+				color := colorPalette[hash%len(colorPalette)]
+				currentLottery.Participants[idx].AssignedColor = color
+				logger.Debug("Assigned hash-based color to participant",
+					zap.String("user_id", currentLottery.Participants[idx].UserID),
+					zap.String("color", color))
+			}
+
+			// DBに保存
+			if err := localdb.UpdateLotteryParticipant(
+				currentLottery.Participants[idx].UserID,
+				currentLottery.Participants[idx]); err != nil {
+				logger.Warn("Failed to update participant color in database",
+					zap.String("user_id", currentLottery.Participants[idx].UserID),
+					zap.Error(err))
+			}
+		}
+	}
+
+	return nil
+}
 
 // RegisterPresentRoutes はプレゼントルーレット関連のルートを登録
 func RegisterPresentRoutes(mux *http.ServeMux) {
@@ -87,7 +269,7 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 
 	// テスト用の参加者を1人作成
 	now := time.Now()
-	testParticipant := PresentParticipant{
+	testParticipant := types.PresentParticipant{
 		UserID:           userIDStr,
 		Username:         username,
 		DisplayName:      displayName,
@@ -97,10 +279,20 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 		SubscribedMonths: subscribedMonths,
 		SubscriberTier:   subscriberTier,
 		EntryCount:       entryCount,
+		AssignedColor:    "",  // 色は後で割り当て
 	}
+
+	// 色を割り当て
+	testParticipant.AssignedColor = assignColorToParticipant(testParticipant)
 
 	// 既存の参加者リストに追加（累積）
 	currentLottery.Participants = append(currentLottery.Participants, testParticipant)
+
+	// DBに保存
+	if err := localdb.AddLotteryParticipant(testParticipant); err != nil {
+		logger.Error("Failed to save participant to database", zap.Error(err))
+		// エラーがあってもメモリ上の操作は継続
+	}
 
 	logger.Info("Test lottery participant added",
 		zap.String("user_id", userIDStr),
@@ -139,7 +331,7 @@ func handlePresentParticipants(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"enabled":      false,
-			"participants": []PresentParticipant{},
+			"participants": []types.PresentParticipant{},
 		})
 		return
 	}
@@ -221,7 +413,7 @@ func handlePresentStop(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddLotteryParticipant は抽選参加者を追加（EventSubハンドラから呼ばれる）
-func AddLotteryParticipant(participant PresentParticipant) {
+func AddLotteryParticipant(participant types.PresentParticipant) {
 	// 重複チェック（同じUserIDが既に存在する場合は追加しない）
 	for _, p := range currentLottery.Participants {
 		if p.UserID == participant.UserID {
@@ -231,7 +423,19 @@ func AddLotteryParticipant(participant PresentParticipant) {
 		}
 	}
 
+	// 色を割り当て（まだ割り当てられていない場合）
+	if participant.AssignedColor == "" {
+		participant.AssignedColor = assignColorToParticipant(participant)
+	}
+
+	// メモリ上のリストに追加
 	currentLottery.Participants = append(currentLottery.Participants, participant)
+
+	// DBに保存
+	if err := localdb.AddLotteryParticipant(participant); err != nil {
+		logger.Error("Failed to save participant to database", zap.Error(err))
+		// エラーがあってもメモリ上の操作は継続
+	}
 
 	logger.Info("Lottery participant added",
 		zap.String("user_id", participant.UserID),
@@ -260,10 +464,17 @@ func handlePresentClear(w http.ResponseWriter, r *http.Request) {
 
 // ClearLotteryParticipants は参加者リストをクリア
 func ClearLotteryParticipants() {
-	currentLottery.Participants = []PresentParticipant{}
+	// メモリ上のリストをクリア
+	currentLottery.Participants = []types.PresentParticipant{}
 	currentLottery.Winner = nil
 	currentLottery.IsRunning = false
 	currentLottery.StartedAt = nil
+
+	// DBからも削除
+	if err := localdb.ClearAllLotteryParticipants(); err != nil {
+		logger.Error("Failed to clear participants from database", zap.Error(err))
+		// エラーがあってもメモリ上の操作は継続
+	}
 
 	logger.Info("Lottery participants cleared")
 
@@ -314,6 +525,12 @@ func handleDeleteParticipant(w http.ResponseWriter, r *http.Request, userID stri
 		return
 	}
 
+	// DBからも削除
+	if err := localdb.DeleteLotteryParticipant(userID); err != nil {
+		logger.Error("Failed to delete participant from database", zap.Error(err))
+		// エラーがあってもメモリ上の操作は継続
+	}
+
 	// WebSocketで参加者リスト更新を通知
 	BroadcastWSMessage("lottery_participants_updated", currentLottery.Participants)
 
@@ -327,7 +544,7 @@ func handleDeleteParticipant(w http.ResponseWriter, r *http.Request, userID stri
 // handleUpdateParticipant は特定の参加者の情報を更新
 func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID string) {
 	// リクエストボディをパース
-	var updates PresentParticipant
+	var updates types.PresentParticipant
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -335,8 +552,12 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 
 	// 参加者を探して更新
 	found := false
+	var updatedParticipant types.PresentParticipant
 	for i, p := range currentLottery.Participants {
 		if p.UserID == userID {
+			// サブスク状態の変更をチェック
+			subscriberChanged := p.IsSubscriber != updates.IsSubscriber
+
 			// 更新可能なフィールドのみ更新
 			if updates.EntryCount > 0 {
 				currentLottery.Participants[i].EntryCount = updates.EntryCount
@@ -352,6 +573,12 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 			currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
 			currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
 
+			// サブスク状態が変更された場合は色を再割り当て
+			if subscriberChanged {
+				currentLottery.Participants[i].AssignedColor = assignColorToParticipant(currentLottery.Participants[i])
+			}
+
+			updatedParticipant = currentLottery.Participants[i]
 			found = true
 			logger.Info("Participant updated",
 				zap.String("user_id", userID),
@@ -364,6 +591,12 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 	if !found {
 		http.Error(w, "Participant not found", http.StatusNotFound)
 		return
+	}
+
+	// DBも更新
+	if err := localdb.UpdateLotteryParticipant(userID, updatedParticipant); err != nil {
+		logger.Error("Failed to update participant in database", zap.Error(err))
+		// エラーがあってもメモリ上の操作は継続
 	}
 
 	// WebSocketで参加者リスト更新を通知
