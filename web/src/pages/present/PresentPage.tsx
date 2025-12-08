@@ -193,7 +193,7 @@ export const PresentPage: React.FC = () => {
       <div className="container mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold mb-2">🎁 プレゼントルーレット 🎁</h1>
+          <h1 className="text-5xl font-bold mb-6">🎁 プレゼントルーレット 🎁</h1>
           <p className="text-xl text-purple-200">
             リワードを使用した参加者の中から抽選！
           </p>

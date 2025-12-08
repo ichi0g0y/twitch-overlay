@@ -88,6 +88,11 @@ func AddLotteryParticipant(participant types.PresentParticipant) error {
 		zap.String("user_id", participant.UserID),
 		zap.String("username", participant.Username))
 
+	// WALチェックポイントを実行して変更をメインDBに反映
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warn("Failed to checkpoint WAL after adding participant", zap.Error(err))
+	}
+
 	return nil
 }
 
@@ -169,6 +174,11 @@ func DeleteLotteryParticipant(userID string) error {
 		zap.String("user_id", userID),
 		zap.Int64("rows_affected", rowsAffected))
 
+	// WALチェックポイントを実行して変更をメインDBに反映
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warn("Failed to checkpoint WAL after deleting participant", zap.Error(err))
+	}
+
 	return nil
 }
 
@@ -213,6 +223,11 @@ func UpdateLotteryParticipant(userID string, participant types.PresentParticipan
 		zap.String("user_id", userID),
 		zap.Int64("rows_affected", rowsAffected))
 
+	// WALチェックポイントを実行して変更をメインDBに反映
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warn("Failed to checkpoint WAL after updating participant", zap.Error(err))
+	}
+
 	return nil
 }
 
@@ -235,6 +250,11 @@ func ClearAllLotteryParticipants() error {
 	rowsAffected, _ := result.RowsAffected()
 	logger.Info("All lottery participants cleared",
 		zap.Int64("rows_affected", rowsAffected))
+
+	// WALチェックポイントを実行して変更をメインDBに反映
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warn("Failed to checkpoint WAL after clearing participants", zap.Error(err))
+	}
 
 	return nil
 }

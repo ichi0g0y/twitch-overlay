@@ -28,6 +28,14 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     endAngle: number;
   }>>([]);
 
+  // 参加者がクリアされた時に当選者表示もリセット
+  useEffect(() => {
+    if (participants.length === 0) {
+      setCurrentArrowUser(null);
+      setIsStopped(false);
+    }
+  }, [participants]);
+
   // ルーレットの描画
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -182,27 +190,34 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
       const textAngle = startAngle + angleSize / 2;
 
       ctx.save();
-      ctx.rotate(textAngle + Math.PI / 2);
+
+      // 外周から中心に向かって放射状にテキストを配置
+      // textAngle で放射方向に向け、Math.PI で180度回転して逆向きに
+      ctx.rotate(textAngle + Math.PI);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';  // 左端を基準（外周側）
       ctx.textBaseline = 'middle';
 
-      // 表示名を短縮（長すぎる場合）
+      // 表示名
       let displayName = participant.display_name || participant.username;
       if (displayName.length > 10) {
         displayName = displayName.substring(0, 8) + '...';
       }
 
-      // セグメントが十分大きい場合のみ名前を表示
-      if (angleSize > 0.2) {
-        ctx.fillText(displayName, 0, -radius * 0.7);
-
-        // サブスクマーク
+      // セグメントが十分大きい場合のみ名前を表示（閾値を小さく）
+      if (angleSize > 0.05) {
+        // サブスクマーク（名前の前、外周側）
         if (participant.is_subscriber) {
           ctx.font = 'bold 16px sans-serif';
-          ctx.fillText('⭐', 0, -radius * 0.5);
+          ctx.fillText('⭐', -radius * 0.85, 0);
         }
+
+        // 180度回転しているので、X座標を負にして外周側から開始
+        // サブスクがある場合は少し中心寄りから、ない場合は外周から
+        const textStartX = participant.is_subscriber ? -radius * 0.75 : -radius * 0.85;
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText(displayName, textStartX, 0);
       }
 
       ctx.restore();
