@@ -74,7 +74,8 @@
       "Bash(go clean:*)",
       "Bash(tee:*)",
       "Bash(npm run type-check:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(bun add:*)"
     ],
     "deny": []
   }

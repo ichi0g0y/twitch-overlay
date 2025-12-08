@@ -2,7 +2,6 @@ package webserver
 
 import (
 	"encoding/json"
-	"math"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -48,9 +47,9 @@ func RegisterPresentRoutes(mux *http.ServeMux) {
 	// API endpoints
 	mux.HandleFunc("/api/present/test", corsMiddleware(handlePresentTest))
 	mux.HandleFunc("/api/present/participants", corsMiddleware(handlePresentParticipants))
+	mux.HandleFunc("/api/present/participants/", corsMiddleware(handlePresentParticipant))
 	mux.HandleFunc("/api/present/start", corsMiddleware(handlePresentStart))
 	mux.HandleFunc("/api/present/stop", corsMiddleware(handlePresentStop))
-	mux.HandleFunc("/api/present/draw", corsMiddleware(handlePresentDraw))
 	mux.HandleFunc("/api/present/clear", corsMiddleware(handlePresentClear))
 
 	// /presentパスはSPAのフォールバック処理に任せる
@@ -221,117 +220,6 @@ func handlePresentStop(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// calculateBonusWeight はサブスクボーナス口数を計算
-func calculateBonusWeight(participant PresentParticipant) int {
-	if !participant.IsSubscriber || participant.SubscribedMonths <= 0 {
-		return 0
-	}
-
-	// Tier係数を取得
-	tierMultiplier := 1.0
-	switch participant.SubscriberTier {
-	case "3000": // Tier 3
-		tierMultiplier = 1.2
-	case "2000": // Tier 2
-		tierMultiplier = 1.1
-	default: // Tier 1 (1000)
-		tierMultiplier = 1.0
-	}
-
-	// ボーナス計算（切り上げ）
-	// ボーナス口数 = 累計サブスク月数 × Tier係数 × 1.1 ÷ 3（切り上げ）
-	bonusCalculation := float64(participant.SubscribedMonths) * tierMultiplier * 1.1 / 3.0
-	bonusWeight := int(math.Ceil(bonusCalculation))
-
-	// 最低ボーナス：サブスク登録者は最低1口
-	if bonusWeight < 1 {
-		bonusWeight = 1
-	}
-
-	return bonusWeight
-}
-
-// handlePresentDraw は抽選を実行して当選者を決定
-func handlePresentDraw(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if len(currentLottery.Participants) == 0 {
-		http.Error(w, "No participants", http.StatusBadRequest)
-		return
-	}
-
-	// 各参加者の総口数を計算
-	type weightedParticipant struct {
-		participant PresentParticipant
-		weight      int
-		rangeStart  int
-		rangeEnd    int
-	}
-
-	weightedParticipants := make([]weightedParticipant, 0, len(currentLottery.Participants))
-	totalWeight := 0
-
-	for _, p := range currentLottery.Participants {
-		baseCount := p.EntryCount
-		if baseCount == 0 {
-			baseCount = 1
-		}
-		bonusWeight := calculateBonusWeight(p)
-		weight := baseCount + bonusWeight
-
-		rangeStart := totalWeight
-		rangeEnd := totalWeight + weight
-
-		weightedParticipants = append(weightedParticipants, weightedParticipant{
-			participant: p,
-			weight:      weight,
-			rangeStart:  rangeStart,
-			rangeEnd:    rangeEnd,
-		})
-
-		totalWeight += weight
-	}
-
-	// 総口数の範囲でランダムな数値を生成
-	randomValue := rand.Intn(totalWeight)
-
-	// ランダムな数値が該当する参加者を探す
-	var winner PresentParticipant
-	var winnerIndex int
-	for i, wp := range weightedParticipants {
-		if randomValue >= wp.rangeStart && randomValue < wp.rangeEnd {
-			winner = wp.participant
-			winnerIndex = i
-			break
-		}
-	}
-
-	currentLottery.Winner = &winner
-	currentLottery.IsRunning = false
-
-	logger.Info("Lottery winner drawn",
-		zap.String("winner_user_id", winner.UserID),
-		zap.String("winner_username", winner.Username),
-		zap.Int("winner_index", winnerIndex),
-		zap.Int("total_weight", totalWeight),
-		zap.Int("random_value", randomValue))
-
-	// WebSocketで当選者を通知（インデックス付き）
-	BroadcastWSMessage("lottery_winner", map[string]interface{}{
-		"winner":       winner,
-		"winner_index": winnerIndex,
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"winner":  winner,
-	})
-}
-
 // AddLotteryParticipant は抽選参加者を追加（EventSubハンドラから呼ばれる）
 func AddLotteryParticipant(participant PresentParticipant) {
 	// 重複チェック（同じUserIDが既に存在する場合は追加しない）
@@ -381,4 +269,109 @@ func ClearLotteryParticipants() {
 
 	// WebSocketで参加者クリアを通知
 	BroadcastWSMessage("lottery_participants_cleared", nil)
+}
+
+// handlePresentParticipant は個別参加者の削除・更新を処理
+func handlePresentParticipant(w http.ResponseWriter, r *http.Request) {
+	// URLからユーザーIDを取得
+	userID := r.URL.Path[len("/api/present/participants/"):]
+	if userID == "" {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodDelete:
+		handleDeleteParticipant(w, r, userID)
+	case http.MethodPut:
+		handleUpdateParticipant(w, r, userID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleDeleteParticipant は特定の参加者を削除
+func handleDeleteParticipant(w http.ResponseWriter, r *http.Request, userID string) {
+	// 参加者を探して削除
+	found := false
+	for i, p := range currentLottery.Participants {
+		if p.UserID == userID {
+			// スライスから削除
+			currentLottery.Participants = append(
+				currentLottery.Participants[:i],
+				currentLottery.Participants[i+1:]...,
+			)
+			found = true
+			logger.Info("Participant deleted",
+				zap.String("user_id", userID),
+				zap.Int("remaining_participants", len(currentLottery.Participants)))
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "Participant not found", http.StatusNotFound)
+		return
+	}
+
+	// WebSocketで参加者リスト更新を通知
+	BroadcastWSMessage("lottery_participants_updated", currentLottery.Participants)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Participant deleted",
+	})
+}
+
+// handleUpdateParticipant は特定の参加者の情報を更新
+func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID string) {
+	// リクエストボディをパース
+	var updates PresentParticipant
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 参加者を探して更新
+	found := false
+	for i, p := range currentLottery.Participants {
+		if p.UserID == userID {
+			// 更新可能なフィールドのみ更新
+			if updates.EntryCount > 0 {
+				currentLottery.Participants[i].EntryCount = updates.EntryCount
+			}
+			if updates.DisplayName != "" {
+				currentLottery.Participants[i].DisplayName = updates.DisplayName
+			}
+			if updates.Username != "" {
+				currentLottery.Participants[i].Username = updates.Username
+			}
+			// サブスク情報も更新可能
+			currentLottery.Participants[i].IsSubscriber = updates.IsSubscriber
+			currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
+			currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
+
+			found = true
+			logger.Info("Participant updated",
+				zap.String("user_id", userID),
+				zap.Int("entry_count", updates.EntryCount),
+				zap.Bool("is_subscriber", updates.IsSubscriber))
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "Participant not found", http.StatusNotFound)
+		return
+	}
+
+	// WebSocketで参加者リスト更新を通知
+	BroadcastWSMessage("lottery_participants_updated", currentLottery.Participants)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Participant updated",
+	})
 }

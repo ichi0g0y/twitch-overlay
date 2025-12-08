@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Play, Square, Trash2 } from 'lucide-react';
 import { RouletteWheel } from './components/RouletteWheel';
 import { ParticipantsList } from './components/ParticipantsList';
-import { ControlPanel } from './components/ControlPanel';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { buildApiUrl } from '../../utils/api';
 
@@ -42,6 +42,55 @@ export const PresentPage: React.FC = () => {
       winner,
       is_running: false,
     }));
+  };
+
+  // 抽選開始
+  const handleStart = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/present/start'), {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to start lottery');
+      }
+    } catch (error) {
+      console.error('Error starting lottery:', error);
+      alert('抽選の開始に失敗しました');
+    }
+  };
+
+  // 抽選停止
+  const handleStop = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/present/stop'), {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to stop lottery');
+      }
+    } catch (error) {
+      console.error('Error stopping lottery:', error);
+      alert('抽選の停止に失敗しました');
+    }
+  };
+
+  // 参加者クリア
+  const handleClear = async () => {
+    if (!confirm('参加者リストをクリアしますか？この操作は取り消せません。')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl('/api/present/clear'), {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to clear participants');
+      }
+    } catch (error) {
+      console.error('Error clearing participants:', error);
+      alert('参加者リストのクリアに失敗しました');
+    }
   };
 
   // URLパラメータからデバッグモードを判定
@@ -157,19 +206,57 @@ export const PresentPage: React.FC = () => {
                 <span>🔧 デバッグモード</span>
               </div>
             )}
+            {!lotteryState.enabled && (
+              <div className="flex items-center gap-2 text-yellow-400">
+                <span>⚠ 抽選機能無効</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* メインコンテンツ */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 左側：ルーレット */}
-          <div className="lg:col-span-2">
+          {/* 左側：ルーレットとコントロール */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* ルーレット */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 shadow-2xl h-[800px] flex items-center justify-center">
               <RouletteWheel
                 participants={lotteryState.participants}
                 isSpinning={isSpinning}
                 onSpinComplete={handleSpinComplete}
               />
+            </div>
+
+            {/* コントロールボタン */}
+            <div className="bg-purple-500/20 backdrop-blur-md rounded-2xl p-6 shadow-2xl border-2 border-purple-400">
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={handleStart}
+                  disabled={lotteryState.participants.length === 0 || lotteryState.is_running}
+                  className="flex items-center gap-2 px-8 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed"
+                >
+                  <Play size={24} />
+                  抽選開始
+                </button>
+
+                <button
+                  onClick={handleStop}
+                  disabled={!lotteryState.is_running}
+                  className="flex items-center gap-2 px-8 py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed"
+                >
+                  <Square size={24} />
+                  停止
+                </button>
+
+                <button
+                  onClick={handleClear}
+                  disabled={lotteryState.participants.length === 0}
+                  className="flex items-center gap-2 px-8 py-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={24} />
+                  クリア
+                </button>
+              </div>
             </div>
           </div>
 
@@ -178,27 +265,9 @@ export const PresentPage: React.FC = () => {
             <ParticipantsList
               participants={lotteryState.participants}
               winner={lotteryState.winner}
+              debugMode={debugMode}
             />
           </div>
-        </div>
-
-        {/* コントロールパネル */}
-        <div className="mt-8">
-          <ControlPanel
-            isRunning={lotteryState.is_running}
-            participantCount={lotteryState.participants.length}
-          />
-        </div>
-
-        {/* フッター */}
-        <div className="text-center mt-8 text-purple-300">
-          <p className="text-sm">
-            {lotteryState.enabled ? (
-              <span className="text-green-400">✓ 抽選機能は有効です</span>
-            ) : (
-              <span className="text-yellow-400">⚠ 抽選機能は無効です（設定画面で有効にしてください）</span>
-            )}
-          </p>
         </div>
       </div>
     </div>
