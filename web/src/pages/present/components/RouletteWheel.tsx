@@ -428,34 +428,51 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
   return (
     <div className="relative">
-      {/* 矢印が指しているユーザー表示（完全停止後は「当選者」） - 高さ固定 */}
-      <div className="text-center mb-4 min-h-36 flex items-center justify-center">
-        {currentArrowUser && (
-          <>
-            {!isStopped ? (
-              <div className="text-3xl font-bold text-yellow-300">
+      {/* 当選者発表時は中央に大きく表示 */}
+      {isStopped && currentArrowUser ? (
+        <div className="flex items-center justify-center" style={{ height: '800px' }}>
+          <div className="animate-bounce flex flex-col items-center">
+            <div className="text-5xl font-bold text-yellow-300 mb-8 text-center">🎉 当選者 🎉</div>
+            <div className="flex flex-col items-center gap-6">
+              <img
+                src={currentArrowUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentArrowUser.display_name || currentArrowUser.username)}&size=192&background=random`}
+                alt={currentArrowUser.display_name || currentArrowUser.username}
+                className="w-48 h-48 rounded-full border-8 border-yellow-300 shadow-2xl"
+              />
+              <div className="text-6xl font-bold text-white leading-tight text-center">
                 {currentArrowUser.display_name || currentArrowUser.username}
               </div>
-            ) : (
-              <div className="animate-bounce">
-                <div className="text-4xl font-bold text-yellow-300">🎉 当選者 🎉</div>
-                <div className="text-5xl font-bold mt-6 text-white leading-tight">
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 矢印が指しているユーザー表示 - 高さ固定 */}
+          <div className="text-center mb-4 min-h-36 flex items-center justify-center">
+            {currentArrowUser && (
+              <div className="flex flex-col items-center gap-2">
+                <img
+                  src={currentArrowUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentArrowUser.display_name || currentArrowUser.username)}&size=64&background=random`}
+                  alt={currentArrowUser.display_name || currentArrowUser.username}
+                  className="w-16 h-16 rounded-full border-2 border-yellow-300"
+                />
+                <div className="text-3xl font-bold text-yellow-300">
                   {currentArrowUser.display_name || currentArrowUser.username}
                 </div>
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
 
-      <div className="flex flex-col items-center justify-center">
-        <canvas
-          ref={canvasRef}
-          width={600}
-          height={600}
-          className="max-w-full h-auto"
-        />
-      </div>
+          <div className="flex flex-col items-center justify-center">
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={600}
+              className="max-w-full h-auto"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 };
