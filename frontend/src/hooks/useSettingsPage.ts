@@ -119,6 +119,7 @@ export const useSettingsPage = () => {
       const status = await GetFeatureStatus();
       setFeatureStatus(status as FeatureStatus);
     } catch (err: any) {
+      console.error('[fetchAllSettings] Failed to fetch settings:', err);
       toast.error('設定の取得に失敗しました: ' + err.message);
     }
   };
@@ -177,7 +178,12 @@ export const useSettingsPage = () => {
   const handleAutoSave = async (key: string, value: string) => {
     try {
       await UpdateSettings({ [key]: value });
-      toast.success(`設定を保存しました: ${key}`);
+
+      // OVERLAY_CARDS_EXPANDED以外の設定のみトーストを表示
+      if (key !== 'OVERLAY_CARDS_EXPANDED') {
+        toast.success(`設定を保存しました: ${key}`);
+      }
+
       setSettings(prev => ({
         ...prev,
         [key]: { ...prev[key], value: value }
@@ -187,15 +193,14 @@ export const useSettingsPage = () => {
         delete updated[key];
         return updated;
       });
-      await fetchAllSettings();
     } catch (err: any) {
+      console.error(`[handleAutoSave] Failed to save ${key}:`, err);
       toast.error('設定の保存に失敗しました: ' + err.message);
     }
   };
 
   const getSettingValue = (key: string): string => {
-    if (key in unsavedChanges) return unsavedChanges[key];
-    return settings[key]?.value || '';
+    return (key in unsavedChanges) ? unsavedChanges[key] : (settings[key]?.value || '');
   };
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';

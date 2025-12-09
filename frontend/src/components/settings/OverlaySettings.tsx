@@ -1,5 +1,5 @@
-import { Gift, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
-import React, { useContext, useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Gift, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrlAsync } from '../../utils/api';
@@ -44,6 +44,77 @@ export const OverlaySettings: React.FC = () => {
   const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
+
+  // カードの折りたたみ状態（overlaySettingsから復帰）
+  const [expandedCards, setExpandedCards] = useState(() => {
+    try {
+      const savedState = overlaySettings?.overlay_cards_expanded;
+      if (savedState) {
+        return JSON.parse(savedState);
+      }
+    } catch (error) {
+      console.error('[OverlaySettings] Failed to parse card expanded state:', error);
+    }
+    // デフォルト値
+    return {
+      musicPlayer: true,
+      fax: true,
+      clock: true,
+      rewardCount: true,
+      lottery: true,
+    };
+  });
+
+  // 初回マウント時の保存を防ぐフラグ
+  const isInitialMount = useRef(true);
+  // 前回のWebSocketから受信した値を保持（無限ループ防止）
+  const previousSavedState = useRef<string | undefined>(undefined);
+  // 前回保存した値を保持（無限ループ防止）
+  const previousExpandedCards = useRef<string | undefined>(undefined);
+
+  // overlaySettingsが更新されたら、カード状態も更新（無限ループ防止のため前回値と比較）
+  useEffect(() => {
+    try {
+      const savedState = overlaySettings?.overlay_cards_expanded;
+      // 前回の値と異なる場合のみ更新（無限ループ防止）
+      if (savedState && savedState !== previousSavedState.current) {
+        const parsed = JSON.parse(savedState);
+        setExpandedCards(parsed);
+        previousSavedState.current = savedState;
+        previousExpandedCards.current = savedState; // 保存値も更新
+      }
+    } catch (error) {
+      console.error('[OverlaySettings] Failed to parse card expanded state:', error);
+    }
+  }, [overlaySettings?.overlay_cards_expanded]);
+
+  // カードの折りたたみ状態が変更されたらDBに保存
+  useEffect(() => {
+    // 初回マウント時はスキップ
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    const jsonValue = JSON.stringify(expandedCards);
+
+    // 前回保存した値と比較して、変わった場合のみ保存（無限ループ防止）
+    if (jsonValue === previousExpandedCards.current) {
+      return; // 変わっていないのでスキップ
+    }
+
+    const saveExpandedState = async () => {
+      try {
+        previousSavedState.current = jsonValue;
+        previousExpandedCards.current = jsonValue;
+        await updateOverlaySettings({ overlay_cards_expanded: jsonValue });
+      } catch (error) {
+        console.error('[OverlaySettings] Failed to save card expanded state:', error);
+      }
+    };
+    saveExpandedState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedCards]); // updateOverlaySettingsは安定しているので依存配列から除外
 
   // プレイリストを取得
   useEffect(() => {
@@ -262,13 +333,28 @@ export const OverlaySettings: React.FC = () => {
     <div className="columns-1 lg:columns-2 gap-4 space-y-4 [&:focus]:outline-none [&:focus-visible]:outline-none">
       {/* 音楽プレイヤーコントロール */}
       <Card className="break-inside-avoid mb-4">
-        <CardHeader>
-          <CardTitle>再生コントロール</CardTitle>
-          <CardDescription>
-            オーバーレイの音楽プレイヤーをリモート操作します
-          </CardDescription>
+        <CardHeader
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => setExpandedCards(prev => ({ ...prev, musicPlayer: !prev.musicPlayer }))}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle>再生コントロール</CardTitle>
+              <CardDescription>
+                オーバーレイの音楽プレイヤーをリモート操作します
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {expandedCards.musicPlayer ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {expandedCards.musicPlayer && (
+          <CardContent className="space-y-4">
           {/* 現在の曲情報 */}
           {musicStatus.current_track ? (
             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -451,18 +537,34 @@ export const OverlaySettings: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* FAX表示設定 */}
       <Card className="break-inside-avoid mb-4">
-        <CardHeader>
-          <CardTitle>FAX表示</CardTitle>
-          <CardDescription>
-            FAX受信時のアニメーション設定
-          </CardDescription>
+        <CardHeader
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => setExpandedCards(prev => ({ ...prev, fax: !prev.fax }))}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle>FAX表示</CardTitle>
+              <CardDescription>
+                FAX受信時のアニメーション設定
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {expandedCards.fax ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {expandedCards.fax && (
+          <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="fax-enabled" className="flex flex-col">
               <span>FAXアニメーションを表示</span>
@@ -513,18 +615,34 @@ export const OverlaySettings: React.FC = () => {
               className="w-full"
             />
           </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* 時計表示設定 */}
       <Card className="break-inside-avoid mb-4">
-        <CardHeader>
-          <CardTitle>時計表示</CardTitle>
-          <CardDescription>
-            オーバーレイの時計表示設定
-          </CardDescription>
+        <CardHeader
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => setExpandedCards(prev => ({ ...prev, clock: !prev.clock }))}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle>時計表示</CardTitle>
+              <CardDescription>
+                オーバーレイの時計表示設定
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {expandedCards.clock ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {expandedCards.clock && (
+          <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="clock-enabled" className="flex flex-col">
               <span>時計を表示</span>
@@ -608,18 +726,34 @@ export const OverlaySettings: React.FC = () => {
               </div>
             </>
           )}
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* リワードカウント表示設定 */}
       <Card className="break-inside-avoid mb-4">
-        <CardHeader>
-          <CardTitle>リワードカウント表示</CardTitle>
-          <CardDescription>
-            使用されたリワードの回数を蓄積表示します
-          </CardDescription>
+        <CardHeader
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => setExpandedCards(prev => ({ ...prev, rewardCount: !prev.rewardCount }))}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle>リワードカウント表示</CardTitle>
+              <CardDescription>
+                使用されたリワードの回数を蓄積表示します
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {expandedCards.rewardCount ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {expandedCards.rewardCount && (
+          <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="reward-count-enabled" className="flex flex-col">
               <span>カウント表示を有効化</span>
@@ -828,21 +962,37 @@ export const OverlaySettings: React.FC = () => {
               )}
             </div>
           )}
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* プレゼントルーレット設定 */}
       <Card className="break-inside-avoid mb-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gift className="w-5 h-5" />
-            プレゼントルーレット
-          </CardTitle>
-          <CardDescription>
-            チャンネルポイントリワードを使った抽選機能の設定
-          </CardDescription>
+        <CardHeader
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => setExpandedCards(prev => ({ ...prev, lottery: !prev.lottery }))}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <Gift className="w-5 h-5" />
+                プレゼントルーレット
+              </CardTitle>
+              <CardDescription>
+                チャンネルポイントリワードを使った抽選機能の設定
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {expandedCards.lottery ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {expandedCards.lottery && (
+          <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="lottery-enabled" className="flex flex-col">
               <span>ルーレット機能を有効化</span>
@@ -896,7 +1046,8 @@ export const OverlaySettings: React.FC = () => {
               </div>
             </>
           )}
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
     </div>
   );

@@ -50,6 +50,9 @@ type OverlaySettings struct {
 	LotteryDisplayDuration int     `json:"lottery_display_duration"` // 表示時間（秒）
 	LotteryAnimationSpeed  float64 `json:"lottery_animation_speed"`  // アニメーション速度
 
+	// UI状態設定
+	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
+
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
 
@@ -117,6 +120,7 @@ func loadOverlaySettingsFromDB() {
 		LotteryRewardID:        getStringSetting(allSettings, "LOTTERY_REWARD_ID"),
 		LotteryDisplayDuration: getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
 		LotteryAnimationSpeed:  getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
+		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 		UpdatedAt:              time.Now(),
@@ -183,22 +187,23 @@ func getIntPointerSetting(settings map[string]settings.Setting, key string) *int
 
 func useDefaultSettings() {
 	defaultSettings := &OverlaySettings{
-		MusicEnabled:      true,
-		MusicPlaylist:     nil,
-		MusicVolume:       70,
-		MusicAutoPlay:     false,
-		FaxEnabled:        true,
-		FaxAnimationSpeed: 1.0,
-		FaxImageType:      "color",
-		ClockEnabled:      true,
-		ClockFormat:       "24h",
-		ClockShowIcons:    true,
-		LocationEnabled:   true,
-		DateEnabled:       true,
-		TimeEnabled:       true,
-		ShowDebugInfo:     false,
-		DebugEnabled:      false,
-		UpdatedAt:         time.Now(),
+		MusicEnabled:         true,
+		MusicPlaylist:        nil,
+		MusicVolume:          70,
+		MusicAutoPlay:        false,
+		FaxEnabled:           true,
+		FaxAnimationSpeed:    1.0,
+		FaxImageType:         "color",
+		ClockEnabled:         true,
+		ClockFormat:          "24h",
+		ClockShowIcons:       true,
+		LocationEnabled:      true,
+		DateEnabled:          true,
+		TimeEnabled:          true,
+		OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
+		ShowDebugInfo:        false,
+		DebugEnabled:         false,
+		UpdatedAt:            time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -275,7 +280,8 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"LOTTERY_ENABLED":          strconv.FormatBool(overlaySettings.LotteryEnabled),
 		"LOTTERY_DISPLAY_DURATION": strconv.Itoa(overlaySettings.LotteryDisplayDuration),
 		"LOTTERY_ANIMATION_SPEED":  fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
-		"OVERLAY_DEBUG_ENABLED":     strconv.FormatBool(overlaySettings.DebugEnabled),
+		"OVERLAY_CARDS_EXPANDED":   overlaySettings.OverlayCardsExpanded,
+		"OVERLAY_DEBUG_ENABLED":    strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 
 	// RewardCountGroupIDはnilの場合は空文字列として保存

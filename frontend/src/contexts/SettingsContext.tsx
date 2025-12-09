@@ -32,6 +32,9 @@ interface OverlaySettings {
   lottery_display_duration?: number;
   lottery_animation_speed?: number;
 
+  // UI状態設定
+  overlay_cards_expanded?: string;
+
   // 開発者設定
   debug_enabled: boolean;
 

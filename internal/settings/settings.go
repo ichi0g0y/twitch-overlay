@@ -228,6 +228,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "REWARD_COUNT_POSITION", Value: "left", Type: SettingTypeNormal, Required: false,
 		Description: "Reward count display position (left or right)",
 	},
+	"OVERLAY_CARDS_EXPANDED": {
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Description: "Collapsed/expanded state of overlay setting cards",
+	},
 
 	// プレゼントルーレット設定
 	"LOTTERY_ENABLED": {
