@@ -14,6 +14,13 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   winner,
   debugMode = false,
 }) => {
+  // デバッグ: participants の変更を追跡
+  console.log('[ParticipantsList] Rendering with participants:', participants.map(p => ({
+    user_id: p.user_id,
+    username: p.username,
+    entry_count: p.entry_count
+  })));
+
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<PresentParticipant>>({});
   // 総口数を計算（購入口数 + サブスクボーナス）
@@ -152,6 +159,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
 
             // 購入口数 + サブスクボーナス
             const baseCount = participant.entry_count || 1;
+            console.log(`[ParticipantsList] User ${participant.username}: entry_count=${participant.entry_count}, baseCount=${baseCount}`);
             let bonusWeight = 0;
             if (participant.is_subscriber && participant.subscribed_months > 0) {
               // Tier係数を取得

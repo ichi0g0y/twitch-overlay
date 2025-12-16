@@ -14,6 +14,8 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
+	"github.com/nantokaworks/twitch-overlay/internal/types"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
@@ -237,6 +239,96 @@ func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRede
 		message.User.UserName,
 		notificationMessage,
 	)
+
+	// プレゼントルーレット対象リワードかチェック
+	db, err := localdb.SetupDB(paths.GetDBPath())
+	if err == nil {
+		settingsManager := settings.NewSettingsManager(db)
+		lotteryEnabled, _ := settingsManager.GetRealValue("LOTTERY_ENABLED")
+		lotteryRewardID, _ := settingsManager.GetRealValue("LOTTERY_REWARD_ID")
+
+		if lotteryEnabled == "true" && lotteryRewardID != "" && message.Reward.ID == lotteryRewardID {
+			// アバターURLを取得
+			avatarURL := ""
+			if message.User.UserID != "" {
+				if avatar, err := getUserAvatar(message.User.UserID); err == nil {
+					avatarURL = avatar
+				}
+			}
+
+			// サブスク情報を取得
+			isSubscriber := false
+			subscriberTier := ""
+			broadcasterID := *env.Value.TwitchUserID
+			if broadcasterID != "" && message.User.UserID != "" {
+				if subInfo, err := twitchapi.GetUserSubscription(broadcasterID, message.User.UserID); err == nil {
+					isSubscriber = true
+					subscriberTier = subInfo.Tier
+					logger.Debug("User subscription info retrieved",
+						zap.String("user_id", message.User.UserID),
+						zap.String("tier", subInfo.Tier),
+						zap.Bool("is_gift", subInfo.IsGift))
+				} else {
+					logger.Debug("User is not subscribed or failed to get subscription info",
+						zap.String("user_id", message.User.UserID),
+						zap.Error(err))
+				}
+			}
+
+			// 参加者情報を作成
+			participant := types.PresentParticipant{
+				UserID:           message.User.UserID,
+				Username:         message.User.UserLogin,
+				DisplayName:      message.User.UserName,
+				AvatarURL:        avatarURL,
+				RedeemedAt:       time.Now(),
+				IsSubscriber:     isSubscriber,
+				SubscribedMonths: 0, // API経由では取得不可のため0（設定画面から手動編集可能）
+				SubscriberTier:   subscriberTier,
+				EntryCount:       1, // デフォルトは1口
+				AssignedColor:    "", // 色は自動割り当て
+			}
+
+			// DBに保存
+			if err := localdb.AddLotteryParticipant(participant); err != nil {
+				logger.Error("Failed to add lottery participant to database",
+					zap.Error(err),
+					zap.String("user_id", message.User.UserID),
+					zap.String("username", message.User.UserLogin))
+			} else {
+				// データベースから最新の参加者情報を取得（entry_countが正しく加算された状態）
+				allParticipants, err := localdb.GetAllLotteryParticipants()
+				if err != nil {
+					logger.Error("Failed to get lottery participants after add",
+						zap.Error(err))
+				} else {
+					// 追加/更新されたユーザーを見つける
+					var updatedParticipant *types.PresentParticipant
+					for i := range allParticipants {
+						if allParticipants[i].UserID == participant.UserID {
+							updatedParticipant = &allParticipants[i]
+							break
+						}
+					}
+
+					if updatedParticipant != nil {
+						// WebSocketで通知（データベースから取得した最新の値を送信）
+						broadcast.Send(map[string]interface{}{
+							"type": "lottery_participant_added",
+							"data": *updatedParticipant,
+						})
+
+						logger.Info("Lottery participant added",
+							zap.String("user_id", message.User.UserID),
+							zap.String("username", message.User.UserLogin),
+							zap.Int("entry_count", updatedParticipant.EntryCount),
+							zap.String("reward_id", message.Reward.ID),
+							zap.String("reward_title", message.Reward.Title))
+					}
+				}
+			}
+		}
+	}
 
 	// プリンター印刷は指定IDのチャネポのみ
 	if message.Reward.ID != *env.Value.TriggerCustomRewordID {

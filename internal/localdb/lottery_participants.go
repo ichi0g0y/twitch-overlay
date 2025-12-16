@@ -58,7 +58,7 @@ func AddLotteryParticipant(participant types.PresentParticipant) error {
 		is_subscriber = excluded.is_subscriber,
 		subscribed_months = excluded.subscribed_months,
 		subscriber_tier = excluded.subscriber_tier,
-		entry_count = excluded.entry_count,
+		entry_count = lottery_participants.entry_count + excluded.entry_count,
 		assigned_color = excluded.assigned_color,
 		updated_at = excluded.updated_at
 	`

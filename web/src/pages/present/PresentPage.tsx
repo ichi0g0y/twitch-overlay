@@ -118,10 +118,42 @@ export const PresentPage: React.FC = () => {
 
       switch (message.type) {
         case 'lottery_participant_added':
-          setLotteryState((prev) => ({
-            ...prev,
-            participants: [...prev.participants, message.data],
-          }));
+          console.log('[lottery_participant_added] Received data:', message.data);
+          setLotteryState((prev) => {
+            console.log('[lottery_participant_added] Current participants:', prev.participants);
+            const existingIndex = prev.participants.findIndex(
+              (p) => p.user_id === message.data.user_id
+            );
+            console.log('[lottery_participant_added] Existing index:', existingIndex, 'for user_id:', message.data.user_id);
+
+            if (existingIndex >= 0) {
+              // 既存ユーザーの場合は更新（entry_countなどを更新）
+              console.log('[lottery_participant_added] Updating existing user at index:', existingIndex);
+              console.log('[lottery_participant_added] New data:', {
+                user_id: message.data.user_id,
+                username: message.data.username,
+                entry_count: message.data.entry_count
+              });
+              const updatedParticipants = [...prev.participants];
+              updatedParticipants[existingIndex] = message.data;
+              console.log('[lottery_participant_added] Updated participants:', updatedParticipants.map(p => ({
+                user_id: p.user_id,
+                username: p.username,
+                entry_count: p.entry_count
+              })));
+              return {
+                ...prev,
+                participants: updatedParticipants,
+              };
+            } else {
+              // 新規ユーザーの場合は追加
+              console.log('[lottery_participant_added] Adding new user:', message.data);
+              return {
+                ...prev,
+                participants: [...prev.participants, message.data],
+              };
+            }
+          });
           break;
 
         case 'lottery_participants_updated':

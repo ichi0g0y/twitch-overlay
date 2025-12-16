@@ -341,3 +341,56 @@ func GetUserChatColors(userIDs []string) ([]UserChatColor, error) {
 
 	return result.Data, nil
 }
+
+// UserSubscription represents subscription information for a user
+type UserSubscription struct {
+	UserID   string `json:"user_id"`
+	UserName string `json:"user_name"`
+	UserLogin string `json:"user_login"`
+	Tier     string `json:"tier"` // "1000", "2000", or "3000"
+	IsGift   bool   `json:"is_gift"`
+}
+
+// GetUserSubscription retrieves subscription information for a specific user
+// Returns subscription info if the user is subscribed, error if not subscribed
+func GetUserSubscription(broadcasterID, userID string) (*UserSubscription, error) {
+	reqURL := fmt.Sprintf("https://api.twitch.tv/helix/subscriptions?broadcaster_id=%s&user_id=%s",
+		url.QueryEscape(broadcasterID), url.QueryEscape(userID))
+
+	resp, err := makeAuthenticatedGetRequest(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subscription info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 404 or 400 means user is not subscribed
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
+		return nil, fmt.Errorf("user is not subscribed")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Warn("Twitch API returned error for subscription check",
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(bodyBytes)))
+		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []UserSubscription `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(result.Data) == 0 {
+		return nil, fmt.Errorf("user is not subscribed")
+	}
+
+	logger.Debug("Successfully retrieved user subscription info",
+		zap.String("user_id", userID),
+		zap.String("tier", result.Data[0].Tier))
+
+	return &result.Data[0], nil
+}
