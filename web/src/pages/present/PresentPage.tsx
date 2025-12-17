@@ -1,5 +1,6 @@
 import { Play, Square, Trash2 } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
+import Confetti from 'react-confetti'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { buildApiUrl } from '../../utils/api'
 import { ParticipantsList } from './components/ParticipantsList'
@@ -33,6 +34,7 @@ export const PresentPage: React.FC = () => {
   })
   const [isSpinning, setIsSpinning] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
+  const [showConfetti, setShowConfetti] = useState(false)
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
@@ -44,6 +46,8 @@ export const PresentPage: React.FC = () => {
         winner,
         is_running: false,
       }))
+      // 当選者発表と同時に紙吹雪を開始（再抽選かクリアまで継続）
+      setShowConfetti(true)
     }, 2000)
   }
 
@@ -200,6 +204,7 @@ export const PresentPage: React.FC = () => {
             winner: null, // 抽選開始時に当選者をクリア
           }))
           setIsSpinning(true)
+          setShowConfetti(false) // 紙吹雪を停止
           break
 
         case 'lottery_stopped':
@@ -235,6 +240,7 @@ export const PresentPage: React.FC = () => {
             participants: [],
             winner: null,
           }))
+          setShowConfetti(false) // 紙吹雪を停止
           break
       }
     },
@@ -279,6 +285,15 @@ export const PresentPage: React.FC = () => {
 
   return (
     <div className='min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 text-white font-flat'>
+      {/* 当選者発表時の紙吹雪 */}
+      {showConfetti && (
+        <Confetti
+          width={window.innerWidth}
+          height={window.innerHeight}
+          recycle={true}
+          numberOfPieces={500}
+        />
+      )}
       <div className='container mx-auto px-4 py-8'>
         {/* ヘッダー */}
         <div className='text-center mb-8'>
@@ -316,9 +331,8 @@ export const PresentPage: React.FC = () => {
 
         {/* メインコンテンツ */}
         <div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
-          {/* 左側：ルーレットとコントロール */}
-          <div className='lg:col-span-2 space-y-4'>
-            {/* ルーレット */}
+          {/* 左側：ルーレット */}
+          <div className='lg:col-span-2'>
             <div className='bg-white/10 backdrop-blur-md rounded-2xl p-8 shadow-2xl h-[800px] flex items-center justify-center'>
               <RouletteWheel
                 participants={lotteryState.participants}
@@ -326,50 +340,53 @@ export const PresentPage: React.FC = () => {
                 onSpinComplete={handleSpinComplete}
               />
             </div>
+          </div>
 
+          {/* 右側：コントロールと参加者リスト */}
+          <div className='lg:col-span-1 flex flex-col gap-4 h-[800px]'>
             {/* コントロールボタン */}
-            <div className='bg-purple-500/20 backdrop-blur-md rounded-2xl p-6 shadow-2xl border-2 border-purple-400'>
-              <div className='flex items-center justify-center gap-4'>
+            <div className='bg-purple-500/20 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-400'>
+              <div className='flex gap-3 justify-center'>
                 <button
                   onClick={handleStart}
                   disabled={
                     lotteryState.participants.length === 0 ||
                     lotteryState.is_running
                   }
-                  className='flex items-center gap-2 px-8 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed'
+                  className='flex items-center justify-center w-12 h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg transition-colors disabled:cursor-not-allowed'
+                  title='抽選開始'
                 >
                   <Play size={24} />
-                  抽選開始
                 </button>
 
                 <button
                   onClick={handleStop}
                   disabled={!lotteryState.is_running}
-                  className='flex items-center gap-2 px-8 py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed'
+                  className='flex items-center justify-center w-12 h-12 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded-lg transition-colors disabled:cursor-not-allowed'
+                  title='停止'
                 >
                   <Square size={24} />
-                  停止
                 </button>
 
                 <button
                   onClick={handleClear}
                   disabled={lotteryState.participants.length === 0}
-                  className='flex items-center gap-2 px-8 py-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg font-semibold text-lg transition-colors disabled:cursor-not-allowed'
+                  className='flex items-center justify-center w-12 h-12 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg transition-colors disabled:cursor-not-allowed'
+                  title='クリア'
                 >
                   <Trash2 size={24} />
-                  クリア
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* 右側：参加者リスト */}
-          <div className='lg:col-span-1 h-[800px]'>
-            <ParticipantsList
-              participants={lotteryState.participants}
-              winner={lotteryState.winner}
-              debugMode={debugMode}
-            />
+            {/* 参加者リスト */}
+            <div className='flex-1 min-h-0'>
+              <ParticipantsList
+                participants={lotteryState.participants}
+                winner={lotteryState.winner}
+                debugMode={debugMode}
+              />
+            </div>
           </div>
         </div>
       </div>
