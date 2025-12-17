@@ -252,13 +252,9 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 
 	// ランダムなサブスク情報を生成
 	isSubscriber := rand.Float32() < 0.5 // 50%の確率でサブスク
-	var subscribedMonths int
 	var subscriberTier string
 
 	if isSubscriber {
-		// サブスクの場合は1-60ヶ月でランダム
-		subscribedMonths = rand.Intn(60) + 1
-
 		// Tierは1000, 2000, 3000からランダム
 		tiers := []string{"1000", "2000", "3000"}
 		subscriberTier = tiers[rand.Intn(len(tiers))]
@@ -270,16 +266,15 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 	// テスト用の参加者を1人作成
 	now := time.Now()
 	testParticipant := types.PresentParticipant{
-		UserID:           userIDStr,
-		Username:         username,
-		DisplayName:      displayName,
-		AvatarURL:        "",
-		RedeemedAt:       now,
-		IsSubscriber:     isSubscriber,
-		SubscribedMonths: subscribedMonths,
-		SubscriberTier:   subscriberTier,
-		EntryCount:       entryCount,
-		AssignedColor:    "",  // 色は後で割り当て
+		UserID:         userIDStr,
+		Username:       username,
+		DisplayName:    displayName,
+		AvatarURL:      "",
+		RedeemedAt:     now,
+		IsSubscriber:   isSubscriber,
+		SubscriberTier: subscriberTier,
+		EntryCount:     entryCount,
+		AssignedColor:  "", // 色は後で割り当て
 	}
 
 	// 色を割り当て
@@ -579,7 +574,6 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 			}
 			// サブスク情報も更新可能
 			currentLottery.Participants[i].IsSubscriber = updates.IsSubscriber
-			currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
 			currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
 
 			// サブスク状態が変更された場合は色を再割り当て

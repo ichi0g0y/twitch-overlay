@@ -277,16 +277,15 @@ func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRede
 
 			// 参加者情報を作成
 			participant := types.PresentParticipant{
-				UserID:           message.User.UserID,
-				Username:         message.User.UserLogin,
-				DisplayName:      message.User.UserName,
-				AvatarURL:        avatarURL,
-				RedeemedAt:       time.Now(),
-				IsSubscriber:     isSubscriber,
-				SubscribedMonths: 0, // API経由では取得不可のため0（設定画面から手動編集可能）
-				SubscriberTier:   subscriberTier,
-				EntryCount:       1, // デフォルトは1口
-				AssignedColor:    "", // 色は自動割り当て
+				UserID:         message.User.UserID,
+				Username:       message.User.UserLogin,
+				DisplayName:    message.User.UserName,
+				AvatarURL:      avatarURL,
+				RedeemedAt:     time.Now(),
+				IsSubscriber:   isSubscriber,
+				SubscriberTier: subscriberTier,
+				EntryCount:     1,  // デフォルトは1口
+				AssignedColor:  "", // 色は自動割り当て
 			}
 
 			// DBに保存

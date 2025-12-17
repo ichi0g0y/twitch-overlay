@@ -27,22 +27,14 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   const totalEntries = participants.reduce((sum, p) => {
     const baseCount = p.entry_count || 1;
     let bonusWeight = 0;
-    if (p.is_subscriber && p.subscribed_months > 0) {
-      // Tier係数を取得
-      let tierMultiplier = 1.0;
+    if (p.is_subscriber) {
+      // Tier のみでボーナス計算（案B：サブスク優遇型）
       if (p.subscriber_tier === '3000') {
-        tierMultiplier = 1.2;
+        bonusWeight = 12;
       } else if (p.subscriber_tier === '2000') {
-        tierMultiplier = 1.1;
-      }
-
-      // ボーナス計算（切り上げ）
-      const bonusCalculation = (p.subscribed_months * tierMultiplier * 1.1) / 3;
-      bonusWeight = Math.ceil(bonusCalculation);
-
-      // 最低ボーナス：サブスク登録者は最低1口
-      if (bonusWeight < 1) {
-        bonusWeight = 1;
+        bonusWeight = 6;
+      } else if (p.subscriber_tier === '1000') {
+        bonusWeight = 3;
       }
     }
     return sum + baseCount + bonusWeight;
@@ -88,7 +80,6 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
     setEditForm({
       entry_count: participant.entry_count,
       is_subscriber: participant.is_subscriber,
-      subscribed_months: participant.subscribed_months,
       subscriber_tier: participant.subscriber_tier,
     });
   };
@@ -161,22 +152,14 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
             const baseCount = participant.entry_count || 1;
             console.log(`[ParticipantsList] User ${participant.username}: entry_count=${participant.entry_count}, baseCount=${baseCount}`);
             let bonusWeight = 0;
-            if (participant.is_subscriber && participant.subscribed_months > 0) {
-              // Tier係数を取得
-              let tierMultiplier = 1.0;
+            if (participant.is_subscriber) {
+              // Tier のみでボーナス計算（案B：サブスク優遇型）
               if (participant.subscriber_tier === '3000') {
-                tierMultiplier = 1.2;
+                bonusWeight = 12;
               } else if (participant.subscriber_tier === '2000') {
-                tierMultiplier = 1.1;
-              }
-
-              // ボーナス計算（切り上げ）
-              const bonusCalculation = (participant.subscribed_months * tierMultiplier * 1.1) / 3;
-              bonusWeight = Math.ceil(bonusCalculation);
-
-              // 最低ボーナス：サブスク登録者は最低1口
-              if (bonusWeight < 1) {
-                bonusWeight = 1;
+                bonusWeight = 6;
+              } else if (participant.subscriber_tier === '1000') {
+                bonusWeight = 3;
               }
             }
             const totalWeight = baseCount + bonusWeight;
@@ -239,30 +222,18 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                           サブスク
                         </label>
                         {editForm.is_subscriber && (
-                          <>
-                            <label className="flex items-center gap-1">
-                              月数:
-                              <input
-                                type="number"
-                                min="0"
-                                value={editForm.subscribed_months || 0}
-                                onChange={(e) => setEditForm({ ...editForm, subscribed_months: parseInt(e.target.value) })}
-                                className="w-16 px-1 py-0.5 bg-black/30 rounded"
-                              />
-                            </label>
-                            <label className="flex items-center gap-1">
-                              Tier:
-                              <select
-                                value={editForm.subscriber_tier || '1000'}
-                                onChange={(e) => setEditForm({ ...editForm, subscriber_tier: e.target.value })}
-                                className="px-1 py-0.5 bg-black/30 rounded"
-                              >
-                                <option value="1000">1</option>
-                                <option value="2000">2</option>
-                                <option value="3000">3</option>
-                              </select>
-                            </label>
-                          </>
+                          <label className="flex items-center gap-1">
+                            Tier:
+                            <select
+                              value={editForm.subscriber_tier || '1000'}
+                              onChange={(e) => setEditForm({ ...editForm, subscriber_tier: e.target.value })}
+                              className="px-1 py-0.5 bg-black/30 rounded"
+                            >
+                              <option value="1000">1</option>
+                              <option value="2000">2</option>
+                              <option value="3000">3</option>
+                            </select>
+                          </label>
                         )}
                       </div>
                     </div>
@@ -272,28 +243,25 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                       <div className="font-semibold truncate flex items-center gap-2">
                         {participant.display_name || participant.username}
                         {isWinner && <span className="text-yellow-400">👑</span>}
-                        {participant.is_subscriber && (
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded ${
-                              participant.subscriber_tier === '3000'
-                                ? 'bg-purple-600 text-white'
-                                : participant.subscriber_tier === '2000'
-                                ? 'bg-pink-600 text-white'
-                                : 'bg-blue-600 text-white'
-                            }`}
-                            title={`サブスク${participant.subscribed_months}ヶ月`}
-                          >
-                            Tier {participant.subscriber_tier === '3000' ? '3' : participant.subscriber_tier === '2000' ? '2' : '1'}
-                          </span>
-                        )}
                       </div>
-                      <div className="text-xs text-purple-300">
-                        {timeAgo}
+                      <div className="text-xs text-purple-300 flex items-center gap-2 mt-1">
                         {participant.is_subscriber && (
-                          <span className="ml-2">
-                            🌟 {participant.subscribed_months}ヶ月
-                          </span>
+                          <>
+                            <span
+                              className={`px-2 py-0.5 rounded ${
+                                participant.subscriber_tier === '3000'
+                                  ? 'bg-purple-600 text-white'
+                                  : participant.subscriber_tier === '2000'
+                                  ? 'bg-pink-600 text-white'
+                                  : 'bg-blue-600 text-white'
+                              }`}
+                            >
+                              Tier {participant.subscriber_tier === '3000' ? '3' : participant.subscriber_tier === '2000' ? '2' : '1'}
+                            </span>
+                            <span>•</span>
+                          </>
                         )}
+                        <span>{timeAgo}</span>
                       </div>
                       <div className="text-xs text-yellow-300 font-bold mt-1">
                         🎫 {baseCount}口
