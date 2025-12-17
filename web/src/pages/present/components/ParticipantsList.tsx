@@ -319,12 +319,6 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
           })}
         </div>
       )}
-
-      {participants.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-purple-400/30 text-sm text-purple-300">
-          <p>💡 ルーレットを回して当選者を決定しよう！</p>
-        </div>
-      )}
     </div>
   );
 };

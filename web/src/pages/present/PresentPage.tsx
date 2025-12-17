@@ -295,40 +295,6 @@ export const PresentPage: React.FC = () => {
         />
       )}
       <div className='container mx-auto px-4 py-8'>
-        {/* ヘッダー */}
-        <div className='text-center mb-8'>
-          <h1 className='text-5xl font-bold mb-6'>
-            🎁 プレゼントルーレット 🎁
-          </h1>
-          <p className='text-xl text-purple-200'>
-            リワードを使用した参加者の中から抽選！
-          </p>
-          <div className='flex items-center justify-center gap-4 mt-4'>
-            <div
-              className={`flex items-center gap-2 ${
-                isConnected ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              <div
-                className={`w-3 h-3 rounded-full ${
-                  isConnected ? 'bg-green-400' : 'bg-red-400'
-                } animate-pulse`}
-              />
-              <span>{isConnected ? '接続中' : '切断'}</span>
-            </div>
-            {debugMode && (
-              <div className='flex items-center gap-2 text-yellow-400'>
-                <span>🔧 デバッグモード</span>
-              </div>
-            )}
-            {!lotteryState.enabled && (
-              <div className='flex items-center gap-2 text-yellow-400'>
-                <span>⚠ 抽選機能無効</span>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* メインコンテンツ */}
         <div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
           {/* 左側：ルーレット */}
@@ -346,7 +312,7 @@ export const PresentPage: React.FC = () => {
           <div className='lg:col-span-1 flex flex-col gap-4 h-[800px]'>
             {/* コントロールボタン */}
             <div className='bg-purple-500/20 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-400'>
-              <div className='flex gap-3 justify-center'>
+              <div className='flex gap-3 justify-center items-center'>
                 <button
                   onClick={handleStart}
                   disabled={
@@ -376,6 +342,22 @@ export const PresentPage: React.FC = () => {
                 >
                   <Trash2 size={24} />
                 </button>
+
+                {/* 接続状態インジケーター */}
+                <div className='flex items-center gap-2 ml-2'>
+                  <div
+                    className={`w-3 h-3 rounded-full ${
+                      isConnected ? 'bg-green-400' : 'bg-red-400'
+                    }`}
+                    title={isConnected ? '接続中' : '切断'}
+                  />
+                  {debugMode && (
+                    <div className='w-3 h-3 rounded-full bg-yellow-400' title='デバッグモード' />
+                  )}
+                  {!lotteryState.enabled && (
+                    <div className='w-3 h-3 rounded-full bg-yellow-400' title='抽選機能無効' />
+                  )}
+                </div>
               </div>
             </div>
 
