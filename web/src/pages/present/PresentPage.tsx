@@ -202,24 +202,28 @@ export const PresentPage: React.FC = () => {
         case 'lottery_stopped':
           setLotteryState((prev) => ({ ...prev, is_running: false }))
           setIsSpinning(false)
-          // winnerはルーレット停止後にフロントエンドで決定される
+          // ルーレット停止後、lottery_winnerで2秒遅延して当選者を表示
           break
 
         case 'lottery_winner':
           // バックエンドからの当選者通知でルーレットを停止
           // winner と winner_index を受け取る
-          setLotteryState((prev) => ({
-            ...prev,
-            is_running: false,
-            winner: message.data.winner,
-          }))
-          setIsSpinning(false)
           console.log(
             'Winner from backend:',
             message.data.winner,
             'index:',
             message.data.winner_index
           )
+
+          // 2秒遅延してから当選者を表示（演出）
+          setTimeout(() => {
+            setLotteryState((prev) => ({
+              ...prev,
+              is_running: false,
+              winner: message.data.winner,
+            }))
+            setIsSpinning(false)
+          }, 2000)
           break
 
         case 'lottery_participants_cleared':

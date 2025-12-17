@@ -96,25 +96,15 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     participants.forEach((participant) => {
       const baseCount = participant.entry_count || 1;
 
-      // サブスク月数によるボーナス重み計算
-      // ボーナス口数 = 累計サブスク月数 × Tier係数 × 1.1 ÷ 3（切り上げ）
+      // Tier のみでボーナス計算（案B：サブスク優遇型）
       let bonusWeight = 0;
-      if (participant.is_subscriber && participant.subscribed_months > 0) {
-        // Tier係数を取得
-        let tierMultiplier = 1.0;
+      if (participant.is_subscriber) {
         if (participant.subscriber_tier === '3000') {
-          tierMultiplier = 1.2;
+          bonusWeight = 12;
         } else if (participant.subscriber_tier === '2000') {
-          tierMultiplier = 1.1;
-        }
-
-        // ボーナス計算（切り上げ）
-        const bonusCalculation = (participant.subscribed_months * tierMultiplier * 1.1) / 3;
-        bonusWeight = Math.ceil(bonusCalculation);
-
-        // 最低ボーナス：サブスク登録者は最低1口
-        if (bonusWeight < 1) {
-          bonusWeight = 1;
+          bonusWeight = 6;
+        } else if (participant.subscriber_tier === '1000') {
+          bonusWeight = 3;
         }
       }
 
@@ -126,21 +116,15 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     participants.forEach((participant) => {
       const baseCount = participant.entry_count || 1;
 
-      // ボーナス重み計算（同じロジック）
+      // Tier のみでボーナス計算（案B：サブスク優遇型）
       let bonusWeight = 0;
-      if (participant.is_subscriber && participant.subscribed_months > 0) {
-        let tierMultiplier = 1.0;
+      if (participant.is_subscriber) {
         if (participant.subscriber_tier === '3000') {
-          tierMultiplier = 1.2;
+          bonusWeight = 12;
         } else if (participant.subscriber_tier === '2000') {
-          tierMultiplier = 1.1;
-        }
-
-        const bonusCalculation = (participant.subscribed_months * tierMultiplier * 1.1) / 3;
-        bonusWeight = Math.ceil(bonusCalculation);
-
-        if (bonusWeight < 1) {
-          bonusWeight = 1;
+          bonusWeight = 6;
+        } else if (participant.subscriber_tier === '1000') {
+          bonusWeight = 3;
         }
       }
 
@@ -309,7 +293,11 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
             speedRef.current = 0;
             isDeceleratingRef.current = false;
             animationRef.current = null;
-            setIsStopped(true);  // 完全停止フラグを設定
+
+            // 2秒遅延してから当選者を表示（演出）
+            setTimeout(() => {
+              setIsStopped(true);  // 完全停止フラグを設定
+            }, 2000);
 
             // 停止角度から当選者を計算
             if (onSpinComplete && segmentsRef.current.length > 0) {
