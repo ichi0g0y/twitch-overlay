@@ -37,11 +37,14 @@ export const PresentPage: React.FC = () => {
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
     console.log('Spin complete, winner:', winner)
-    setLotteryState((prev) => ({
-      ...prev,
-      winner,
-      is_running: false,
-    }))
+    // RouletteWheelの大型表示と同じタイミングで王冠マークを表示（2秒遅延）
+    setTimeout(() => {
+      setLotteryState((prev) => ({
+        ...prev,
+        winner,
+        is_running: false,
+      }))
+    }, 2000)
   }
 
   // 抽選開始
