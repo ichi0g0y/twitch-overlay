@@ -993,24 +993,7 @@ export const OverlaySettings: React.FC = () => {
         </CardHeader>
         {expandedCards.lottery && (
           <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="lottery-enabled" className="flex flex-col">
-              <span>ルーレット機能を有効化</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                オーバーレイにルーレット抽選機能を表示します
-              </span>
-            </Label>
-            <Switch
-              id="lottery-enabled"
-              checked={overlaySettings?.lottery_enabled ?? false}
-              onCheckedChange={(checked) =>
-                updateOverlaySettings({ lottery_enabled: checked })
-              }
-            />
-          </div>
-
-          {(overlaySettings?.lottery_enabled ?? false) && (
-            <>
+            {/* LOTTERY_ENABLEDは廃止され、常に有効として扱われます */}
               <div className="space-y-2">
                 <Label htmlFor="lottery-reward">抽選対象リワード</Label>
                 {customRewards.length > 0 ? (
@@ -1044,8 +1027,6 @@ export const OverlaySettings: React.FC = () => {
                   このリワードを使用したユーザーが抽選対象になります
                 </p>
               </div>
-            </>
-          )}
           </CardContent>
         )}
       </Card>

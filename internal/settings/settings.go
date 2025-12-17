@@ -242,6 +242,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "LOTTERY_REWARD_ID", Value: "", Type: SettingTypeNormal, Required: false,
 		Description: "Target reward ID for lottery feature",
 	},
+	"LOTTERY_LOCKED": {
+		Key: "LOTTERY_LOCKED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Whether the lottery is locked (reward disabled)",
+	},
 	"LOTTERY_DISPLAY_DURATION": {
 		Key: "LOTTERY_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
 		Description: "Lottery display duration in seconds",

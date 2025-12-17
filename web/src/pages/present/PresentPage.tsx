@@ -1,4 +1,4 @@
-import { Play, Square, Trash2 } from 'lucide-react'
+import { Play, Square, Trash2, Lock, LockOpen } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import Confetti from 'react-confetti'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -21,6 +21,7 @@ export interface PresentParticipant {
 interface LotteryState {
   enabled: boolean
   is_running: boolean
+  is_locked: boolean
   participants: PresentParticipant[]
   winner: PresentParticipant | null
 }
@@ -29,6 +30,7 @@ export const PresentPage: React.FC = () => {
   const [lotteryState, setLotteryState] = useState<LotteryState>({
     enabled: false,
     is_running: false,
+    is_locked: false,
     participants: [],
     winner: null,
   })
@@ -108,6 +110,46 @@ export const PresentPage: React.FC = () => {
     } catch (error) {
       console.error('Error clearing participants:', error)
       alert('参加者リストのクリアに失敗しました')
+    }
+  }
+
+  // ロック
+  const handleLock = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/present/lock'), {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        throw new Error('Failed to lock lottery')
+      }
+      // 成功したら即座にUIを更新（WebSocketメッセージを待たない）
+      setLotteryState((prev) => ({
+        ...prev,
+        is_locked: true,
+      }))
+    } catch (error) {
+      console.error('Error locking lottery:', error)
+      alert('ロックに失敗しました')
+    }
+  }
+
+  // ロック解除
+  const handleUnlock = async () => {
+    try {
+      const response = await fetch(buildApiUrl('/api/present/unlock'), {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        throw new Error('Failed to unlock lottery')
+      }
+      // 成功したら即座にUIを更新（WebSocketメッセージを待たない）
+      setLotteryState((prev) => ({
+        ...prev,
+        is_locked: false,
+      }))
+    } catch (error) {
+      console.error('Error unlocking lottery:', error)
+      alert('ロック解除に失敗しました')
     }
   }
 
@@ -242,6 +284,22 @@ export const PresentPage: React.FC = () => {
           }))
           setShowConfetti(false) // 紙吹雪を停止
           break
+
+        case 'lottery_locked':
+          setLotteryState((prev) => ({
+            ...prev,
+            is_locked: true,
+          }))
+          console.log('Lottery locked')
+          break
+
+        case 'lottery_unlocked':
+          setLotteryState((prev) => ({
+            ...prev,
+            is_locked: false,
+          }))
+          console.log('Lottery unlocked')
+          break
       }
     },
   })
@@ -262,6 +320,7 @@ export const PresentPage: React.FC = () => {
           setLotteryState({
             enabled: data.enabled,
             is_running: data.is_running,
+            is_locked: data.is_locked || false,
             participants: data.participants || [],
             winner: data.winner || null,
           })
@@ -313,6 +372,19 @@ export const PresentPage: React.FC = () => {
             {/* コントロールボタン */}
             <div className='bg-purple-500/20 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-400'>
               <div className='flex gap-3 justify-center items-center'>
+                {/* ロック/ロック解除ボタン */}
+                <button
+                  onClick={lotteryState.is_locked ? handleUnlock : handleLock}
+                  className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors ${
+                    lotteryState.is_locked
+                      ? 'bg-yellow-600 hover:bg-yellow-700'
+                      : 'bg-gray-600 hover:bg-gray-700'
+                  }`}
+                  title={lotteryState.is_locked ? 'ロック解除' : 'ロック'}
+                >
+                  {lotteryState.is_locked ? <Lock size={24} /> : <LockOpen size={24} />}
+                </button>
+
                 <button
                   onClick={handleStart}
                   disabled={
@@ -351,12 +423,6 @@ export const PresentPage: React.FC = () => {
                     }`}
                     title={isConnected ? '接続中' : '切断'}
                   />
-                  {debugMode && (
-                    <div className='w-3 h-3 rounded-full bg-yellow-400' title='デバッグモード' />
-                  )}
-                  {!lotteryState.enabled && (
-                    <div className='w-3 h-3 rounded-full bg-yellow-400' title='抽選機能無効' />
-                  )}
                 </div>
               </div>
             </div>

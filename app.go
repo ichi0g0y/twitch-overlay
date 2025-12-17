@@ -107,6 +107,12 @@ func (a *App) Startup(ctx context.Context) {
 		// エラーがあっても起動は続行
 	}
 
+	// プレゼントルーレットのロック状態を復元し、Twitchリワードの状態を同期
+	if err := webserver.InitializePresentLottery(); err != nil {
+		logger.Warn("Failed to initialize present lottery lock state", zap.Error(err))
+		// エラーがあっても起動は続行
+	}
+
 	// ロガーを再初期化（デバッグモード設定を反映）
 	if env.Value.DebugMode {
 		logger.Init(true)

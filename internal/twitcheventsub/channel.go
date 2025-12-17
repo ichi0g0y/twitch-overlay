@@ -244,10 +244,10 @@ func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRede
 	db, err := localdb.SetupDB(paths.GetDBPath())
 	if err == nil {
 		settingsManager := settings.NewSettingsManager(db)
-		lotteryEnabled, _ := settingsManager.GetRealValue("LOTTERY_ENABLED")
 		lotteryRewardID, _ := settingsManager.GetRealValue("LOTTERY_REWARD_ID")
 
-		if lotteryEnabled == "true" && lotteryRewardID != "" && message.Reward.ID == lotteryRewardID {
+		// LOTTERY_ENABLEDチェックは廃止。Twitch API側でリワードの有効/無効を制御
+		if lotteryRewardID != "" && message.Reward.ID == lotteryRewardID {
 			// アバターURLを取得
 			avatarURL := ""
 			if message.User.UserID != "" {

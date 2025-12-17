@@ -11,6 +11,7 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
+	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"github.com/nantokaworks/twitch-overlay/internal/types"
 	"go.uber.org/zap"
 )
@@ -224,6 +225,61 @@ func LoadLotteryParticipantsFromDB() error {
 	return nil
 }
 
+// InitializePresentLottery は起動時にロック状態を設定DBから復元し、Twitchリワードの状態を同期
+func InitializePresentLottery() error {
+	db := localdb.GetDB()
+	if db == nil {
+		return nil // DBが初期化されていない場合はスキップ
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// ロック状態を設定DBから復元
+	lockedStr, _ := settingsManager.GetRealValue("LOTTERY_LOCKED")
+	isLocked := (lockedStr == "true")
+	currentLottery.IsLocked = isLocked
+
+	logger.Info("Present lottery lock state restored from settings",
+		zap.Bool("is_locked", isLocked))
+
+	// Twitchリワードの状態を同期
+	rewardID, err := settingsManager.GetRealValue("LOTTERY_REWARD_ID")
+	if err != nil || rewardID == "" {
+		logger.Info("LOTTERY_REWARD_ID not configured, skipping reward state sync")
+		return nil
+	}
+
+	broadcasterID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+	if err != nil || broadcasterID == "" {
+		logger.Info("TWITCH_USER_ID not configured, skipping reward state sync")
+		return nil
+	}
+
+	// アクセストークンを取得
+	token, valid, err := twitchtoken.GetLatestToken()
+	if err != nil || !valid {
+		logger.Warn("Failed to get valid token for reward state sync on startup",
+			zap.Error(err))
+		return nil // トークンがない場合はスキップ（後で手動でロック/解除可能）
+	}
+
+	// ロック状態に応じてリワードを有効/無効化
+	enabled := !isLocked
+	if err := twitchapi.UpdateCustomRewardEnabled(broadcasterID, rewardID, enabled, token.AccessToken); err != nil {
+		logger.Error("Failed to sync reward state on startup",
+			zap.String("reward_id", rewardID),
+			zap.Bool("enabled", enabled),
+			zap.Error(err))
+		return nil // エラーでも起動は継続
+	}
+
+	logger.Info("Reward state synced on startup",
+		zap.String("reward_id", rewardID),
+		zap.Bool("enabled", enabled))
+
+	return nil
+}
+
 // RegisterPresentRoutes はプレゼントルーレット関連のルートを登録
 func RegisterPresentRoutes(mux *http.ServeMux) {
 	// API endpoints
@@ -233,6 +289,8 @@ func RegisterPresentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/present/start", corsMiddleware(handlePresentStart))
 	mux.HandleFunc("/api/present/stop", corsMiddleware(handlePresentStop))
 	mux.HandleFunc("/api/present/clear", corsMiddleware(handlePresentClear))
+	mux.HandleFunc("/api/present/lock", corsMiddleware(handlePresentLock))
+	mux.HandleFunc("/api/present/unlock", corsMiddleware(handlePresentUnlock))
 
 	// /presentパスはSPAのフォールバック処理に任せる
 }
@@ -320,9 +378,8 @@ func handlePresentParticipants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settingsManager := settings.NewSettingsManager(db)
-	enabled, err := settingsManager.GetRealValue("LOTTERY_ENABLED")
-	isEnabled := (err == nil && enabled == "true")
+	// LOTTERY_ENABLEDは廃止、常に有効として扱う
+	isEnabled := true
 
 	// DBから最新の参加者リストを読み込んでメモリも更新
 	participants, err := localdb.GetAllLotteryParticipants()
@@ -338,12 +395,14 @@ func handlePresentParticipants(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Returning participants to frontend",
 		zap.Int("count", len(currentLottery.Participants)),
-		zap.Bool("enabled", isEnabled))
+		zap.Bool("enabled", isEnabled),
+		zap.Bool("is_locked", currentLottery.IsLocked))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"enabled":      isEnabled,
 		"is_running":   currentLottery.IsRunning,
+		"is_locked":    currentLottery.IsLocked,
 		"participants": currentLottery.Participants,
 		"winner":       currentLottery.Winner,
 	})
@@ -609,5 +668,145 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Participant updated",
+	})
+}
+
+// handlePresentLock はルーレットをロック（Twitchリワードを無効化）
+func handlePresentLock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := localdb.GetDB()
+	if db == nil {
+		http.Error(w, "Database not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// リワードIDとブロードキャスターIDを取得
+	rewardID, err := settingsManager.GetRealValue("LOTTERY_REWARD_ID")
+	if err != nil || rewardID == "" {
+		http.Error(w, "LOTTERY_REWARD_ID not configured", http.StatusBadRequest)
+		return
+	}
+
+	broadcasterID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+	if err != nil || broadcasterID == "" {
+		http.Error(w, "TWITCH_USER_ID not configured", http.StatusBadRequest)
+		return
+	}
+
+	// アクセストークンを取得
+	token, valid, err := twitchtoken.GetLatestToken()
+	if err != nil || !valid {
+		logger.Error("Failed to get valid token for lock", zap.Error(err))
+		http.Error(w, "Failed to get valid token", http.StatusInternalServerError)
+		return
+	}
+
+	// Twitch APIでリワードを無効化
+	if err := twitchapi.UpdateCustomRewardEnabled(broadcasterID, rewardID, false, token.AccessToken); err != nil {
+		logger.Error("Failed to disable reward via Twitch API",
+			zap.String("reward_id", rewardID),
+			zap.Error(err))
+		http.Error(w, "Failed to disable reward", http.StatusInternalServerError)
+		return
+	}
+
+	// 設定DBに保存
+	if err := settingsManager.SetSetting("LOTTERY_LOCKED", "true"); err != nil {
+		logger.Error("Failed to save LOTTERY_LOCKED setting", zap.Error(err))
+		// Twitch側は無効化済みなので、エラーでも続行
+	}
+
+	// メモリ上の状態を更新
+	currentLottery.IsLocked = true
+
+	logger.Info("Lottery locked (reward disabled via Twitch API)",
+		zap.String("reward_id", rewardID))
+
+	// WebSocketで通知
+	BroadcastWSMessage("lottery_locked", map[string]interface{}{
+		"is_locked": true,
+		"locked_at": time.Now(),
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Lottery locked",
+	})
+}
+
+// handlePresentUnlock はルーレットをロック解除（Twitchリワードを有効化）
+func handlePresentUnlock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := localdb.GetDB()
+	if db == nil {
+		http.Error(w, "Database not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// リワードIDとブロードキャスターIDを取得
+	rewardID, err := settingsManager.GetRealValue("LOTTERY_REWARD_ID")
+	if err != nil || rewardID == "" {
+		http.Error(w, "LOTTERY_REWARD_ID not configured", http.StatusBadRequest)
+		return
+	}
+
+	broadcasterID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+	if err != nil || broadcasterID == "" {
+		http.Error(w, "TWITCH_USER_ID not configured", http.StatusBadRequest)
+		return
+	}
+
+	// アクセストークンを取得
+	token, valid, err := twitchtoken.GetLatestToken()
+	if err != nil || !valid {
+		logger.Error("Failed to get valid token for unlock", zap.Error(err))
+		http.Error(w, "Failed to get valid token", http.StatusInternalServerError)
+		return
+	}
+
+	// Twitch APIでリワードを有効化
+	if err := twitchapi.UpdateCustomRewardEnabled(broadcasterID, rewardID, true, token.AccessToken); err != nil {
+		logger.Error("Failed to enable reward via Twitch API",
+			zap.String("reward_id", rewardID),
+			zap.Error(err))
+		http.Error(w, "Failed to enable reward", http.StatusInternalServerError)
+		return
+	}
+
+	// 設定DBに保存
+	if err := settingsManager.SetSetting("LOTTERY_LOCKED", "false"); err != nil {
+		logger.Error("Failed to save LOTTERY_LOCKED setting", zap.Error(err))
+		// Twitch側は有効化済みなので、エラーでも続行
+	}
+
+	// メモリ上の状態を更新
+	currentLottery.IsLocked = false
+
+	logger.Info("Lottery unlocked (reward enabled via Twitch API)",
+		zap.String("reward_id", rewardID))
+
+	// WebSocketで通知
+	BroadcastWSMessage("lottery_unlocked", map[string]interface{}{
+		"is_locked": false,
+		"unlocked_at": time.Now(),
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Lottery unlocked",
 	})
 }

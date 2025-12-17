@@ -18,6 +18,7 @@ type PresentParticipant struct {
 // PresentLottery はプレゼントルーレットの状態
 type PresentLottery struct {
 	IsRunning    bool                  `json:"is_running"`
+	IsLocked     bool                  `json:"is_locked"`
 	Participants []PresentParticipant  `json:"participants"`
 	Winner       *PresentParticipant   `json:"winner,omitempty"`
 	StartedAt    *time.Time            `json:"started_at,omitempty"`
