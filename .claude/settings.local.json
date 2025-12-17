@@ -76,7 +76,8 @@
       "Bash(npm run type-check:*)",
       "Bash(npx tsc:*)",
       "Bash(bun add:*)",
-      "Bash(go list:*)"
+      "Bash(go list:*)",
+      "Bash(git reset:*)"
     ],
     "deny": []
   }

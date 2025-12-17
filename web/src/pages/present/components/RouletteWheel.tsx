@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { PresentParticipant } from '../PresentPage';
+import { playTickSound, playFanfareSound } from '../../../utils/sound';
 
 interface RouletteWheelProps {
   participants: PresentParticipant[];
@@ -35,6 +36,21 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
       setIsStopped(false);
     }
   }, [participants]);
+
+  // ルーレット回転中：当選者候補が変わるたびにティック音を再生
+  // 完全停止（isStopped）するまで音を鳴らし続ける（減速中も含む）
+  useEffect(() => {
+    if (currentArrowUser && !isStopped) {
+      playTickSound();
+    }
+  }, [currentArrowUser, isStopped]);
+
+  // 当選者発表：ファンファーレを再生
+  useEffect(() => {
+    if (isStopped && currentArrowUser) {
+      playFanfareSound();
+    }
+  }, [isStopped, currentArrowUser]);
 
   // ルーレットの描画
   useEffect(() => {
