@@ -1,6 +1,7 @@
 import { Play, Square, Trash2, Lock, LockOpen } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import Confetti from 'react-confetti'
+import { ConfirmDialog } from '../../components/ui/confirm-dialog'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { buildApiUrl } from '../../utils/api'
 import { ParticipantsList } from './components/ParticipantsList'
@@ -37,6 +38,7 @@ export const PresentPage: React.FC = () => {
   const [isSpinning, setIsSpinning] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [showClearDialog, setShowClearDialog] = useState(false)
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
@@ -83,10 +85,17 @@ export const PresentPage: React.FC = () => {
     }
   }
 
-  // 参加者クリア
-  const handleClear = async () => {
+  // 参加者クリア（ダイアログ表示）
+  const handleClear = () => {
+    setShowClearDialog(true)
+  }
+
+  // 参加者クリア（確認後の実際の処理）
+  const handleConfirmClear = async () => {
+    setShowClearDialog(false)
+
     console.log(
-      'handleClear called, participants count:',
+      'handleConfirmClear called, participants count:',
       lotteryState.participants.length
     )
     console.log('Sending clear request to:', buildApiUrl('/api/present/clear'))
@@ -353,6 +362,20 @@ export const PresentPage: React.FC = () => {
           numberOfPieces={500}
         />
       )}
+
+      {/* クリア確認ダイアログ */}
+      {showClearDialog && (
+        <ConfirmDialog
+          isOpen={showClearDialog}
+          onClose={() => setShowClearDialog(false)}
+          onConfirm={handleConfirmClear}
+          title="参加者リストのクリア"
+          message="参加者リストをクリアしますか？"
+          confirmText="クリア"
+          cancelText="キャンセル"
+        />
+      )}
+
       <div className='container mx-auto px-4 py-8'>
         {/* メインコンテンツ */}
         <div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
