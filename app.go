@@ -97,6 +97,12 @@ func (a *App) Startup(ctx context.Context) {
 		logger.Info("Database initialized", zap.String("path", paths.GetDBPath()))
 	}
 
+	// 3を超えているentry_countを3に修正（既存データの修正）
+	if err := localdb.FixEntryCountsOver3(); err != nil {
+		logger.Warn("Failed to fix entry counts over 3", zap.Error(err))
+		// エラーがあっても起動は続行
+	}
+
 	// 環境変数を読み込み（DBが初期化された後）
 	env.LoadEnv()
 

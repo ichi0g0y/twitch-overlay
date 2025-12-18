@@ -57,7 +57,7 @@ func AddLotteryParticipant(participant types.PresentParticipant) error {
 		redeemed_at = excluded.redeemed_at,
 		is_subscriber = excluded.is_subscriber,
 		subscriber_tier = excluded.subscriber_tier,
-		entry_count = lottery_participants.entry_count + excluded.entry_count,
+		entry_count = MIN(lottery_participants.entry_count + excluded.entry_count, 3),
 		assigned_color = excluded.assigned_color,
 		updated_at = excluded.updated_at
 	`
@@ -191,7 +191,7 @@ func UpdateLotteryParticipant(userID string, participant types.PresentParticipan
 	UPDATE lottery_participants
 	SET username = ?, display_name = ?, avatar_url = ?,
 	    is_subscriber = ?, subscriber_tier = ?,
-	    entry_count = ?, assigned_color = ?, updated_at = ?
+	    entry_count = MIN(?, 3), assigned_color = ?, updated_at = ?
 	WHERE user_id = ?
 	`
 
@@ -250,6 +250,36 @@ func ClearAllLotteryParticipants() error {
 	// WALチェックポイントを実行して変更をメインDBに反映
 	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		logger.Warn("Failed to checkpoint WAL after clearing participants", zap.Error(err))
+	}
+
+	return nil
+}
+
+// FixEntryCountsOver3 は3を超えているentry_countを3に修正
+func FixEntryCountsOver3() error {
+	db := GetDB()
+	if db == nil {
+		logger.Error("Database not initialized")
+		return sql.ErrConnDone
+	}
+
+	updateSQL := `UPDATE lottery_participants SET entry_count = 3 WHERE entry_count > 3`
+
+	result, err := db.Exec(updateSQL)
+	if err != nil {
+		logger.Error("Failed to fix entry counts over 3", zap.Error(err))
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		logger.Info("Fixed entry counts over 3",
+			zap.Int64("rows_affected", rowsAffected))
+	}
+
+	// WALチェックポイントを実行して変更をメインDBに反映
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warn("Failed to checkpoint WAL after fixing entry counts", zap.Error(err))
 	}
 
 	return nil
