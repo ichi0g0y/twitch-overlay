@@ -1,4 +1,4 @@
-import { Play, Square, Trash2, Lock, LockOpen } from 'lucide-react'
+import { Play, Square, Trash2, Lock, LockOpen, RefreshCw } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import Confetti from 'react-confetti'
 import { ConfirmDialog } from '../../components/ui/confirm-dialog'
@@ -39,6 +39,7 @@ export const PresentPage: React.FC = () => {
   const [debugMode, setDebugMode] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
   const [showClearDialog, setShowClearDialog] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
@@ -159,6 +160,36 @@ export const PresentPage: React.FC = () => {
     } catch (error) {
       console.error('Error unlocking lottery:', error)
       alert('ロック解除に失敗しました')
+    }
+  }
+
+  // サブスク状況を更新
+  const handleRefreshSubscribers = async () => {
+    setIsRefreshing(true)
+
+    try {
+      const response = await fetch(buildApiUrl('/api/present/refresh-subscribers'), {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Refresh failed:', response.status, errorText)
+        throw new Error('Failed to refresh subscriber status')
+      }
+
+      const result = await response.json()
+      console.log('Subscriber status refreshed:', result)
+
+      // 成功通知（オプション）
+      if (result.updated > 0) {
+        console.log(`${result.updated} 人の参加者のサブスク状況を更新しました`)
+      }
+    } catch (error) {
+      console.error('Error refreshing subscriber status:', error)
+      alert('サブスク状況の更新に失敗しました')
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -427,6 +458,16 @@ export const PresentPage: React.FC = () => {
                   title='停止'
                 >
                   <Square size={24} />
+                </button>
+
+                {/* サブスク状況更新ボタン */}
+                <button
+                  onClick={handleRefreshSubscribers}
+                  disabled={lotteryState.participants.length === 0 || isRefreshing}
+                  className='flex items-center justify-center w-12 h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition-colors disabled:cursor-not-allowed'
+                  title='全参加者のサブスク状況を更新'
+                >
+                  <RefreshCw size={24} className={isRefreshing ? 'animate-spin' : ''} />
                 </button>
 
                 <button

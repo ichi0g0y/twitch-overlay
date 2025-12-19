@@ -291,6 +291,7 @@ func RegisterPresentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/present/clear", corsMiddleware(handlePresentClear))
 	mux.HandleFunc("/api/present/lock", corsMiddleware(handlePresentLock))
 	mux.HandleFunc("/api/present/unlock", corsMiddleware(handlePresentUnlock))
+	mux.HandleFunc("/api/present/refresh-subscribers", corsMiddleware(handleRefreshSubscribers))
 
 	// /presentパスはSPAのフォールバック処理に任せる
 }
@@ -668,6 +669,161 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Participant updated",
+	})
+}
+
+// handleRefreshSubscribers は全参加者のサブスク状況をTwitch APIから更新
+func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := localdb.GetDB()
+	if db == nil {
+		http.Error(w, "Database not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+
+	// ブロードキャスターIDを取得
+	broadcasterID, err := settingsManager.GetRealValue("TWITCH_USER_ID")
+	if err != nil || broadcasterID == "" {
+		http.Error(w, "TWITCH_USER_ID not configured", http.StatusBadRequest)
+		return
+	}
+
+	// 1. 全参加者を取得
+	participants, err := localdb.GetAllLotteryParticipants()
+	if err != nil {
+		logger.Error("Failed to get lottery participants", zap.Error(err))
+		http.Error(w, "Failed to get participants", http.StatusInternalServerError)
+		return
+	}
+
+	if len(participants) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "No participants to refresh",
+			"updated": 0,
+		})
+		return
+	}
+
+	// 2. 各参加者のサブスク状況を Twitch API から取得して更新
+	updatedCount := 0
+	colorReassignNeeded := false
+
+	for i := range participants {
+		p := &participants[i]
+
+		// user_idが数値かチェック（Twitch APIは数値のみ受け付ける）
+		isNumeric := len(p.UserID) > 0
+		for _, c := range p.UserID {
+			if c < '0' || c > '9' {
+				isNumeric = false
+				break
+			}
+		}
+
+		// 非数値のuser_idはスキップ（テストデータなど）
+		if !isNumeric {
+			logger.Debug("Skipping non-numeric user_id",
+				zap.String("user_id", p.UserID))
+			continue
+		}
+
+		// Twitch API でサブスク状況を取得
+		subInfo, err := twitchapi.GetUserSubscription(broadcasterID, p.UserID)
+
+		// サブスク状況が変わったかチェック
+		oldIsSubscriber := p.IsSubscriber
+		oldTier := p.SubscriberTier
+
+		if err != nil {
+			// サブスクではない、またはエラー
+			p.IsSubscriber = false
+			p.SubscriberTier = ""
+			logger.Debug("User is not subscribed or error occurred",
+				zap.String("user_id", p.UserID),
+				zap.Error(err))
+		} else {
+			// サブスク情報取得成功
+			p.IsSubscriber = true
+			p.SubscriberTier = subInfo.Tier
+			logger.Debug("User subscription info retrieved",
+				zap.String("user_id", p.UserID),
+				zap.String("tier", subInfo.Tier))
+		}
+
+		// 変更があった場合のみ更新
+		if oldIsSubscriber != p.IsSubscriber || oldTier != p.SubscriberTier {
+			if err := localdb.UpdateLotteryParticipant(p.UserID, *p); err != nil {
+				logger.Error("Failed to update participant",
+					zap.String("user_id", p.UserID),
+					zap.Error(err))
+				continue
+			}
+			updatedCount++
+
+			// サブスク状況が変わった場合、色の再割り当てが必要
+			if oldIsSubscriber != p.IsSubscriber {
+				colorReassignNeeded = true
+			}
+
+			logger.Info("Participant subscription status updated",
+				zap.String("user_id", p.UserID),
+				zap.Bool("old_is_subscriber", oldIsSubscriber),
+				zap.Bool("new_is_subscriber", p.IsSubscriber))
+		}
+	}
+
+	// 3. 色の再割り当てが必要な場合は実行
+	if colorReassignNeeded {
+		logger.Info("Reassigning colors due to subscription changes")
+
+		// 最新の参加者リストを取得
+		participants, err = localdb.GetAllLotteryParticipants()
+		if err != nil {
+			logger.Error("Failed to reload participants for color reassignment", zap.Error(err))
+		} else {
+			// メモリ上のリストを更新
+			currentLottery.Participants = participants
+
+			// 全参加者の色を再割り当て
+			for i := range currentLottery.Participants {
+				newColor := assignColorToParticipant(currentLottery.Participants[i])
+				currentLottery.Participants[i].AssignedColor = newColor
+				if err := localdb.UpdateLotteryParticipant(
+					currentLottery.Participants[i].UserID,
+					currentLottery.Participants[i]); err != nil {
+					logger.Warn("Failed to update participant color in database",
+						zap.String("user_id", currentLottery.Participants[i].UserID),
+						zap.Error(err))
+				}
+			}
+		}
+	} else {
+		// 色の再割り当てが不要でも、メモリ上のリストは最新化
+		currentLottery.Participants = participants
+	}
+
+	// 4. WebSocket で更新を通知
+	BroadcastWSMessage("lottery_participants_updated", currentLottery.Participants)
+
+	// 5. レスポンス返却
+	logger.Info("Subscriber status refresh completed",
+		zap.Int("total", len(participants)),
+		zap.Int("updated", updatedCount),
+		zap.Bool("color_reassigned", colorReassignNeeded))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Subscriber status refreshed",
+		"updated": updatedCount,
 	})
 }
 
