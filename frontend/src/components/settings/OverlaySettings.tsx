@@ -168,10 +168,38 @@ export const OverlaySettings: React.FC = () => {
     }
   }, [authStatus?.authenticated]);
 
+  // グループに属するリワードIDを取得
+  const fetchGroupMembership = async (groupId: number) => {
+    try {
+      const url = await buildApiUrlAsync(`/api/twitch/reward-groups/${groupId}`);
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        // data.reward_ids: string[]
+        setGroupRewardIds(new Set(data.reward_ids || []));
+        console.log('Group membership loaded:', {
+          group_id: groupId,
+          reward_count: data.reward_ids?.length || 0
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch group membership:', error);
+      setGroupRewardIds(new Set());
+    }
+  };
+
   // リワードカウントを取得
   const fetchRewardCounts = async () => {
     try {
       const groupId = overlaySettings?.reward_count_group_id;
+
+      // グループが選択されている場合、メンバーシップを取得
+      if (groupId) {
+        await fetchGroupMembership(groupId);
+      } else {
+        setGroupRewardIds(new Set()); // グループ未選択時はクリア
+      }
+
       const endpoint = groupId
         ? `/api/twitch/reward-groups/${groupId}/counts`
         : '/api/twitch/reward-counts';
@@ -213,7 +241,22 @@ export const OverlaySettings: React.FC = () => {
         unsubUpdated = wsClient.on('reward_count_updated', (data: any) => {
           console.log('Received reward_count_updated from WebSocket:', data);
 
-          // リワードカウントを更新（グループフィルタは設定画面では適用しない）
+          // グループフィルタが有効な場合、メンバーシップをチェック
+          const groupId = overlaySettings?.reward_count_group_id;
+          if (groupId && groupRewardIds.size > 0) {
+            // グループが選択されている場合、そのグループに属するリワードのみ処理
+            if (!groupRewardIds.has(data.reward_id)) {
+              console.log('Skipping reward_count_updated: not in selected group', {
+                reward_id: data.reward_id,
+                reward_title: data.title,
+                group_id: groupId,
+                group_size: groupRewardIds.size
+              });
+              return; // グループ外のリワードは無視
+            }
+          }
+
+          // リワードカウントを更新
           setRewardCounts(prev => {
             const filtered = prev.filter(c => c.reward_id !== data.reward_id);
             if (data.count > 0) {
@@ -245,7 +288,11 @@ export const OverlaySettings: React.FC = () => {
       if (unsubUpdated) unsubUpdated();
       if (unsubReset) unsubReset();
     };
-  }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
+  }, [
+    overlaySettings?.reward_count_enabled,
+    overlaySettings?.reward_count_group_id,
+    groupRewardIds // グループメンバーシップが変更されたら再セットアップ
+  ]);
 
   // 音楽ステータスの更新を監視
   useEffect(() => {

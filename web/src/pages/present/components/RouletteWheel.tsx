@@ -29,6 +29,9 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     endAngle: number;
   }>>([]);
 
+  // 待機中状態: 参加者がいるが回転していない
+  const isIdle = participants.length > 0 && !isSpinning && !isStopped && !currentArrowUser;
+
   // 参加者がクリアされた時に当選者表示もリセット
   useEffect(() => {
     if (participants.length === 0) {
@@ -453,7 +456,18 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
         <>
           {/* 矢印が指しているユーザー表示 - 高さ固定 */}
           <div className="text-center mb-4 min-h-36 flex items-center justify-center">
-            {currentArrowUser && (
+            {isIdle ? (
+              // 待機中: 参加者数と感謝メッセージを表示
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-2xl font-bold text-yellow-300">
+                  現在の参加者は {participants.length} 名です
+                </div>
+                <div className="text-xl text-purple-200">
+                  ご参加ありがとうございます
+                </div>
+              </div>
+            ) : currentArrowUser ? (
+              // 回転中/減速中: 現在のユーザーを表示
               <div className="flex flex-col items-center gap-2">
                 <img
                   src={currentArrowUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentArrowUser.display_name || currentArrowUser.username)}&size=64&background=random`}
@@ -464,7 +478,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
                   {currentArrowUser.display_name || currentArrowUser.username}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="flex flex-col items-center justify-center">
