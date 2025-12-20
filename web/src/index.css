@@ -383,3 +383,23 @@ body {
 .reward-count-item-hidden {
   display: none;
 }
+
+/* 参加者ティッカーアニメーション */
+@keyframes participant-ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.participant-ticker-scroll {
+  animation: participant-ticker-scroll linear infinite;
+  will-change: transform;
+}
+
+/* ティッカーの一時停止（ホバー時） */
+.participant-ticker-scroll:hover {
+  animation-play-state: paused;
+}

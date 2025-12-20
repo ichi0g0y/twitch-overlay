@@ -288,11 +288,7 @@ export const OverlaySettings: React.FC = () => {
       if (unsubUpdated) unsubUpdated();
       if (unsubReset) unsubReset();
     };
-  }, [
-    overlaySettings?.reward_count_enabled,
-    overlaySettings?.reward_count_group_id,
-    groupRewardIds // グループメンバーシップが変更されたら再セットアップ
-  ]);
+  }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
 
   // 音楽ステータスの更新を監視
   useEffect(() => {
@@ -1073,6 +1069,23 @@ export const OverlaySettings: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   このリワードを使用したユーザーが抽選対象になります
                 </p>
+              </div>
+
+              {/* ティッカー表示設定 */}
+              <div className="flex items-center justify-between space-x-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="lottery-ticker">オーバーレイでティッカー表示</Label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    参加者を画面最下部に横スクロール表示します
+                  </p>
+                </div>
+                <Switch
+                  id="lottery-ticker"
+                  checked={overlaySettings?.lottery_ticker_enabled || false}
+                  onCheckedChange={(checked) =>
+                    updateOverlaySettings({ lottery_ticker_enabled: checked })
+                  }
+                />
               </div>
           </CardContent>
         )}

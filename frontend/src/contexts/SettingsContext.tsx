@@ -31,6 +31,7 @@ interface OverlaySettings {
   lottery_reward_id?: string | null;
   lottery_display_duration?: number;
   lottery_animation_speed?: number;
+  lottery_ticker_enabled?: boolean;
 
   // UI状態設定
   overlay_cards_expanded?: string;

@@ -24,6 +24,9 @@ interface OverlaySettings {
   reward_count_group_id?: number | null;
   reward_count_position?: 'left' | 'right';
 
+  // プレゼントルーレット設定
+  lottery_ticker_enabled?: boolean;
+
   // 開発者設定
   debug_enabled: boolean;
 

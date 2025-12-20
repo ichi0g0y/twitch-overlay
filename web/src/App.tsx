@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { PresentPage } from './pages/present/PresentPage';
+import { MainOverlay } from './pages/MainOverlay';
 
 function App() {
   return (
@@ -13,8 +14,7 @@ function App() {
           {/* オーバーレイページ（MusicPlayerProvider付き） */}
           <Route path="/" element={
             <MusicPlayerProvider>
-              <FaxReceiver />
-              <Toaster position="top-right" richColors expand={true} duration={3000} />
+              <MainOverlay />
             </MusicPlayerProvider>
           } />
 

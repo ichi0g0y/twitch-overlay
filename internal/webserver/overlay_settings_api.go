@@ -49,6 +49,7 @@ type OverlaySettings struct {
 	LotteryRewardID        *string `json:"lottery_reward_id"`        // 対象リワードID
 	LotteryDisplayDuration int     `json:"lottery_display_duration"` // 表示時間（秒）
 	LotteryAnimationSpeed  float64 `json:"lottery_animation_speed"`  // アニメーション速度
+	LotteryTickerEnabled   bool    `json:"lottery_ticker_enabled"`   // 参加者ティッカーの有効/無効
 
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
@@ -120,6 +121,7 @@ func loadOverlaySettingsFromDB() {
 		LotteryRewardID:        getStringSetting(allSettings, "LOTTERY_REWARD_ID"),
 		LotteryDisplayDuration: getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
 		LotteryAnimationSpeed:  getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
+		LotteryTickerEnabled:   getBoolSetting(allSettings, "LOTTERY_TICKER_ENABLED", false),
 		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
@@ -200,6 +202,7 @@ func useDefaultSettings() {
 		LocationEnabled:      true,
 		DateEnabled:          true,
 		TimeEnabled:          true,
+		LotteryTickerEnabled: false,
 		OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
 		ShowDebugInfo:        false,
 		DebugEnabled:         false,
@@ -280,6 +283,7 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"LOTTERY_ENABLED":          strconv.FormatBool(overlaySettings.LotteryEnabled),
 		"LOTTERY_DISPLAY_DURATION": strconv.Itoa(overlaySettings.LotteryDisplayDuration),
 		"LOTTERY_ANIMATION_SPEED":  fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
+		"LOTTERY_TICKER_ENABLED":   strconv.FormatBool(overlaySettings.LotteryTickerEnabled),
 		"OVERLAY_CARDS_EXPANDED":   overlaySettings.OverlayCardsExpanded,
 		"OVERLAY_DEBUG_ENABLED":    strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
@@ -403,9 +407,10 @@ func handleOverlaySettingsGet(w http.ResponseWriter, r *http.Request) {
 			FaxAnimationSpeed: 1.0,
 			ClockEnabled:      true,
 			ClockFormat:       "24h",
-			LocationEnabled:   true,
-			DateEnabled:       true,
-			TimeEnabled:       true,
+			LocationEnabled:      true,
+			DateEnabled:          true,
+			TimeEnabled:          true,
+			LotteryTickerEnabled: false,
 		}
 	}
 
