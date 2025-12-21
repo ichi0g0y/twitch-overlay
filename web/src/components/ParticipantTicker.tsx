@@ -53,7 +53,7 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
 
         {/* 口数表示 */}
         <span className="text-yellow-300 font-bold whitespace-nowrap flex-shrink-0">
-          🎫 {participant.entry_count || 1}口
+          {participant.entry_count || 1}口
         </span>
 
         {/* サブスクバッジ */}
