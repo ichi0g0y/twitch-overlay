@@ -62,7 +62,7 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
 
         {/* 表示名 */}
         <span className="font-semibold text-lg max-w-[200px] truncate">
-          {participant.display_name || participant.username}
+          {participant.display_name || participant.username}さん
         </span>
 
         {/* 口数表示 */}

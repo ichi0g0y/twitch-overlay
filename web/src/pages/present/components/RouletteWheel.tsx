@@ -203,7 +203,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
       ctx.textBaseline = 'middle';
 
       // 表示名
-      let displayName = participant.display_name || participant.username;
+      let displayName = (participant.display_name || participant.username) + 'さん';
       if (displayName.length > 10) {
         displayName = displayName.substring(0, 8) + '...';
       }
@@ -447,7 +447,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
                 className="w-48 h-48 rounded-full border-8 border-yellow-300 shadow-2xl"
               />
               <div className="text-6xl font-bold text-white leading-tight text-center">
-                {currentArrowUser.display_name || currentArrowUser.username}
+                {currentArrowUser.display_name || currentArrowUser.username}さん
               </div>
             </div>
           </div>
@@ -475,7 +475,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
                   className="w-16 h-16 rounded-full border-2 border-yellow-300"
                 />
                 <div className="text-3xl font-bold text-yellow-300">
-                  {currentArrowUser.display_name || currentArrowUser.username}
+                  {currentArrowUser.display_name || currentArrowUser.username}さん
                 </div>
               </div>
             ) : null}

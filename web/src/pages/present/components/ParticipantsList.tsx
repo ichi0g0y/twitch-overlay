@@ -199,7 +199,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                     // 編集モード
                     <div className="space-y-2">
                       <div className="font-semibold">
-                        {participant.display_name || participant.username}
+                        {participant.display_name || participant.username}さん
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <label className="flex items-center gap-1">
@@ -241,7 +241,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                     // 通常表示
                     <>
                       <div className="font-semibold truncate flex items-center gap-2">
-                        {participant.display_name || participant.username}
+                        {participant.display_name || participant.username}さん
                         {isWinner && <span className="text-yellow-400">👑</span>}
                       </div>
                       <div className="text-xs text-purple-300 flex items-center gap-2 mt-1">
