@@ -143,6 +143,33 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to insert default cache settings: %w", err)
 	}
 
+	// オーバーレイ設定のデフォルト値を設定
+	_, err = db.Exec(`INSERT OR IGNORE INTO settings (key, value, setting_type, is_required, description) VALUES
+		('MUSIC_ENABLED', 'true', 'overlay', false, '音楽プレイヤーの有効/無効'),
+		('MUSIC_VOLUME', '70', 'overlay', false, '音楽の音量'),
+		('MUSIC_AUTO_PLAY', 'false', 'overlay', false, '自動再生の有効/無効'),
+		('FAX_ENABLED', 'true', 'overlay', false, 'FAX表示の有効/無効'),
+		('FAX_ANIMATION_SPEED', '1.0', 'overlay', false, 'FAXアニメーション速度'),
+		('FAX_IMAGE_TYPE', 'color', 'overlay', false, 'FAX画像タイプ'),
+		('OVERLAY_CLOCK_ENABLED', 'true', 'overlay', false, '時計表示の有効/無効'),
+		('OVERLAY_CLOCK_FORMAT', '24h', 'overlay', false, '時計フォーマット'),
+		('CLOCK_SHOW_ICONS', 'true', 'overlay', false, '時計アイコン表示'),
+		('OVERLAY_LOCATION_ENABLED', 'true', 'overlay', false, '場所表示の有効/無効'),
+		('OVERLAY_DATE_ENABLED', 'true', 'overlay', false, '日付表示の有効/無効'),
+		('OVERLAY_TIME_ENABLED', 'true', 'overlay', false, '時刻表示の有効/無効'),
+		('REWARD_COUNT_ENABLED', 'false', 'overlay', false, 'リワードカウント表示の有効/無効'),
+		('REWARD_COUNT_POSITION', 'left', 'overlay', false, 'リワードカウント表示位置'),
+		('LOTTERY_ENABLED', 'false', 'overlay', false, 'プレゼントルーレットの有効/無効'),
+		('LOTTERY_DISPLAY_DURATION', '5', 'overlay', false, 'ルーレット表示時間（秒）'),
+		('LOTTERY_ANIMATION_SPEED', '1.0', 'overlay', false, 'ルーレットアニメーション速度'),
+		('LOTTERY_TICKER_ENABLED', 'false', 'overlay', false, 'プレゼント参加者ティッカー表示の有効/無効'),
+		('OVERLAY_CARDS_EXPANDED', '{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}', 'overlay', false, 'カードの折りたたみ状態'),
+		('OVERLAY_DEBUG_ENABLED', 'false', 'overlay', false, 'デバッグ情報表示の有効/無効')`)
+	if err != nil {
+		logger.Error("Failed to insert default overlay settings", zap.Error(err))
+		return nil, fmt.Errorf("failed to insert default overlay settings: %w", err)
+	}
+
 	// reward_groupsテーブルを追加（カスタムリワードのグループ管理）
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS reward_groups (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

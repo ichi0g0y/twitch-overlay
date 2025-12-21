@@ -38,27 +38,27 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
           <img
             src={participant.avatar_url}
             alt={participant.display_name}
-            className="w-8 h-8 rounded-full border-2 border-white"
+            className="w-8 h-8 rounded-full border-2 border-white flex-shrink-0"
           />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-purple-900 flex items-center justify-center text-sm">
+          <div className="w-8 h-8 rounded-full bg-purple-900 flex items-center justify-center text-sm flex-shrink-0">
             👤
           </div>
         )}
 
         {/* 表示名 */}
-        <span className="font-semibold text-lg">
+        <span className="font-semibold text-lg max-w-[200px] truncate">
           {participant.display_name || participant.username}
         </span>
 
         {/* 口数表示 */}
-        <span className="text-yellow-300 font-bold">
+        <span className="text-yellow-300 font-bold whitespace-nowrap flex-shrink-0">
           🎫 {participant.entry_count || 1}口
         </span>
 
         {/* サブスクバッジ */}
         {isSubscriber && (
-          <span className="text-xs px-2 py-0.5 rounded bg-white/20">
+          <span className="text-xs px-2 py-0.5 rounded bg-white/20 whitespace-nowrap flex-shrink-0">
             Tier {subscriberTier === '3000' ? '3' : subscriberTier === '2000' ? '2' : '1'}
           </span>
         )}

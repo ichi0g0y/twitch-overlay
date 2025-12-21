@@ -3,7 +3,7 @@ import FaxReceiver from '../components/FaxReceiver';
 import { Toaster } from 'sonner';
 import { ParticipantTicker } from '../components/ParticipantTicker';
 import { useSettings } from '../contexts/SettingsContext';
-import { getWebSocketClient } from '../utils/websocket';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { buildApiUrl } from '../utils/api';
 import type { PresentParticipant } from './present/PresentPage';
 
@@ -11,48 +11,75 @@ export const MainOverlay: React.FC = () => {
   const { settings } = useSettings();
   const [participants, setParticipants] = useState<PresentParticipant[]>([]);
 
-  // WebSocketでプレゼント参加者の更新を監視
-  useEffect(() => {
-    const wsClient = getWebSocketClient();
+  // WebSocket接続を確立してプレゼント参加者の更新を監視
+  const { isConnected } = useWebSocket({
+    onMessage: (message) => {
+      switch (message.type) {
+        case 'lottery_participant_added':
+          console.log('[MainOverlay] Participant added:', message.data);
+          setParticipants((prev) => [...prev, message.data]);
+          break;
 
-    // 初期データ取得
+        case 'lottery_participants_updated':
+          console.log('[MainOverlay] Participants updated:', message.data);
+          setParticipants(message.data || []);
+          break;
+
+        case 'lottery_participants_cleared':
+          console.log('[MainOverlay] Participants cleared');
+          setParticipants([]);
+          break;
+      }
+    },
+  });
+
+  // WebSocket接続状態を監視
+  useEffect(() => {
+    console.log('[MainOverlay] WebSocket connection status:', isConnected);
+  }, [isConnected]);
+
+  // 初期データ取得
+  useEffect(() => {
     const fetchParticipants = async () => {
       try {
         const url = buildApiUrl('/api/present/participants');
+        console.log('[MainOverlay] Fetching participants from:', url);
+
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
-          setParticipants(data || []);
+          console.log('[MainOverlay] API response:', data);
+          console.log('[MainOverlay] Participants count:', data.participants?.length || 0);
+
+          setParticipants(data.participants || []);
         }
       } catch (error) {
-        console.error('Failed to fetch participants:', error);
+        console.error('[MainOverlay] Failed to fetch participants:', error);
       }
     };
 
     fetchParticipants();
-
-    // WebSocketイベント購読
-    const unsubAdded = wsClient.on('lottery_participant_added', (data: PresentParticipant) => {
-      console.log('Participant added:', data);
-      setParticipants((prev) => [...prev, data]);
-    });
-
-    const unsubUpdated = wsClient.on('lottery_participants_updated', (data: PresentParticipant[]) => {
-      console.log('Participants updated:', data);
-      setParticipants(data || []);
-    });
-
-    const unsubCleared = wsClient.on('lottery_participants_cleared', () => {
-      console.log('Participants cleared');
-      setParticipants([]);
-    });
-
-    return () => {
-      unsubAdded();
-      unsubUpdated();
-      unsubCleared();
-    };
   }, []);
+
+  // 参加者stateの変更を監視
+  useEffect(() => {
+    console.log('[MainOverlay] Participants state updated:', {
+      count: participants.length,
+      isArray: Array.isArray(participants),
+      participants: participants.slice(0, 3),
+    });
+  }, [participants]);
+
+  // ティッカー表示条件を監視
+  useEffect(() => {
+    const enabled = settings?.lottery_ticker_enabled || false;
+    console.log('[MainOverlay] Ticker display conditions:', {
+      enabled,
+      participantsCount: participants.length,
+      isArray: Array.isArray(participants),
+      willDisplay: enabled && Array.isArray(participants) && participants.length > 0,
+    });
+  }, [settings?.lottery_ticker_enabled, participants]);
 
   return (
     <>
@@ -61,7 +88,7 @@ export const MainOverlay: React.FC = () => {
 
       {/* 参加者ティッカー */}
       <ParticipantTicker
-        participants={participants}
+        participants={Array.isArray(participants) ? participants : []}
         enabled={settings?.lottery_ticker_enabled || false}
       />
     </>
