@@ -28,10 +28,24 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
       }
     }
 
+    // 口数計算（購入口数 + サブスクボーナス）
+    const baseCount = participant.entry_count || 1;
+    let bonusWeight = 0;
+    if (isSubscriber) {
+      if (subscriberTier === '3000') {
+        bonusWeight = 12;
+      } else if (subscriberTier === '2000') {
+        bonusWeight = 6;
+      } else if (subscriberTier === '1000') {
+        bonusWeight = 3;
+      }
+    }
+    const totalCount = baseCount + bonusWeight;
+
     return (
       <div
         key={`${participant.user_id}-${index}`}
-        className={`inline-flex items-center gap-2 px-4 py-2 mx-2 rounded-full ${bgColorClass} text-white font-flat shadow-lg`}
+        className={`inline-flex items-center gap-2 pl-2 pr-4 py-2 mx-2 rounded-full ${bgColorClass} text-white font-flat shadow-lg`}
       >
         {/* アバター */}
         {participant.avatar_url ? (
@@ -53,13 +67,13 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
 
         {/* 口数表示 */}
         <span className="text-yellow-300 font-bold whitespace-nowrap flex-shrink-0">
-          {participant.entry_count || 1}口
+          {bonusWeight > 0 ? `${baseCount}+${bonusWeight}口` : `${baseCount}口`}
         </span>
 
         {/* サブスクバッジ */}
         {isSubscriber && (
           <span className="text-xs px-2 py-0.5 rounded bg-white/20 whitespace-nowrap flex-shrink-0">
-            Tier {subscriberTier === '3000' ? '3' : subscriberTier === '2000' ? '2' : '1'}
+            Sub {subscriberTier === '3000' ? '3' : subscriberTier === '2000' ? '2' : '1'}
           </span>
         )}
       </div>
