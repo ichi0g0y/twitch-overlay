@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { getWebSocketClient } from '../utils/websocket';
 import { buildApiUrl } from '../utils/api';
@@ -9,6 +9,7 @@ const RewardCountDisplay: React.FC = () => {
   const { settings } = useSettings();
   const [counts, setCounts] = useState<Map<string, RewardCountItemState>>(new Map());
   const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
+  const groupRewardIdsRef = useRef<Set<string>>(new Set());
 
   // 設定が有効かチェック
   const isEnabled = settings?.reward_count_enabled ?? false;
@@ -28,6 +29,7 @@ const RewardCountDisplay: React.FC = () => {
   useEffect(() => {
     if (!isEnabled || !groupId) {
       setGroupRewardIds(new Set());
+      groupRewardIdsRef.current = new Set();
       return;
     }
 
@@ -37,12 +39,15 @@ const RewardCountDisplay: React.FC = () => {
         const response = await fetch(url);
         if (response.ok) {
           const group = await response.json();
-          setGroupRewardIds(new Set(group.reward_ids || []));
+          const newRewardIds = new Set<string>(group.reward_ids || []);
+          setGroupRewardIds(newRewardIds);
+          groupRewardIdsRef.current = newRewardIds;
           console.log('🔄 Group reward IDs updated:', group.reward_ids?.length || 0);
         }
       } catch (error) {
         console.error('Failed to fetch group reward IDs:', error);
         setGroupRewardIds(new Set());
+        groupRewardIdsRef.current = new Set();
       }
     };
 
@@ -103,10 +108,18 @@ const RewardCountDisplay: React.FC = () => {
     const unsubCountUpdated = wsClient.on('reward_count_updated', (data: RewardCount) => {
       console.log('📊 Reward count updated:', data);
 
-      // グループフィルタが有効な場合、グループに属するリワードかチェック
-      if (groupId && groupRewardIds.size > 0 && !groupRewardIds.has(data.reward_id)) {
-        console.log('Ignoring reward: not in selected group', data.reward_id);
-        return;
+      // グループフィルタが有効な場合の処理（Refを使用）
+      if (groupId) {
+        // グループリワードIDをまだ取得していない場合は、イベントを無視（Refを使用）
+        if (groupRewardIdsRef.current.size === 0) {
+          console.log('⏳ Ignoring reward: group reward IDs not loaded yet', data.reward_id);
+          return;
+        }
+        // グループに属さないリワードは無視（Refを使用）
+        if (!groupRewardIdsRef.current.has(data.reward_id)) {
+          console.log('🚫 Ignoring reward: not in selected group', data.reward_id);
+          return;
+        }
       }
 
       setCounts((prev) => {
@@ -179,7 +192,7 @@ const RewardCountDisplay: React.FC = () => {
       unsubCountUpdated();
       unsubCountsReset();
     };
-  }, [isEnabled, groupId, groupRewardIds, playAlertSound]);
+  }, [isEnabled, groupId, playAlertSound]);
 
   // entering状態のアイテムをvisibleに変更するEffect
   useEffect(() => {
@@ -223,6 +236,11 @@ const RewardCountDisplay: React.FC = () => {
 
             // APIから取得したデータと現在の表示を比較して差分を補正
             data.forEach((item) => {
+              // グループフィルタが有効な場合、グループに属するリワードかチェック
+              if (groupId && groupRewardIds.size > 0 && !groupRewardIds.has(item.reward_id)) {
+                return; // このリワードはスキップ
+              }
+
               if (item.count > 0) {
                 const existing = newCounts.get(item.reward_id);
                 if (!existing) {

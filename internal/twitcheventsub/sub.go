@@ -114,6 +114,9 @@ func Stop() {
 		client.Close()
 		isRunning = false
 		isConnected = false
+
+		// リワードキューワーカーを停止
+		StopRewardQueueWorker()
 	}
 }
 
@@ -184,12 +187,6 @@ func SetupEventSub(token *twitchtoken.Token) {
 		}
 	})
 	client.OnNotification(func(message twitch.NotificationMessage) {
-
-		rawJson := string(*message.Payload.Event)
-		logger.Debug("Received EventSub notification",
-			zap.String("type", string(message.Payload.Subscription.Type)),
-			zap.String("data", rawJson))
-
 		switch message.Payload.Subscription.Type {
 
 		// use channel chat message

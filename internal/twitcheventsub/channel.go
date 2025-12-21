@@ -1,6 +1,7 @@
 package twitcheventsub
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,23 +28,45 @@ type RewardEvent struct {
 
 // リワードイベント処理用のキュー
 var (
-	rewardQueue     = make(chan RewardEvent, 1000)
-	rewardQueueOnce sync.Once
+	rewardQueue       = make(chan RewardEvent, 1000)
+	rewardQueueOnce   sync.Once
+	rewardQueueCancel context.CancelFunc // ワーカー停止用
+	rewardQueueCtx    context.Context    // ワーカー用context
 )
 
 // StartRewardQueueWorker はリワードイベント処理ワーカーを起動する
 // アプリケーション起動時に一度だけ呼ばれる
 func StartRewardQueueWorker() {
 	rewardQueueOnce.Do(func() {
-		go processRewardQueue()
-		logger.Info("Reward queue worker started")
+		rewardQueueCtx, rewardQueueCancel = context.WithCancel(context.Background())
+		go processRewardQueue(rewardQueueCtx)
 	})
 }
 
+// StopRewardQueueWorker はリワードイベント処理ワーカーを停止する
+// EventSub再接続時に呼ばれる
+func StopRewardQueueWorker() {
+	if rewardQueueCancel != nil {
+		logger.Info("Stopping reward queue worker")
+		rewardQueueCancel()
+		rewardQueueCancel = nil
+
+		// sync.Onceをリセット（次回Start時に再起動可能にする）
+		rewardQueueOnce = sync.Once{}
+	}
+}
+
 // processRewardQueue はキューからリワードイベントを取り出して順次処理する
-func processRewardQueue() {
-	for event := range rewardQueue {
-		processRewardEvent(event.Message)
+func processRewardQueue(ctx context.Context) {
+	logger.Info("Reward queue worker started")
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Reward queue worker stopped")
+			return
+		case event := <-rewardQueue:
+			processRewardEvent(event.Message)
+		}
 	}
 }
 
@@ -98,9 +121,6 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 	// チャンネルポイント報酬はHandleChannelPointsCustomRedemptionAddで処理するため、
 	// ここでは処理しない（重複防止）
 	if message.ChannelPointsCustomRewardId != "" {
-		logger.Debug("Skipping channel point redemption in chat message handler",
-			zap.String("user", message.Chatter.ChatterUserName),
-			zap.String("rewardId", message.ChannelPointsCustomRewardId))
 		// Note: 通知はHandleChannelPointsCustomRedemptionAddで行う
 		return
 	}
@@ -166,9 +186,7 @@ func HandleChannelPointsCustomRedemptionAdd(message twitch.EventChannelChannelPo
 	// キューに追加（ノンブロッキング）
 	select {
 	case rewardQueue <- RewardEvent{Message: message}:
-		logger.Debug("Reward event queued",
-			zap.String("reward_id", message.Reward.ID),
-			zap.String("user_name", message.User.UserName))
+		// Event queued successfully
 	default:
 		logger.Error("Reward queue full, dropping event",
 			zap.String("reward_id", message.Reward.ID),

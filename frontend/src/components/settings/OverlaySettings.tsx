@@ -42,6 +42,7 @@ export const OverlaySettings: React.FC = () => {
     user_names?: string[];
   }>>([]);
   const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
+  const groupRewardIdsRef = useRef<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
 
@@ -176,7 +177,9 @@ export const OverlaySettings: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         // data.reward_ids: string[]
-        setGroupRewardIds(new Set(data.reward_ids || []));
+        const newRewardIds = new Set<string>(data.reward_ids || []);
+        setGroupRewardIds(newRewardIds);
+        groupRewardIdsRef.current = newRewardIds;
         console.log('Group membership loaded:', {
           group_id: groupId,
           reward_count: data.reward_ids?.length || 0
@@ -185,6 +188,7 @@ export const OverlaySettings: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch group membership:', error);
       setGroupRewardIds(new Set());
+      groupRewardIdsRef.current = new Set();
     }
   };
 
@@ -215,17 +219,56 @@ export const OverlaySettings: React.FC = () => {
     }
   };
 
-  // リワードカウント表示が有効な場合、カウントを取得
+  // グループリワードIDを取得（無限ループ防止のため、groupRewardIdsを依存配列に含めない）
+  useEffect(() => {
+    if (!overlaySettings?.reward_count_enabled) {
+      setGroupRewardIds(new Set());
+      groupRewardIdsRef.current = new Set();
+      return;
+    }
+
+    const groupId = overlaySettings?.reward_count_group_id;
+    if (groupId) {
+      fetchGroupMembership(groupId);
+    } else {
+      setGroupRewardIds(new Set());
+      groupRewardIdsRef.current = new Set();
+    }
+  }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
+
+  // 初回カウントデータ取得用のuseEffect
   useEffect(() => {
     if (!overlaySettings?.reward_count_enabled) {
       setRewardCounts([]);
       return;
     }
 
-    // 初回取得
-    fetchRewardCounts();
+    const fetchInitialCounts = async () => {
+      try {
+        const groupId = overlaySettings?.reward_count_group_id;
+        const endpoint = groupId
+          ? `/api/twitch/reward-groups/${groupId}/counts`
+          : '/api/twitch/reward-counts';
+        const url = await buildApiUrlAsync(endpoint);
+        const response = await fetch(url);
+        if (response.ok) {
+          const counts = await response.json();
+          setRewardCounts((counts || []).filter((c: any) => c.count > 0));
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial reward counts:', error);
+      }
+    };
 
-    // WebSocketでのリアルタイム更新
+    fetchInitialCounts();
+  }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
+
+  // WebSocketリスナー登録用のuseEffect（reward_count_enabledとgroup_idのみに依存）
+  useEffect(() => {
+    if (!overlaySettings?.reward_count_enabled) {
+      return;
+    }
+
     let unsubUpdated: (() => void) | null = null;
     let unsubReset: (() => void) | null = null;
 
@@ -241,18 +284,27 @@ export const OverlaySettings: React.FC = () => {
         unsubUpdated = wsClient.on('reward_count_updated', (data: any) => {
           console.log('Received reward_count_updated from WebSocket:', data);
 
-          // グループフィルタが有効な場合、メンバーシップをチェック
+          // グループフィルタが有効な場合の処理（Refを使用）
           const groupId = overlaySettings?.reward_count_group_id;
-          if (groupId && groupRewardIds.size > 0) {
-            // グループが選択されている場合、そのグループに属するリワードのみ処理
-            if (!groupRewardIds.has(data.reward_id)) {
-              console.log('Skipping reward_count_updated: not in selected group', {
+          if (groupId) {
+            // グループリワードIDをまだ取得していない場合は、イベントを無視（Refを使用）
+            if (groupRewardIdsRef.current.size === 0) {
+              console.log('⏳ Ignoring reward: group reward IDs not loaded yet', {
+                reward_id: data.reward_id,
+                reward_title: data.title,
+                group_id: groupId
+              });
+              return;
+            }
+            // グループに属さないリワードは無視（Refを使用）
+            if (!groupRewardIdsRef.current.has(data.reward_id)) {
+              console.log('🚫 Skipping reward_count_updated: not in selected group', {
                 reward_id: data.reward_id,
                 reward_title: data.title,
                 group_id: groupId,
-                group_size: groupRewardIds.size
+                group_size: groupRewardIdsRef.current.size
               });
-              return; // グループ外のリワードは無視
+              return;
             }
           }
 
