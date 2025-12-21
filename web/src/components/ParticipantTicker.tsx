@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import type { PresentParticipant } from '../pages/present/PresentPage';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -13,23 +13,21 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
 }) => {
   // 設定を取得
   const { settings } = useSettings();
+
+  // アニメーション制御用のRef
+  const animationIdRef = useRef<number | null>(null);
+  const translateXRef = useRef<number>(0); // 現在のX位置（px）
+  const containerRef = useRef<HTMLDivElement>(null); // ティッカーコンテナ
+  const isPausedRef = useRef<boolean>(false); // ホバー一時停止用
+
+  // DOM幅を測定（1セット分の幅）
+  const [singleSetWidth, setSingleSetWidth] = useState<number>(0);
+
   // ティッカーアイテムのレンダリング
   const renderTickerItem = (participant: PresentParticipant, index: number) => {
     // サブスク状況に応じた装飾
     const isSubscriber = participant.is_subscriber;
     const subscriberTier = participant.subscriber_tier;
-
-    // サブスク状況による背景色
-    let bgColorClass = 'bg-purple-700/80';
-    if (isSubscriber) {
-      if (subscriberTier === '3000') {
-        bgColorClass = 'bg-gradient-to-r from-purple-600 to-pink-600';
-      } else if (subscriberTier === '2000') {
-        bgColorClass = 'bg-gradient-to-r from-pink-600 to-purple-600';
-      } else if (subscriberTier === '1000') {
-        bgColorClass = 'bg-gradient-to-r from-blue-600 to-purple-600';
-      }
-    }
 
     // 口数計算（購入口数 + サブスクボーナス）
     const baseCount = participant.entry_count || 1;
@@ -43,12 +41,11 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
         bonusWeight = 3;
       }
     }
-    const totalCount = baseCount + bonusWeight;
 
     return (
       <div
         key={`${participant.user_id}-${index}`}
-        className={`inline-flex items-center gap-2 pl-2 pr-4 py-2 rounded-full ${bgColorClass} text-white font-flat`}
+        className="inline-flex items-center gap-3 pl-3 pr-5 py-2.5 text-white font-flat"
       >
         {/* アバター */}
         {participant.avatar_url ? (
@@ -64,7 +61,7 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
         )}
 
         {/* 表示名 */}
-        <span className="font-semibold text-lg max-w-[200px] truncate">
+        <span className="font-semibold text-lg whitespace-nowrap flex-shrink-0">
           {participant.display_name || participant.username}さん
         </span>
 
@@ -96,14 +93,98 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
     );
   }, [participants]);
 
-  // アニメーション速度の計算（参加者数に応じて調整）
-  const animationDuration = useMemo(() => {
-    if (!Array.isArray(participants)) return 10;
-    // 基本速度: 参加者1人あたり3秒
-    const baseSpeed = participants.length * 3;
-    // 最小10秒、最大60秒
-    return Math.max(10, Math.min(60, baseSpeed));
+  // 速度計算（参加者数とDOM幅に応じて調整）- px/frameで計算
+  const baseSpeed = useMemo(() => {
+    if (!Array.isArray(participants) || participants.length === 0 || singleSetWidth === 0) return 1;
+
+    // 元のアニメーションと同じ速度を計算
+    // animationDuration = 参加者数 * 3秒（最小10秒、最大60秒）
+    const animationDuration = Math.max(10, Math.min(60, participants.length * 3));
+
+    // singleSetWidth ピクセルを animationDuration 秒で移動
+    // 1秒あたり: singleSetWidth / animationDuration ピクセル
+    // 60fpsの場合、1フレームあたり: (singleSetWidth / animationDuration) / 60 ピクセル
+    const speedPerFrame = singleSetWidth / animationDuration / 60;
+
+    // 速度を少し下げる（約1.5倍遅く）
+    const adjustedSpeed = speedPerFrame * 0.67;
+
+    console.log('⚡ 速度計算:', { participants: participants.length, singleSetWidth, animationDuration, speedPerFrame, adjustedSpeed });
+
+    return Math.max(0.3, adjustedSpeed); // 最低速度を保証
+  }, [participants.length, singleSetWidth]);
+
+  // DOM幅を測定（1セット分の幅）
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // DOMの更新を待ってから測定（レイアウト確定後）
+    const measureWidth = () => {
+      if (containerRef.current) {
+        // 実際のDOM幅を測定（2セット分なので半分が1セット）
+        const width = containerRef.current.scrollWidth / 2;
+        console.log('🔍 DOM幅測定:', { scrollWidth: containerRef.current.scrollWidth, singleSetWidth: width });
+        setSingleSetWidth(width);
+      }
+    };
+
+    // requestAnimationFrameで次のフレームで測定（DOMレンダリング後）
+    requestAnimationFrame(measureWidth);
   }, [participants]);
+
+  // requestAnimationFrameによるアニメーションループ
+  useEffect(() => {
+    console.log('🎬 アニメーションループ開始チェック:', { enabled, participantsLength: participants.length, singleSetWidth, baseSpeed });
+    // アニメーションが有効でない、参加者がいない、または幅が測定されていない場合は何もしない
+    if (!enabled || participants.length === 0 || singleSetWidth === 0) {
+      console.log('⚠️ アニメーション開始条件を満たしていません');
+      // 既存のアニメーションをキャンセル
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+        animationIdRef.current = null;
+      }
+      return;
+    }
+
+    console.log('✅ アニメーション開始!');
+    const animate = () => {
+      if (!isPausedRef.current) {
+        // 左に移動（負の方向）
+        translateXRef.current -= baseSpeed;
+
+        // 1セット分移動したらリセット（シームレスループ）
+        if (Math.abs(translateXRef.current) >= singleSetWidth) {
+          translateXRef.current = 0;
+        }
+
+        // DOMに反映
+        if (containerRef.current) {
+          containerRef.current.style.transform = `translateX(${translateXRef.current}px)`;
+        }
+      }
+
+      animationIdRef.current = requestAnimationFrame(animate);
+    };
+
+    animationIdRef.current = requestAnimationFrame(animate);
+
+    // クリーンアップ
+    return () => {
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+        animationIdRef.current = null;
+      }
+    };
+  }, [enabled, participants.length, singleSetWidth, baseSpeed]);
+
+  // ホバー一時停止用イベントハンドラ
+  const handleMouseEnter = () => {
+    isPausedRef.current = true;
+  };
+
+  const handleMouseLeave = () => {
+    isPausedRef.current = false;
+  };
 
   if (!enabled || !Array.isArray(participants) || participants.length === 0) {
     return null;
@@ -127,12 +208,15 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
       )}
 
       {/* 既存のティッカー */}
-      <div className="bg-gradient-to-t from-purple-900/90 to-transparent backdrop-blur-sm py-3 overflow-hidden">
+      <div className="py-3 overflow-hidden">
         <div
-          className="flex gap-2 whitespace-nowrap participant-ticker-scroll"
+          ref={containerRef}
+          className="flex gap-2 whitespace-nowrap"
           style={{
-            animationDuration: `${animationDuration}s`,
+            willChange: 'transform',
           }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {tickerContent}
         </div>
