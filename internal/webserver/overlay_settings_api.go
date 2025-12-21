@@ -51,6 +51,12 @@ type OverlaySettings struct {
 	LotteryAnimationSpeed  float64 `json:"lottery_animation_speed"`  // アニメーション速度
 	LotteryTickerEnabled   bool    `json:"lottery_ticker_enabled"`   // 参加者ティッカーの有効/無効
 
+	// ティッカーお知らせ設定
+	TickerNoticeEnabled  bool   `json:"ticker_notice_enabled"`  // お知らせ文の有効/無効
+	TickerNoticeText     string `json:"ticker_notice_text"`     // お知らせ文の内容
+	TickerNoticeFontSize int    `json:"ticker_notice_font_size"` // フォントサイズ（px）
+	TickerNoticeAlign    string `json:"ticker_notice_align"`    // 配置（left/center/right）
+
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
 
@@ -122,6 +128,10 @@ func loadOverlaySettingsFromDB() {
 		LotteryDisplayDuration: getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
 		LotteryAnimationSpeed:  getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
 		LotteryTickerEnabled:   getBoolSetting(allSettings, "LOTTERY_TICKER_ENABLED", false),
+		TickerNoticeEnabled:    getBoolSetting(allSettings, "TICKER_NOTICE_ENABLED", false),
+		TickerNoticeText:       getStringSettingWithDefault(allSettings, "TICKER_NOTICE_TEXT", ""),
+		TickerNoticeFontSize:   getIntSetting(allSettings, "TICKER_NOTICE_FONT_SIZE", 16),
+		TickerNoticeAlign:      getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
 		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
@@ -284,6 +294,10 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"LOTTERY_DISPLAY_DURATION": strconv.Itoa(overlaySettings.LotteryDisplayDuration),
 		"LOTTERY_ANIMATION_SPEED":  fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
 		"LOTTERY_TICKER_ENABLED":   strconv.FormatBool(overlaySettings.LotteryTickerEnabled),
+		"TICKER_NOTICE_ENABLED":    strconv.FormatBool(overlaySettings.TickerNoticeEnabled),
+		"TICKER_NOTICE_TEXT":       overlaySettings.TickerNoticeText,
+		"TICKER_NOTICE_FONT_SIZE":  strconv.Itoa(overlaySettings.TickerNoticeFontSize),
+		"TICKER_NOTICE_ALIGN":      overlaySettings.TickerNoticeAlign,
 		"OVERLAY_CARDS_EXPANDED":   overlaySettings.OverlayCardsExpanded,
 		"OVERLAY_DEBUG_ENABLED":    strconv.FormatBool(overlaySettings.DebugEnabled),
 	}

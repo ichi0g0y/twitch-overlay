@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { PresentParticipant } from '../pages/present/PresentPage';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface ParticipantTickerProps {
   participants: PresentParticipant[];
@@ -10,6 +11,8 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
   participants,
   enabled,
 }) => {
+  // 設定を取得
+  const { settings } = useSettings();
   // ティッカーアイテムのレンダリング
   const renderTickerItem = (participant: PresentParticipant, index: number) => {
     // サブスク状況に応じた装飾
@@ -45,7 +48,7 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
     return (
       <div
         key={`${participant.user_id}-${index}`}
-        className={`inline-flex items-center gap-2 pl-2 pr-4 py-2 rounded-full ${bgColorClass} text-white font-flat shadow-lg`}
+        className={`inline-flex items-center gap-2 pl-2 pr-4 py-2 rounded-full ${bgColorClass} text-white font-flat`}
       >
         {/* アバター */}
         {participant.avatar_url ? (
@@ -107,14 +110,32 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[10] overflow-hidden bg-gradient-to-t from-purple-900/90 to-transparent backdrop-blur-sm py-3">
-      <div
-        className="flex gap-2 whitespace-nowrap participant-ticker-scroll"
-        style={{
-          animationDuration: `${animationDuration}s`,
-        }}
-      >
-        {tickerContent}
+    <div className="fixed bottom-0 left-0 right-0 z-[10]">
+      {/* お知らせ文 */}
+      {settings?.ticker_notice_enabled && settings?.ticker_notice_text && (
+        <div
+          className="px-4"
+          style={{
+            fontSize: `${settings.ticker_notice_font_size}px`,
+            textAlign: settings.ticker_notice_align as 'left' | 'center' | 'right',
+          }}
+        >
+          <div className="text-white font-flat font-semibold">
+            {settings.ticker_notice_text}
+          </div>
+        </div>
+      )}
+
+      {/* 既存のティッカー */}
+      <div className="bg-gradient-to-t from-purple-900/90 to-transparent backdrop-blur-sm py-3 overflow-hidden">
+        <div
+          className="flex gap-2 whitespace-nowrap participant-ticker-scroll"
+          style={{
+            animationDuration: `${animationDuration}s`,
+          }}
+        >
+          {tickerContent}
+        </div>
       </div>
     </div>
   );

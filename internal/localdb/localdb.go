@@ -163,6 +163,10 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		('LOTTERY_DISPLAY_DURATION', '5', 'overlay', false, 'ルーレット表示時間（秒）'),
 		('LOTTERY_ANIMATION_SPEED', '1.0', 'overlay', false, 'ルーレットアニメーション速度'),
 		('LOTTERY_TICKER_ENABLED', 'false', 'overlay', false, 'プレゼント参加者ティッカー表示の有効/無効'),
+		('TICKER_NOTICE_ENABLED', 'false', 'overlay', false, 'ティッカーお知らせ文の有効/無効'),
+		('TICKER_NOTICE_TEXT', '', 'overlay', false, 'ティッカーお知らせ文の内容'),
+		('TICKER_NOTICE_FONT_SIZE', '16', 'overlay', false, 'ティッカーお知らせ文のフォントサイズ（px）'),
+		('TICKER_NOTICE_ALIGN', 'center', 'overlay', false, 'ティッカーお知らせ文の配置'),
 		('OVERLAY_CARDS_EXPANDED', '{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}', 'overlay', false, 'カードの折りたたみ状態'),
 		('OVERLAY_DEBUG_ENABLED', 'false', 'overlay', false, 'デバッグ情報表示の有効/無効')`)
 	if err != nil {

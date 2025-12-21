@@ -27,6 +27,12 @@ interface OverlaySettings {
   // プレゼントルーレット設定
   lottery_ticker_enabled?: boolean;
 
+  // ティッカーお知らせ設定
+  ticker_notice_enabled?: boolean;
+  ticker_notice_text?: string;
+  ticker_notice_font_size?: number;
+  ticker_notice_align?: 'left' | 'center' | 'right';
+
   // 開発者設定
   debug_enabled: boolean;
 

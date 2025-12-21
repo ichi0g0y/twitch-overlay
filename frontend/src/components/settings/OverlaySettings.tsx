@@ -5,6 +5,7 @@ import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrlAsync } from '../../utils/api';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
@@ -1138,6 +1139,85 @@ export const OverlaySettings: React.FC = () => {
                     updateOverlaySettings({ lottery_ticker_enabled: checked })
                   }
                 />
+              </div>
+
+              {/* お知らせ文設定 */}
+              <div className="space-y-4 pt-4 border-t">
+                <h4 className="text-sm font-medium">お知らせ文設定</h4>
+
+                {/* 有効/無効スイッチ */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="ticker-notice">お知らせ文を表示</Label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      ティッカーの上にお知らせ文を表示します
+                    </p>
+                  </div>
+                  <Switch
+                    id="ticker-notice"
+                    checked={overlaySettings?.ticker_notice_enabled || false}
+                    onCheckedChange={(checked) =>
+                      updateOverlaySettings({ ticker_notice_enabled: checked })
+                    }
+                  />
+                </div>
+
+                {/* お知らせ文の内容 */}
+                {overlaySettings?.ticker_notice_enabled && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="ticker-notice-text">お知らせ文</Label>
+                      <Input
+                        id="ticker-notice-text"
+                        value={overlaySettings?.ticker_notice_text || ''}
+                        onChange={(e) =>
+                          updateOverlaySettings({ ticker_notice_text: e.target.value })
+                        }
+                        placeholder="お知らせ文を入力..."
+                      />
+                    </div>
+
+                    {/* フォントサイズ */}
+                    <div className="space-y-2">
+                      <Label htmlFor="ticker-notice-font-size">
+                        フォントサイズ (10-48px)
+                      </Label>
+                      <Input
+                        id="ticker-notice-font-size"
+                        type="number"
+                        min={10}
+                        max={48}
+                        value={overlaySettings?.ticker_notice_font_size || 16}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          if (value >= 10 && value <= 48) {
+                            updateOverlaySettings({ ticker_notice_font_size: value });
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* 配置 */}
+                    <div className="space-y-2">
+                      <Label htmlFor="ticker-notice-align">配置</Label>
+                      <Select
+                        value={overlaySettings?.ticker_notice_align || 'center'}
+                        onValueChange={(value) =>
+                          updateOverlaySettings({ ticker_notice_align: value })
+                        }
+                      >
+                        <SelectTrigger id="ticker-notice-align">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="left">左寄せ</SelectItem>
+                          <SelectItem value="center">中央</SelectItem>
+                          <SelectItem value="right">右寄せ</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
               </div>
           </CardContent>
         )}

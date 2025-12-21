@@ -33,6 +33,12 @@ interface OverlaySettings {
   lottery_animation_speed?: number;
   lottery_ticker_enabled?: boolean;
 
+  // ティッカーお知らせ設定
+  ticker_notice_enabled?: boolean;
+  ticker_notice_text?: string;
+  ticker_notice_font_size?: number;
+  ticker_notice_align?: 'left' | 'center' | 'right';
+
   // UI状態設定
   overlay_cards_expanded?: string;
 
