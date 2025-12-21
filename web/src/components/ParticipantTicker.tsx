@@ -106,8 +106,8 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
     // 60fpsの場合、1フレームあたり: (singleSetWidth / animationDuration) / 60 ピクセル
     const speedPerFrame = singleSetWidth / animationDuration / 60;
 
-    // 速度を少し下げる（約1.5倍遅く）
-    const adjustedSpeed = speedPerFrame * 0.67;
+    // 速度を下げる（約2倍遅く）
+    const adjustedSpeed = speedPerFrame * 0.45;
 
     console.log('⚡ 速度計算:', { participants: participants.length, singleSetWidth, animationDuration, speedPerFrame, adjustedSpeed });
 
@@ -208,7 +208,7 @@ export const ParticipantTicker: React.FC<ParticipantTickerProps> = ({
       )}
 
       {/* 既存のティッカー */}
-      <div className="py-3 overflow-hidden">
+      <div className="pt-[3px] overflow-hidden">
         <div
           ref={containerRef}
           className="flex gap-2 whitespace-nowrap"
