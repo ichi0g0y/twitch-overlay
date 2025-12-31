@@ -75,7 +75,7 @@ var DefaultSettings = map[string]Setting{
 		Description: "Enable dithering",
 	},
 	"BLACK_POINT": {
-		Key: "BLACK_POINT", Value: "0.392", Type: SettingTypeNormal, Required: false,
+		Key: "BLACK_POINT", Value: "0.5", Type: SettingTypeNormal, Required: false,
 		Description: "Black point threshold (0.0-1.0)",
 	},
 	"AUTO_ROTATE": {

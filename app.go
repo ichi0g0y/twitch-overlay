@@ -617,18 +617,12 @@ func (a *App) initializePrinter() error {
 		return fmt.Errorf("failed to setup printer: %w", err)
 	}
 
-	// BLACK_POINTを0〜255の範囲から0.0〜1.0の範囲に正規化
-	blackPoint := env.Value.BlackPoint
-	if blackPoint > 1.0 {
-		blackPoint = blackPoint / 255.0
-	}
-
 	// プリンターオプションを設定
 	output.SetupPrinterOptions(
 		env.Value.BestQuality,
 		env.Value.Dither,
 		env.Value.AutoRotate,
-		blackPoint,
+		env.Value.BlackPoint,
 	)
 
 	// プリンターに接続
@@ -898,18 +892,12 @@ func (a *App) ReconnectPrinter() error {
 	
 	address := *env.Value.PrinterAddress
 
-	// BLACK_POINTを0〜255の範囲から0.0〜1.0の範囲に正規化
-	blackPoint := env.Value.BlackPoint
-	if blackPoint > 1.0 {
-		blackPoint = blackPoint / 255.0
-	}
-
 	// プリンターオプションを設定
 	output.SetupPrinterOptions(
 		env.Value.BestQuality,
 		env.Value.Dither,
 		env.Value.AutoRotate,
-		blackPoint,
+		env.Value.BlackPoint,
 	)
 	
 	// 強制的に再接続
@@ -1187,7 +1175,7 @@ func (a *App) GetSettings() map[string]interface{} {
 	settings["best_quality"] = env.Value.BestQuality
 	settings["dither"] = env.Value.Dither
 	settings["auto_rotate"] = env.Value.AutoRotate
-	settings["black_point"] = env.Value.BlackPointInt
+	settings["black_point"] = env.Value.BlackPoint
 	settings["rotate_print"] = env.Value.RotatePrint
 	
 	if env.Value.TwitchUserID != nil {

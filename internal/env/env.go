@@ -38,7 +38,6 @@ type EnvValue struct {
 	DebugMode             bool
 	TwitchClientID        *string
 	TwitchClientSecret    *string
-	BlackPointInt         int
 }
 
 var Value EnvValue
@@ -213,7 +212,6 @@ func loadFromDatabase() error {
 		DebugMode:          debugOutput == "true",
 		TwitchClientID:     stringPtr(clientID),
 		TwitchClientSecret: stringPtr(clientSecret),
-		BlackPointInt:      parseIntStr(blackPoint),
 	}
 
 	// 機能ステータスをチェックして警告を表示
@@ -295,7 +293,6 @@ func loadFromEnvironment() {
 		DebugMode:          *debugOutput == "true",
 		TwitchClientID:     clientID,
 		TwitchClientSecret: clientSecret,
-		BlackPointInt:      int(parseFloat(blackPoint)),
 	}
 
 	fmt.Printf("Loaded environment variables (fallback mode)\n")

@@ -229,7 +229,7 @@ export const PrinterSettings: React.FC = () => {
 
           <div className="space-y-2">
             <Label htmlFor="black-point">
-              黒レベル調整: {getSettingValue('BLACK_POINT') || '0.392'}
+              黒レベル調整: {getSettingValue('BLACK_POINT') || '0.5'}
             </Label>
             <div className="flex items-center space-x-4">
               <input
@@ -238,12 +238,12 @@ export const PrinterSettings: React.FC = () => {
                 min="0"
                 max="1"
                 step="0.01"
-                value={getSettingValue('BLACK_POINT') || '0.392'}
+                value={getSettingValue('BLACK_POINT') || '0.5'}
                 onChange={(e) => handleSettingChange('BLACK_POINT', e.target.value)}
                 className="flex-1"
               />
               <span className="text-sm text-gray-500 dark:text-gray-400 w-12">
-                {getSettingValue('BLACK_POINT') || '0.392'}
+                {getSettingValue('BLACK_POINT') || '0.5'}
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
