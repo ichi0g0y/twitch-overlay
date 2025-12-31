@@ -68,11 +68,11 @@ type OverlaySettings struct {
 	DebugEnabled bool `json:"debug_enabled"`
 
 	// プリンター設定（nilの場合はDBから読み込み、保存時はスキップ）
-	BestQuality *bool `json:"best_quality"`
-	Dither      *bool `json:"dither"`
-	BlackPoint  *int  `json:"black_point"`
-	AutoRotate  *bool `json:"auto_rotate"`
-	RotatePrint *bool `json:"rotate_print"`
+	BestQuality *bool    `json:"best_quality"`
+	Dither      *bool    `json:"dither"`
+	BlackPoint  *float32 `json:"black_point"`
+	AutoRotate  *bool    `json:"auto_rotate"`
+	RotatePrint *bool    `json:"rotate_print"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -147,7 +147,7 @@ func loadOverlaySettingsFromDB() {
 		// プリンター設定
 		BestQuality: getBoolPointerSetting(allSettings, "BEST_QUALITY"),
 		Dither:      getBoolPointerSetting(allSettings, "DITHER"),
-		BlackPoint:  getIntPointerSetting(allSettings, "BLACK_POINT"),
+		BlackPoint:  getFloatPointerSetting(allSettings, "BLACK_POINT"),
 		AutoRotate:  getBoolPointerSetting(allSettings, "AUTO_ROTATE"),
 		RotatePrint: getBoolPointerSetting(allSettings, "ROTATE_PRINT"),
 
@@ -208,6 +208,16 @@ func getIntPointerSetting(settings map[string]settings.Setting, key string) *int
 	if setting, ok := settings[key]; ok && setting.Value != "" {
 		if val, err := strconv.Atoi(setting.Value); err == nil {
 			return &val
+		}
+	}
+	return nil
+}
+
+func getFloatPointerSetting(settings map[string]settings.Setting, key string) *float32 {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		if val, err := strconv.ParseFloat(setting.Value, 32); err == nil {
+			f32 := float32(val)
+			return &f32
 		}
 	}
 	return nil
@@ -355,7 +365,7 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		settingsToSave["DITHER"] = strconv.FormatBool(*overlaySettings.Dither)
 	}
 	if overlaySettings.BlackPoint != nil {
-		settingsToSave["BLACK_POINT"] = strconv.Itoa(*overlaySettings.BlackPoint)
+		settingsToSave["BLACK_POINT"] = strconv.FormatFloat(float64(*overlaySettings.BlackPoint), 'f', -1, 32)
 	}
 	if overlaySettings.AutoRotate != nil {
 		settingsToSave["AUTO_ROTATE"] = strconv.FormatBool(*overlaySettings.AutoRotate)

@@ -229,24 +229,25 @@ export const PrinterSettings: React.FC = () => {
 
           <div className="space-y-2">
             <Label htmlFor="black-point">
-              黒レベル調整: {getSettingValue('BLACK_POINT') || '100'}
+              黒レベル調整: {getSettingValue('BLACK_POINT') || '0.392'}
             </Label>
             <div className="flex items-center space-x-4">
               <input
                 type="range"
                 id="black-point"
                 min="0"
-                max="255"
-                value={getSettingValue('BLACK_POINT') || '100'}
+                max="1"
+                step="0.01"
+                value={getSettingValue('BLACK_POINT') || '0.392'}
                 onChange={(e) => handleSettingChange('BLACK_POINT', e.target.value)}
                 className="flex-1"
               />
               <span className="text-sm text-gray-500 dark:text-gray-400 w-12">
-                {getSettingValue('BLACK_POINT') || '100'}
+                {getSettingValue('BLACK_POINT') || '0.392'}
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              低い値ほど薄い色も黒として印刷されます
+              低い値ほど薄い色も黒として印刷されます (0.0-1.0)
             </p>
           </div>
         </CardContent>

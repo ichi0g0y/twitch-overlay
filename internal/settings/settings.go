@@ -75,8 +75,8 @@ var DefaultSettings = map[string]Setting{
 		Description: "Enable dithering",
 	},
 	"BLACK_POINT": {
-		Key: "BLACK_POINT", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Black point threshold (0-255)",
+		Key: "BLACK_POINT", Value: "0.392", Type: SettingTypeNormal, Required: false,
+		Description: "Black point threshold (0.0-1.0)",
 	},
 	"AUTO_ROTATE": {
 		Key: "AUTO_ROTATE", Value: "false", Type: SettingTypeNormal, Required: false,
@@ -504,8 +504,8 @@ func hasSecretInEnv() bool {
 func ValidateSetting(key, value string) error {
 	switch key {
 	case "BLACK_POINT":
-		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 255 {
-			return fmt.Errorf("must be integer between 0 and 255")
+		if val, err := strconv.ParseFloat(value, 32); err != nil || val < 0.0 || val > 1.0 {
+			return fmt.Errorf("must be float between 0.0 and 1.0")
 		}
 	case "KEEP_ALIVE_INTERVAL":
 		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 3600 {
