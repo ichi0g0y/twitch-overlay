@@ -9,6 +9,9 @@ tasks:
         echo "📦 OBS用オーバーレイをビルド中..."
         (cd web && bun run build)
 
+        echo "📦 リモートコントロールUIをビルド中..."
+        (cd web/remote && bun install && bun run build)
+
         echo "📦 フロントエンドをビルド中..."
         (cd frontend && bun run build)
 
@@ -37,6 +40,8 @@ tasks:
     cmds:
       - echo "OBS用オーバーレイをビルド中..."
       - cd web && bun run build
+      - echo "リモートコントロールUIをビルド中..."
+      - cd web/remote && bun install && bun run build
       - echo "フロントエンド依存関係をインストール中..."
       - cd frontend && bun install
       - echo "バインディング生成中..."
