@@ -373,82 +373,29 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode the partial settings update as a map
-	var partialSettings map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&partialSettings); err != nil {
+	var settings OverlaySettings
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Merge with existing settings
+	// Update in-memory settings
 	overlaySettingsMutex.Lock()
-
-	// Initialize if nil
-	if currentOverlaySettings == nil {
-		currentOverlaySettings = &OverlaySettings{
-			MusicEnabled:      true,
-			MusicVolume:       70,
-			FaxEnabled:        true,
-			FaxAnimationSpeed: 1.0,
-			ClockEnabled:      true,
-			ClockFormat:       "24h",
-			LocationEnabled:      true,
-			DateEnabled:          true,
-			TimeEnabled:          true,
-			LotteryTickerEnabled: false,
-		}
-	}
-
-	// Convert current settings to map for merging
-	currentJSON, err := json.Marshal(currentOverlaySettings)
-	if err != nil {
-		overlaySettingsMutex.Unlock()
-		http.Error(w, "Failed to process current settings", http.StatusInternalServerError)
-		return
-	}
-
-	var currentMap map[string]interface{}
-	if err := json.Unmarshal(currentJSON, &currentMap); err != nil {
-		overlaySettingsMutex.Unlock()
-		http.Error(w, "Failed to process current settings", http.StatusInternalServerError)
-		return
-	}
-
-	// Merge partial settings into current settings
-	for key, value := range partialSettings {
-		currentMap[key] = value
-	}
-
-	// Convert back to OverlaySettings struct
-	mergedJSON, err := json.Marshal(currentMap)
-	if err != nil {
-		overlaySettingsMutex.Unlock()
-		http.Error(w, "Failed to merge settings", http.StatusInternalServerError)
-		return
-	}
-
-	var mergedSettings OverlaySettings
-	if err := json.Unmarshal(mergedJSON, &mergedSettings); err != nil {
-		overlaySettingsMutex.Unlock()
-		http.Error(w, "Failed to merge settings", http.StatusInternalServerError)
-		return
-	}
-
-	currentOverlaySettings = &mergedSettings
+	currentOverlaySettings = &settings
 	overlaySettingsMutex.Unlock()
 
 	// Save to file
-	if err := saveOverlaySettings(&mergedSettings); err != nil {
+	if err := saveOverlaySettings(&settings); err != nil {
 		http.Error(w, "Failed to save settings", http.StatusInternalServerError)
 		return
 	}
 
 	// Broadcast to SSE clients
-	broadcastSettingsUpdate(&mergedSettings)
+	broadcastSettingsUpdate(&settings)
 
 	logger.Debug("Updated overlay settings",
-		zap.Bool("music_enabled", mergedSettings.MusicEnabled),
-		zap.Bool("fax_enabled", mergedSettings.FaxEnabled))
+		zap.Bool("music_enabled", settings.MusicEnabled),
+		zap.Bool("fax_enabled", settings.FaxEnabled))
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

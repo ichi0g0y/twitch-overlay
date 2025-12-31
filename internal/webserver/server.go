@@ -209,11 +209,7 @@ func StartWebServer(port int) error {
 
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
-
-	// リモートコントロールUI
-	mux.HandleFunc("/remote", handleRemoteControl)
-	mux.HandleFunc("/remote/", handleRemoteControl)
-
+	
 
 	// Fax image endpoint
 	mux.HandleFunc("/fax/", handleFaxImage)
