@@ -1281,6 +1281,18 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		return fmt.Errorf("failed to reload settings: %w", err)
 	}
 
+	// プリンターオプションを再設定（optsグローバル変数を更新）
+	if err := output.SetupPrinterOptions(
+		env.Value.BestQuality,
+		env.Value.Dither,
+		env.Value.AutoRotate,
+		env.Value.BlackPoint,
+	); err != nil {
+		logger.Warn("Failed to update printer options after settings change", zap.Error(err))
+	} else {
+		logger.Debug("Updated printer options after settings change")
+	}
+
 	// Wailsフロントエンドへの通知
 	if a.mainWindow != nil {
 		a.mainWindow.EmitEvent("settings_updated", newSettings)
