@@ -132,13 +132,22 @@ export const RemoteProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const endpoint = groupId
         ? `/api/twitch/reward-groups/${groupId}/counts`
         : '/api/twitch/reward-counts';
-      const response = await fetch(buildApiUrl(endpoint));
+      const url = buildApiUrl(endpoint);
+
+      console.log('[RemoteContext] Fetching reward counts:', { endpoint, url, groupId });
+
+      const response = await fetch(url);
+      console.log('[RemoteContext] Response status:', response.status);
+
       if (response.ok) {
         const counts = await response.json();
+        console.log('[RemoteContext] Counts data:', counts);
         setRewardCounts((counts || []).filter((c: RewardCount) => c.count > 0));
+      } else {
+        console.error('[RemoteContext] Failed to fetch:', response.status);
       }
     } catch (error) {
-      console.error('Failed to fetch reward counts:', error);
+      console.error('[RemoteContext] Exception:', error);
     }
   };
 
@@ -164,18 +173,19 @@ export const RemoteProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // settingsを購読
     const unsubSettings = wsClient.on('settings', (data) => {
+      console.log('[RemoteContext] Received settings update:', data);
       setOverlaySettings(prev => ({ ...prev, ...data }));
     });
 
     // reward_count_updatedを購読
     const unsubRewardCountUpdated = wsClient.on('reward_count_updated', (data) => {
-      console.log('Received reward_count_updated from WebSocket:', data);
+      console.log('[RemoteContext] Received reward_count_updated:', data);
       fetchRewardCounts();
     });
 
     // reward_counts_resetを購読
     const unsubRewardCountsReset = wsClient.on('reward_counts_reset', () => {
-      console.log('Received reward_counts_reset from WebSocket');
+      console.log('[RemoteContext] Received reward_counts_reset');
       fetchRewardCounts();
     });
 

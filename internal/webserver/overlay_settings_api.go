@@ -11,6 +11,7 @@ import (
 
 	"fmt"
 
+	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
@@ -65,6 +66,13 @@ type OverlaySettings struct {
 
 	// 開発者設定
 	DebugEnabled bool `json:"debug_enabled"`
+
+	// プリンター設定（nilの場合はDBから読み込み、保存時はスキップ）
+	BestQuality *bool `json:"best_quality"`
+	Dither      *bool `json:"dither"`
+	BlackPoint  *int  `json:"black_point"`
+	AutoRotate  *bool `json:"auto_rotate"`
+	RotatePrint *bool `json:"rotate_print"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -135,6 +143,14 @@ func loadOverlaySettingsFromDB() {
 		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
+
+		// プリンター設定
+		BestQuality: getBoolPointerSetting(allSettings, "BEST_QUALITY"),
+		Dither:      getBoolPointerSetting(allSettings, "DITHER"),
+		BlackPoint:  getIntPointerSetting(allSettings, "BLACK_POINT"),
+		AutoRotate:  getBoolPointerSetting(allSettings, "AUTO_ROTATE"),
+		RotatePrint: getBoolPointerSetting(allSettings, "ROTATE_PRINT"),
+
 		UpdatedAt:              time.Now(),
 	}
 
@@ -193,6 +209,14 @@ func getIntPointerSetting(settings map[string]settings.Setting, key string) *int
 		if val, err := strconv.Atoi(setting.Value); err == nil {
 			return &val
 		}
+	}
+	return nil
+}
+
+func getBoolPointerSetting(settings map[string]settings.Setting, key string) *bool {
+	if setting, ok := settings[key]; ok && setting.Value != "" {
+		value := setting.Value == "true"
+		return &value
 	}
 	return nil
 }
@@ -323,6 +347,23 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		settingsToSave["MUSIC_PLAYLIST"] = ""
 	}
 
+	// プリンター設定を追加（nilの場合はスキップしてDB既存値を保持）
+	if overlaySettings.BestQuality != nil {
+		settingsToSave["BEST_QUALITY"] = strconv.FormatBool(*overlaySettings.BestQuality)
+	}
+	if overlaySettings.Dither != nil {
+		settingsToSave["DITHER"] = strconv.FormatBool(*overlaySettings.Dither)
+	}
+	if overlaySettings.BlackPoint != nil {
+		settingsToSave["BLACK_POINT"] = strconv.Itoa(*overlaySettings.BlackPoint)
+	}
+	if overlaySettings.AutoRotate != nil {
+		settingsToSave["AUTO_ROTATE"] = strconv.FormatBool(*overlaySettings.AutoRotate)
+	}
+	if overlaySettings.RotatePrint != nil {
+		settingsToSave["ROTATE_PRINT"] = strconv.FormatBool(*overlaySettings.RotatePrint)
+	}
+
 	for key, value := range settingsToSave {
 		if err := settingsManager.SetSetting(key, value); err != nil {
 			logger.Error("Failed to save overlay setting",
@@ -441,6 +482,13 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	if err := saveOverlaySettings(&mergedSettings); err != nil {
 		http.Error(w, "Failed to save settings", http.StatusInternalServerError)
 		return
+	}
+
+	// 設定変更後は必ず環境変数を再読み込み（プリンター設定の反映のため）
+	if err := env.ReloadFromDatabase(); err != nil {
+		logger.Warn("Failed to reload env values from database", zap.Error(err))
+	} else {
+		logger.Debug("Reloaded env values after overlay settings update")
 	}
 
 	// Broadcast to SSE clients
