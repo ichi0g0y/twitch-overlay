@@ -333,12 +333,12 @@ func parseFloat(s *string) float32 {
 
 func parseFloatStr(s string) float32 {
 	if s == "" {
-		return 100.0 // デフォルト値
+		return 0.5 // デフォルト値（0.0-1.0範囲）
 	}
 	f, err := strconv.ParseFloat(s, 32)
 	if err != nil {
 		logger.Warn("Float conversion error, using default", zap.String("value", s), zap.Error(err))
-		return 100.0
+		return 0.5
 	}
 	return float32(f)
 }
