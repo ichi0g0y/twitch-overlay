@@ -522,6 +522,14 @@ func keepAliveRoutine() {
 			consecutiveFailures = 0
 			logger.Info("Keep-alive: initial connection established")
 
+			// 環境変数を再読み込み（最新のプリンター設定を取得）
+			if err := env.ReloadFromDatabase(); err != nil {
+				logger.Warn("Keep-alive: failed to reload settings from database after initial connection", zap.Error(err))
+				// リロード失敗時も処理続行（古い値で動作）
+			} else {
+				logger.Debug("Keep-alive: settings reloaded from database after initial connection")
+			}
+
 			// プリンターオプションを設定
 			if err := SetupPrinterOptions(
 				env.Value.BestQuality,
@@ -531,7 +539,8 @@ func keepAliveRoutine() {
 			); err != nil {
 				logger.Warn("Keep-alive: failed to setup printer options after initial connection", zap.Error(err))
 			} else {
-				logger.Debug("Keep-alive: printer options set after initial connection")
+				logger.Debug("Keep-alive: printer options set after initial connection",
+					zap.Float32("black_point", env.Value.BlackPoint))
 			}
 
 			// Mark initial print as done
@@ -592,6 +601,14 @@ func keepAliveRoutine() {
 			consecutiveFailures = 0
 			logger.Info("Keep-alive: new connection established")
 
+			// 環境変数を再読み込み（最新のプリンター設定を取得）
+			if err := env.ReloadFromDatabase(); err != nil {
+				logger.Warn("Keep-alive: failed to reload settings from database after reconnection", zap.Error(err))
+				// リロード失敗時も処理続行（古い値で動作）
+			} else {
+				logger.Debug("Keep-alive: settings reloaded from database after reconnection")
+			}
+
 			// プリンターオプションを再設定（設定変更が反映されるように）
 			if err := SetupPrinterOptions(
 				env.Value.BestQuality,
@@ -601,7 +618,8 @@ func keepAliveRoutine() {
 			); err != nil {
 				logger.Warn("Keep-alive: failed to setup printer options after reconnection", zap.Error(err))
 			} else {
-				logger.Debug("Keep-alive: printer options set after reconnection")
+				logger.Debug("Keep-alive: printer options set after reconnection",
+					zap.Float32("black_point", env.Value.BlackPoint))
 			}
 
 			// Mark initial print as done if not already done
