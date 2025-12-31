@@ -13,6 +13,7 @@ import (
 
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/nantokaworks/twitch-overlay/internal/output"
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
@@ -499,6 +500,18 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		logger.Warn("Failed to reload env values from database", zap.Error(err))
 	} else {
 		logger.Debug("Reloaded env values after overlay settings update")
+
+		// プリンターオプションを再設定（optsグローバル変数を更新）
+		if err := output.SetupPrinterOptions(
+			env.Value.BestQuality,
+			env.Value.Dither,
+			env.Value.AutoRotate,
+			env.Value.BlackPoint,
+		); err != nil {
+			logger.Warn("Failed to update printer options", zap.Error(err))
+		} else {
+			logger.Debug("Updated printer options with new settings")
+		}
 	}
 
 	// Broadcast to SSE clients

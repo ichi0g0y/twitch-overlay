@@ -521,7 +521,19 @@ func keepAliveRoutine() {
 			// 接続成功 - カウンターをリセット
 			consecutiveFailures = 0
 			logger.Info("Keep-alive: initial connection established")
-			
+
+			// プリンターオプションを設定
+			if err := SetupPrinterOptions(
+				env.Value.BestQuality,
+				env.Value.Dither,
+				env.Value.AutoRotate,
+				env.Value.BlackPoint,
+			); err != nil {
+				logger.Warn("Keep-alive: failed to setup printer options after initial connection", zap.Error(err))
+			} else {
+				logger.Debug("Keep-alive: printer options set after initial connection")
+			}
+
 			// Mark initial print as done
 			logger.Info("Keep-alive: marking initial print as done")
 			MarkInitialPrintDone()
@@ -579,6 +591,18 @@ func keepAliveRoutine() {
 			// 接続成功 - カウンターをリセット
 			consecutiveFailures = 0
 			logger.Info("Keep-alive: new connection established")
+
+			// プリンターオプションを再設定（設定変更が反映されるように）
+			if err := SetupPrinterOptions(
+				env.Value.BestQuality,
+				env.Value.Dither,
+				env.Value.AutoRotate,
+				env.Value.BlackPoint,
+			); err != nil {
+				logger.Warn("Keep-alive: failed to setup printer options after reconnection", zap.Error(err))
+			} else {
+				logger.Debug("Keep-alive: printer options set after reconnection")
+			}
 
 			// Mark initial print as done if not already done
 			if !HasInitialPrintBeenDone() {
