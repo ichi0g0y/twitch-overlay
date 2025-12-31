@@ -29,7 +29,7 @@ class RemoteWebSocketClient {
     this.ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        const { type, data } = message;
+        const { type, ...data } = message;
 
         if (this.messageHandlers.has(type)) {
           this.messageHandlers.get(type)!.forEach(handler => handler(data));

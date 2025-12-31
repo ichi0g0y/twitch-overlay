@@ -42,13 +42,6 @@ interface OverlaySettings {
   // UI状態設定
   overlay_cards_expanded?: string;
 
-  // プリンター設定
-  best_quality?: boolean;
-  dither?: boolean;
-  black_point?: number;
-  auto_rotate?: boolean;
-  rotate_print?: boolean;
-
   // 開発者設定
   debug_enabled: boolean;
 
@@ -77,52 +70,49 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 設定を取得する関数（再利用可能）
-  const fetchSettings = useCallback(async () => {
-    try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/overlay`);
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
-        console.log('📥 Settings fetched:', data);
-      } else {
-        setError('Failed to load settings');
-      }
-    } catch (err) {
-      setError('Failed to connect to server');
-      console.error('Failed to fetch settings:', err);
-    }
-  }, []);
-
   // 初期設定を取得
   useEffect(() => {
-    const loadSettings = async () => {
-      await fetchSettings();
-      setIsLoading(false);
+    const fetchSettings = async () => {
+      try {
+        const port = await App.GetServerPort();
+        const response = await fetch(`http://localhost:${port}/api/settings/overlay`);
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
+        } else {
+          setError('Failed to load settings');
+        }
+      } catch (err) {
+        setError('Failed to connect to server');
+        console.error('Failed to fetch settings:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    loadSettings();
-  }, [fetchSettings]);
+
+    fetchSettings();
+  }, []);
 
   // WebSocketで設定変更を監視
   useEffect(() => {
     const wsClient = getWebSocketClient();
-
+    
     // 設定更新メッセージを処理
     const unsubSettings = wsClient.on('settings', (data) => {
-      console.log('📡 Settings updated via WebSocket, refetching all settings...');
-      // 部分更新ではなく、全設定を再取得して最新の状態を反映
-      fetchSettings();
+      console.log('📡 Settings updated via WebSocket:', data);
+      setSettings(data);
     });
 
     return () => {
       unsubSettings();
     };
-  }, [fetchSettings]);
+  }, []);
 
   // 設定を更新
   const updateSettings = useCallback(async (updates: Partial<OverlaySettings>) => {
     if (!settings) return;
+
+    const newSettings = { ...settings, ...updates };
 
     try {
       const port = await App.GetServerPort();
@@ -131,13 +121,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updates),
+        body: JSON.stringify(newSettings),
       });
 
       if (response.ok) {
         // サーバーが成功したら、SSE経由で更新が来るのを待つ
         // 楽観的更新を行う
-        setSettings(prev => ({ ...prev, ...updates }));
+        setSettings(newSettings);
       } else {
         throw new Error('Failed to update settings');
       }

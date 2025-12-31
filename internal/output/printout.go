@@ -146,18 +146,11 @@ func init() {
 			// Ensure printer options are initialized
 			if opts == nil {
 				logger.Info("Initializing printer options")
-
-				// BLACK_POINTを0〜255の範囲から0.0〜1.0の範囲に正規化
-				blackPoint := env.Value.BlackPoint
-				if blackPoint > 1.0 {
-					blackPoint = blackPoint / 255.0
-				}
-
 				SetupPrinterOptions(
 					env.Value.BestQuality,
 					env.Value.Dither,
 					env.Value.AutoRotate,
-					blackPoint,
+					env.Value.BlackPoint,
 				)
 			}
 			
