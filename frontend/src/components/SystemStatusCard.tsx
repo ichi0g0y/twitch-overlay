@@ -206,7 +206,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
                   >
                     {reconnectingPrinter ? '再接続中...' : '再接続'}
                   </Button>
-                  {printerStatusInfo?.connected && (
+                  {featureStatus.printer_configured && (
                     <Button
                       size="sm"
                       variant="ghost"

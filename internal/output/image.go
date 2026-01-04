@@ -36,7 +36,6 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-
 // saveImageToCache saves image data to cache file and database
 func saveImageToCache(url string, imageData []byte) error {
 	cacheDir, err := cache.GetCacheDir()
@@ -253,7 +252,6 @@ func generateQR(text string, size int) (image.Image, error) {
 func downloadEmote(url string) (image.Image, error) {
 	logger.Info("downloadEmote: starting", zap.String("url", url))
 
-
 	// URLハッシュでキャッシュをチェック
 	h := sha1.Sum([]byte(url))
 	urlHash := hex.EncodeToString(h[:])
@@ -379,7 +377,6 @@ func downloadEmote(url string) (image.Image, error) {
 
 	return img, decodeErr
 }
-
 
 // resizeToHeight は元画像を指定高さにアスペクト比維持でリサイズ
 func resizeToHeight(src image.Image, targetH int) image.Image {
@@ -594,14 +591,10 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL
 				// 正方形(cellW×cellW)にリサイズ
 				dst := image.NewRGBA(image.Rect(0, 0, cellW, cellW))
 				xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), eimg, eimg.Bounds(), xdraw.Over, nil)
-				// カラーモードでない場合はグレースケール変換
-				var drawImg image.Image = dst
-				if !useColor {
-					drawImg = convertToGrayscaleWithDithering(dst)
-				}
+				// Draw emote (always color initially)
 				draw.Draw(img,
 					image.Rect(j*cellW, y-ascent, j*cellW+cellW, y-ascent+cellW),
-					drawImg, image.Point{}, draw.Over)
+					dst, image.Point{}, draw.Over)
 			}
 			continue
 		}
@@ -650,14 +643,10 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL
 						img0 = rotate90(img0)
 					}
 					img0 = resizeToWidth(img0)
-					// カラーモードでない場合はグレースケール変換
-					var drawImg image.Image = img0
-					if !useColor {
-						drawImg = convertToGrayscaleWithDithering(img0)
-					}
+					// Draw image (always color initially)
 					draw.Draw(img,
-						image.Rect(0, y-ascent, PaperWidth, y-ascent+drawImg.Bounds().Dy()),
-						drawImg, image.Point{}, draw.Over)
+						image.Rect(0, y-ascent, PaperWidth, y-ascent+img0.Bounds().Dy()),
+						img0, image.Point{}, draw.Over)
 					// QR
 					qrImg, err := generateQR(frag.Text, PaperWidth)
 					if err == nil {
@@ -718,14 +707,10 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL
 					twitchapi.AddEmoteDynamically(frag.Text, frag.Emote.Id, url)
 				}
 				eimg = resizeToHeight(eimg, lineHeight)
-				// カラーモードでない場合はグレースケール変換
-				var drawEmote image.Image = eimg
-				if !useColor {
-					drawEmote = convertToGrayscaleWithDithering(eimg)
-				}
+				// Draw emote (always color initially)
 				draw.Draw(img,
-					image.Rect(x, y-ascent, x+drawEmote.Bounds().Dx(), y-ascent+drawEmote.Bounds().Dy()),
-					drawEmote, image.Point{}, draw.Over)
+					image.Rect(x, y-ascent, x+eimg.Bounds().Dx(), y-ascent+eimg.Bounds().Dy()),
+					eimg, image.Point{}, draw.Over)
 				x += eimg.Bounds().Dx()
 				continue
 			}
@@ -759,6 +744,11 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL
 		}
 	}
 
+	// Final conversion if monochrome is requested
+	if !useColor {
+		return convertToGrayscaleWithDithering(img), nil
+	}
+
 	return img, nil
 }
 
@@ -770,15 +760,24 @@ func convertToGrayscaleWithDithering(src image.Image) image.Image {
 	// First pass: Convert to grayscale with proper luminance weights
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r, g, b, _ := src.At(x, y).RGBA()
+			r, g, b, a := src.At(x, y).RGBA()
+
+			// Composite over white background (transparency becomes white)
+			// r, g, b are alpha-premultiplied, so we just add the background component scaled by (1-alpha)
+			// White background is 0xFFFF
+			r = r + (0xFFFF - a)
+			g = g + (0xFFFF - a)
+			b = b + (0xFFFF - a)
+
 			// Use standard luminance weights
 			lum := uint8((19595*r + 38470*g + 7471*b + 1<<15) >> 24)
 			gray.SetGray(x, y, color.Gray{lum})
 		}
 	}
 
-	// Use BLACK_POINT setting for threshold (0.0 to 1.0, default 0.5)
-	threshold := uint8(env.Value.BlackPoint * 255)
+	// Use fixed threshold for dithering/grayscale conversion
+	// 128 is the standard mid-point (0.5)
+	const threshold = uint8(128)
 
 	// Second pass: Apply dithering or simple threshold based on DITHER setting
 	if env.Value.Dither {
@@ -955,7 +954,7 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 
 	if len(monthLeaders) == 0 {
 		// Empty leaderboard - just add space for the message
-		extraHeight += 50 + 36 + 50 + 18 + 25 + 18 + 30 // Space + "まだ誰もいません" + 空行 + "最初のCheerを..." + 間隔 + "さいふ" + margin
+		extraHeight += 50 + 36 + 30 // Space + "まだ誰もいません" + margin
 	} else {
 		// Normal leaderboard - show 5 places
 		// First place with avatar
@@ -1012,15 +1011,9 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 		// Show gentle message for empty leaderboard
 		yPos += 50 // Add some space
 		d.Face = statsFace
-		d.Src = image.NewUniform(color.Gray{150})
+		d.Src = image.Black // Gray{150} -> Black
 		drawCenteredText(d, "まだ誰もいません", yPos)
 
-		yPos += 50 // Add empty line
-		d.Face = xsmallFace
-		drawCenteredText(d, "最初のCheerをお待ちしています！", yPos)
-
-		yPos += 25
-		drawCenteredText(d, "収益の一部は「さいふ」に補填されます", yPos)
 	} else {
 		// Draw 5 places (with or without data)
 		for i := 0; i < 5; i++ {
@@ -1051,7 +1044,7 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 					d.Src = image.Black
 					drawCenteredText(d, monthLeaders[i].UserName, yPos)
 				} else {
-					d.Src = image.NewUniform(color.Gray{200})
+					d.Src = image.Black // Gray{200} -> Black
 					drawCenteredText(d, "---", yPos)
 				}
 
@@ -1062,7 +1055,7 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 					d.Src = image.Black
 					drawCenteredText(d, bitsStr, yPos)
 				} else {
-					d.Src = image.NewUniform(color.Gray{200})
+					d.Src = image.Black // Gray{200} -> Black
 					drawCenteredText(d, "--- Bits", yPos)
 				}
 				yPos += 36 + 10 // Bits height + line spacing
@@ -1071,11 +1064,11 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 				d.Face = smallFace
 
 				if i < len(monthLeaders) {
-					d.Src = image.NewUniform(color.Gray{128})
+					d.Src = image.Black // Gray{128} -> Black
 					placeStr := fmt.Sprintf("%d位 %s", i+1, monthLeaders[i].UserName)
 					drawCenteredText(d, placeStr, yPos)
 				} else {
-					d.Src = image.NewUniform(color.Gray{200})
+					d.Src = image.Black // Gray{200} -> Black
 					placeStr := fmt.Sprintf("%d位 ---", i+1)
 					drawCenteredText(d, placeStr, yPos)
 				}
@@ -1084,10 +1077,10 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 				yPos += 24
 				if i < len(monthLeaders) {
 					bitsStr := fmt.Sprintf("%d Bits", monthLeaders[i].Score)
-					d.Src = image.NewUniform(color.Gray{128})
+					d.Src = image.Black // Gray{128} -> Black
 					drawCenteredText(d, bitsStr, yPos)
 				} else {
-					d.Src = image.NewUniform(color.Gray{200})
+					d.Src = image.Black // Gray{200} -> Black
 					drawCenteredText(d, "--- Bits", yPos)
 				}
 				yPos += 24 + 10 // Bits height + line spacing
@@ -1317,7 +1310,7 @@ func GenerateTimeImageWithStatsColorOptions(timeStr string, forceEmptyLeaderboar
 
 	if len(monthLeaders) == 0 {
 		// Empty leaderboard - just add space for the message
-		extraHeight += 50 + 36 + 50 + 18 + 25 + 18 + 30 // Space + "まだ誰もいません" + 空行 + "最初のCheerを..." + 間隔 + "さいふ" + margin
+		extraHeight += 50 + 36 + 30 // Space + "まだ誰もいません" + margin
 	} else {
 		// Normal leaderboard - show 5 places
 		// First place with avatar
@@ -1416,30 +1409,6 @@ func GenerateTimeImageWithStatsColorOptions(timeStr string, forceEmptyLeaderboar
 			}
 			d.DrawString(messageText)
 
-			yPos += 50 // Add empty line
-			if xsmallFace != nil {
-				d.Face = xsmallFace
-			} else {
-				d.Face = smallFace
-			}
-			waitText := "最初のCheerをお待ちしています！"
-			bounds, _ = d.BoundString(waitText)
-			waitWidth := bounds.Max.X.Round() - bounds.Min.X.Round()
-			d.Dot = fixed.Point26_6{
-				X: fixed.I((PaperWidth - waitWidth) / 2),
-				Y: fixed.I(yPos) + d.Face.Metrics().Ascent,
-			}
-			d.DrawString(waitText)
-
-			yPos += 25
-			saifuText := "収益の一部は「さいふ」に補填されます"
-			bounds, _ = d.BoundString(saifuText)
-			saifuWidth := bounds.Max.X.Round() - bounds.Min.X.Round()
-			d.Dot = fixed.Point26_6{
-				X: fixed.I((PaperWidth - saifuWidth) / 2),
-				Y: fixed.I(yPos) + d.Face.Metrics().Ascent,
-			}
-			d.DrawString(saifuText)
 		} else {
 			// Draw 5 places (with or without data)
 			for i := 0; i < 5; i++ {
@@ -1731,12 +1700,8 @@ func MessageToImageWithTitle(title, userName, extra, details string, avatarURL s
 	imgHeight += UnderlineMargin + UnderlineHeight + 20 // 下端の余白
 
 	// 背景色を決定
-	var bgColor color.Color
-	if useColor {
-		bgColor = color.White
-	} else {
-		bgColor = color.White
-	}
+	// 背景色を決定
+	bgColor := color.White
 
 	// 画像を作成
 	img := image.NewRGBA(image.Rect(0, 0, PaperWidth, imgHeight))
@@ -1755,11 +1720,8 @@ func MessageToImageWithTitle(title, userName, extra, details string, avatarURL s
 	if avatarURL != "" {
 		var avatarImg image.Image
 		var err error
-		if useColor {
-			avatarImg, err = downloadAndResizeAvatarColor(avatarURL, avatarSize)
-		} else {
-			avatarImg, err = downloadAndResizeAvatarGray(avatarURL, avatarSize)
-		}
+		// Always download color avatar initially
+		avatarImg, err = downloadAndResizeAvatarColor(avatarURL, avatarSize)
 		if err == nil {
 			avatarX := (PaperWidth - avatarSize) / 2
 			draw.Draw(img, image.Rect(avatarX, yPos, avatarX+avatarSize, yPos+avatarSize),
@@ -1851,6 +1813,11 @@ func MessageToImageWithTitle(title, userName, extra, details string, avatarURL s
 				img.Set(x, underlineY+y, color.Black)
 			}
 		}
+	}
+
+	// Final conversion if monochrome is requested
+	if !useColor {
+		return convertToGrayscaleWithDithering(img), nil
 	}
 
 	return img, nil

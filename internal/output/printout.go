@@ -9,13 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"git.massivebox.net/massivebox/go-catprinter"
 	"github.com/joeyak/go-twitch-eventsub/v3"
+	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/env"
 	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
 	"github.com/nantokaworks/twitch-overlay/internal/status"
 	"go.uber.org/zap"
 )
@@ -70,7 +69,7 @@ func InitializePrinter() {
 			}
 			return "<not set>"
 		}()))
-	
+
 	// Start keep-alive goroutine if enabled
 	if env.Value.KeepAliveEnabled {
 		logger.Info("[InitializePrinter] Starting keep-alive routine")
@@ -78,7 +77,7 @@ func InitializePrinter() {
 	} else {
 		logger.Info("[InitializePrinter] Keep-alive routine disabled")
 	}
-	
+
 	// Start clock routine
 	if env.Value.ClockEnabled {
 		logger.Info("[InitializePrinter] Starting clock routine")
@@ -86,110 +85,150 @@ func InitializePrinter() {
 	} else {
 		logger.Info("[InitializePrinter] Clock routine disabled")
 	}
-	
-	logger.Info("[InitializePrinter] Printer subsystem initialization complete", 
+
+	logger.Info("[InitializePrinter] Printer subsystem initialization complete",
 		zap.Bool("keep_alive_enabled", env.Value.KeepAliveEnabled),
 		zap.Int("keep_alive_interval", env.Value.KeepAliveInterval),
 		zap.Bool("clock_enabled", env.Value.ClockEnabled))
 }
 
 func init() {
-	printQueue = make(chan PrintJob, 100)
-	
+	// Increase queue size for better safety margin (100 -> 1000)
+	printQueue = make(chan PrintJob, 1000)
+
 	// Initialize last print time to now
 	lastPrintTime = time.Now()
-	
+
 	// Note: clockRoutine() is now called from InitializePrinter()
 	// after env.Value is properly initialized
-	
+
 	go func() {
 		for job := range printQueue {
-			// Lock printer for exclusive access
-			printerMutex.Lock()
-			
-			var c *catprinter.Client
-			
-			// Check if already connected
-			if !IsConnected() {
-				// Check if printer address is configured
-				if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-					logger.Error("printer address not configured, cannot process print job")
-					printerMutex.Unlock()
-					continue
+			// Loop until printer is ready or job is processed (dropped or printed)
+			for {
+				// Lock printer for exclusive access
+				printerMutex.Lock()
+
+				// STRATEGY CHANGE: Connect-Print-Disconnect for every job
+				// This ensures fresh printer state and prevents "faint print" issues caused by
+				// state corruption during persistent connections.
+
+				// 1. Ensure any existing connection is closed
+				if IsConnected() {
+					logger.Info("Closing existing connection to ensure fresh state")
+					Stop()
+					time.Sleep(1 * time.Second)
 				}
 
-				// Setup printer only if not connected
+				// 2. Check configuration
+				if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+					logger.Warn("Printer address not configured, waiting 5s before retry...")
+					printerMutex.Unlock()
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				address := *env.Value.PrinterAddress
+
+				// 3. Create fresh client
 				c, err := SetupPrinter()
 				if err != nil {
-					logger.Error("failed to setup printer", zap.Error(err))
+					logger.Error("Failed to setup printer client, waiting 5s before retry...", zap.Error(err))
 					printerMutex.Unlock()
+					time.Sleep(5 * time.Second)
 					continue
 				}
 
-				// Try to connect
-				err = ConnectPrinter(c, *env.Value.PrinterAddress)
+				// 4. Connect
+				// Note: ConnectPrinter includes a stabilization delay
+				logger.Info("Connecting to printer for single job", zap.String("address", address))
+				err = ConnectPrinter(c, address)
 				if err != nil {
-					logger.Error("failed to connect printer", zap.Error(err))
+					logger.Error("Failed to connect printer, waiting 5s before retry...", zap.Error(err))
+					// Ensure cleanup
+					Stop()
 					printerMutex.Unlock()
+					time.Sleep(5 * time.Second)
 					continue
 				}
-			} else {
-				// Use existing connection
-				c = GetLatestPrinter()
-				if c == nil {
-					logger.Error("printer is connected but client is nil")
-					printerMutex.Unlock()
-					continue
-				}
-			}
-			
-			// Ensure printer options are initialized
-			if opts == nil {
-				logger.Info("Initializing printer options")
 
+				// 5. Setup Options (Force Refresh)
 				SetupPrinterOptions(
 					env.Value.BestQuality,
 					env.Value.Dither,
 					env.Value.AutoRotate,
 					env.Value.BlackPoint,
 				)
-			}
-			
-			// Check for dry-run mode (including auto dry-run when offline)
-			// Skip dry-run check if force flag is set
-			if !job.Force && shouldUseDryRun() {
-				if env.Value.AutoDryRunWhenOffline && !status.IsStreamLive() {
-					logger.Info("Auto dry-run mode (stream offline): skipping actual printing")
-				} else {
-					logger.Info("Dry-run mode: skipping actual printing")
-				}
-				// Update last print time even in dry-run mode
-				lastPrintMutex.Lock()
-				lastPrintTime = time.Now()
-				lastPrintMutex.Unlock()
-			} else {
-				// Rotate image 180 degrees if ROTATE_PRINT is enabled
-				finalImg := job.Image
-				if env.Value.RotatePrint {
-					finalImg = rotateImage180(job.Image)
-				}
-				
-				if job.Force {
-					logger.Info("Force printing (ignoring dry-run mode)")
-				}
-				
-				if err := c.Print(finalImg, opts, false); err != nil {
-					logger.Error("failed to print", zap.Error(err))
-				} else {
-					// Update last print time on successful print
+
+				// 6. Print (or Dry Run)
+				// Check for dry-run mode
+				if !job.Force && shouldUseDryRun() {
+					if env.Value.AutoDryRunWhenOffline && !status.IsStreamLive() {
+						logger.Info("Auto dry-run mode (stream offline): skipping actual printing")
+					} else {
+						logger.Info("Dry-run mode: skipping actual printing")
+					}
+					// Update last print time
 					lastPrintMutex.Lock()
 					lastPrintTime = time.Now()
 					lastPrintMutex.Unlock()
+				} else {
+					// Rotate image if needed
+					finalImg := job.Image
+					if env.Value.RotatePrint {
+						finalImg = rotateImage180(job.Image)
+					}
+
+					if job.Force {
+						logger.Info("Force printing (ignoring dry-run mode)")
+					}
+
+					// Execute Print
+					if err := c.Print(finalImg, opts, false); err != nil {
+						logger.Error("Failed to print", zap.Error(err))
+						// On print error, we still disconnect and retry?
+						// Actually, if print fails, it might be connection issue.
+						// We'll let the loop retry.
+						Stop()
+						printerMutex.Unlock()
+						time.Sleep(5 * time.Second)
+						continue
+					} else {
+						// Success
+						lastPrintMutex.Lock()
+						lastPrintTime = time.Now()
+						lastPrintMutex.Unlock()
+
+						// Wait for stabilization
+						// Calculate dynamic wait time based on image height
+						// Cat printers are slow (~10mm/s).
+						// Assuming ~200dpi, 8px is roughly 1mm.
+						// Safe estimate: 1 second per 50-100 pixels?
+						// Let's use Base 2s + 1s per 60 pixels for safety.
+						// 400px height -> 2 + 6 = 8s
+						height := finalImg.Bounds().Dy()
+						waitSec := 2 + (height / 60)
+						if waitSec < 3 {
+							waitSec = 3
+						}
+
+						logger.Info("Print finished, waiting for printer to stabilize...",
+							zap.Int("height_px", height),
+							zap.Int("wait_seconds", waitSec))
+
+						time.Sleep(time.Duration(waitSec) * time.Second)
+					}
 				}
+
+				// 7. Disconnect immediately
+				logger.Info("Disconnecting after print job")
+				Stop()
+
+				// Release lock
+				printerMutex.Unlock()
+
+				// Break the retry loop as the job is done
+				break
 			}
-			
-			// Release printer lock
-			printerMutex.Unlock()
 		}
 	}()
 }
@@ -233,10 +272,10 @@ func PrintClockWithOptionsForce(timeStr string, forceEmptyLeaderboard bool, forc
 	broadcast.BroadcastFax(fax)
 
 	// Add to print queue with force flag
-	printQueue <- PrintJob{
+	enqueuePrintJob(PrintJob{
 		Image: monoImg,
 		Force: forcePrint,
-	}
+	})
 	return nil
 }
 
@@ -276,10 +315,10 @@ func PrintOut(userName string, message []twitch.ChatMessageFragment, avatarURL s
 	broadcast.BroadcastFax(fax)
 
 	// Add to print queue
-	printQueue <- PrintJob{
+	enqueuePrintJob(PrintJob{
 		Image: monoImg,
 		Force: false,
-	}
+	})
 	return nil
 }
 
@@ -321,11 +360,21 @@ func PrintOutWithTitle(title, userName, extra, details string, avatarURL string,
 	broadcast.BroadcastFax(fax)
 
 	// Add to print queue
-	printQueue <- PrintJob{
+	enqueuePrintJob(PrintJob{
 		Image: monoImg,
 		Force: false,
-	}
+	})
 	return nil
+}
+
+// enqueuePrintJob adds a job to the queue safely (non-blocking)
+func enqueuePrintJob(job PrintJob) {
+	select {
+	case printQueue <- job:
+		// success
+	default:
+		logger.Error("Print queue is full, dropping job")
+	}
 }
 
 // saveFaxImages saves the fax images to disk
@@ -374,7 +423,6 @@ func saveFaxImages(fax *faxmanager.Fax, colorImg, monoImg image.Image) error {
 	return nil
 }
 
-
 func clockRoutine() {
 	logger.Info("Clock routine started",
 		zap.Bool("enabled", env.Value.ClockEnabled))
@@ -389,25 +437,25 @@ func clockRoutine() {
 		now := time.Now()
 		minute := now.Minute()
 		currentMonth := now.Format("2006-01")
-		
+
 		// Check if month has changed
 		if currentMonth != lastMonth {
-			logger.Info("Month changed", 
-				zap.String("from", lastMonth), 
+			logger.Info("Month changed",
+				zap.String("from", lastMonth),
 				zap.String("to", currentMonth))
 			lastMonth = currentMonth
 		}
-		
+
 		// Check if it's 0 minutes (on the hour)
 		if minute == 0 {
 			currentTimeStr := now.Format("15:04")
-			
+
 			// Avoid printing the same time multiple times
 			if currentTimeStr != lastPrintedTime {
 				lastPrintedTime = currentTimeStr
-				
+
 				logger.Info("Clock: printing time with latest leaderboard data", zap.String("time", currentTimeStr))
-				
+
 				// Use PrintClock to handle everything (generation, saving, broadcasting, and printing)
 				if err := PrintClock(currentTimeStr); err != nil {
 					logger.Error("Clock: failed to print clock", zap.Error(err))
@@ -416,231 +464,17 @@ func clockRoutine() {
 				}
 			}
 		}
+
 	}
 }
 
-
-
-
 // keepAliveRoutine maintains printer connection
+// DISABLED: This routine interferes with the Connect-Print-Disconnect strategy.
 func keepAliveRoutine() {
-	logger.Info("KeepAlive routine started",
-		zap.Bool("enabled", env.Value.KeepAliveEnabled),
-		zap.Int("interval", env.Value.KeepAliveInterval),
-		zap.String("printer_address", func() string {
-			if env.Value.PrinterAddress != nil {
-				return *env.Value.PrinterAddress
-			}
-			return "<not set>"
-		}()))
-
-	ticker := time.NewTicker(1 * time.Second) // Check every second
-	defer ticker.Stop()
-
-	// バックオフ戦略用の変数
-	var consecutiveFailures int
-	var lastErrorTime time.Time
-	var addressWarningShown bool
-	const maxBackoff = 60 * time.Second
-	const baseBackoff = 2 * time.Second
-
-	for range ticker.C {
-		// First check if printer address is configured
-		if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-			if !addressWarningShown {
-				logger.Warn("Keep-alive: Printer address not configured, waiting for configuration")
-				addressWarningShown = true
-			}
-			continue
-		}
-		// Reset warning flag when address becomes available
-		addressWarningShown = false
-		// First check if we need to do initial connection
-		if !IsConnected() && !HasInitialPrintBeenDone() {
-			// バックオフ戦略を適用
-			if consecutiveFailures > 0 {
-				// 指数バックオフを計算（2秒、4秒、8秒...最大60秒）
-				backoffDuration := time.Duration(1<<uint(consecutiveFailures-1)) * baseBackoff
-				if backoffDuration > maxBackoff {
-					backoffDuration = maxBackoff
-				}
-				
-				// まだバックオフ期間中ならスキップ
-				if time.Since(lastErrorTime) < backoffDuration {
-					continue
-				}
-			}
-			
-			// 10回目以降はログを抑制
-			if consecutiveFailures < 10 {
-				logger.Info("Keep-alive: attempting initial printer connection", 
-					zap.Int("attempt", consecutiveFailures+1))
-			}
-			
-			// Lock printer for exclusive access
-			printerMutex.Lock()
-			
-			// Check if printer address is configured
-			if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-				if consecutiveFailures == 0 || consecutiveFailures%60 == 0 {
-					logger.Warn("Keep-alive: Printer address not configured, waiting for configuration")
-				}
-				consecutiveFailures++
-				printerMutex.Unlock()
-				continue
-			}
-
-			// Setup printer if needed
-			c, err := SetupPrinter()
-			if err != nil {
-				if consecutiveFailures < 10 || consecutiveFailures%60 == 0 {
-					logger.Error("Keep-alive: failed to setup printer for initial connection",
-						zap.Error(err),
-						zap.Int("consecutive_failures", consecutiveFailures+1))
-				}
-				consecutiveFailures++
-				lastErrorTime = time.Now()
-				printerMutex.Unlock()
-				continue
-			}
-
-			// Try to connect
-			err = ConnectPrinter(c, *env.Value.PrinterAddress)
-			if err != nil {
-				if consecutiveFailures < 10 || consecutiveFailures%60 == 0 {
-					logger.Error("Keep-alive: failed initial connection to printer", 
-						zap.Error(err),
-						zap.Int("consecutive_failures", consecutiveFailures+1))
-				}
-				consecutiveFailures++
-				lastErrorTime = time.Now()
-				printerMutex.Unlock()
-				continue
-			}
-			
-			// 接続成功 - カウンターをリセット
-			consecutiveFailures = 0
-			logger.Info("Keep-alive: initial connection established")
-
-			// 環境変数を再読み込み（最新のプリンター設定を取得）
-			if err := env.ReloadFromDatabase(); err != nil {
-				logger.Warn("Keep-alive: failed to reload settings from database after initial connection", zap.Error(err))
-				// リロード失敗時も処理続行（古い値で動作）
-			} else {
-				logger.Debug("Keep-alive: settings reloaded from database after initial connection")
-			}
-
-			// プリンターオプションを設定
-			if err := SetupPrinterOptions(
-				env.Value.BestQuality,
-				env.Value.Dither,
-				env.Value.AutoRotate,
-				env.Value.BlackPoint,
-			); err != nil {
-				logger.Warn("Keep-alive: failed to setup printer options after initial connection", zap.Error(err))
-			} else {
-				logger.Debug("Keep-alive: printer options set after initial connection",
-					zap.Float32("black_point", env.Value.BlackPoint))
-			}
-
-			// Mark initial print as done
-			logger.Info("Keep-alive: marking initial print as done")
-			MarkInitialPrintDone()
-			
-			// Update last print time
-			lastPrintMutex.Lock()
-			lastPrintTime = time.Now()
-			lastPrintMutex.Unlock()
-			
-			printerMutex.Unlock()
-			continue
-		}
-		
-		lastPrintMutex.Lock()
-		timeSinceLastPrint := time.Since(lastPrintTime)
-		lastPrintMutex.Unlock()
-		
-		// If more than KeepAliveInterval seconds have passed since last print
-		if timeSinceLastPrint > time.Duration(env.Value.KeepAliveInterval)*time.Second {
-			logger.Info("Keep-alive: waiting for printer access", zap.Int("seconds_since_last_print", int(timeSinceLastPrint.Seconds())))
-
-			// Lock printer for exclusive access
-			printerMutex.Lock()
-
-			logger.Info("Keep-alive: creating new connection")
-
-			// Check if printer address is configured before reconnecting
-			if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-				logger.Warn("Keep-alive: Cannot reconnect - printer address not configured")
-				printerMutex.Unlock()
-				continue
-			}
-
-			// KeepAlive再接続フラグを立てる（緑インジケーター維持のため）
-			SetReconnecting(true)
-			logger.Info("Keep-alive: set reconnecting flag to maintain green indicator")
-
-			// Setup printer (will disconnect if connected)
-			c, err := SetupPrinter()
-			if err != nil {
-				logger.Error("Keep-alive: failed to setup printer", zap.Error(err))
-				SetReconnecting(false) // エラー時はフラグをクリア
-				printerMutex.Unlock()
-				continue
-			}
-
-			err = ConnectPrinter(c, *env.Value.PrinterAddress)
-			if err != nil {
-				logger.Error("Keep-alive: failed to connect printer", zap.Error(err))
-				SetReconnecting(false) // エラー時はフラグをクリア
-				printerMutex.Unlock()
-				continue
-			}
-
-			// 接続成功 - カウンターをリセット
-			consecutiveFailures = 0
-			logger.Info("Keep-alive: new connection established")
-
-			// 環境変数を再読み込み（最新のプリンター設定を取得）
-			if err := env.ReloadFromDatabase(); err != nil {
-				logger.Warn("Keep-alive: failed to reload settings from database after reconnection", zap.Error(err))
-				// リロード失敗時も処理続行（古い値で動作）
-			} else {
-				logger.Debug("Keep-alive: settings reloaded from database after reconnection")
-			}
-
-			// プリンターオプションを再設定（設定変更が反映されるように）
-			if err := SetupPrinterOptions(
-				env.Value.BestQuality,
-				env.Value.Dither,
-				env.Value.AutoRotate,
-				env.Value.BlackPoint,
-			); err != nil {
-				logger.Warn("Keep-alive: failed to setup printer options after reconnection", zap.Error(err))
-			} else {
-				logger.Debug("Keep-alive: printer options set after reconnection",
-					zap.Float32("black_point", env.Value.BlackPoint))
-			}
-
-			// Mark initial print as done if not already done
-			if !HasInitialPrintBeenDone() {
-				logger.Info("Keep-alive: marking initial print as done after reconnection")
-				MarkInitialPrintDone()
-			}
-
-			// Update last print time
-			lastPrintMutex.Lock()
-			lastPrintTime = time.Now()
-			lastPrintMutex.Unlock()
-
-			// 再接続フラグをクリア（ConnectPrinterが既にクリアしているが念のため）
-			SetReconnecting(false)
-			logger.Info("Keep-alive: cleared reconnecting flag")
-
-			// Release printer lock
-			printerMutex.Unlock()
-		}
-	}
+	// Periodic logging to confirm it's disabled if needed, or just return.
+	// We'll log once on startup (which happens when this is called).
+	logger.Info("KeepAlive routine is DISABLED due to Connect-Print-Disconnect strategy")
+	return
 }
 
 // PrintInitialClock prints initial clock on startup
@@ -648,20 +482,20 @@ func PrintInitialClock() error {
 	now := time.Now()
 	currentTime := now.Format("15:04")
 	logger.Info("Printing initial clock (simple)", zap.String("time", currentTime))
-	
+
 	// Generate simple time-only image
 	img, err := GenerateTimeImageSimple(currentTime)
 	if err != nil {
 		return fmt.Errorf("failed to generate initial clock image: %w", err)
 	}
-	
+
 	// Save image if debug output is enabled
 	if env.Value.DebugOutput {
 		outputDir := paths.GetOutputDir()
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
-		
+
 		// Save time-only image
 		monoPath := filepath.Join(outputDir, fmt.Sprintf("%s_initial_clock.png", now.Format("20060102_150405")))
 		file, err := os.Create(monoPath)
@@ -673,11 +507,11 @@ func PrintInitialClock() error {
 			return fmt.Errorf("failed to encode image: %w", err)
 		}
 		logger.Info("Initial clock: output file saved", zap.String("path", monoPath))
-		
+
 		// Return early when debug output is enabled (skip print queue)
 		return nil
 	}
-	
+
 	// Directly add to print queue without frontend notification
 	// This is the only output that doesn't notify the frontend
 	select {
@@ -686,7 +520,7 @@ func PrintInitialClock() error {
 	default:
 		return fmt.Errorf("print queue is full")
 	}
-	
+
 	return nil
 }
 

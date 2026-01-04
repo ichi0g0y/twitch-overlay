@@ -254,7 +254,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	// Webサーバーを起動（OBSオーバーレイ用）
 	go func() {
-		port := 8080  // デフォルトポート
+		port := 8080 // デフォルトポート
 		if env.Value.ServerPort != 0 {
 			port = env.Value.ServerPort
 		}
@@ -384,19 +384,19 @@ func (a *App) restoreWindowState() {
 	// 以下のコメントアウトされたコードは、画面構成が変わると完全に復帰をスキップしていた
 	// これは過保護すぎるため、警告のみにして復帰処理を続けるように変更
 	/*
-	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
-		logger.Warn("Screen configuration has changed, using default window position",
-			zap.String("current", currentScreenHash),
-			zap.String("saved", savedScreenHash))
-		// 画面構成が変更された場合は中央に配置
-		if a.mainWindow != nil {
-			a.mainWindow.Center()
-			logger.Info("Calling Show() to display window (screen config changed)")
-			a.mainWindow.Show()
-			a.registerWindowEventListeners()
+		if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
+			logger.Warn("Screen configuration has changed, using default window position",
+				zap.String("current", currentScreenHash),
+				zap.String("saved", savedScreenHash))
+			// 画面構成が変更された場合は中央に配置
+			if a.mainWindow != nil {
+				a.mainWindow.Center()
+				logger.Info("Calling Show() to display window (screen config changed)")
+				a.mainWindow.Show()
+				a.registerWindowEventListeners()
+			}
+			return
 		}
-		return
-	}
 	*/
 
 	// 絶対座標が保存されている場合は使用
@@ -600,13 +600,13 @@ func (a *App) checkInitialStreamStatus() {
 // initializePrinter initializes the printer connection
 func (a *App) initializePrinter() error {
 	logger.Info("Initializing printer...")
-	
+
 	// 既存の接続がある場合は先に切断
 	if output.IsConnected() {
 		logger.Info("Disconnecting existing printer connection")
 		output.Stop()
 	}
-	
+
 	// プリンターをセットアップ
 	client, err := output.SetupPrinter()
 	if err != nil {
@@ -727,9 +727,9 @@ func (a *App) GetWindowPosition() map[string]int {
 	}
 
 	result := map[string]int{
-		"x": parseIntOrDefault(x, -1),
-		"y": parseIntOrDefault(y, -1),
-		"width": widthVal,
+		"x":      parseIntOrDefault(x, -1),
+		"y":      parseIntOrDefault(y, -1),
+		"width":  widthVal,
 		"height": heightVal,
 	}
 
@@ -805,7 +805,7 @@ func (a *App) isPositionValid(x, y, width, height int) bool {
 	// Check if window center is within any screen bounds
 	for _, screen := range screens {
 		if centerX >= screen.X && centerX < screen.X+screen.Width &&
-		   centerY >= screen.Y && centerY < screen.Y+screen.Height {
+			centerY >= screen.Y && centerY < screen.Y+screen.Height {
 			return true
 		}
 	}
@@ -820,7 +820,7 @@ func (a *App) isPositionValid(x, y, width, height int) bool {
 
 		// Check for overlap
 		if float64(x) < screenRight && windowRight > screen.X &&
-		   float64(y) < screenBottom && windowBottom > screen.Y {
+			float64(y) < screenBottom && windowBottom > screen.Y {
 			return true
 		}
 	}
@@ -884,12 +884,12 @@ func (a *App) DisconnectPrinter() {
 // ReconnectPrinter forces a complete reconnection to the printer
 func (a *App) ReconnectPrinter() error {
 	logger.Info("Reconnecting to printer")
-	
+
 	// プリンターアドレスを取得
 	if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
 		return fmt.Errorf("printer address not configured")
 	}
-	
+
 	address := *env.Value.PrinterAddress
 
 	// プリンターオプションを設定
@@ -899,7 +899,7 @@ func (a *App) ReconnectPrinter() error {
 		env.Value.AutoRotate,
 		env.Value.BlackPoint,
 	)
-	
+
 	// 強制的に再接続
 	if err := output.ReconnectPrinter(address); err != nil {
 		logger.Error("Failed to reconnect printer", zap.Error(err))
@@ -920,7 +920,7 @@ func (a *App) ReconnectPrinter() error {
 // ScanBluetoothDevices scans for nearby Bluetooth devices
 func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 	logger.Info("Starting Bluetooth device scan")
-	
+
 	// スキャン専用のクライアントをセットアップ（既存接続に影響しない）
 	client, err := output.SetupScannerClient()
 	if err != nil {
@@ -928,19 +928,19 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to setup scanner: %w", err)
 	}
 	defer client.Stop()
-	
+
 	// デバッグログを有効にする
 	client.Debug.Log = true
-	
+
 	// 10秒間スキャン
 	client.Timeout = 10 * time.Second
 	devices, err := client.ScanDevices("")
-	
+
 	if err != nil {
 		logger.Error("Device scan failed", zap.Error(err))
 		return nil, fmt.Errorf("device scan failed: %w", err)
 	}
-	
+
 	// 結果を変換
 	result := make([]map[string]interface{}, 0, len(devices))
 	for mac, name := range devices {
@@ -952,7 +952,7 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 		result = append(result, device)
 		logger.Debug("Found device", zap.String("mac", mac), zap.String("name", string(name)))
 	}
-	
+
 	logger.Info("Device scan completed", zap.Int("device_count", len(result)))
 
 	// スキャン後に接続状態を通知（既存の接続状態は変わらない）
@@ -965,12 +965,13 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 
 // TestPrint sends a test pattern to the printer
 func (a *App) TestPrint() error {
-	if !output.IsConnected() {
-		return fmt.Errorf("printer not connected")
+	// Check if printer address is configured
+	if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+		return fmt.Errorf("printer address not configured")
 	}
 
 	logger.Info("Starting test print")
-	
+
 	// テスト印刷を非同期で実行
 	go func() {
 		// 現在時刻を生成（時:分のフォーマット、秒は不要）
@@ -1036,7 +1037,7 @@ func (a *App) GetAuthURL() string {
 // refreshTokenPeriodically はトークンの有効期限を監視し、期限の30分前に自動的にリフレッシュを行います
 func (a *App) refreshTokenPeriodically() {
 	logger.Info("Starting token refresh goroutine")
-	
+
 	for {
 		select {
 		case <-a.tokenRefreshDone:
@@ -1049,11 +1050,11 @@ func (a *App) refreshTokenPeriodically() {
 				time.Sleep(1 * time.Minute)
 				continue
 			}
-			
+
 			// 現在時刻とトークンの有効期限を比較
 			now := time.Now().Unix()
 			timeUntilExpiry := token.ExpiresAt - now
-			
+
 			if timeUntilExpiry <= 0 {
 				// トークンがすでに期限切れの場合、即座にリフレッシュ
 				logger.Info("Token has expired, refreshing immediately")
@@ -1068,7 +1069,7 @@ func (a *App) refreshTokenPeriodically() {
 				}
 			} else if timeUntilExpiry <= 30*60 { // 30分 = 1800秒
 				// 期限の30分前になったらリフレッシュ
-				logger.Info("Token expires in less than 30 minutes, refreshing now", 
+				logger.Info("Token expires in less than 30 minutes, refreshing now",
 					zap.Int64("seconds_until_expiry", timeUntilExpiry))
 				if err := token.RefreshTwitchToken(); err != nil {
 					logger.Error("Failed to refresh token", zap.Error(err))
@@ -1086,7 +1087,7 @@ func (a *App) refreshTokenPeriodically() {
 				if sleepDuration > time.Hour {
 					sleepDuration = time.Hour
 				}
-				logger.Debug("Next token refresh check", 
+				logger.Debug("Next token refresh check",
 					zap.Duration("sleep_duration", sleepDuration),
 					zap.Int64("seconds_until_expiry", timeUntilExpiry))
 				time.Sleep(sleepDuration)
@@ -1098,13 +1099,13 @@ func (a *App) refreshTokenPeriodically() {
 // restartEventSub はEventSubを再起動します
 func (a *App) restartEventSub() {
 	logger.Info("Restarting EventSub after token refresh")
-	
+
 	// 既存のEventSubを停止
 	twitcheventsub.Stop()
-	
+
 	// 少し待機
 	time.Sleep(1 * time.Second)
-	
+
 	// EventSubを再開始
 	if err := twitcheventsub.Start(); err != nil {
 		logger.Error("Failed to restart EventSub", zap.Error(err))
@@ -1125,7 +1126,7 @@ func (a *App) HandleAuthCallback(code string) error {
 	if !ok {
 		return fmt.Errorf("invalid expires_in")
 	}
-	
+
 	expiresAt := time.Now().Unix() + int64(expiresInFloat)
 	token := twitchtoken.Token{
 		AccessToken:  result["access_token"].(string),
@@ -1133,7 +1134,7 @@ func (a *App) HandleAuthCallback(code string) error {
 		Scope:        result["scope"].(string),
 		ExpiresAt:    expiresAt,
 	}
-	
+
 	if err := token.SaveToken(); err != nil {
 		return err
 	}
@@ -1144,7 +1145,7 @@ func (a *App) HandleAuthCallback(code string) error {
 			logger.Error("Failed to start EventSub", zap.Error(err))
 		}
 	}()
-	
+
 	// トークンリフレッシュgoroutineを開始（まだ起動していない場合）
 	if a.tokenRefreshDone == nil {
 		a.tokenRefreshDone = make(chan struct{})
@@ -1165,7 +1166,7 @@ func (a *App) GetRecentFaxes(limit int) ([]*faxmanager.Fax, error) {
 // GetSettings returns the current application settings
 func (a *App) GetSettings() map[string]interface{} {
 	settings := make(map[string]interface{})
-	
+
 	// Copy environment values to settings
 	if env.Value.PrinterAddress != nil {
 		settings["printer_address"] = *env.Value.PrinterAddress
@@ -1177,11 +1178,11 @@ func (a *App) GetSettings() map[string]interface{} {
 	settings["auto_rotate"] = env.Value.AutoRotate
 	settings["black_point"] = env.Value.BlackPoint
 	settings["rotate_print"] = env.Value.RotatePrint
-	
+
 	if env.Value.TwitchUserID != nil {
 		settings["twitch_user_id"] = *env.Value.TwitchUserID
 	}
-	
+
 	return settings
 }
 
@@ -1192,55 +1193,55 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to setup database: %w", err)
 	}
-	
+
 	settingsManager := settings.NewSettingsManager(db)
-	
+
 	// 各設定項目をデータベースに保存
 	for key, value := range newSettings {
 		// フロントエンドから送られてくるキーは既に大文字なので、そのまま使用
 		// ただし、DEBUG_OUTPUTは例外的に変換が必要
 		dbKey := key
-		
+
 		// 一部のキーのみ変換が必要
 		switch key {
 		case "debug_mode":
 			dbKey = "DEBUG_OUTPUT"
 		}
-		
+
 		// 有効なキーかチェック
 		validKeys := map[string]bool{
-			"PRINTER_ADDRESS": true,
-			"DEBUG_OUTPUT": true,
-			"DRY_RUN_MODE": true,
-			"BEST_QUALITY": true,
-			"DITHER": true,
-			"AUTO_ROTATE": true,
-			"BLACK_POINT": true,
-			"ROTATE_PRINT": true,
-			"TWITCH_USER_ID": true,
-			"CLIENT_ID": true,
-			"CLIENT_SECRET": true,
-			"TRIGGER_CUSTOM_REWORD_ID": true,
-			"SERVER_PORT": true,
-			"AUTO_DRY_RUN_WHEN_OFFLINE": true,
-			"TIMEZONE": true,
-			"KEEP_ALIVE_ENABLED": true,
-			"KEEP_ALIVE_INTERVAL": true,
-			"CLOCK_ENABLED": true,
-			"CLOCK_WEIGHT": true,
-			"CLOCK_WALLET": true,
-			"CLOCK_SHOW_ICONS": true,
-			"FONT_FILENAME": true,
-			"NOTIFICATION_ENABLED": true,
+			"PRINTER_ADDRESS":               true,
+			"DEBUG_OUTPUT":                  true,
+			"DRY_RUN_MODE":                  true,
+			"BEST_QUALITY":                  true,
+			"DITHER":                        true,
+			"AUTO_ROTATE":                   true,
+			"BLACK_POINT":                   true,
+			"ROTATE_PRINT":                  true,
+			"TWITCH_USER_ID":                true,
+			"CLIENT_ID":                     true,
+			"CLIENT_SECRET":                 true,
+			"TRIGGER_CUSTOM_REWORD_ID":      true,
+			"SERVER_PORT":                   true,
+			"AUTO_DRY_RUN_WHEN_OFFLINE":     true,
+			"TIMEZONE":                      true,
+			"KEEP_ALIVE_ENABLED":            true,
+			"KEEP_ALIVE_INTERVAL":           true,
+			"CLOCK_ENABLED":                 true,
+			"CLOCK_WEIGHT":                  true,
+			"CLOCK_WALLET":                  true,
+			"CLOCK_SHOW_ICONS":              true,
+			"FONT_FILENAME":                 true,
+			"NOTIFICATION_ENABLED":          true,
 			"NOTIFICATION_DISPLAY_DURATION": true,
-			"NOTIFICATION_FONT_SIZE": true,
+			"NOTIFICATION_FONT_SIZE":        true,
 		}
-		
+
 		if !validKeys[dbKey] {
 			// 未知のキーはスキップ
 			continue
 		}
-		
+
 		// 値を文字列に変換
 		var strValue string
 		switch v := value.(type) {
@@ -1259,22 +1260,22 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		default:
 			strValue = fmt.Sprintf("%v", v)
 		}
-		
+
 		// バリデーション
 		if err := settings.ValidateSetting(dbKey, strValue); err != nil {
 			logger.Warn("Setting validation failed", zap.String("key", dbKey), zap.Error(err))
 			continue
 		}
-		
+
 		// データベースに保存
 		if err := settingsManager.SetSetting(dbKey, strValue); err != nil {
 			logger.Error("Failed to save setting", zap.String("key", dbKey), zap.Error(err))
 			return fmt.Errorf("failed to save setting %s: %w", dbKey, err)
 		}
-		
+
 		logger.Info("Setting saved", zap.String("key", dbKey), zap.String("value", strValue))
 	}
-	
+
 	// 環境変数を再読み込み
 	if err := env.ReloadFromDatabase(); err != nil {
 		logger.Error("Failed to reload environment from database", zap.Error(err))
@@ -1302,20 +1303,20 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 	if weightValue, hasWeight := newSettings["CLOCK_WEIGHT"]; hasWeight {
 		logger.Info("Broadcasting CLOCK_WEIGHT update", zap.Any("value", weightValue))
 		broadcast.Send(map[string]interface{}{
-			"type": "setting_update",
-			"key": "CLOCK_WEIGHT",
+			"type":  "setting_update",
+			"key":   "CLOCK_WEIGHT",
 			"value": weightValue,
 		})
 	}
 	if walletValue, hasWallet := newSettings["CLOCK_WALLET"]; hasWallet {
 		logger.Info("Broadcasting CLOCK_WALLET update", zap.Any("value", walletValue))
 		broadcast.Send(map[string]interface{}{
-			"type": "setting_update", 
-			"key": "CLOCK_WALLET",
+			"type":  "setting_update",
+			"key":   "CLOCK_WALLET",
 			"value": walletValue,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -1326,28 +1327,28 @@ func (a *App) GetAllSettings() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup database: %w", err)
 	}
-	
+
 	settingsManager := settings.NewSettingsManager(db)
-	
+
 	// すべての設定を取得
 	allSettings, err := settingsManager.GetAllSettings()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all settings: %w", err)
 	}
-	
+
 	// map[string]interface{}形式に変換
 	result := make(map[string]interface{})
 	for key, setting := range allSettings {
 		// フロントエンド用のキー名に変換（全て大文字のまま保持）
-		frontendKey := key  // デフォルトはそのまま使用
-		
+		frontendKey := key // デフォルトはそのまま使用
+
 		// 値を適切な型に変換するために使用
 		// キー名はそのまま保持
-		
+
 		// すべての値を文字列として返す（フロントエンドが文字列を期待しているため）
 		result[frontendKey] = setting.Value
 	}
-	
+
 	return result, nil
 }
 
@@ -1358,28 +1359,28 @@ func (a *App) GetFeatureStatus() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup database: %w", err)
 	}
-	
+
 	settingsManager := settings.NewSettingsManager(db)
-	
+
 	// フィーチャーステータスを取得
 	status, err := settingsManager.CheckFeatureStatus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to check feature status: %w", err)
 	}
-	
+
 	// プリンター接続状態を追加
 	status.PrinterConnected = output.IsConnected()
-	
+
 	// map[string]interface{}形式に変換
 	result := map[string]interface{}{
 		"twitch_configured":  status.TwitchConfigured,
 		"printer_configured": status.PrinterConfigured,
 		"printer_connected":  status.PrinterConnected,
 		"missing_settings":   status.MissingSettings,
-		"warnings":          status.Warnings,
-		"service_mode":      status.ServiceMode,
+		"warnings":           status.Warnings,
+		"service_mode":       status.ServiceMode,
 	}
-	
+
 	return result, nil
 }
 
@@ -1388,7 +1389,7 @@ func (a *App) GetServerPort() int {
 	if env.Value.ServerPort != 0 {
 		return env.Value.ServerPort
 	}
-	return 8080  // デフォルトポート
+	return 8080 // デフォルトポート
 }
 
 // GetEventSubStatus returns the current EventSub connection status
@@ -1538,18 +1539,18 @@ func (a *App) RemoveTrackFromPlaylist(playlistID, trackID string) error {
 // GetTrackArtwork returns track artwork as base64 encoded data URL
 func (a *App) GetTrackArtwork(trackID string) (string, error) {
 	artworkPath := filepath.Join(paths.GetDataDir(), "music", "artwork", trackID+".jpg")
-	
+
 	// ファイルが存在しない場合
 	if _, err := os.Stat(artworkPath); os.IsNotExist(err) {
 		return "", nil
 	}
-	
+
 	// ファイルを読み込み
 	data, err := os.ReadFile(artworkPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read artwork file: %w", err)
 	}
-	
+
 	// Base64エンコードして返す
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return "data:image/jpeg;base64," + encoded, nil
@@ -1561,7 +1562,7 @@ func (a *App) GetServerStatus() map[string]interface{} {
 	if env.Value.ServerPort != 0 {
 		webPort = env.Value.ServerPort
 	}
-	
+
 	return map[string]interface{}{
 		"oauth_server": map[string]interface{}{
 			"port":    30303,
@@ -1589,7 +1590,7 @@ func (a *App) GenerateFontPreview(text string) (string, error) {
 	if text == "" {
 		text = "サンプルテキスト Sample Text 123"
 	}
-	
+
 	// Create chat message fragments
 	fragments := []twitch.ChatMessageFragment{
 		{
@@ -1597,14 +1598,14 @@ func (a *App) GenerateFontPreview(text string) (string, error) {
 			Text: text,
 		},
 	}
-	
+
 	// Use output package to generate image
 	img, err := output.GeneratePreviewImage("プレビュー", fragments)
 	if err != nil {
 		logger.Error("Failed to generate preview", zap.Error(err))
 		return "", fmt.Errorf("failed to generate preview: %w", err)
 	}
-	
+
 	return img, nil
 }
 
@@ -1615,32 +1616,32 @@ func (a *App) UploadFont(filename string, base64Data string) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode base64: %w", err)
 	}
-	
+
 	// fontmanagerを使用して保存
 	reader := bytes.NewReader(data)
 	err = fontmanager.SaveCustomFont(filename, reader, int64(len(data)))
 	if err != nil {
 		return err
 	}
-	
+
 	// データベースに設定を保存
 	db, err := localdb.SetupDB(paths.GetDBPath())
 	if err != nil {
 		return fmt.Errorf("failed to setup database: %w", err)
 	}
-	
+
 	settingsManager := settings.NewSettingsManager(db)
 	if err := settingsManager.SetSetting("FONT_FILENAME", filename); err != nil {
 		return fmt.Errorf("failed to save font setting: %w", err)
 	}
-	
+
 	// 環境変数を再読み込み
 	if err := env.ReloadFromDatabase(); err != nil {
 		logger.Warn("Failed to reload environment from database", zap.Error(err))
 	}
-	
+
 	// フォントキャッシュの更新はSaveCustomFont内で自動的に行われる
-	
+
 	return nil
 }
 
@@ -1650,23 +1651,23 @@ func (a *App) DeleteFont() error {
 	if err := fontmanager.DeleteCustomFont(); err != nil {
 		return err
 	}
-	
+
 	// データベースから設定を削除
 	db, err := localdb.SetupDB(paths.GetDBPath())
 	if err != nil {
 		return fmt.Errorf("failed to setup database: %w", err)
 	}
-	
+
 	settingsManager := settings.NewSettingsManager(db)
 	if err := settingsManager.SetSetting("FONT_FILENAME", ""); err != nil {
 		return fmt.Errorf("failed to clear font setting: %w", err)
 	}
-	
+
 	// 環境変数を再読み込み
 	if err := env.ReloadFromDatabase(); err != nil {
 		logger.Warn("Failed to reload environment from database", zap.Error(err))
 	}
-	
+
 	return nil
 }
 
@@ -1722,10 +1723,10 @@ func (a *App) GetCacheSettings() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"expiry_days":       settings.ExpiryDays,
-		"max_size_mb":       settings.MaxSizeMB,
-		"cleanup_enabled":   settings.CleanupEnabled,
-		"cleanup_on_start":  settings.CleanupOnStart,
+		"expiry_days":      settings.ExpiryDays,
+		"max_size_mb":      settings.MaxSizeMB,
+		"cleanup_enabled":  settings.CleanupEnabled,
+		"cleanup_on_start": settings.CleanupOnStart,
 	}, nil
 }
 

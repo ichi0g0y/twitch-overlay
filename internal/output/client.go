@@ -43,7 +43,8 @@ func SetupPrinter() (*catprinter.Client, error) {
 
 		// Bluetoothリソースの解放を待つ
 		// Note: この待機時間により、BLEデバイスが完全に解放される
-		time.Sleep(500 * time.Millisecond)
+		// 500ms -> 2000msに延長して、OS側のキャッシュクリアなどを確実に待つ
+		time.Sleep(2000 * time.Millisecond)
 	} else {
 		// 新規接続の場合は再接続フラグをクリア
 		isReconnecting = false
@@ -63,7 +64,7 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 	if c == nil {
 		return nil
 	}
-	
+
 	// Skip if already connected (and not reconnecting)
 	if isConnected && !isReconnecting {
 		return nil
@@ -89,13 +90,20 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 		isReconnecting = false
 		return err
 	}
-	
-	logger.Info("Successfully connected to printer", zap.String("address", address))
+
+	logger.Info("Successfully connected to printer, waiting for stabilization...", zap.String("address", address))
+
+	// 接続安定待ち
+	// BLE接続直後のパラメータネゴシエーション（MTU, Connection Interval等）完了を待つ
+	// 1000ms -> 3000msに延長（コマンド取りこぼし防止）
+	logger.Info("Waiting 3s for connection stabilization...")
+	time.Sleep(3000 * time.Millisecond)
+
 	isConnected = true
-	
+
 	// 再接続が完了したらフラグをクリア
 	isReconnecting = false
-	
+
 	// 常にステータスを更新（再接続完了時も含む）
 	status.SetPrinterConnected(true)
 
@@ -124,7 +132,7 @@ func Stop() {
 		// Stop()を呼ぶとBLEデバイスも解放される
 		latestPrinter.Stop()
 		latestPrinter = nil
-		isReconnecting = false  // 再接続フラグもクリア
+		isReconnecting = false // 再接続フラグもクリア
 		logger.Info("Printer client stopped and BLE device released")
 	}
 }
@@ -162,13 +170,13 @@ func SetReconnecting(reconnecting bool) {
 // SetupScannerClient creates a new client for scanning without affecting existing connection
 func SetupScannerClient() (*catprinter.Client, error) {
 	logger.Info("Creating scanner client (independent from main connection)")
-	
+
 	// 新規クライアント作成（既存の接続に影響しない）
 	instance, err := catprinter.NewClient()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// グローバル変数を更新しない（独立したクライアント）
 	return instance, nil
 }
@@ -176,7 +184,7 @@ func SetupScannerClient() (*catprinter.Client, error) {
 // ReconnectPrinter forces a complete reconnection to the printer
 func ReconnectPrinter(address string) error {
 	logger.Info("Starting forced printer reconnection", zap.String("address", address))
-	
+
 	// まず既存の接続を完全に切断
 	if latestPrinter != nil {
 		logger.Info("Disconnecting existing printer")
@@ -186,16 +194,17 @@ func ReconnectPrinter(address string) error {
 		}
 		latestPrinter.Stop()
 		latestPrinter = nil
-		
+
 		// Bluetoothリソースの解放を待つ
-		time.Sleep(500 * time.Millisecond)
+		// 500ms -> 2000msに延長
+		time.Sleep(2000 * time.Millisecond)
 	}
-	
+
 	// 接続状態をクリア
 	isConnected = false
 	isReconnecting = false
 	status.SetPrinterConnected(false)
-	
+
 	// 新規クライアント作成
 	logger.Info("Creating new printer client for reconnection")
 	client, err := catprinter.NewClient()
@@ -203,11 +212,11 @@ func ReconnectPrinter(address string) error {
 		logger.Error("Failed to create new client", zap.Error(err))
 		return err
 	}
-	
+
 	latestPrinter = client
-	
+
 	// プリンターオプションは後で SetupPrinterOptions で設定される
-	
+
 	// 接続を実行
 	logger.Info("Connecting to printer", zap.String("address", address))
 	err = client.Connect(address)
@@ -216,10 +225,14 @@ func ReconnectPrinter(address string) error {
 		status.SetPrinterConnected(false)
 		return err
 	}
-	
-	logger.Info("Successfully reconnected to printer", zap.String("address", address))
+
+	logger.Info("Successfully reconnected to printer, waiting for stabilization...", zap.String("address", address))
+
+	// 接続安定待ち
+	time.Sleep(1000 * time.Millisecond)
+
 	isConnected = true
 	status.SetPrinterConnected(true)
-	
+
 	return nil
 }
