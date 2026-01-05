@@ -1,6 +1,8 @@
 package output
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"git.massivebox.net/massivebox/go-catprinter"
@@ -16,7 +18,7 @@ var isConnected bool
 var isReconnecting bool
 var hasInitialPrintBeenDone bool
 
-func SetupPrinter() (*catprinter.Client, error) {
+func SetupBluetoothClient() (*catprinter.Client, error) {
 	// 既存のクライアントがある場合は完全リセット（真のKeepAliveのため）
 	if latestPrinter != nil {
 		logger.Info("Resetting printer client for proper keep-alive")
@@ -60,7 +62,7 @@ func SetupPrinter() (*catprinter.Client, error) {
 	return instance, nil
 }
 
-func ConnectPrinter(c *catprinter.Client, address string) error {
+func ConnectBluetoothPrinter(c *catprinter.Client, address string) error {
 	if c == nil {
 		return nil
 	}
@@ -95,9 +97,8 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 
 	// 接続安定待ち
 	// BLE接続直後のパラメータネゴシエーション（MTU, Connection Interval等）完了を待つ
-	// 1000ms -> 3000msに延長（コマンド取りこぼし防止）
-	logger.Info("Waiting 3s for connection stabilization...")
-	time.Sleep(3000 * time.Millisecond)
+	logger.Info("Waiting 1s for connection stabilization...")
+	time.Sleep(1000 * time.Millisecond)
 
 	isConnected = true
 
@@ -110,7 +111,7 @@ func ConnectPrinter(c *catprinter.Client, address string) error {
 	return nil
 }
 
-func SetupPrinterOptions(bestQuality, dither, autoRotate bool, blackPoint float32) error {
+func SetupBluetoothOptions(bestQuality, dither, autoRotate bool, blackPoint float32) error {
 	// Set up the printer options
 	opts = catprinter.NewOptions().
 		SetBestQuality(bestQuality).
@@ -121,8 +122,8 @@ func SetupPrinterOptions(bestQuality, dither, autoRotate bool, blackPoint float3
 	return nil
 }
 
-// Stop gracefully disconnects the printer and releases BLE device
-func Stop() {
+// StopBluetoothClient gracefully disconnects the Bluetooth printer and releases BLE device
+func StopBluetoothClient() {
 	if latestPrinter != nil {
 		if isConnected {
 			latestPrinter.Disconnect()
@@ -138,37 +139,97 @@ func Stop() {
 }
 
 // MarkInitialPrintDone marks that the initial print has been completed
-func MarkInitialPrintDone() {
+func MarkBluetoothInitialPrintDone() {
 	hasInitialPrintBeenDone = true
 }
 
-// IsConnected returns whether the printer is connected
-func IsConnected() bool {
+// IsBluetoothConnected returns whether the Bluetooth printer is connected
+func IsBluetoothConnected() bool {
 	return isConnected
 }
 
-// HasInitialPrintBeenDone returns whether the initial print has been done
-func HasInitialPrintBeenDone() bool {
+// HasBluetoothInitialPrintBeenDone returns whether the initial print has been done
+func HasBluetoothInitialPrintBeenDone() bool {
 	return hasInitialPrintBeenDone
 }
 
-// GetLatestPrinter returns the current printer client
-func GetLatestPrinter() *catprinter.Client {
+// GetLatestBluetoothPrinter returns the current printer client
+func GetLatestBluetoothPrinter() *catprinter.Client {
 	return latestPrinter
 }
 
-// IsReconnecting returns whether the printer is in reconnection process
-func IsReconnecting() bool {
+// IsBluetoothReconnecting returns whether the printer is in reconnection process
+func IsBluetoothReconnecting() bool {
 	return isReconnecting
 }
 
-// SetReconnecting sets the reconnection flag
-func SetReconnecting(reconnecting bool) {
+// SetBluetoothReconnecting sets the reconnection flag
+func SetBluetoothReconnecting(reconnecting bool) {
 	isReconnecting = reconnecting
 }
 
-// SetupScannerClient creates a new client for scanning without affecting existing connection
-func SetupScannerClient() (*catprinter.Client, error) {
+// EnsureBluetoothConnection ensures a Bluetooth client is connected for keep-alive usage.
+func EnsureBluetoothConnection(address string) error {
+	if address == "" {
+		return fmt.Errorf("bluetooth address is required")
+	}
+	if latestPrinter == nil {
+		client, err := SetupBluetoothClient()
+		if err != nil {
+			return err
+		}
+		return ConnectBluetoothPrinter(client, address)
+	}
+	return ConnectBluetoothPrinter(latestPrinter, address)
+}
+
+// RefreshBluetoothConnection performs a keep-alive reconnect using the existing client.
+func RefreshBluetoothConnection(address string) error {
+	if address == "" {
+		return fmt.Errorf("bluetooth address is required")
+	}
+
+	if latestPrinter == nil {
+		return EnsureBluetoothConnection(address)
+	}
+
+	SetBluetoothReconnecting(true)
+	if isConnected {
+		latestPrinter.Disconnect()
+		isConnected = false
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	if err := ConnectBluetoothPrinter(latestPrinter, address); err != nil {
+		if shouldForceBluetoothReset(err) {
+			StopBluetoothClient()
+			client, resetErr := SetupBluetoothClient()
+			if resetErr != nil {
+				return resetErr
+			}
+			return ConnectBluetoothPrinter(client, address)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func shouldForceBluetoothReset(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "connection canceled") ||
+		strings.Contains(msg, "can't dial") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "bluetooth")
+}
+
+// SetupBluetoothScannerClient creates a new client for scanning without affecting existing connection
+func SetupBluetoothScannerClient() (*catprinter.Client, error) {
 	logger.Info("Creating scanner client (independent from main connection)")
 
 	// 新規クライアント作成（既存の接続に影響しない）
@@ -182,7 +243,7 @@ func SetupScannerClient() (*catprinter.Client, error) {
 }
 
 // ReconnectPrinter forces a complete reconnection to the printer
-func ReconnectPrinter(address string) error {
+func ReconnectBluetoothPrinter(address string) error {
 	logger.Info("Starting forced printer reconnection", zap.String("address", address))
 
 	// まず既存の接続を完全に切断
@@ -215,7 +276,7 @@ func ReconnectPrinter(address string) error {
 
 	latestPrinter = client
 
-	// プリンターオプションは後で SetupPrinterOptions で設定される
+	// プリンターオプションは後で SetupBluetoothOptions で設定される
 
 	// 接続を実行
 	logger.Info("Connecting to printer", zap.String("address", address))

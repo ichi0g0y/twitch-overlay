@@ -156,6 +156,8 @@ export interface PrinterStatusInfo {
   connected: boolean;
   dry_run_mode: boolean;
   printer_address: string;
+  printer_type?: string;
+  usb_printer_name?: string;
   configured: boolean;
   last_print?: string | null;
   print_queue?: number;
@@ -168,6 +170,12 @@ export interface BluetoothDevice {
   name?: string;
   signal_strength?: number;
   last_seen: string;
+}
+
+// システムプリンター (USB/CUPS)
+export interface SystemPrinter {
+  name: string;
+  status: string;
 }
 
 // プリンタースキャン結果

@@ -20,6 +20,16 @@ func handlePrinterReconnect(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Starting printer reconnection")
 
+	if env.Value.PrinterType != "bluetooth" {
+		logger.Warn("Reconnect requested in non-Bluetooth mode")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Bluetoothプリンターが選択されていません",
+		})
+		return
+	}
+
 	// Get printer address from environment
 	printerAddress := ""
 	if env.Value.PrinterAddress != nil {
@@ -36,11 +46,11 @@ func handlePrinterReconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 常に完全リセットを実行（SetupPrinterが内部で完全リセットするように修正済み）
+	// 常に完全リセットを実行（SetupBluetoothClientが内部で完全リセットするように修正済み）
 	logger.Info("[Reconnect] Performing complete printer reset")
 	
 	// Setup printer (内部で完全リセットを実行)
-	c, err := output.SetupPrinter()
+	c, err := output.SetupBluetoothClient()
 	if err != nil {
 		logger.Error("Failed to setup printer", zap.Error(err))
 		w.Header().Set("Content-Type", "application/json")
@@ -52,7 +62,7 @@ func handlePrinterReconnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to printer
-	err = output.ConnectPrinter(c, printerAddress)
+	err = output.ConnectBluetoothPrinter(c, printerAddress)
 	if err != nil {
 		logger.Error("Failed to reconnect", zap.String("address", printerAddress), zap.Error(err))
 		w.Header().Set("Content-Type", "application/json")
@@ -68,7 +78,7 @@ func handlePrinterReconnect(w http.ResponseWriter, r *http.Request) {
 	// Return success with current status
 	response := map[string]interface{}{
 		"success":         true,
-		"connected":       output.IsConnected(),
+		"connected":       output.IsBluetoothConnected(),
 		"printer_address": printerAddress,
 		"message":         "プリンターに再接続しました",
 	}

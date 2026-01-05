@@ -2,7 +2,7 @@ import React, { createContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
-  GetPrinterStatus, GetServerPort, ReconnectPrinter,
+  GetPrinterStatus, GetServerPort, GetSystemPrinters, ReconnectPrinter,
   ResetNotificationWindowPosition,
   ScanBluetoothDevices,
   TestNotification,
@@ -16,6 +16,7 @@ import {
   BluetoothDevice,
   FeatureStatus, PrinterStatusInfo,
   StreamStatus,
+  SystemPrinter,
   TestResponse,
   TwitchUserInfo, UpdateSettingsRequest
 } from '../types';
@@ -64,6 +65,10 @@ export const useSettingsPage = () => {
   const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>([]);
   const [scanning, setScanning] = useState(false);
   const [testing, setTesting] = useState(false);
+
+  // System printer related (USB)
+  const [systemPrinters, setSystemPrinters] = useState<SystemPrinter[]>([]);
+  const [loadingSystemPrinters, setLoadingSystemPrinters] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -153,11 +158,17 @@ export const useSettingsPage = () => {
   const fetchPrinterStatus = async () => {
     try {
       const status = await GetPrinterStatus();
+      const printerType = status.printer_type || 'bluetooth';
+      const printerAddress = status.address || '';
+      const usbPrinterName = status.usb_printer_name || '';
+      const configured = printerType === 'usb' ? !!usbPrinterName : !!printerAddress;
       setPrinterStatusInfo({
         connected: status.connected || false,
-        printer_address: status.address || '',
+        printer_address: printerAddress,
+        printer_type: printerType,
+        usb_printer_name: usbPrinterName,
         dry_run_mode: false,
-        configured: !!status.address
+        configured
       });
     } catch (err) {
       console.error('Failed to fetch printer status:', err);
@@ -406,30 +417,51 @@ export const useSettingsPage = () => {
   };
 
   const handleTestConnection = async () => {
-    const printerAddress = getSettingValue('PRINTER_ADDRESS');
-    if (!printerAddress) {
-      toast.error('プリンターアドレスが選択されていません');
-      return;
+    const printerType = getSettingValue('PRINTER_TYPE') || 'bluetooth';
+
+    // プリンタータイプに応じて必要なパラメータをチェック
+    if (printerType === 'bluetooth') {
+      const printerAddress = getSettingValue('PRINTER_ADDRESS');
+      if (!printerAddress) {
+        toast.error('プリンターアドレスが選択されていません');
+        return;
+      }
+    } else if (printerType === 'usb') {
+      const usbPrinterName = getSettingValue('USB_PRINTER_NAME');
+      if (!usbPrinterName) {
+        toast.error('USBプリンター名が選択されていません');
+        return;
+      }
     }
 
     setTesting(true);
     try {
-      const response = await fetch(buildApiUrl('/api/printer/test'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mac_address: printerAddress }),
-      });
-
-      const data: TestResponse = await response.json();
-      if (data.success) {
-        toast.success('プリンターとの接続に成功しました');
-      } else {
-        toast.error('接続テスト失敗: ' + data.message);
-      }
+      // Wails バインディング経由で TestPrint() を直接呼び出し
+      await TestPrint();
+      toast.success('プリンターとの接続に成功しました');
     } catch (err: any) {
-      toast.error('接続テストでエラーが発生しました: ' + err.message);
+      toast.error('接続テスト失敗: ' + err.message);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleRefreshSystemPrinters = async () => {
+    setLoadingSystemPrinters(true);
+    try {
+      const printers = await GetSystemPrinters();
+      setSystemPrinters(printers || []);
+      if (printers && printers.length > 0) {
+        toast.success(`${printers.length}台のプリンターが見つかりました`);
+      } else {
+        toast.info('システムプリンターが見つかりませんでした');
+      }
+    } catch (err: any) {
+      console.error('Failed to get system printers:', err);
+      toast.error('システムプリンターの取得に失敗しました: ' + err.message);
+      setSystemPrinters([]);
+    } finally {
+      setLoadingSystemPrinters(false);
     }
   };
 
@@ -536,6 +568,14 @@ export const useSettingsPage = () => {
     }
   }, [featureStatus?.twitch_configured]);
 
+  // プリンター種類がUSBの場合、システムプリンター一覧を取得
+  useEffect(() => {
+    const printerType = getSettingValue('PRINTER_TYPE');
+    if (printerType === 'usb') {
+      handleRefreshSystemPrinters();
+    }
+  }, [settings['PRINTER_TYPE']?.value]);
+
   return {
     // State
     activeTab,
@@ -588,6 +628,11 @@ export const useSettingsPage = () => {
     testing,
     handleScanDevices,
     handleTestConnection,
+
+    // System printer related (USB)
+    systemPrinters,
+    loadingSystemPrinters,
+    handleRefreshSystemPrinters,
 
     // Show/hide secrets
     showSecrets,

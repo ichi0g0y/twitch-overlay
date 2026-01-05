@@ -100,8 +100,8 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		logger.Warn("Failed to reload env values from database", zap.Error(err))
 	}
 
-	// PRINTER_ADDRESSが変更された場合は再接続を試みる
-	if newAddress, hasPrinterAddress := req["PRINTER_ADDRESS"]; hasPrinterAddress && newAddress != "" {
+	// PRINTER_ADDRESSが変更された場合は再接続を試みる（Bluetoothのみ）
+	if newAddress, hasPrinterAddress := req["PRINTER_ADDRESS"]; hasPrinterAddress && newAddress != "" && env.Value.PrinterType == "bluetooth" {
 		logger.Info("Printer address changed, attempting reconnection", zap.String("new_address", newAddress))
 		
 		// 新しいアドレスで再接続（goroutineで非同期実行）
@@ -115,25 +115,25 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 			
-			// 既存の接続をリセット（Stop()でBLEデバイスごと解放）
+			// 既存の接続をリセット（StopBluetoothClientでBLEデバイスごと解放）
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Warn("Recovered from panic during stop", zap.Any("panic", r))
 					}
 				}()
-				output.Stop()
+				output.StopBluetoothClient()
 			}()
 			
 			time.Sleep(500 * time.Millisecond) // 少し待機
 			
-			c, err := output.SetupPrinter()
+			c, err := output.SetupBluetoothClient()
 			if err != nil {
 				logger.Error("Failed to setup printer after settings change", zap.Error(err))
 				return
 			}
 			
-			err = output.ConnectPrinter(c, newAddress)
+			err = output.ConnectBluetoothPrinter(c, newAddress)
 			if err != nil {
 				logger.Error("Failed to reconnect to printer with new address", zap.String("address", newAddress), zap.Error(err))
 			} else {

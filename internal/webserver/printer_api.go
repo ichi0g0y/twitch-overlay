@@ -40,7 +40,7 @@ func handlePrinterScan(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Starting printer scan")
 
 	// プリンタースキャンを実行
-	c, err := output.SetupPrinter()
+	c, err := output.SetupBluetoothClient()
 	if err != nil {
 		logger.Error("Failed to setup scanner", zap.Error(err))
 		http.Error(w, "Failed to setup scanner", http.StatusInternalServerError)
@@ -89,8 +89,10 @@ func handlePrinterTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		MACAddress string `json:"mac_address"`
-		UseWebSocket bool `json:"use_websocket"`
+		MACAddress   string `json:"mac_address"`
+		PrinterType  string `json:"printer_type"`
+		PrinterName  string `json:"printer_name"`
+		UseWebSocket bool   `json:"use_websocket"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -98,8 +100,24 @@ func handlePrinterTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.MACAddress == "" {
-		http.Error(w, "MAC address is required", http.StatusBadRequest)
+	// プリンタータイプの確認
+	if req.PrinterType == "" {
+		req.PrinterType = "bluetooth" // デフォルトはBluetooth（後方互換性）
+	}
+
+	// 必要なパラメータチェック
+	if req.PrinterType == "bluetooth" {
+		if req.MACAddress == "" {
+			http.Error(w, "MAC address is required for Bluetooth printer", http.StatusBadRequest)
+			return
+		}
+	} else if req.PrinterType == "usb" {
+		if req.PrinterName == "" {
+			http.Error(w, "Printer name is required for USB printer", http.StatusBadRequest)
+			return
+		}
+	} else {
+		http.Error(w, "Invalid printer type", http.StatusBadRequest)
 		return
 	}
 
@@ -115,50 +133,83 @@ func handlePrinterTest(w http.ResponseWriter, r *http.Request) {
 		// 進捗を送信する関数
 		sendProgress := func(step string, status string, detail string) {
 			progress := map[string]interface{}{
-				"step":   step,
-				"status": status,
-				"detail": detail,
+				"step":      step,
+				"status":    status,
+				"detail":    detail,
 				"timestamp": time.Now(),
 			}
 			conn.WriteJSON(progress)
 		}
 
-		sendProgress("setup", "starting", "プリンターセットアップを開始...")
-		logger.Info("Testing printer connection via WebSocket", zap.String("mac_address", req.MACAddress))
+		var testErr error
 
-		// プリンター接続テスト
-		c, err := output.SetupPrinter()
-		if err != nil {
-			sendProgress("setup", "error", fmt.Sprintf("セットアップ失敗: %v", err))
-			logger.Error("Failed to setup printer", zap.Error(err))
-			return
-		}
-		// WebSocketの場合は接続を維持しない（テストのみ）
+		if req.PrinterType == "bluetooth" {
+			sendProgress("setup", "starting", "Bluetoothプリンターセットアップを開始...")
+			logger.Info("Testing Bluetooth printer connection via WebSocket", zap.String("mac_address", req.MACAddress))
 
-		sendProgress("setup", "completed", "セットアップ完了")
-		sendProgress("connect", "starting", fmt.Sprintf("アドレス %s に接続中...", req.MACAddress))
+			// Bluetoothプリンター接続テスト
+			c, err := output.SetupBluetoothClient()
+			if err != nil {
+				sendProgress("setup", "error", fmt.Sprintf("セットアップ失敗: %v", err))
+				logger.Error("Failed to setup Bluetooth printer", zap.Error(err))
+				testErr = err
+			} else {
+				sendProgress("setup", "completed", "セットアップ完了")
+				sendProgress("connect", "starting", fmt.Sprintf("アドレス %s に接続中...", req.MACAddress))
 
-		err = output.ConnectPrinter(c, req.MACAddress)
+				testErr = output.ConnectBluetoothPrinter(c, req.MACAddress)
 
-		if err != nil {
-			sendProgress("connect", "error", fmt.Sprintf("接続失敗: %v", err))
-			logger.Error("Printer connection test failed", zap.String("mac_address", req.MACAddress), zap.Error(err))
-		} else {
-			sendProgress("connect", "completed", "接続成功！")
-			logger.Info("Printer connection test successful", zap.String("mac_address", req.MACAddress))
-			
-			// テスト印刷の提案
-			sendProgress("test", "info", "接続テストが完了しました。設定から「印刷テスト」を実行できます。")
+				if testErr != nil {
+					sendProgress("connect", "error", fmt.Sprintf("接続失敗: %v", testErr))
+					logger.Error("Bluetooth printer connection test failed", zap.String("mac_address", req.MACAddress), zap.Error(testErr))
+				} else {
+					sendProgress("connect", "completed", "接続成功！")
+					logger.Info("Bluetooth printer connection test successful", zap.String("mac_address", req.MACAddress))
+					sendProgress("test", "info", "接続テストが完了しました。設定から「印刷テスト」を実行できます。")
+				}
+			}
+		} else if req.PrinterType == "usb" {
+			sendProgress("setup", "starting", "USBプリンター確認を開始...")
+			logger.Info("Testing USB printer connection via WebSocket", zap.String("printer_name", req.PrinterName))
+
+			// USBプリンター存在確認
+			printers, err := output.GetSystemPrinters()
+			if err != nil {
+				sendProgress("setup", "error", fmt.Sprintf("システムプリンター取得失敗: %v", err))
+				logger.Error("Failed to get system printers", zap.Error(err))
+				testErr = err
+			} else {
+				sendProgress("setup", "completed", "システムプリンター一覧取得完了")
+				sendProgress("connect", "starting", fmt.Sprintf("プリンター %s を確認中...", req.PrinterName))
+
+				// プリンター名が一覧に存在するか確認
+				found := false
+				for _, p := range printers {
+					if p.Name == req.PrinterName {
+						found = true
+						sendProgress("connect", "completed", fmt.Sprintf("プリンター %s が見つかりました！（状態: %s）", p.Name, p.Status))
+						logger.Info("USB printer found", zap.String("printer_name", req.PrinterName), zap.String("status", p.Status))
+						sendProgress("test", "info", "プリンターが正常に認識されています。設定から「印刷テスト」を実行できます。")
+						break
+					}
+				}
+
+				if !found {
+					testErr = fmt.Errorf("printer '%s' not found in system", req.PrinterName)
+					sendProgress("connect", "error", fmt.Sprintf("プリンター %s が見つかりません", req.PrinterName))
+					logger.Error("USB printer not found", zap.String("printer_name", req.PrinterName))
+				}
+			}
 		}
 
 		// 最終結果
 		finalResult := map[string]interface{}{
-			"success": err == nil,
+			"success": testErr == nil,
 			"message": func() string {
-				if err == nil {
+				if testErr == nil {
 					return "接続テスト成功"
 				}
-				return err.Error()
+				return testErr.Error()
 			}(),
 			"completed": true,
 		}
@@ -166,30 +217,61 @@ func handlePrinterTest(w http.ResponseWriter, r *http.Request) {
 		
 	} else {
 		// 通常のHTTPレスポンス（後方互換性のため）
-		logger.Info("Testing printer connection", zap.String("mac_address", req.MACAddress))
+		var testErr error
+		var message string
 
-		// プリンター接続テスト
-		c, err := output.SetupPrinter()
-		if err != nil {
-			logger.Error("Failed to setup printer", zap.Error(err))
-			http.Error(w, "Failed to setup printer", http.StatusInternalServerError)
-			return
+		if req.PrinterType == "bluetooth" {
+			logger.Info("Testing Bluetooth printer connection", zap.String("mac_address", req.MACAddress))
+
+			// Bluetoothプリンター接続テスト
+			c, err := output.SetupBluetoothClient()
+			if err != nil {
+				logger.Error("Failed to setup Bluetooth printer", zap.Error(err))
+				testErr = err
+				message = fmt.Sprintf("Failed to setup printer: %v", err)
+			} else {
+				testErr = output.ConnectBluetoothPrinter(c, req.MACAddress)
+
+				if testErr != nil {
+					logger.Error("Bluetooth printer connection test failed", zap.String("mac_address", req.MACAddress), zap.Error(testErr))
+					message = testErr.Error()
+				} else {
+					logger.Info("Bluetooth printer connection test successful", zap.String("mac_address", req.MACAddress))
+					message = "Connection successful"
+				}
+			}
+		} else if req.PrinterType == "usb" {
+			logger.Info("Testing USB printer connection", zap.String("printer_name", req.PrinterName))
+
+			// USBプリンター存在確認
+			printers, err := output.GetSystemPrinters()
+			if err != nil {
+				logger.Error("Failed to get system printers", zap.Error(err))
+				testErr = err
+				message = fmt.Sprintf("Failed to get system printers: %v", err)
+			} else {
+				// プリンター名が一覧に存在するか確認
+				found := false
+				for _, p := range printers {
+					if p.Name == req.PrinterName {
+						found = true
+						logger.Info("USB printer found", zap.String("printer_name", req.PrinterName), zap.String("status", p.Status))
+						message = fmt.Sprintf("Printer found: %s (status: %s)", p.Name, p.Status)
+						break
+					}
+				}
+
+				if !found {
+					testErr = fmt.Errorf("printer '%s' not found in system", req.PrinterName)
+					logger.Error("USB printer not found", zap.String("printer_name", req.PrinterName))
+					message = testErr.Error()
+				}
+			}
 		}
-		// 通常のHTTPテストでも接続は維持しない（テストのみ）
-
-		err = output.ConnectPrinter(c, req.MACAddress)
 
 		response := TestResponse{
-			Success: err == nil,
-			Message: "",
-		}
-
-		if err != nil {
-			logger.Error("Printer connection test failed", zap.String("mac_address", req.MACAddress), zap.Error(err))
-			response.Message = err.Error()
-		} else {
-			logger.Info("Printer connection test successful", zap.String("mac_address", req.MACAddress))
-			response.Message = "Connection successful"
+			Success: testErr == nil,
+			Message: message,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -207,9 +289,6 @@ func handlePrinterStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get printer connection status
-	isConnected := output.IsConnected()
-	
 	// Get dry-run mode from environment
 	dryRunMode := env.Value.DryRunMode
 	
@@ -218,17 +297,69 @@ func handlePrinterStatus(w http.ResponseWriter, r *http.Request) {
 	if env.Value.PrinterAddress != nil {
 		printerAddress = *env.Value.PrinterAddress
 	}
-	
+
+	// Get printer type and USB printer name
+	printerType := env.Value.PrinterType
+	usbPrinterName := env.Value.USBPrinterName
+
+	// Get printer connection status
+	isConnected := false
+	switch printerType {
+	case "bluetooth":
+		isConnected = output.IsBluetoothConnected()
+	case "usb":
+		isConnected = output.IsUSBPrinterAvailable(usbPrinterName)
+	}
+
+	// プリンター設定済みかどうか
+	configured := false
+	if printerType == "bluetooth" && printerAddress != "" {
+		configured = true
+	} else if printerType == "usb" && usbPrinterName != "" {
+		configured = true
+	}
+
 	response := map[string]interface{}{
 		"connected":        isConnected,
 		"dry_run_mode":     dryRunMode,
 		"printer_address":  printerAddress,
-		"configured":       printerAddress != "",
-		// Additional fields can be added as needed
-		"last_print":      nil,  // This would need to be tracked separately
-		"print_queue":     0,    // This would need queue implementation
+		"printer_type":     printerType,
+		"usb_printer_name": usbPrinterName,
+		"configured":       configured,
+		"print_queue":      output.GetPrintQueueSize(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleSystemPrinters システムプリンター一覧を取得
+func handleSystemPrinters(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	logger.Info("Getting system printers")
+
+	printers, err := output.GetSystemPrinters()
+	if err != nil {
+		logger.Error("Failed to get system printers", zap.Error(err))
+		http.Error(w, "Failed to get system printers", http.StatusInternalServerError)
+		return
+	}
+
+	logger.Info("System printers retrieved", zap.Int("count", len(printers)))
+
+	response := map[string]interface{}{
+		"printers": printers,
+		"count":    len(printers),
+		"status":   "success",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Error("Failed to encode response", zap.Error(err))
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }

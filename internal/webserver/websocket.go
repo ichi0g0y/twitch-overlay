@@ -21,10 +21,15 @@ type WSMessage struct {
 
 // WSClient はWebSocket接続クライアントを表す
 type WSClient struct {
-	conn       *websocket.Conn
-	send       chan []byte
-	clientID   string
+	conn        *websocket.Conn
+	send        chan wsOutboundMessage
+	clientID    string
 	connectedAt time.Time
+}
+
+type wsOutboundMessage struct {
+	messageType int
+	data        []byte
 }
 
 // WSHub はすべてのWebSocket接続を管理
@@ -116,7 +121,7 @@ func (h *WSHub) run() {
 			}
 			if data, err := json.Marshal(connMsg); err == nil {
 				select {
-				case client.send <- data:
+				case client.send <- wsOutboundMessage{messageType: websocket.TextMessage, data: data}:
 				default:
 					// バッファがフルの場合はスキップ
 				}
@@ -154,7 +159,7 @@ func (h *WSHub) run() {
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
-				case client.send <- data:
+				case client.send <- wsOutboundMessage{messageType: websocket.TextMessage, data: data}:
 				default:
 					// クライアントのバッファがフルの場合は切断
 					go func(c *WSClient) {
@@ -169,7 +174,10 @@ func (h *WSHub) run() {
 			// ハートビート送信
 			h.mu.RLock()
 			for client := range h.clients {
-				if err := client.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				select {
+				case client.send <- wsOutboundMessage{messageType: websocket.PingMessage, data: nil}:
+				default:
+					// クライアントのバッファがフルの場合は切断
 					go func(c *WSClient) {
 						h.unregister <- c
 						c.conn.Close()
@@ -261,7 +269,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 
 	client := &WSClient{
 		conn:        conn,
-		send:        make(chan []byte, 256),
+		send:        make(chan wsOutboundMessage, 256),
 		clientID:    clientID,
 		connectedAt: time.Now(),
 	}
@@ -309,7 +317,7 @@ func (c *WSClient) readPump() {
 				}
 				if data, err := json.Marshal(pongMsg); err == nil {
 					select {
-					case c.send <- data:
+					case c.send <- wsOutboundMessage{messageType: websocket.TextMessage, data: data}:
 					default:
 						logger.Debug("Failed to send pong: send buffer full",
 							zap.String("clientId", c.clientID))
@@ -327,9 +335,7 @@ func (c *WSClient) readPump() {
 }
 
 func (c *WSClient) writePump() {
-	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
-		ticker.Stop()
 		c.conn.Close()
 	}()
 
@@ -342,11 +348,7 @@ func (c *WSClient) writePump() {
 				return
 			}
 
-			c.conn.WriteMessage(websocket.TextMessage, message)
-
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(message.messageType, message.data); err != nil {
 				return
 			}
 		}

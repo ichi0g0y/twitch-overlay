@@ -211,14 +211,14 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}
 
-	// プリンター設定を確認して初回接続を試行
+	// プリンター設定を確認して初回接続を試行（Bluetoothのみ）
 	// 注意: KeepAlive機能が有効な場合は、keepAliveRoutineが自動的に接続を管理する
-	if env.Value.PrinterAddress != nil && *env.Value.PrinterAddress != "" {
+	if env.Value.PrinterType == "bluetooth" && env.Value.PrinterAddress != nil && *env.Value.PrinterAddress != "" {
 		go func() {
 			// KeepAliveが無効な場合のみ手動接続を実行
 			if !env.Value.KeepAliveEnabled {
 				logger.Info("KeepAlive is disabled, attempting manual printer connection")
-				if err := a.initializePrinter(); err != nil {
+				if err := a.initializeBluetoothPrinter(); err != nil {
 					logger.Error("Failed to initialize printer", zap.Error(err))
 				}
 			} else {
@@ -503,8 +503,8 @@ func (a *App) Shutdown(ctx context.Context) {
 		close(a.tokenRefreshDone)
 	}
 
-	// プリンターを停止
-	output.Stop()
+	// プリンターを停止（Bluetoothのみ）
+	output.StopBluetoothClient()
 
 	// EventSubを停止
 	twitcheventsub.Stop()
@@ -597,18 +597,22 @@ func (a *App) checkInitialStreamStatus() {
 	}
 }
 
-// initializePrinter initializes the printer connection
-func (a *App) initializePrinter() error {
-	logger.Info("Initializing printer...")
+// initializeBluetoothPrinter initializes the Bluetooth printer connection
+func (a *App) initializeBluetoothPrinter() error {
+	if env.Value.PrinterType != "bluetooth" {
+		return fmt.Errorf("bluetooth printer is not selected")
+	}
+
+	logger.Info("Initializing Bluetooth printer...")
 
 	// 既存の接続がある場合は先に切断
-	if output.IsConnected() {
+	if output.IsBluetoothConnected() {
 		logger.Info("Disconnecting existing printer connection")
-		output.Stop()
+		output.StopBluetoothClient()
 	}
 
 	// プリンターをセットアップ
-	client, err := output.SetupPrinter()
+	client, err := output.SetupBluetoothClient()
 	if err != nil {
 		logger.Error("Failed to setup printer", zap.Error(err))
 		if a.mainWindow != nil {
@@ -618,7 +622,7 @@ func (a *App) initializePrinter() error {
 	}
 
 	// プリンターオプションを設定
-	output.SetupPrinterOptions(
+	output.SetupBluetoothOptions(
 		env.Value.BestQuality,
 		env.Value.Dither,
 		env.Value.AutoRotate,
@@ -626,7 +630,7 @@ func (a *App) initializePrinter() error {
 	)
 
 	// プリンターに接続
-	if err := output.ConnectPrinter(client, *env.Value.PrinterAddress); err != nil {
+	if err := output.ConnectBluetoothPrinter(client, *env.Value.PrinterAddress); err != nil {
 		logger.Error("Failed to connect to printer", zap.Error(err))
 		if a.mainWindow != nil {
 			a.mainWindow.EmitEvent("printer_error", err.Error())
@@ -845,6 +849,17 @@ func max(a, b int) int {
 	return b
 }
 
+func getCurrentPrinterConnected() bool {
+	switch env.Value.PrinterType {
+	case "bluetooth":
+		return output.IsBluetoothConnected()
+	case "usb":
+		return output.IsUSBPrinterAvailable(env.Value.USBPrinterName)
+	default:
+		return false
+	}
+}
+
 // === Wails Exported Functions ===
 
 // GetScreensExtended returns all screens with their absolute positions
@@ -855,13 +870,19 @@ func (a *App) GetScreensExtended() []ScreenInfoExtended {
 // GetPrinterStatus returns the current printer connection status
 func (a *App) GetPrinterStatus() map[string]interface{} {
 	return map[string]interface{}{
-		"connected": output.IsConnected(),
-		"address":   env.Value.PrinterAddress,
+		"connected":        getCurrentPrinterConnected(),
+		"address":          env.Value.PrinterAddress,
+		"printer_type":     env.Value.PrinterType,
+		"usb_printer_name": env.Value.USBPrinterName,
 	}
 }
 
 // ConnectPrinter connects to the printer with the given address
 func (a *App) ConnectPrinter(address string) error {
+	if env.Value.PrinterType != "bluetooth" {
+		return fmt.Errorf("bluetooth printer is not selected")
+	}
+
 	if address == "" {
 		return fmt.Errorf("printer address is required")
 	}
@@ -870,12 +891,16 @@ func (a *App) ConnectPrinter(address string) error {
 	env.Value.PrinterAddress = &address
 
 	// プリンターを初期化（同期的に実行）
-	return a.initializePrinter()
+	return a.initializeBluetoothPrinter()
 }
 
 // DisconnectPrinter disconnects from the printer
 func (a *App) DisconnectPrinter() {
-	output.Stop()
+	if env.Value.PrinterType != "bluetooth" {
+		return
+	}
+
+	output.StopBluetoothClient()
 	if a.mainWindow != nil {
 		a.mainWindow.EmitEvent("printer_connected", false)
 	}
@@ -885,6 +910,10 @@ func (a *App) DisconnectPrinter() {
 func (a *App) ReconnectPrinter() error {
 	logger.Info("Reconnecting to printer")
 
+	if env.Value.PrinterType != "bluetooth" {
+		return fmt.Errorf("bluetooth printer is not selected")
+	}
+
 	// プリンターアドレスを取得
 	if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
 		return fmt.Errorf("printer address not configured")
@@ -893,7 +922,7 @@ func (a *App) ReconnectPrinter() error {
 	address := *env.Value.PrinterAddress
 
 	// プリンターオプションを設定
-	output.SetupPrinterOptions(
+	output.SetupBluetoothOptions(
 		env.Value.BestQuality,
 		env.Value.Dither,
 		env.Value.AutoRotate,
@@ -901,7 +930,7 @@ func (a *App) ReconnectPrinter() error {
 	)
 
 	// 強制的に再接続
-	if err := output.ReconnectPrinter(address); err != nil {
+	if err := output.ReconnectBluetoothPrinter(address); err != nil {
 		logger.Error("Failed to reconnect printer", zap.Error(err))
 		if a.mainWindow != nil {
 			a.mainWindow.EmitEvent("printer_error", err.Error())
@@ -917,12 +946,26 @@ func (a *App) ReconnectPrinter() error {
 	return nil
 }
 
+// GetSystemPrinters returns list of system printers
+func (a *App) GetSystemPrinters() ([]output.SystemPrinter, error) {
+	logger.Info("GetSystemPrinters called")
+
+	printers, err := output.GetSystemPrinters()
+	if err != nil {
+		logger.Error("Failed to get system printers", zap.Error(err))
+		return nil, err
+	}
+
+	logger.Info("System printers retrieved", zap.Int("count", len(printers)))
+	return printers, nil
+}
+
 // ScanBluetoothDevices scans for nearby Bluetooth devices
 func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 	logger.Info("Starting Bluetooth device scan")
 
 	// スキャン専用のクライアントをセットアップ（既存接続に影響しない）
-	client, err := output.SetupScannerClient()
+	client, err := output.SetupBluetoothScannerClient()
 	if err != nil {
 		logger.Error("Failed to setup scanner", zap.Error(err))
 		return nil, fmt.Errorf("failed to setup scanner: %w", err)
@@ -957,7 +1000,7 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 
 	// スキャン後に接続状態を通知（既存の接続状態は変わらない）
 	if a.mainWindow != nil {
-		a.mainWindow.EmitEvent("printer_connected", output.IsConnected())
+		a.mainWindow.EmitEvent("printer_connected", getCurrentPrinterConnected())
 	}
 
 	return result, nil
@@ -965,12 +1008,22 @@ func (a *App) ScanBluetoothDevices() ([]map[string]interface{}, error) {
 
 // TestPrint sends a test pattern to the printer
 func (a *App) TestPrint() error {
-	// Check if printer address is configured
-	if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-		return fmt.Errorf("printer address not configured")
+	// Check if printer is configured based on printer type
+	printerType := env.Value.PrinterType
+
+	if printerType == "bluetooth" {
+		if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
+			return fmt.Errorf("bluetooth printer address not configured")
+		}
+	} else if printerType == "usb" {
+		if env.Value.USBPrinterName == "" {
+			return fmt.Errorf("USB printer name not configured")
+		}
+	} else {
+		return fmt.Errorf("printer type not configured")
 	}
 
-	logger.Info("Starting test print")
+	logger.Info("Starting test print", zap.String("printer_type", printerType))
 
 	// テスト印刷を非同期で実行
 	go func() {
@@ -1218,6 +1271,8 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"AUTO_ROTATE":                   true,
 			"BLACK_POINT":                   true,
 			"ROTATE_PRINT":                  true,
+			"PRINTER_TYPE":                  true,
+			"USB_PRINTER_NAME":              true,
 			"TWITCH_USER_ID":                true,
 			"CLIENT_ID":                     true,
 			"CLIENT_SECRET":                 true,
@@ -1282,16 +1337,18 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		return fmt.Errorf("failed to reload settings: %w", err)
 	}
 
-	// プリンターオプションを再設定（optsグローバル変数を更新）
-	if err := output.SetupPrinterOptions(
-		env.Value.BestQuality,
-		env.Value.Dither,
-		env.Value.AutoRotate,
-		env.Value.BlackPoint,
-	); err != nil {
-		logger.Warn("Failed to update printer options after settings change", zap.Error(err))
-	} else {
-		logger.Debug("Updated printer options after settings change")
+	// Bluetooth設定時のみプリンターオプションを再設定
+	if env.Value.PrinterType == "bluetooth" {
+		if err := output.SetupBluetoothOptions(
+			env.Value.BestQuality,
+			env.Value.Dither,
+			env.Value.AutoRotate,
+			env.Value.BlackPoint,
+		); err != nil {
+			logger.Warn("Failed to update printer options after settings change", zap.Error(err))
+		} else {
+			logger.Debug("Updated printer options after settings change")
+		}
 	}
 
 	// Wailsフロントエンドへの通知
@@ -1369,7 +1426,7 @@ func (a *App) GetFeatureStatus() (map[string]interface{}, error) {
 	}
 
 	// プリンター接続状態を追加
-	status.PrinterConnected = output.IsConnected()
+	status.PrinterConnected = getCurrentPrinterConnected()
 
 	// map[string]interface{}形式に変換
 	result := map[string]interface{}{

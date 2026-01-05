@@ -501,16 +501,18 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Debug("Reloaded env values after overlay settings update")
 
-		// プリンターオプションを再設定（optsグローバル変数を更新）
-		if err := output.SetupPrinterOptions(
-			env.Value.BestQuality,
-			env.Value.Dither,
-			env.Value.AutoRotate,
-			env.Value.BlackPoint,
-		); err != nil {
-			logger.Warn("Failed to update printer options", zap.Error(err))
-		} else {
-			logger.Debug("Updated printer options with new settings")
+		// Bluetooth設定時のみプリンターオプションを再設定
+		if env.Value.PrinterType == "bluetooth" {
+			if err := output.SetupBluetoothOptions(
+				env.Value.BestQuality,
+				env.Value.Dither,
+				env.Value.AutoRotate,
+				env.Value.BlackPoint,
+			); err != nil {
+				logger.Warn("Failed to update printer options", zap.Error(err))
+			} else {
+				logger.Debug("Updated printer options with new settings")
+			}
 		}
 	}
 

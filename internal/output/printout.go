@@ -56,6 +56,51 @@ func shouldUseDryRun() bool {
 	return false
 }
 
+// createPrinterBackend は現在の設定からプリンターバックエンドを作成
+func createPrinterBackend() (PrinterBackend, error) {
+	// 設定から PrinterConfig を構築
+	config := PrinterConfig{
+		Type:             PrinterType(env.Value.PrinterType),
+		BluetoothAddress: getStringValue(env.Value.PrinterAddress),
+		BestQuality:      env.Value.BestQuality,
+		Dither:           env.Value.Dither,
+		AutoRotate:       env.Value.AutoRotate,
+		BlackPoint:       env.Value.BlackPoint,
+		USBPrinterName:   env.Value.USBPrinterName,
+		RotatePrint:      env.Value.RotatePrint,
+	}
+
+	logger.Info("Creating printer backend",
+		zap.String("type", string(config.Type)),
+		zap.String("bluetooth_address", config.BluetoothAddress),
+		zap.String("usb_printer_name", config.USBPrinterName))
+
+	switch config.Type {
+	case PrinterTypeBluetooth:
+		if config.BluetoothAddress == "" {
+			return nil, fmt.Errorf("bluetooth address not configured")
+		}
+		return NewBluetoothPrinter(config)
+
+	case PrinterTypeUSB:
+		if config.USBPrinterName == "" {
+			return nil, fmt.Errorf("USB printer name not configured")
+		}
+		return NewUSBPrinter(config)
+
+	default:
+		return nil, fmt.Errorf("unknown printer type: %s", config.Type)
+	}
+}
+
+// getStringValue はポインタから文字列を取得
+func getStringValue(ptr *string) string {
+	if ptr == nil {
+		return ""
+	}
+	return *ptr
+}
+
 // InitializePrinter initializes the printer subsystem (including keep-alive and clock)
 // This should be called from main() after env.Value is properly initialized
 func InitializePrinter() {
@@ -109,58 +154,32 @@ func init() {
 				// Lock printer for exclusive access
 				printerMutex.Lock()
 
-				// STRATEGY CHANGE: Connect-Print-Disconnect for every job
-				// This ensures fresh printer state and prevents "faint print" issues caused by
+				// STRATEGY: Connect-Print-Disconnect for every job
+				// This ensures fresh printer state and prevents issues caused by
 				// state corruption during persistent connections.
 
-				// 1. Ensure any existing connection is closed
-				if IsConnected() {
-					logger.Info("Closing existing connection to ensure fresh state")
-					Stop()
-					time.Sleep(1 * time.Second)
-				}
-
-				// 2. Check configuration
-				if env.Value.PrinterAddress == nil || *env.Value.PrinterAddress == "" {
-					logger.Warn("Printer address not configured, waiting 5s before retry...")
-					printerMutex.Unlock()
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				address := *env.Value.PrinterAddress
-
-				// 3. Create fresh client
-				c, err := SetupPrinter()
+				// 1. プリンターバックエンド作成
+				printerBackend, err := createPrinterBackend()
 				if err != nil {
-					logger.Error("Failed to setup printer client, waiting 5s before retry...", zap.Error(err))
+					logger.Error("Failed to create printer backend, waiting 5s before retry...", zap.Error(err))
 					printerMutex.Unlock()
 					time.Sleep(5 * time.Second)
 					continue
 				}
 
-				// 4. Connect
-				// Note: ConnectPrinter includes a stabilization delay
-				logger.Info("Connecting to printer for single job", zap.String("address", address))
-				err = ConnectPrinter(c, address)
-				if err != nil {
-					logger.Error("Failed to connect printer, waiting 5s before retry...", zap.Error(err))
-					// Ensure cleanup
-					Stop()
+				// 2. 接続
+				logger.Info("Connecting to printer", zap.String("type", string(printerBackend.Type())))
+				if err := printerBackend.Connect(); err != nil {
+					logger.Error("Failed to connect printer, waiting 5s before retry...",
+						zap.String("type", string(printerBackend.Type())),
+						zap.Error(err))
+					printerBackend.Disconnect()
 					printerMutex.Unlock()
 					time.Sleep(5 * time.Second)
 					continue
 				}
 
-				// 5. Setup Options (Force Refresh)
-				SetupPrinterOptions(
-					env.Value.BestQuality,
-					env.Value.Dither,
-					env.Value.AutoRotate,
-					env.Value.BlackPoint,
-				)
-
-				// 6. Print (or Dry Run)
-				// Check for dry-run mode
+				// 3. Dry-run チェック
 				if !job.Force && shouldUseDryRun() {
 					if env.Value.AutoDryRunWhenOffline && !status.IsStreamLive() {
 						logger.Info("Auto dry-run mode (stream offline): skipping actual printing")
@@ -171,57 +190,37 @@ func init() {
 					lastPrintMutex.Lock()
 					lastPrintTime = time.Now()
 					lastPrintMutex.Unlock()
-				} else {
-					// Rotate image if needed
-					finalImg := job.Image
-					if env.Value.RotatePrint {
-						finalImg = rotateImage180(job.Image)
-					}
 
-					if job.Force {
-						logger.Info("Force printing (ignoring dry-run mode)")
-					}
-
-					// Execute Print
-					if err := c.Print(finalImg, opts, false); err != nil {
-						logger.Error("Failed to print", zap.Error(err))
-						// On print error, we still disconnect and retry?
-						// Actually, if print fails, it might be connection issue.
-						// We'll let the loop retry.
-						Stop()
-						printerMutex.Unlock()
-						time.Sleep(5 * time.Second)
-						continue
-					} else {
-						// Success
-						lastPrintMutex.Lock()
-						lastPrintTime = time.Now()
-						lastPrintMutex.Unlock()
-
-						// Wait for stabilization
-						// Calculate dynamic wait time based on image height
-						// Cat printers are slow (~10mm/s).
-						// Assuming ~200dpi, 8px is roughly 1mm.
-						// Safe estimate: 1 second per 50-100 pixels?
-						// Let's use Base 2s + 1s per 60 pixels for safety.
-						// 400px height -> 2 + 6 = 8s
-						height := finalImg.Bounds().Dy()
-						waitSec := 2 + (height / 60)
-						if waitSec < 3 {
-							waitSec = 3
-						}
-
-						logger.Info("Print finished, waiting for printer to stabilize...",
-							zap.Int("height_px", height),
-							zap.Int("wait_seconds", waitSec))
-
-						time.Sleep(time.Duration(waitSec) * time.Second)
-					}
+					printerBackend.Disconnect()
+					printerMutex.Unlock()
+					break
 				}
 
-				// 7. Disconnect immediately
-				logger.Info("Disconnecting after print job")
-				Stop()
+				// 4. 印刷実行
+				if job.Force {
+					logger.Info("Force printing (ignoring dry-run mode)")
+				}
+
+				if err := printerBackend.Print(job.Image); err != nil {
+					logger.Error("Failed to print",
+						zap.String("type", string(printerBackend.Type())),
+						zap.Error(err))
+					printerBackend.Disconnect()
+					printerMutex.Unlock()
+					time.Sleep(5 * time.Second)
+					continue
+				}
+
+				// 5. 成功処理
+				logger.Info("Print job completed successfully",
+					zap.String("type", string(printerBackend.Type())))
+				lastPrintMutex.Lock()
+				lastPrintTime = time.Now()
+				lastPrintMutex.Unlock()
+
+				// 6. 切断
+				logger.Info("Disconnecting printer")
+				printerBackend.Disconnect()
 
 				// Release lock
 				printerMutex.Unlock()
@@ -468,13 +467,62 @@ func clockRoutine() {
 	}
 }
 
-// keepAliveRoutine maintains printer connection
-// DISABLED: This routine interferes with the Connect-Print-Disconnect strategy.
+// keepAliveRoutine maintains the Bluetooth printer connection using the shared client.
 func keepAliveRoutine() {
-	// Periodic logging to confirm it's disabled if needed, or just return.
-	// We'll log once on startup (which happens when this is called).
-	logger.Info("KeepAlive routine is DISABLED due to Connect-Print-Disconnect strategy")
-	return
+	if env.Value.PrinterType != "bluetooth" {
+		logger.Info("KeepAlive routine skipped: printer type is not bluetooth")
+		return
+	}
+
+	address := getStringValue(env.Value.PrinterAddress)
+	if address == "" {
+		logger.Warn("KeepAlive routine skipped: printer address not configured")
+		return
+	}
+
+	intervalSec := env.Value.KeepAliveInterval
+	if intervalSec <= 0 {
+		intervalSec = 60
+	}
+
+	logger.Info("KeepAlive routine started",
+		zap.Int("interval_seconds", intervalSec))
+
+	if err := EnsureBluetoothConnection(address); err != nil {
+		logger.Warn("KeepAlive initial connection failed", zap.Error(err))
+	}
+
+	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if !env.Value.KeepAliveEnabled {
+			continue
+		}
+		if env.Value.PrinterType != "bluetooth" {
+			continue
+		}
+		address = getStringValue(env.Value.PrinterAddress)
+		if address == "" {
+			continue
+		}
+
+		lastPrintMutex.Lock()
+		sinceLastPrint := time.Since(lastPrintTime)
+		lastPrintMutex.Unlock()
+		if sinceLastPrint < 5*time.Second {
+			continue
+		}
+
+		printerMutex.Lock()
+		err := RefreshBluetoothConnection(address)
+		printerMutex.Unlock()
+		if err != nil {
+			logger.Warn("KeepAlive refresh failed", zap.Error(err))
+		} else {
+			logger.Debug("KeepAlive refresh completed")
+		}
+	}
 }
 
 // PrintInitialClock prints initial clock on startup
