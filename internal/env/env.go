@@ -21,6 +21,8 @@ type EnvValue struct {
 	TwitchUserID          *string
 	TriggerCustomRewordID *string
 	PrinterAddress        *string
+	PrinterType           string
+	USBPrinterName        string
 	BestQuality           bool
 	Dither                bool
 	BlackPoint            float32
@@ -146,6 +148,18 @@ func loadFromDatabase() error {
 		return fmt.Errorf("failed to get PRINTER_ADDRESS: %w", err)
 	}
 
+	// プリンター種類設定を取得
+	printerType, err := settingsManager.GetRealValue("PRINTER_TYPE")
+	if err != nil || printerType == "" {
+		printerType = "bluetooth" // デフォルト
+	}
+
+	// USBプリンター名を取得
+	usbPrinterName, err := settingsManager.GetRealValue("USB_PRINTER_NAME")
+	if err != nil {
+		usbPrinterName = ""
+	}
+
 	bestQuality, _ := settingsManager.GetRealValue("BEST_QUALITY")
 	dither, _ := settingsManager.GetRealValue("DITHER")
 	blackPoint, _ := settingsManager.GetRealValue("BLACK_POINT")
@@ -195,6 +209,8 @@ func loadFromDatabase() error {
 		TwitchUserID:          stringPtr(twitchUserID),
 		TriggerCustomRewordID: stringPtr(triggerCustomRewordID),
 		PrinterAddress:        stringPtr(printerAddress),
+		PrinterType:           printerType,
+		USBPrinterName:        usbPrinterName,
 		BestQuality:           bestQuality == "true",
 		Dither:                dither == "true",
 		BlackPoint:            parseFloatStr(blackPoint),

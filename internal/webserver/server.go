@@ -199,6 +199,7 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/printer/test", corsMiddleware(handlePrinterTest))
 	mux.HandleFunc("/api/printer/status", corsMiddleware(handlePrinterStatus))
 	mux.HandleFunc("/api/printer/reconnect", corsMiddleware(handlePrinterReconnect))
+	mux.HandleFunc("/api/printer/system-printers", corsMiddleware(handleSystemPrinters))
 	mux.HandleFunc("/api/debug/printer-status", corsMiddleware(handleDebugPrinterStatus)) // デバッグ用
 
 	// Logs API endpoints

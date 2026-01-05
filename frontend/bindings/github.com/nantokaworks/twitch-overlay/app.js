@@ -22,6 +22,9 @@ import * as faxmanager$0 from "./internal/faxmanager/models.js";
 import * as music$0 from "./internal/music/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as output$0 from "./internal/output/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as status$0 from "./internal/status/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -288,6 +291,16 @@ export function GetStreamStatus() {
 }
 
 /**
+ * GetSystemPrinters returns list of system printers
+ * @returns {$CancellablePromise<output$0.SystemPrinter[]>}
+ */
+export function GetSystemPrinters() {
+    return $Call.ByID(728941267).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType15($result);
+    }));
+}
+
+/**
  * GetTrackArtwork returns track artwork as base64 encoded data URL
  * @param {string} trackID
  * @returns {$CancellablePromise<string>}
@@ -310,7 +323,7 @@ export function GetVersion() {
  */
 export function GetWindowPosition() {
     return $Call.ByID(1683686380).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType14($result);
+        return $$createType16($result);
     }));
 }
 
@@ -375,7 +388,7 @@ export function SaveWindowPosition(x, y, width, height) {
  */
 export function ScanBluetoothDevices() {
     return $Call.ByID(3590303845).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType15($result);
+        return $$createType17($result);
     }));
 }
 
@@ -487,5 +500,7 @@ const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = $models.ScreenInfoExtended.createFrom;
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = status$0.StreamStatus.createFrom;
-const $$createType14 = $Create.Map($Create.Any, $Create.Any);
-const $$createType15 = $Create.Array($$createType2);
+const $$createType14 = output$0.SystemPrinter.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $Create.Map($Create.Any, $Create.Any);
+const $$createType17 = $Create.Array($$createType2);

@@ -58,9 +58,17 @@ var DefaultSettings = map[string]Setting{
 	},
 
 	// プリンター設定
+	"PRINTER_TYPE": {
+		Key: "PRINTER_TYPE", Value: "bluetooth", Type: SettingTypeNormal, Required: false,
+		Description: "Printer type (bluetooth or usb)",
+	},
 	"PRINTER_ADDRESS": {
 		Key: "PRINTER_ADDRESS", Value: "", Type: SettingTypeNormal, Required: true,
 		Description: "Bluetooth MAC address of the printer",
+	},
+	"USB_PRINTER_NAME": {
+		Key: "USB_PRINTER_NAME", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "System printer name for USB printing",
 	},
 	"DRY_RUN_MODE": {
 		Key: "DRY_RUN_MODE", Value: "true", Type: SettingTypeNormal, Required: false,
@@ -503,6 +511,17 @@ func hasSecretInEnv() bool {
 // バリデーション
 func ValidateSetting(key, value string) error {
 	switch key {
+	case "PRINTER_TYPE":
+		if value != "bluetooth" && value != "usb" {
+			return fmt.Errorf("must be 'bluetooth' or 'usb'")
+		}
+	case "USB_PRINTER_NAME":
+		// 空文字列はOK（未設定）
+		if value != "" {
+			if len(value) == 0 || len(value) > 255 {
+				return fmt.Errorf("printer name length must be between 1 and 255 characters")
+			}
+		}
 	case "BLACK_POINT":
 		if val, err := strconv.ParseFloat(value, 32); err != nil || val < 0.0 || val > 1.0 {
 			return fmt.Errorf("must be float between 0.0 and 1.0")
