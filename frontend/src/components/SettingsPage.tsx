@@ -177,6 +177,9 @@ export const SettingsPage: React.FC = () => {
               onFontSizeChange={handleChatSidebarFontSizeChange}
               translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}
               onTranslationToggle={(enabled) => handleSettingChange('CHAT_TRANSLATION_ENABLED', enabled)}
+              notificationOverwrite={getSettingValue('NOTIFICATION_DISPLAY_MODE') === 'overwrite'}
+              onNotificationModeToggle={(enabled) =>
+                handleSettingChange('NOTIFICATION_DISPLAY_MODE', enabled ? 'overwrite' : 'queue')}
             />
           </div>
           <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>

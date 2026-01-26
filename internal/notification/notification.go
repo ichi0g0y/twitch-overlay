@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
@@ -41,6 +42,9 @@ var (
 	queueProcessorRunning bool
 	queueProcessorMutex   sync.Mutex
 	queueProcessorDone    chan struct{}
+	overwriteTimerMu      sync.Mutex
+	overwriteTimer        *time.Timer
+	overwriteSeq          uint64
 )
 
 // Initialize initializes the notification manager with Wails app reference
@@ -68,6 +72,12 @@ func startQueueProcessor() {
 	for {
 		select {
 		case notification := <-notificationQueue:
+			if getNotificationDisplayMode() != "queue" {
+				logger.Debug("Notification mode is overwrite, dropping queued notification",
+					zap.String("username", notification.Username))
+				continue
+			}
+
 			// キューから通知を取り出す
 			logger.Info("Processing queued notification",
 				zap.String("username", notification.Username),
@@ -76,6 +86,7 @@ func startQueueProcessor() {
 				zap.Int("queue_size", len(notificationQueue)))
 
 			// 通知を表示（アバターURL付き）
+			stopOverwriteTimer()
 			ShowChatNotificationWithFragmentsAndAvatar(notification.Username, notification.Message, notification.Fragments, notification.AvatarURL)
 
 			// 設定から表示秒数を取得
@@ -87,6 +98,10 @@ func startQueueProcessor() {
 			time.Sleep(displayDuration)
 
 			// 通知ウィンドウを非表示にする
+			if getNotificationDisplayMode() != "queue" {
+				logger.Info("Notification mode changed, skipping hide")
+				continue
+			}
 			Close()
 			logger.Info("Notification hidden after display duration")
 
@@ -125,6 +140,12 @@ func EnqueueNotificationWithFragmentsAndAvatar(username, message string, fragmen
 	if !isNotificationEnabled() {
 		logger.Debug("Notification is disabled, skipping",
 			zap.String("username", username))
+		return
+	}
+
+	if getNotificationDisplayMode() == "overwrite" {
+		ShowChatNotificationWithFragmentsAndAvatar(username, message, fragments, avatarURL)
+		scheduleOverwriteHide()
 		return
 	}
 
@@ -175,6 +196,50 @@ func getDisplayDuration() time.Duration {
 	}
 
 	return time.Duration(duration) * time.Second
+}
+
+// getNotificationDisplayMode returns notification mode ("queue" or "overwrite").
+func getNotificationDisplayMode() string {
+	db := localdb.GetDB()
+	if db == nil {
+		return "queue"
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	mode, _ := settingsManager.GetRealValue("NOTIFICATION_DISPLAY_MODE")
+	if mode == "" {
+		return "queue"
+	}
+	if mode != "queue" && mode != "overwrite" {
+		return "queue"
+	}
+	return mode
+}
+
+func scheduleOverwriteHide() {
+	duration := getDisplayDuration()
+	seq := atomic.AddUint64(&overwriteSeq, 1)
+	overwriteTimerMu.Lock()
+	if overwriteTimer != nil {
+		overwriteTimer.Stop()
+	}
+	overwriteTimer = time.AfterFunc(duration, func() {
+		if atomic.LoadUint64(&overwriteSeq) != seq {
+			return
+		}
+		Close()
+	})
+	overwriteTimerMu.Unlock()
+}
+
+func stopOverwriteTimer() {
+	atomic.AddUint64(&overwriteSeq, 1)
+	overwriteTimerMu.Lock()
+	if overwriteTimer != nil {
+		overwriteTimer.Stop()
+		overwriteTimer = nil
+	}
+	overwriteTimerMu.Unlock()
 }
 
 // CreateNotificationWindow creates the notification window in hidden state

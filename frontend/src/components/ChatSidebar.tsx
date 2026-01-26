@@ -16,6 +16,8 @@ type ChatSidebarProps = {
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
   onTranslationToggle: (enabled: boolean) => void;
+  notificationOverwrite: boolean;
+  onNotificationModeToggle: (enabled: boolean) => void;
 };
 
 const HISTORY_DAYS = 7;
@@ -41,6 +43,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onFontSizeChange,
   translationEnabled,
   onTranslationToggle,
+  notificationOverwrite,
+  onNotificationModeToggle,
 }) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -372,6 +376,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
                   <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
+                  <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
                 </div>
               </div>
             </div>
