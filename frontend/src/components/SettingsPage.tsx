@@ -63,7 +63,7 @@ export const SettingsPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
@@ -104,7 +104,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="w-full px-4 py-6">
         <SystemStatusCard
           featureStatus={featureStatus}
           authStatus={authStatus}

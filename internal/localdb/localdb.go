@@ -168,6 +168,7 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		('TICKER_NOTICE_FONT_SIZE', '16', 'overlay', false, 'ティッカーお知らせ文のフォントサイズ（px）'),
 		('TICKER_NOTICE_ALIGN', 'center', 'overlay', false, 'ティッカーお知らせ文の配置'),
 		('OVERLAY_CARDS_EXPANDED', '{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}', 'overlay', false, 'カードの折りたたみ状態'),
+		('OVERLAY_CARDS_LAYOUT', '{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}', 'overlay', false, 'カードの配置状態'),
 		('OVERLAY_DEBUG_ENABLED', 'false', 'overlay', false, 'デバッグ情報表示の有効/無効')`)
 	if err != nil {
 		logger.Error("Failed to insert default overlay settings", zap.Error(err))

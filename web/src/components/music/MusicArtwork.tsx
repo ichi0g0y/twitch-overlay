@@ -1,5 +1,5 @@
 import { CSSProperties, useEffect, useState } from 'react';
-import type { Track } from '../../types/music';
+import type { Track } from '@shared/types/music';
 import { buildApiUrl } from '../../utils/api';
 import MusicVisualizer from './MusicVisualizer';
 

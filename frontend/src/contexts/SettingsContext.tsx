@@ -41,6 +41,7 @@ interface OverlaySettings {
 
   // UI状態設定
   overlay_cards_expanded?: string;
+  overlay_cards_layout?: string;
 
   // プリンター設定
   best_quality?: boolean;

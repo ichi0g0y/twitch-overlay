@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { buildApiUrl } from '../../utils/api';
-import type { Track, Playlist } from '../../types/music';
+import type { Track, Playlist } from '@shared/types/music';
 
 interface FileUploadStatus {
   file: File;

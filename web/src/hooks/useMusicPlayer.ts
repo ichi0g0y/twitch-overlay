@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { Track, MusicPlayerState, PlaybackStatus } from '../types/music';
+import type { Track, MusicPlayerState, PlaybackStatus } from '@shared/types/music';
 import { buildApiUrl } from '../utils/api';
 
 interface UseMusicPlayerReturn extends MusicPlayerState {

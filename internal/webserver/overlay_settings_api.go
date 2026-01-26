@@ -61,6 +61,7 @@ type OverlaySettings struct {
 
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
+	OverlayCardsLayout   string `json:"overlay_cards_layout"`   // カードの配置（JSON文字列）
 
 	// その他の表示設定
 	ShowDebugInfo bool `json:"show_debug_info"`
@@ -142,6 +143,7 @@ func loadOverlaySettingsFromDB() {
 		TickerNoticeFontSize:   getIntSetting(allSettings, "TICKER_NOTICE_FONT_SIZE", 16),
 		TickerNoticeAlign:      getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
 		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
+		OverlayCardsLayout:     getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 
@@ -334,6 +336,7 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"TICKER_NOTICE_FONT_SIZE":  strconv.Itoa(overlaySettings.TickerNoticeFontSize),
 		"TICKER_NOTICE_ALIGN":      overlaySettings.TickerNoticeAlign,
 		"OVERLAY_CARDS_EXPANDED":   overlaySettings.OverlayCardsExpanded,
+		"OVERLAY_CARDS_LAYOUT":     overlaySettings.OverlayCardsLayout,
 		"OVERLAY_DEBUG_ENABLED":    strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 
@@ -448,6 +451,8 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			DateEnabled:          true,
 			TimeEnabled:          true,
 			LotteryTickerEnabled: false,
+			OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
+			OverlayCardsLayout:   `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`,
 		}
 	}
 
@@ -551,6 +556,8 @@ func handleOverlaySettingsGet(w http.ResponseWriter, r *http.Request) {
 			DateEnabled:          true,
 			TimeEnabled:          true,
 			LotteryTickerEnabled: false,
+			OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
+			OverlayCardsLayout:   `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`,
 		}
 	}
 

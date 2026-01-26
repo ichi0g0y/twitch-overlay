@@ -240,6 +240,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
+	"OVERLAY_CARDS_LAYOUT": {
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Description: "Layout (column + order) of overlay setting cards",
+	},
 
 	// プレゼントルーレット設定
 	"LOTTERY_ENABLED": {

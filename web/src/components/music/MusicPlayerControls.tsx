@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Play, Pause, Square, SkipForward, SkipBack, Volume2, Music } from 'lucide-react';
 import { buildApiUrl } from '../../utils/api';
 import { getWebSocketClient } from '../../utils/websocket';
-import type { Playlist, Track } from '../../types/music';
+import type { Playlist, Track } from '@shared/types/music';
 
 interface MusicStatus {
   playback_status?: 'playing' | 'paused' | 'stopped';

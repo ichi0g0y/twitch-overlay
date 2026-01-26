@@ -38,6 +38,7 @@ export interface OverlaySettings {
   ticker_notice_font_size?: number;
   ticker_notice_align?: string;
   overlay_cards_expanded?: string;
+  overlay_cards_layout?: string;
   best_quality?: boolean;
   dither?: boolean;
   black_point?: number;

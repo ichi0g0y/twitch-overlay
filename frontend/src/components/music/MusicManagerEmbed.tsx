@@ -3,7 +3,7 @@ import { buildApiUrl } from '../../utils/api';
 import MusicUploadModal from './MusicUploadModal';
 import { Button } from '../ui/button';
 import { Upload, Plus, Trash2, Music as MusicIcon, ChevronLeft, ChevronRight, AlertTriangle, ListPlus } from 'lucide-react';
-import type { Track, Playlist } from '../../types/music';
+import type { Track, Playlist } from '@shared/types/music';
 import { GetMusicPlaylists, GetMusicTracks, GetPlaylistTracks, CreateMusicPlaylist, DeleteMusicTrack, DeleteMusicPlaylist, AddTrackToPlaylist, RemoveTrackFromPlaylist, GetTrackArtwork } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 const MusicManagerEmbed = () => {
