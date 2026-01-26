@@ -1,5 +1,5 @@
 import { StreamStatus } from '@/types';
-import { Bell, RefreshCw, Upload, X } from 'lucide-react';
+import { Bell, Eye, EyeOff, RefreshCw, Upload, X } from 'lucide-react';
 import React from 'react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
@@ -13,6 +13,8 @@ interface GeneralSettingsProps {
   getSettingValue: (key: string) => string;
   handleSettingChange: (key: string, value: string | boolean) => void;
   getBooleanValue: (key: string) => boolean;
+  showSecrets: Record<string, boolean>;
+  setShowSecrets: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   webServerError: { error: string; port: number } | null;
   webServerPort: number;
   streamStatus: StreamStatus | null;
@@ -34,6 +36,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   getSettingValue,
   handleSettingChange,
   getBooleanValue,
+  showSecrets,
+  setShowSecrets,
   webServerError,
   webServerPort,
   streamStatus,
@@ -50,6 +54,25 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   resettingNotificationPosition,
   handleResetNotificationPosition,
 }) => {
+  const openAiModels = [
+    {
+      id: 'gpt-4o-mini',
+      name: 'GPT-4o mini',
+      price: '入力 $0.15 / 出力 $0.60',
+    },
+    {
+      id: 'gpt-4o',
+      name: 'GPT-4o',
+      price: '入力 $2.50 / 出力 $10.00',
+    },
+    {
+      id: 'gpt-4.1-mini',
+      name: 'GPT-4.1 mini',
+      price: '入力 $0.40 / 出力 $1.60',
+    },
+  ];
+  const selectedOpenAiModel = getSettingValue('OPENAI_MODEL') || 'gpt-4o-mini';
+
   return (
     <div className="space-y-6 focus:outline-none">
       <Card>
@@ -165,6 +188,58 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               checked={getBooleanValue('DEBUG_OUTPUT')}
               onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="openai_api_key">OpenAI APIキー</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="openai_api_key"
+                type={showSecrets['OPENAI_API_KEY'] ? 'text' : 'password'}
+                placeholder={getSettingValue('OPENAI_API_KEY') ? '（設定済み）' : 'OpenAI API Key'}
+                value={getSettingValue('OPENAI_API_KEY')}
+                onChange={(e) => handleSettingChange('OPENAI_API_KEY', e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowSecrets(prev => ({ ...prev, OPENAI_API_KEY: !prev.OPENAI_API_KEY }))}
+                aria-label="OpenAI APIキーの表示切り替え"
+              >
+                {showSecrets['OPENAI_API_KEY'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              日本語以外のコメントをChatGPTで翻訳して表示するために使用します
+            </p>
+            <div className="mt-3 space-y-2">
+              <Label>翻訳モデル</Label>
+              <div className="flex flex-wrap gap-2">
+                {openAiModels.map((model) => {
+                  const isActive = selectedOpenAiModel === model.id;
+                  return (
+                    <Button
+                      key={model.id}
+                      type="button"
+                      variant={isActive ? 'default' : 'outline'}
+                      onClick={() => handleSettingChange('OPENAI_MODEL', model.id)}
+                      className="h-auto px-3 py-2"
+                    >
+                      <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-semibold">{model.name}</span>
+                        <span className={`text-xs ${isActive ? 'opacity-80' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {model.price}
+                        </span>
+                      </div>
+                    </Button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                価格はStandardの1Mトークンあたり（入力 / 出力）
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -1277,6 +1277,8 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"CLIENT_ID":                     true,
 			"CLIENT_SECRET":                 true,
 			"TRIGGER_CUSTOM_REWORD_ID":      true,
+			"OPENAI_API_KEY":                true,
+			"OPENAI_MODEL":                  true,
 			"SERVER_PORT":                   true,
 			"AUTO_DRY_RUN_WHEN_OFFLINE":     true,
 			"TIMEZONE":                      true,
