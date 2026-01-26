@@ -1,5 +1,5 @@
 import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
@@ -15,10 +15,40 @@ import { PrinterSettings } from './settings/PrinterSettings';
 import { OverlaySettings } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
+import { ChatSidebar } from './ChatSidebar';
+
+const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
+const SIDEBAR_WIDTH_STORAGE_KEY = 'chat_sidebar_width';
+const SIDEBAR_FONT_SIZE_STORAGE_KEY = 'chat_sidebar_font_size';
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 520;
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_FONT_SIZE = 12;
+const SIDEBAR_MAX_FONT_SIZE = 40;
+const SIDEBAR_DEFAULT_FONT_SIZE = 14;
 
 export const SettingsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const contextValue = useSettingsPage();
+  const [chatSidebarSide, setChatSidebarSide] = useState<'left' | 'right'>(() => {
+    if (typeof window === 'undefined') return 'left';
+    const stored = window.localStorage.getItem(SIDEBAR_SIDE_STORAGE_KEY);
+    return stored === 'right' ? 'right' : 'left';
+  });
+  const [chatSidebarWidth, setChatSidebarWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+    const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    if (Number.isNaN(parsed)) return SIDEBAR_DEFAULT_WIDTH;
+    return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed));
+  });
+  const [chatSidebarFontSize, setChatSidebarFontSize] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_FONT_SIZE;
+    const stored = window.localStorage.getItem(SIDEBAR_FONT_SIZE_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    if (Number.isNaN(parsed)) return SIDEBAR_DEFAULT_FONT_SIZE;
+    return Math.min(SIDEBAR_MAX_FONT_SIZE, Math.max(SIDEBAR_MIN_FONT_SIZE, parsed));
+  });
   const {
     activeTab,
     setActiveTab,
@@ -58,6 +88,35 @@ export const SettingsPage: React.FC = () => {
     handleOpenPresent,
     handleOpenPresentDebug,
   } = contextValue;
+
+  const handleChatSidebarSideChange = (side: 'left' | 'right') => {
+    setChatSidebarSide(side);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SIDEBAR_SIDE_STORAGE_KEY, side);
+    }
+  };
+
+  const handleChatSidebarWidthChange = (nextWidth: number) => {
+    const clamped = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, nextWidth));
+    setChatSidebarWidth(clamped);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(clamped));
+    }
+  };
+
+  const handleChatSidebarFontSizeChange = (nextSize: number) => {
+    const clamped = Math.min(SIDEBAR_MAX_FONT_SIZE, Math.max(SIDEBAR_MIN_FONT_SIZE, nextSize));
+    setChatSidebarFontSize(clamped);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SIDEBAR_FONT_SIZE_STORAGE_KEY, String(clamped));
+    }
+  };
+
+  const layoutOrders = useMemo(() => {
+    return chatSidebarSide === 'left'
+      ? { sidebar: 'order-1 lg:order-1', content: 'order-2 lg:order-2' }
+      : { sidebar: 'order-1 lg:order-2', content: 'order-2 lg:order-1' };
+  }, [chatSidebarSide]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -105,77 +164,92 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <div className="w-full px-4 py-6">
-        <SystemStatusCard
-          featureStatus={featureStatus}
-          authStatus={authStatus}
-          streamStatus={streamStatus}
-          twitchUserInfo={twitchUserInfo}
-          printerStatusInfo={printerStatusInfo}
-          refreshingStreamStatus={refreshingStreamStatus}
-          reconnectingPrinter={reconnectingPrinter}
-          testingPrinter={testingPrinter}
-          verifyingTwitch={verifyingTwitch}
-          onTwitchAuth={handleTwitchAuth}
-          onRefreshStreamStatus={handleRefreshStreamStatus}
-          onVerifyTwitchConfig={verifyTwitchConfig}
-          onPrinterReconnect={handlePrinterReconnect}
-          onTestPrint={handleTestPrint}
-        />
-
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-8 mb-6">
-            <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
-            <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
-            <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
-            <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
-            <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
-            <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
-            <TabsTrigger value="cache"><HardDrive className="w-4 h-4 mr-1" />キャッシュ</TabsTrigger>
-            <TabsTrigger value="api"><Bug className="w-4 h-4 mr-1" />API</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="general">
-            <GeneralSettings
-              getSettingValue={getSettingValue}
-              handleSettingChange={handleSettingChange}
-              getBooleanValue={getBooleanValue}
-              webServerError={webServerError}
-              webServerPort={webServerPort}
-              streamStatus={streamStatus}
-              fileInputRef={fileInputRef}
-              uploadingFont={uploadingFont}
-              handleFontUpload={handleFontUpload}
-              previewText={previewText}
-              setPreviewText={setPreviewText}
-              previewImage={previewImage}
-              handleFontPreview={handleFontPreview}
-              handleDeleteFont={handleDeleteFont}
-              handleTestNotification={handleTestNotification}
-              testingNotification={testingNotification}
-              resettingNotificationPosition={resettingNotificationPosition}
-              handleResetNotificationPosition={handleResetNotificationPosition}
+        <div className="flex flex-col gap-4 lg:flex-row">
+          <div className={layoutOrders.sidebar}>
+            <ChatSidebar
+              side={chatSidebarSide}
+              onSideChange={handleChatSidebarSideChange}
+              width={chatSidebarWidth}
+              onWidthChange={handleChatSidebarWidthChange}
+              fontSize={chatSidebarFontSize}
+              onFontSizeChange={handleChatSidebarFontSizeChange}
             />
-          </TabsContent>
-          <TabsContent value="twitch">
-            <SettingsPageContext.Provider value={contextValue}>
-              <TwitchSettings />
-            </SettingsPageContext.Provider>
-          </TabsContent>
-          <TabsContent value="printer">
-            <SettingsPageContext.Provider value={contextValue}>
-              <PrinterSettings />
-            </SettingsPageContext.Provider>
-          </TabsContent>
-          <TabsContent value="music"><MusicSettings /></TabsContent>
-          <TabsContent value="overlay">
-            <SettingsPageContext.Provider value={contextValue}>
-              <OverlaySettings />
-            </SettingsPageContext.Provider>
-          </TabsContent>
-          <TabsContent value="logs"><LogsTab /></TabsContent>
-          <TabsContent value="cache"><CacheSettings /></TabsContent>
-          <TabsContent value="api"><ApiTab /></TabsContent>
-        </Tabs>
+          </div>
+          <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>
+            <SystemStatusCard
+              featureStatus={featureStatus}
+              authStatus={authStatus}
+              streamStatus={streamStatus}
+              twitchUserInfo={twitchUserInfo}
+              printerStatusInfo={printerStatusInfo}
+              refreshingStreamStatus={refreshingStreamStatus}
+              reconnectingPrinter={reconnectingPrinter}
+              testingPrinter={testingPrinter}
+              verifyingTwitch={verifyingTwitch}
+              onTwitchAuth={handleTwitchAuth}
+              onRefreshStreamStatus={handleRefreshStreamStatus}
+              onVerifyTwitchConfig={verifyTwitchConfig}
+              onPrinterReconnect={handlePrinterReconnect}
+              onTestPrint={handleTestPrint}
+            />
+
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-8 mb-6">
+                <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
+                <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
+                <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
+                <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
+                <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
+                <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
+                <TabsTrigger value="cache"><HardDrive className="w-4 h-4 mr-1" />キャッシュ</TabsTrigger>
+                <TabsTrigger value="api"><Bug className="w-4 h-4 mr-1" />API</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="general">
+                <GeneralSettings
+                  getSettingValue={getSettingValue}
+                  handleSettingChange={handleSettingChange}
+                  getBooleanValue={getBooleanValue}
+                  webServerError={webServerError}
+                  webServerPort={webServerPort}
+                  streamStatus={streamStatus}
+                  fileInputRef={fileInputRef}
+                  uploadingFont={uploadingFont}
+                  handleFontUpload={handleFontUpload}
+                  previewText={previewText}
+                  setPreviewText={setPreviewText}
+                  previewImage={previewImage}
+                  handleFontPreview={handleFontPreview}
+                  handleDeleteFont={handleDeleteFont}
+                  handleTestNotification={handleTestNotification}
+                  testingNotification={testingNotification}
+                  resettingNotificationPosition={resettingNotificationPosition}
+                  handleResetNotificationPosition={handleResetNotificationPosition}
+                />
+              </TabsContent>
+              <TabsContent value="twitch">
+                <SettingsPageContext.Provider value={contextValue}>
+                  <TwitchSettings />
+                </SettingsPageContext.Provider>
+              </TabsContent>
+              <TabsContent value="printer">
+                <SettingsPageContext.Provider value={contextValue}>
+                  <PrinterSettings />
+                </SettingsPageContext.Provider>
+              </TabsContent>
+              <TabsContent value="music"><MusicSettings /></TabsContent>
+              <TabsContent value="overlay">
+                <SettingsPageContext.Provider value={contextValue}>
+                  <OverlaySettings />
+                </SettingsPageContext.Provider>
+              </TabsContent>
+              <TabsContent value="logs"><LogsTab /></TabsContent>
+              <TabsContent value="cache"><CacheSettings /></TabsContent>
+              <TabsContent value="api"><ApiTab /></TabsContent>
+            </Tabs>
+          </div>
+
+        </div>
       </div>
     </div>
   );
