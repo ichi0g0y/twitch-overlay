@@ -2,25 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react';
 import { buildApiUrlAsync } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import { MessageContent } from './notification/MessageContent';
-
-type ChatFragment = {
-  type: 'text' | 'emote';
-  text: string;
-  emoteId?: string;
-  emoteUrl?: string;
-};
-
-type ChatMessage = {
-  id: string;
-  messageId?: string;
-  userId?: string;
-  username: string;
-  message: string;
-  fragments?: ChatFragment[];
-  avatarUrl?: string;
-  timestamp?: string;
-};
+import { ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 
 type SidebarSide = 'left' | 'right';
 
@@ -159,30 +141,45 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     let cancelled = false;
 
     const loadHistory = async () => {
-      try {
-        const url = await buildApiUrlAsync(`/api/chat/history?days=${HISTORY_DAYS}`);
-        const response = await fetch(url);
-        if (!response.ok) return;
-        const payload = await response.json();
-        const rawMessages = Array.isArray(payload) ? payload : payload?.messages;
-        if (!Array.isArray(rawMessages)) return;
+      const maxAttempts = 5;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const url = await buildApiUrlAsync(`/api/chat/history?days=${HISTORY_DAYS}`);
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          const rawMessages = Array.isArray(payload) ? payload : payload?.messages;
+          if (!Array.isArray(rawMessages)) {
+            throw new Error('Invalid history payload');
+          }
 
-        const history: ChatMessage[] = rawMessages.map((item: any) => ({
-          id: item.id ? String(item.id) : `${item.timestamp || Date.now()}-${Math.random().toString(36).slice(2)}`,
-          messageId: item.messageId,
-          userId: item.userId,
-          username: item.username,
-          message: item.message,
-          fragments: item.fragments,
-          avatarUrl: item.avatarUrl,
-          timestamp: item.timestamp,
-        }));
+          const history: ChatMessage[] = rawMessages.map((item: any) => ({
+            id: item.id ? String(item.id) : `${item.timestamp || Date.now()}-${Math.random().toString(36).slice(2)}`,
+            messageId: item.messageId,
+            userId: item.userId,
+            username: item.username,
+            message: item.message,
+            fragments: item.fragments,
+            avatarUrl: item.avatarUrl,
+            translation: item.translation,
+            translationStatus: item.translationStatus,
+            translationLang: item.translationLang,
+            timestamp: item.timestamp,
+          }));
 
-        if (!cancelled) {
-          setMessages(dedupeMessages(trimMessagesByAge(history)));
+          if (!cancelled) {
+            setMessages(dedupeMessages(trimMessagesByAge(history)));
+          }
+          return;
+        } catch (error) {
+          if (attempt === maxAttempts || cancelled) {
+            console.error('[ChatSidebar] Failed to load history:', error);
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
-      } catch (error) {
-        console.error('[ChatSidebar] Failed to load history:', error);
       }
     };
 
@@ -200,7 +197,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     const setup = async () => {
       try {
         await wsClient.connect();
-        unsubscribe = wsClient.on('chat-message', (data: any) => {
+        const messageUnsubscribe = wsClient.on('chat-message', (data: any) => {
           if (!data || !data.username || !data.message) return;
           const nextMessage: ChatMessage = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -210,6 +207,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             message: data.message,
             fragments: data.fragments,
             avatarUrl: data.avatarUrl,
+            translation: data.translation,
+            translationStatus: data.translationStatus,
+            translationLang: data.translationLang,
             timestamp: data.timestamp,
           };
           setMessages(prev => {
@@ -217,6 +217,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             return dedupeMessages(trimMessagesByAge(next));
           });
         });
+
+        const translationUnsubscribe = wsClient.on('chat-translation', (data: any) => {
+          if (!data || !data.messageId) return;
+          setMessages(prev => prev.map((msg) => (
+            msg.messageId === data.messageId
+              ? { ...msg, translation: data.translation, translationStatus: data.translationStatus, translationLang: data.translationLang }
+              : msg
+          )));
+        });
+
+        unsubscribe = () => {
+          messageUnsubscribe?.();
+          translationUnsubscribe?.();
+        };
       } catch (error) {
         console.error('[ChatSidebar] Failed to setup WebSocket:', error);
       }
@@ -243,6 +257,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const toggleIcon = collapsed ? expandIcon : collapseIcon;
   const resizeHandleSideClass = side === 'left' ? 'right-0' : 'left-0';
   const metaFontSize = Math.max(10, fontSize - 2);
+  const translationFontSize = Math.max(10, fontSize - 2);
   const sidebarStyle = useMemo(() => ({
     '--chat-sidebar-width': `${width}px`,
   } as React.CSSProperties), [width]);
@@ -369,40 +384,21 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         ) : (
           <div
             ref={listRef}
-            className="flex-1 overflow-y-auto px-3 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+            className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
           >
             {messages.length === 0 ? (
               emptyState
             ) : (
-              messages.map((msg) => (
-                <div key={msg.id} className="py-3 first:pt-0 last:pb-0 text-sm text-left" style={{ fontSize }}>
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
-                    {msg.avatarUrl ? (
-                      <img
-                        src={msg.avatarUrl}
-                        alt={`${msg.username} avatar`}
-                        className="rounded-full object-cover"
-                        style={{ width: `${fontSize}px`, height: `${fontSize}px` }}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div
-                        className="rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 flex items-center justify-center"
-                        style={{ width: `${fontSize}px`, height: `${fontSize}px`, fontSize: `${Math.max(10, fontSize * 0.6)}px` }}
-                      >
-                        {msg.username?.slice(0, 1)}
-                      </div>
-                    )}
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">{msg.username}</span>
-                    <span>{formatTime(msg.timestamp)}</span>
-                  </div>
-                  <div
-                    className="mt-1 text-gray-800 dark:text-gray-100 break-words"
-                    style={{ lineHeight: `${Math.round(fontSize * 1.1)}px` }}
-                  >
-                    <MessageContent message={msg.message} fragments={msg.fragments} fontSize={fontSize} />
-                  </div>
-                </div>
+              messages.map((msg, index) => (
+                <ChatSidebarItem
+                  key={msg.id}
+                  message={msg}
+                  index={index}
+                  fontSize={fontSize}
+                  metaFontSize={metaFontSize}
+                  translationFontSize={translationFontSize}
+                  timestampLabel={formatTime(msg.timestamp)}
+                />
               ))
             )}
           </div>

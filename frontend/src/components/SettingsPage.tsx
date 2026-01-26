@@ -72,6 +72,8 @@ export const SettingsPage: React.FC = () => {
     fileInputRef,
     getSettingValue,
     getBooleanValue,
+    showSecrets,
+    setShowSecrets,
     handleSettingChange,
     handleTwitchAuth,
     handleRefreshStreamStatus,
@@ -210,6 +212,8 @@ export const SettingsPage: React.FC = () => {
                   getSettingValue={getSettingValue}
                   handleSettingChange={handleSettingChange}
                   getBooleanValue={getBooleanValue}
+                  showSecrets={showSecrets}
+                  setShowSecrets={setShowSecrets}
                   webServerError={webServerError}
                   webServerPort={webServerPort}
                   streamStatus={streamStatus}

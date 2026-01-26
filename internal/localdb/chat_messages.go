@@ -9,14 +9,17 @@ import (
 )
 
 type ChatMessageRow struct {
-	ID            int64
-	MessageID     string
-	UserID        string
-	Username      string
-	Message       string
-	FragmentsJSON string
-	AvatarURL     string
-	CreatedAt     int64
+	ID                int64
+	MessageID         string
+	UserID            string
+	Username          string
+	Message           string
+	FragmentsJSON     string
+	AvatarURL         string
+	Translation       string
+	TranslationStatus string
+	TranslationLang   string
+	CreatedAt         int64
 }
 
 // SetupChatMessagesTable creates the chat_messages table for sidebar history.
@@ -30,6 +33,9 @@ func SetupChatMessagesTable(db *sql.DB) error {
 		message TEXT NOT NULL,
 		fragments_json TEXT,
 		avatar_url TEXT DEFAULT '',
+		translation_text TEXT DEFAULT '',
+		translation_status TEXT DEFAULT '',
+		translation_lang TEXT DEFAULT '',
 		created_at INTEGER NOT NULL
 	)`
 
@@ -40,6 +46,9 @@ func SetupChatMessagesTable(db *sql.DB) error {
 
 	// Add column for existing tables (ignore error if already exists)
 	_, _ = db.Exec(`ALTER TABLE chat_messages ADD COLUMN message_id TEXT`)
+	_, _ = db.Exec(`ALTER TABLE chat_messages ADD COLUMN translation_text TEXT`)
+	_, _ = db.Exec(`ALTER TABLE chat_messages ADD COLUMN translation_status TEXT`)
+	_, _ = db.Exec(`ALTER TABLE chat_messages ADD COLUMN translation_lang TEXT`)
 
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_message_id ON chat_messages(message_id) WHERE message_id IS NOT NULL AND message_id != ''`); err != nil {
 		logger.Warn("Failed to create chat_messages message_id index", zap.Error(err))
@@ -71,8 +80,8 @@ func AddChatMessage(message ChatMessageRow) (bool, error) {
 	}
 
 	insertSQL := `
-	INSERT OR IGNORE INTO chat_messages (message_id, user_id, username, message, fragments_json, avatar_url, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
+	INSERT OR IGNORE INTO chat_messages (message_id, user_id, username, message, fragments_json, avatar_url, translation_text, translation_status, translation_lang, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := db.Exec(insertSQL,
@@ -82,6 +91,9 @@ func AddChatMessage(message ChatMessageRow) (bool, error) {
 		message.Message,
 		message.FragmentsJSON,
 		message.AvatarURL,
+		message.Translation,
+		message.TranslationStatus,
+		message.TranslationLang,
 		message.CreatedAt,
 	)
 	if err != nil {
@@ -105,7 +117,7 @@ func GetChatMessagesSince(sinceUnix int64, limit int) ([]ChatMessageRow, error) 
 	}
 
 	query := `
-	SELECT id, message_id, user_id, username, message, fragments_json, avatar_url, created_at
+	SELECT id, message_id, user_id, username, message, fragments_json, avatar_url, translation_text, translation_status, translation_lang, created_at
 	FROM chat_messages
 	WHERE created_at >= ?
 	ORDER BY created_at ASC
@@ -136,6 +148,9 @@ func GetChatMessagesSince(sinceUnix int64, limit int) ([]ChatMessageRow, error) 
 			&row.Message,
 			&row.FragmentsJSON,
 			&row.AvatarURL,
+			&row.Translation,
+			&row.TranslationStatus,
+			&row.TranslationLang,
 			&row.CreatedAt,
 		); err != nil {
 			logger.Error("Failed to scan chat message", zap.Error(err))
@@ -195,4 +210,56 @@ func GetLatestChatAvatar(userID string) (string, error) {
 	}
 
 	return avatarURL, nil
+}
+
+// ChatMessageExistsByMessageID checks if a message with the given message_id exists.
+func ChatMessageExistsByMessageID(messageID string) (bool, error) {
+	if messageID == "" {
+		return false, nil
+	}
+
+	db := GetDB()
+	if db == nil {
+		logger.Error("Database not initialized")
+		return false, sql.ErrConnDone
+	}
+
+	var exists int
+	err := db.QueryRow(`SELECT 1 FROM chat_messages WHERE message_id = ? LIMIT 1`, messageID).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		logger.Error("Failed to check chat message existence", zap.Error(err))
+		return false, err
+	}
+
+	return true, nil
+}
+
+// UpdateChatTranslation updates translation text/status/lang for a message_id.
+func UpdateChatTranslation(messageID, translationText, status, lang string) error {
+	if messageID == "" {
+		return nil
+	}
+
+	db := GetDB()
+	if db == nil {
+		logger.Error("Database not initialized")
+		return sql.ErrConnDone
+	}
+
+	_, err := db.Exec(
+		`UPDATE chat_messages SET translation_text = ?, translation_status = ?, translation_lang = ? WHERE message_id = ?`,
+		translationText,
+		status,
+		lang,
+		messageID,
+	)
+	if err != nil {
+		logger.Error("Failed to update chat translation", zap.Error(err))
+		return err
+	}
+
+	return nil
 }

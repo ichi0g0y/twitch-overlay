@@ -13,14 +13,17 @@ import (
 )
 
 type chatHistoryMessage struct {
-	ID        int64                       `json:"id"`
-	MessageID string                      `json:"messageId,omitempty"`
-	UserID    string                      `json:"userId,omitempty"`
-	Username  string                      `json:"username"`
-	Message   string                      `json:"message"`
-	Fragments []notification.FragmentInfo `json:"fragments,omitempty"`
-	AvatarURL string                      `json:"avatarUrl,omitempty"`
-	Timestamp string                      `json:"timestamp"`
+	ID                int64                       `json:"id"`
+	MessageID         string                      `json:"messageId,omitempty"`
+	UserID            string                      `json:"userId,omitempty"`
+	Username          string                      `json:"username"`
+	Message           string                      `json:"message"`
+	Fragments         []notification.FragmentInfo `json:"fragments,omitempty"`
+	AvatarURL         string                      `json:"avatarUrl,omitempty"`
+	Translation       string                      `json:"translation,omitempty"`
+	TranslationStatus string                      `json:"translationStatus,omitempty"`
+	TranslationLang   string                      `json:"translationLang,omitempty"`
+	Timestamp         string                      `json:"timestamp"`
 }
 
 // handleChatHistory handles GET /api/chat/history
@@ -67,14 +70,17 @@ func handleChatHistory(w http.ResponseWriter, r *http.Request) {
 
 		timestamp := time.Unix(row.CreatedAt, 0).Format(time.RFC3339)
 		messages = append(messages, chatHistoryMessage{
-			ID:        row.ID,
-			MessageID: row.MessageID,
-			UserID:    row.UserID,
-			Username:  row.Username,
-			Message:   row.Message,
-			Fragments: fragments,
-			AvatarURL: row.AvatarURL,
-			Timestamp: timestamp,
+			ID:                row.ID,
+			MessageID:         row.MessageID,
+			UserID:            row.UserID,
+			Username:          row.Username,
+			Message:           row.Message,
+			Fragments:         fragments,
+			AvatarURL:         row.AvatarURL,
+			Translation:       row.Translation,
+			TranslationStatus: row.TranslationStatus,
+			TranslationLang:   row.TranslationLang,
+			Timestamp:         timestamp,
 		})
 	}
 
