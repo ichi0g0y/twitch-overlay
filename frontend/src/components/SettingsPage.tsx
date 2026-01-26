@@ -175,6 +175,8 @@ export const SettingsPage: React.FC = () => {
               onWidthChange={handleChatSidebarWidthChange}
               fontSize={chatSidebarFontSize}
               onFontSizeChange={handleChatSidebarFontSizeChange}
+              translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}
+              onTranslationToggle={(enabled) => handleSettingChange('CHAT_TRANSLATION_ENABLED', enabled)}
             />
           </div>
           <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>

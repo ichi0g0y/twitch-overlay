@@ -252,6 +252,40 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 			return
 		}
 
+		db := localdb.GetDB()
+		if db == nil {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		settingsManager := settings.NewSettingsManager(db)
+		translationEnabled := true
+		if value, err := settingsManager.GetRealValue("CHAT_TRANSLATION_ENABLED"); err == nil {
+			translationEnabled = strings.TrimSpace(strings.ToLower(value)) != "false"
+		}
+		if !translationEnabled {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
 		if !translation.ShouldTranslateToJapanese(normalized) {
 			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
 			broadcast.Send(map[string]interface{}{
@@ -277,22 +311,6 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 			},
 		})
 
-		db := localdb.GetDB()
-		if db == nil {
-			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
-			broadcast.Send(map[string]interface{}{
-				"type": "chat-translation",
-				"data": map[string]interface{}{
-					"messageId":         messageID,
-					"translation":       "",
-					"translationStatus": "skip",
-					"translationLang":   langCode,
-				},
-			})
-			return
-		}
-
-		settingsManager := settings.NewSettingsManager(db)
 		apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
 		if err != nil || apiKey == "" {
 			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)

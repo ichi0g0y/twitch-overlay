@@ -1279,6 +1279,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"TRIGGER_CUSTOM_REWORD_ID":      true,
 			"OPENAI_API_KEY":                true,
 			"OPENAI_MODEL":                  true,
+			"CHAT_TRANSLATION_ENABLED":      true,
 			"SERVER_PORT":                   true,
 			"AUTO_DRY_RUN_WHEN_OFFLINE":     true,
 			"TIMEZONE":                      true,

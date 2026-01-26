@@ -152,13 +152,13 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
         )}
         <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
         <span>{timestampLabel}</span>
-        {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80')}
       </div>
       <div
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
         style={{ lineHeight: `${Math.round(fontSize * 1.1)}px` }}
       >
         <MessageContent message={message.message} fragments={message.fragments} fontSize={fontSize} />
+        {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
       </div>
       {message.translationStatus === 'pending' && (
         <div

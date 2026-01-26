@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react
 import { buildApiUrlAsync } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
+import { Switch } from './ui/switch';
 
 type SidebarSide = 'left' | 'right';
 
@@ -13,6 +14,8 @@ type ChatSidebarProps = {
   onWidthChange: (width: number) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
+  translationEnabled: boolean;
+  onTranslationToggle: (enabled: boolean) => void;
 };
 
 const HISTORY_DAYS = 7;
@@ -36,6 +39,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onWidthChange,
   fontSize,
   onFontSizeChange,
+  translationEnabled,
+  onTranslationToggle,
 }) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -363,6 +368,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       右
                     </button>
                   </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
+                  <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
                 </div>
               </div>
             </div>
