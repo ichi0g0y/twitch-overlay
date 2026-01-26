@@ -56,6 +56,21 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 }) => {
   const openAiModels = [
     {
+      id: 'gpt-5',
+      name: 'GPT-5',
+      price: '入力 $1.25 / 出力 $10.00',
+    },
+    {
+      id: 'gpt-5-mini',
+      name: 'GPT-5 mini',
+      price: '入力 $0.25 / 出力 $2.00',
+    },
+    {
+      id: 'gpt-5-nano',
+      name: 'GPT-5 nano',
+      price: '入力 $0.05 / 出力 $0.40',
+    },
+    {
       id: 'gpt-4o-mini',
       name: 'GPT-4o mini',
       price: '入力 $0.15 / 出力 $0.60',
@@ -210,11 +225,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 {showSecrets['OPENAI_API_KEY'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              日本語以外のコメントをChatGPTで翻訳して表示するために使用します
-            </p>
             <div className="mt-3 space-y-2">
-              <Label>翻訳モデル</Label>
               <div className="flex flex-wrap gap-2">
                 {openAiModels.map((model) => {
                   const isActive = selectedOpenAiModel === model.id;

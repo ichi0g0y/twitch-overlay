@@ -326,11 +326,9 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 		}
 
 		finalLang := langCode
-		if finalLang == "" || finalLang == "und" {
-			detectedLang = translation.NormalizeLanguageCode(detectedLang)
-			if detectedLang != "" && detectedLang != "und" {
-				finalLang = detectedLang
-			}
+		detectedLang = translation.NormalizeLanguageCode(detectedLang)
+		if detectedLang != "" && detectedLang != "und" {
+			finalLang = detectedLang
 		}
 
 		_ = localdb.UpdateChatTranslation(messageID, translated, "done", finalLang)

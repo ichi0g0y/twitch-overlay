@@ -1,6 +1,6 @@
 import React from 'react';
-import * as CountryFlags from 'country-flag-icons/react/3x2';
 import { MessageContent } from './notification/MessageContent';
+import languageNames from '../data/iso6393-names.json';
 
 export type ChatFragment = {
   type: 'text' | 'emote';
@@ -68,25 +68,6 @@ const ISO6391_TO_3: Record<string, string> = {
   ta: 'tam',
 };
 
-const ISO6393_TO_1: Record<string, string> = Object.fromEntries(
-  Object.entries(ISO6391_TO_3).map(([iso1, iso3]) => [iso3, iso1]),
-);
-
-const ISO6391_TO_COUNTRY_OVERRIDES: Record<string, string> = {
-  en: 'US',
-  zh: 'CN',
-  ko: 'KR',
-  ar: 'SA',
-  hi: 'IN',
-  bn: 'BD',
-  ur: 'PK',
-  ta: 'IN',
-  tl: 'PH',
-  fa: 'IR',
-  he: 'IL',
-  el: 'GR',
-};
-
 const normalizeLangCode = (lang?: string) => {
   if (!lang) return '';
   const normalized = lang.toLowerCase().split(/[-_]/)[0];
@@ -96,15 +77,11 @@ const normalizeLangCode = (lang?: string) => {
   return normalized;
 };
 
-const resolveCountryCode = (langCode: string) => {
+const resolveLangLabel = (langCode: string) => {
   if (!langCode || langCode === 'und') return '';
-  const normalized = langCode.toLowerCase();
-  if (normalized.length === 2) {
-    return (ISO6391_TO_COUNTRY_OVERRIDES[normalized] ?? normalized.toUpperCase());
-  }
-  const iso1 = ISO6393_TO_1[normalized];
-  if (!iso1) return '';
-  return (ISO6391_TO_COUNTRY_OVERRIDES[iso1] ?? iso1.toUpperCase());
+  const entry = (languageNames as Record<string, { ja?: string; en?: string }>)[langCode];
+  if (!entry) return '';
+  return entry.ja ?? entry.en ?? '';
 };
 
 type ChatSidebarItemProps = {
@@ -130,26 +107,19 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   const showLangInMeta = message.translationLang && !hasTranslationLine;
 
   const langCode = normalizeLangCode(message.translationLang);
-  const shouldShowLang = langCode !== '' && langCode !== 'und' && langCode !== 'jpn';
-  const countryCode = shouldShowLang ? resolveCountryCode(langCode) : '';
-  const flagComponents = CountryFlags as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>;
-  const langComponent = countryCode ? flagComponents[countryCode] : undefined;
+  const langLabel = resolveLangLabel(langCode);
+  const shouldShowLang = langCode !== '' && langCode !== 'und' && langCode !== 'jpn' && langLabel !== '';
+  const isPendingTranslation = message.translationStatus === 'pending';
 
-  const renderLangLabel = (fontBase: number, className: string, spacingClass?: string) => {
+  const renderLangLabel = (className: string, spacingClass?: string, uncertain?: boolean) => {
     if (!shouldShowLang) return null;
-    const Flag = langComponent;
-    const height = Math.max(10, Math.round(fontBase * 0.9));
-    const width = Math.round(height * 1.5);
+    const suffix = uncertain ? '?' : '';
     return (
       <span className={`inline-flex items-center gap-1 ${spacingClass ?? ''} ${className}`}>
-        {Flag && (
-          <Flag
-            aria-hidden="true"
-            className="rounded-[2px] shadow-[0_0_0_1px_rgba(0,0,0,0.06)]"
-            style={{ width: `${width}px`, height: `${height}px` }}
-          />
-        )}
-        <span>{langCode}</span>
+        <span>
+          ({langLabel} {langCode}
+          {suffix})
+        </span>
       </span>
     );
   };
@@ -182,7 +152,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
         )}
         <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
         <span>{timestampLabel}</span>
-        {showLangInMeta && renderLangLabel(metaFontSize, 'text-amber-500/80 dark:text-amber-200/80')}
+        {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80')}
       </div>
       <div
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
@@ -203,7 +173,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2.2a5.8 5.8 0 00-5.8 5.8H4z" />
           </svg>
           <span className="ml-2">翻訳中</span>
-          {renderLangLabel(translationFontSize, 'text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
+          {renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2', isPendingTranslation)}
         </div>
       )}
       {message.translationStatus !== 'pending' && message.translation && (
@@ -215,7 +185,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
           }}
         >
           <span>{message.translation}</span>
-          {renderLangLabel(translationFontSize, 'text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
+          {renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
         </div>
       )}
     </div>
