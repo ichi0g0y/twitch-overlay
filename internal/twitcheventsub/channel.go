@@ -2,6 +2,7 @@ package twitcheventsub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -16,8 +17,9 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/types"
+	"github.com/nantokaworks/twitch-overlay/internal/translation"
 	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
+	"github.com/nantokaworks/twitch-overlay/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +35,21 @@ var (
 	rewardQueueCancel context.CancelFunc // ワーカー停止用
 	rewardQueueCtx    context.Context    // ワーカー用context
 )
+
+func buildLanguageDetectionMessage(fragments []twitch.ChatMessageFragment, fallback string) string {
+	var builder strings.Builder
+	for _, fragment := range fragments {
+		if fragment.Type == "text" {
+			builder.WriteString(fragment.Text)
+		}
+	}
+
+	plain := strings.TrimSpace(builder.String())
+	if plain == "" {
+		return fallback
+	}
+	return plain
+}
 
 // StartRewardQueueWorker はリワードイベント処理ワーカーを起動する
 // アプリケーション起動時に一度だけ呼ばれる
@@ -127,6 +144,67 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 
 	// フラグメント情報を構築（通知用）
 	fragments := buildFragmentsForNotification(message.Message.Fragments)
+	messageID := message.MessageId
+
+	if messageID != "" {
+		exists, err := localdb.ChatMessageExistsByMessageID(messageID)
+		if err != nil {
+			logger.Warn("Failed to check chat message duplication", zap.Error(err))
+		} else if exists {
+			logger.Debug("Duplicate chat message detected, skipping", zap.String("message_id", messageID))
+			return
+		}
+	}
+
+	avatarURL := ""
+	if message.Chatter.ChatterUserId != "" {
+		if cachedAvatar, err := localdb.GetLatestChatAvatar(message.Chatter.ChatterUserId); err == nil && cachedAvatar != "" {
+			avatarURL = cachedAvatar
+		} else if avatar, err := getUserAvatar(message.Chatter.ChatterUserId); err == nil {
+			avatarURL = avatar
+		} else if err != nil {
+			logger.Debug("Failed to get chat avatar", zap.Error(err))
+		}
+	}
+
+	fragmentsJSON := ""
+	if len(fragments) > 0 {
+		if encoded, err := json.Marshal(fragments); err == nil {
+			fragmentsJSON = string(encoded)
+		} else {
+			logger.Warn("Failed to encode chat fragments", zap.Error(err))
+		}
+	}
+
+	translationText := ""
+	translationStatus := ""
+	translationLang := ""
+
+	inserted, err := localdb.AddChatMessage(localdb.ChatMessageRow{
+		MessageID:         messageID,
+		UserID:            message.Chatter.ChatterUserId,
+		Username:          message.Chatter.ChatterUserName,
+		Message:           message.Message.Text,
+		FragmentsJSON:     fragmentsJSON,
+		AvatarURL:         avatarURL,
+		Translation:       translationText,
+		TranslationStatus: translationStatus,
+		TranslationLang:   translationLang,
+		CreatedAt:         time.Now().Unix(),
+	})
+	if err != nil {
+		logger.Warn("Failed to store chat message", zap.Error(err))
+	}
+	if messageID != "" && !inserted {
+		logger.Debug("Duplicate chat message detected, skipping broadcast",
+			zap.String("message_id", messageID))
+		return
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -7).Unix()
+	if err := localdb.CleanupChatMessagesBefore(cutoff); err != nil {
+		logger.Warn("Failed to cleanup chat history", zap.Error(err))
+	}
 
 	// 通知をキューに追加（フラグメント付き）
 	notification.EnqueueNotificationWithFragments(
@@ -134,6 +212,138 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 		message.Message.Text,
 		fragments,
 	)
+
+	// サイドバー用にチャットメッセージをブロードキャスト
+	broadcast.Send(map[string]interface{}{
+		"type": "chat-message",
+		"data": map[string]interface{}{
+			"username":          message.Chatter.ChatterUserName,
+			"userId":            message.Chatter.ChatterUserId,
+			"messageId":         messageID,
+			"message":           message.Message.Text,
+			"fragments":         fragments,
+			"avatarUrl":         avatarURL,
+			"translation":       translationText,
+			"translationStatus": translationStatus,
+			"translationLang":   translationLang,
+			"timestamp":         time.Now().Format(time.RFC3339),
+		},
+	})
+
+	plainMessage := buildLanguageDetectionMessage(message.Message.Fragments, message.Message.Text)
+	go func(messageID string, rawMessage string, plainMessage string) {
+		if messageID == "" {
+			return
+		}
+
+		normalized := translation.NormalizeForLanguageDetection(plainMessage)
+		langCode := translation.DetectLanguageCode(normalized)
+		if translation.ShouldSkipTranslation(normalized) {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		if !translation.ShouldTranslateToJapanese(normalized) {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		_ = localdb.UpdateChatTranslation(messageID, "", "pending", langCode)
+		broadcast.Send(map[string]interface{}{
+			"type": "chat-translation",
+			"data": map[string]interface{}{
+				"messageId":         messageID,
+				"translation":       "",
+				"translationStatus": "pending",
+				"translationLang":   langCode,
+			},
+		})
+
+		db := localdb.GetDB()
+		if db == nil {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		settingsManager := settings.NewSettingsManager(db)
+		apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
+		if err != nil || apiKey == "" {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
+		translated, detectedLang, err := translation.TranslateToJapanese(apiKey, rawMessage, modelName)
+		if err != nil {
+			logger.Warn("Failed to translate chat message", zap.Error(err))
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   langCode,
+				},
+			})
+			return
+		}
+
+		finalLang := langCode
+		if finalLang == "" || finalLang == "und" {
+			detectedLang = translation.NormalizeLanguageCode(detectedLang)
+			if detectedLang != "" && detectedLang != "und" {
+				finalLang = detectedLang
+			}
+		}
+
+		_ = localdb.UpdateChatTranslation(messageID, translated, "done", finalLang)
+		broadcast.Send(map[string]interface{}{
+			"type": "chat-translation",
+			"data": map[string]interface{}{
+				"messageId":         messageID,
+				"translation":       translated,
+				"translationStatus": "done",
+				"translationLang":   finalLang,
+			},
+		})
+	}(messageID, message.Message.Text, plainMessage)
 
 	logger.Debug("Chat message processed",
 		zap.String("user", message.Chatter.ChatterUserName),

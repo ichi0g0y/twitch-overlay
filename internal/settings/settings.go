@@ -56,6 +56,14 @@ var DefaultSettings = map[string]Setting{
 		Key: "TRIGGER_CUSTOM_REWORD_ID", Value: "", Type: SettingTypeSecret, Required: true,
 		Description: "Custom Reward ID for triggering FAX",
 	},
+	"OPENAI_API_KEY": {
+		Key: "OPENAI_API_KEY", Value: "", Type: SettingTypeSecret, Required: false,
+		Description: "OpenAI API key for chat translation",
+	},
+	"OPENAI_MODEL": {
+		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
+		Description: "OpenAI model for chat translation",
+	},
 
 	// プリンター設定
 	"PRINTER_TYPE": {
@@ -124,13 +132,13 @@ var DefaultSettings = map[string]Setting{
 		Key: "AUTO_DRY_RUN_WHEN_OFFLINE", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Automatically enable dry-run mode when stream is offline",
 	},
-	
+
 	// サーバー設定
 	"SERVER_PORT": {
 		Key: "SERVER_PORT", Value: "8080", Type: SettingTypeNormal, Required: false,
 		Description: "Web server port for OBS overlay",
 	},
-	
+
 	// フォント設定
 	"FONT_FILENAME": {
 		Key: "FONT_FILENAME", Value: "", Type: SettingTypeNormal, Required: false,
@@ -341,7 +349,7 @@ type FeatureStatus struct {
 	PrinterConnected  bool     `json:"printer_connected"`
 	MissingSettings   []string `json:"missing_settings"`
 	Warnings          []string `json:"warnings"`
-	ServiceMode       bool     `json:"service_mode"`  // systemdサービスとして実行されているか
+	ServiceMode       bool     `json:"service_mode"` // systemdサービスとして実行されているか
 }
 
 func (sm *SettingsManager) CheckFeatureStatus() (*FeatureStatus, error) {
@@ -491,7 +499,7 @@ func (sm *SettingsManager) MigrateFromEnv() error {
 
 	if migrated > 0 {
 		logger.Info("Migration completed", zap.Int("migrated_count", migrated))
-		
+
 		// セキュリティ警告を表示
 		if hasSecretInEnv() {
 			logger.Warn("SECURITY WARNING: Sensitive data found in environment variables.")
@@ -503,7 +511,7 @@ func (sm *SettingsManager) MigrateFromEnv() error {
 }
 
 func hasSecretInEnv() bool {
-	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID"}
+	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID", "OPENAI_API_KEY"}
 	for _, key := range secretKeys {
 		if os.Getenv(key) != "" {
 			return true
@@ -539,13 +547,13 @@ func ValidateSetting(key, value string) error {
 		if value != "" {
 			// 標準的なMACアドレス形式 (AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF)
 			macMatched, _ := regexp.MatchString(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`, value)
-			
+
 			// macOS Core Bluetooth UUID形式 (32文字の16進数、ハイフンなし)
 			uuidMatched, _ := regexp.MatchString(`^[0-9A-Fa-f]{32}$`, value)
-			
+
 			// macOS UUID形式（ハイフンあり: 8-4-4-4-12）
 			uuidWithHyphenMatched, _ := regexp.MatchString(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`, value)
-			
+
 			if !macMatched && !uuidMatched && !uuidWithHyphenMatched {
 				return fmt.Errorf("invalid address format (expected MAC address or UUID)")
 			}
