@@ -93,6 +93,8 @@ type ChatSidebarItemProps = {
   timestampLabel: string;
 };
 
+const BOT_USER_ID = '774281749';
+
 export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   message,
   index,
@@ -102,13 +104,14 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   timestampLabel,
 }) => {
   const isEven = index % 2 === 0;
+  const isBotMessage = message.userId === BOT_USER_ID;
   const hasTranslationLine =
     message.translationStatus === 'pending' || (message.translationStatus !== 'pending' && !!message.translation);
   const showLangInMeta = message.translationLang && !hasTranslationLine;
 
   const langCode = normalizeLangCode(message.translationLang);
   const langLabel = resolveLangLabel(langCode);
-  const shouldShowLang = langCode !== '' && langCode !== 'und' && langCode !== 'jpn' && langLabel !== '';
+  const shouldShowLang = !isBotMessage && langCode !== '' && langCode !== 'und' && langCode !== 'jpn' && langLabel !== '';
   const isPendingTranslation = message.translationStatus === 'pending';
 
   const renderLangLabel = (className: string, spacingClass?: string, uncertain?: boolean) => {
@@ -127,9 +130,11 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   return (
     <div
       className={`py-3 px-4 first:pt-0 last:pb-0 text-sm text-left ${
-        isEven
-          ? 'bg-gray-50/60 dark:bg-gray-800/40'
-          : 'bg-white/60 dark:bg-gray-900/30'
+        isBotMessage
+          ? 'bg-amber-50/70 dark:bg-amber-900/20 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)]'
+          : isEven
+            ? 'bg-gray-50/60 dark:bg-gray-800/40'
+            : 'bg-white/60 dark:bg-gray-900/30'
       }`}
       style={{ fontSize }}
     >
@@ -151,6 +156,11 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
           </div>
         )}
         <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
+        {isBotMessage && (
+          <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+            BOT
+          </span>
+        )}
         <span>{timestampLabel}</span>
       </div>
       <div

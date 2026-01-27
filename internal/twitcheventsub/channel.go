@@ -36,6 +36,8 @@ var (
 	rewardQueueCtx    context.Context    // ワーカー用context
 )
 
+const chatBotUserID = "774281749"
+
 func buildLanguageDetectionMessage(fragments []twitch.ChatMessageFragment, fallback string) string {
 	var builder strings.Builder
 	for _, fragment := range fragments {
@@ -233,6 +235,20 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 	plainMessage := buildLanguageDetectionMessage(message.Message.Fragments, message.Message.Text)
 	go func(messageID string, rawMessage string, plainMessage string) {
 		if messageID == "" {
+			return
+		}
+
+		if message.Chatter.ChatterUserId == chatBotUserID {
+			_ = localdb.UpdateChatTranslation(messageID, "", "skip", "")
+			broadcast.Send(map[string]interface{}{
+				"type": "chat-translation",
+				"data": map[string]interface{}{
+					"messageId":         messageID,
+					"translation":       "",
+					"translationStatus": "skip",
+					"translationLang":   "",
+				},
+			})
 			return
 		}
 
