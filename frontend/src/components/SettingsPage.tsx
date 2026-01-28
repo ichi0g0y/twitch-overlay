@@ -90,6 +90,8 @@ export const SettingsPage: React.FC = () => {
     handleOpenOverlayDebug,
     handleOpenPresent,
     handleOpenPresentDebug,
+    resettingOpenAIUsage,
+    handleResetOpenAIUsageDaily,
   } = contextValue;
 
   const handleChatSidebarSideChange = (side: 'left' | 'right') => {
@@ -218,25 +220,27 @@ export const SettingsPage: React.FC = () => {
                 <GeneralSettings
                   getSettingValue={getSettingValue}
                   handleSettingChange={handleSettingChange}
-                  getBooleanValue={getBooleanValue}
-                  showSecrets={showSecrets}
-                  setShowSecrets={setShowSecrets}
-                  webServerError={webServerError}
-                  webServerPort={webServerPort}
-                  streamStatus={streamStatus}
-                  fileInputRef={fileInputRef}
-                  uploadingFont={uploadingFont}
-                  handleFontUpload={handleFontUpload}
-                  previewText={previewText}
-                  setPreviewText={setPreviewText}
-                  previewImage={previewImage}
-                  handleFontPreview={handleFontPreview}
-                  handleDeleteFont={handleDeleteFont}
-                  handleTestNotification={handleTestNotification}
-                  testingNotification={testingNotification}
-                  resettingNotificationPosition={resettingNotificationPosition}
-                  handleResetNotificationPosition={handleResetNotificationPosition}
-                />
+                getBooleanValue={getBooleanValue}
+                showSecrets={showSecrets}
+                setShowSecrets={setShowSecrets}
+                webServerError={webServerError}
+                webServerPort={webServerPort}
+                streamStatus={streamStatus}
+                fileInputRef={fileInputRef}
+                uploadingFont={uploadingFont}
+                handleFontUpload={handleFontUpload}
+                previewText={previewText}
+                setPreviewText={setPreviewText}
+                previewImage={previewImage}
+                handleFontPreview={handleFontPreview}
+                handleDeleteFont={handleDeleteFont}
+                handleTestNotification={handleTestNotification}
+                testingNotification={testingNotification}
+                resettingNotificationPosition={resettingNotificationPosition}
+                handleResetNotificationPosition={handleResetNotificationPosition}
+                resettingOpenAIUsage={resettingOpenAIUsage}
+                handleResetOpenAIUsageDaily={handleResetOpenAIUsageDaily}
+              />
               </TabsContent>
               <TabsContent value="twitch">
                 <SettingsPageContext.Provider value={contextValue}>

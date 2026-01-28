@@ -76,6 +76,22 @@ var DefaultSettings = map[string]Setting{
 		Key: "OPENAI_USAGE_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
 		Description: "Estimated OpenAI usage cost in USD",
 	},
+	"OPENAI_USAGE_DAILY_DATE": {
+		Key: "OPENAI_USAGE_DAILY_DATE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Daily usage date (YYYY-MM-DD)",
+	},
+	"OPENAI_USAGE_DAILY_INPUT_TOKENS": {
+		Key: "OPENAI_USAGE_DAILY_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI input tokens",
+	},
+	"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": {
+		Key: "OPENAI_USAGE_DAILY_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI output tokens",
+	},
+	"OPENAI_USAGE_DAILY_COST_USD": {
+		Key: "OPENAI_USAGE_DAILY_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI usage cost in USD",
+	},
 	"CHAT_TRANSLATION_ENABLED": {
 		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Enable chat translation",
@@ -331,11 +347,11 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
 	"OVERLAY_CARDS_LAYOUT": {
-		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
 		Description: "Layout (column + order) of overlay setting cards",
 	},
 	"MIC_TRANSCRIPT_ENABLED": {
@@ -365,6 +381,10 @@ var DefaultSettings = map[string]Setting{
 	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
 		Description: "Font size for mic transcript translation",
+	},
+	"OPENAI_USAGE_OVERLAY_ENABLED": {
+		Key: "OPENAI_USAGE_OVERLAY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Show OpenAI usage overlay under clock",
 	},
 
 	// プレゼントルーレット設定

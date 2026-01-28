@@ -75,6 +75,7 @@ export const useSettingsPage = () => {
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
   const [loadingMicDevices, setLoadingMicDevices] = useState(false);
   const [restartingMicRecog, setRestartingMicRecog] = useState(false);
+  const [resettingOpenAIUsage, setResettingOpenAIUsage] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -142,6 +143,10 @@ export const useSettingsPage = () => {
         'OPENAI_USAGE_INPUT_TOKENS',
         'OPENAI_USAGE_OUTPUT_TOKENS',
         'OPENAI_USAGE_COST_USD',
+        'OPENAI_USAGE_DAILY_DATE',
+        'OPENAI_USAGE_DAILY_INPUT_TOKENS',
+        'OPENAI_USAGE_DAILY_OUTPUT_TOKENS',
+        'OPENAI_USAGE_DAILY_COST_USD',
       ];
       setSettings((prev) => {
         const next = { ...prev };
@@ -256,6 +261,33 @@ export const useSettingsPage = () => {
   };
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';
+
+  const handleResetOpenAIUsageDaily = useCallback(async () => {
+    setResettingOpenAIUsage(true);
+    try {
+      const timeZone = getSettingValue('TIMEZONE') || 'UTC';
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const today = formatter.format(new Date());
+      await UpdateSettings({
+        OPENAI_USAGE_DAILY_DATE: today,
+        OPENAI_USAGE_DAILY_INPUT_TOKENS: '0',
+        OPENAI_USAGE_DAILY_OUTPUT_TOKENS: '0',
+        OPENAI_USAGE_DAILY_COST_USD: '0',
+      });
+      await refreshOpenAIUsage();
+      toast.success('今日のOpenAI使用量をリセットしました');
+    } catch (err: any) {
+      console.error('[handleResetOpenAIUsageDaily] Failed to reset usage:', err);
+      toast.error('OpenAI使用量のリセットに失敗しました: ' + (err?.message || 'unknown error'));
+    } finally {
+      setResettingOpenAIUsage(false);
+    }
+  }, [getSettingValue, refreshOpenAIUsage]);
 
   const handleTwitchAuth = async () => {
     try {
@@ -744,6 +776,8 @@ export const useSettingsPage = () => {
     handleRefreshMicDevices,
     restartingMicRecog,
     handleRestartMicRecog,
+    resettingOpenAIUsage,
+    handleResetOpenAIUsageDaily,
 
     // Show/hide secrets
     showSecrets,

@@ -48,6 +48,9 @@ interface OverlaySettings {
   mic_transcript_translation_language?: string;
   mic_transcript_translation_font_size?: number;
 
+  // OpenAI使用量表示
+  openai_usage_enabled?: boolean;
+
   // UI状態設定
   overlay_cards_expanded?: string;
   overlay_cards_layout?: string;

@@ -68,6 +68,9 @@ type OverlaySettings struct {
 	MicTranscriptTranslationLanguage string `json:"mic_transcript_translation_language"`
 	MicTranscriptTranslationFontSize int    `json:"mic_transcript_translation_font_size"`
 
+	// OpenAI使用量表示
+	OpenAIUsageOverlayEnabled bool `json:"openai_usage_enabled"`
+
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
 	OverlayCardsLayout   string `json:"overlay_cards_layout"`   // カードの配置（JSON文字列）
@@ -158,8 +161,9 @@ func loadOverlaySettingsFromDB() {
 		MicTranscriptTranslationEnabled:  getBoolSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_ENABLED", false),
 		MicTranscriptTranslationLanguage: getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "en"),
 		MicTranscriptTranslationFontSize: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
-		OverlayCardsExpanded:             getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
-		OverlayCardsLayout:               getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`),
+		OpenAIUsageOverlayEnabled:        getBoolSetting(allSettings, "OPENAI_USAGE_OVERLAY_ENABLED", false),
+		OverlayCardsExpanded:             getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
+		OverlayCardsLayout:               getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`),
 		ShowDebugInfo:                    false, // 廃止予定
 		DebugEnabled:                     getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 
@@ -273,7 +277,9 @@ func useDefaultSettings() {
 		MicTranscriptTranslationEnabled:  false,
 		MicTranscriptTranslationLanguage: "en",
 		MicTranscriptTranslationFontSize: 16,
-		OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+		OpenAIUsageOverlayEnabled:        false,
+		OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+		OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`,
 		ShowDebugInfo:                    false,
 		DebugEnabled:                     false,
 		UpdatedAt:                        time.Now(),
@@ -365,6 +371,7 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":   strconv.FormatBool(overlaySettings.MicTranscriptTranslationEnabled),
 		"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE":  overlaySettings.MicTranscriptTranslationLanguage,
 		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
+		"OPENAI_USAGE_OVERLAY_ENABLED":         strconv.FormatBool(overlaySettings.OpenAIUsageOverlayEnabled),
 		"OVERLAY_CARDS_EXPANDED":               overlaySettings.OverlayCardsExpanded,
 		"OVERLAY_CARDS_LAYOUT":                 overlaySettings.OverlayCardsLayout,
 		"OVERLAY_DEBUG_ENABLED":                strconv.FormatBool(overlaySettings.DebugEnabled),
@@ -481,11 +488,12 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			DateEnabled:                      true,
 			TimeEnabled:                      true,
 			LotteryTickerEnabled:             false,
-			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
-			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`,
+			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`,
 			MicTranscriptTranslationEnabled:  false,
 			MicTranscriptTranslationLanguage: "en",
 			MicTranscriptTranslationFontSize: 16,
+			OpenAIUsageOverlayEnabled:        false,
 		}
 	}
 

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Gift, Mic, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Cpu, Gift, Mic, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
@@ -10,13 +10,13 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 
-type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
+type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'openaiUsage' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
 type CardsLayout = { left: CardKey[]; right: CardKey[] };
 
-const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'micTranscript', 'rewardCount', 'lottery'];
+const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'openaiUsage', 'micTranscript', 'rewardCount', 'lottery'];
 const DEFAULT_CARDS_LAYOUT: CardsLayout = {
-  left: ['musicPlayer', 'fax', 'clock', 'micTranscript'],
+  left: ['musicPlayer', 'fax', 'clock', 'openaiUsage', 'micTranscript'],
   right: ['rewardCount', 'lottery'],
 };
 
@@ -70,6 +70,8 @@ export const OverlaySettings: React.FC = () => {
     handleSettingChange,
     overlaySettings,
     updateOverlaySettings,
+    resettingOpenAIUsage,
+    handleResetOpenAIUsageDaily,
     musicStatus,
     playlists,
     isControlDisabled,
@@ -95,6 +97,20 @@ export const OverlaySettings: React.FC = () => {
   const groupRewardIdsRef = useRef<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
+  const dailyInputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_INPUT_TOKENS') || '0', 10) || 0;
+  const dailyOutputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_OUTPUT_TOKENS') || '0', 10) || 0;
+  const dailyTotalTokens = dailyInputTokens + dailyOutputTokens;
+  const dailyCostUsd = parseFloat(getSettingValue('OPENAI_USAGE_DAILY_COST_USD') || '0') || 0;
+  const dailyDate = getSettingValue('OPENAI_USAGE_DAILY_DATE') || '未集計';
+  const timeZone = getSettingValue('TIMEZONE') || 'UTC';
+  const formatNumber = (value: number) => value.toLocaleString('ja-JP');
+  const formatUsd = (value: number) =>
+    value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    });
 
   // カードの折りたたみ状態（overlaySettingsから復帰）
   const [expandedCards, setExpandedCards] = useState(() => {
@@ -111,6 +127,7 @@ export const OverlaySettings: React.FC = () => {
       musicPlayer: true,
       fax: true,
       clock: true,
+      openaiUsage: true,
       micTranscript: true,
       rewardCount: true,
       lottery: true,
@@ -1044,9 +1061,100 @@ export const OverlaySettings: React.FC = () => {
             </div>
           </>
         )}
+
         </CardContent>
       )}
     </Card>
+    );
+  };
+
+  const renderOpenAIUsageCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
+    const isPreview = options?.preview ?? false;
+    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.openaiUsage : expandedCards.openaiUsage;
+    const isDraggingSelf = draggingCard === 'openaiUsage';
+    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
+    const headerClassName = isPreview
+      ? 'cursor-default'
+      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+
+    return (
+      <Card className={cardClassName}>
+        <CardHeader
+          className={headerClassName}
+          onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, openaiUsage: !prev.openaiUsage }))}
+          draggable={!isPreview}
+          onDragStart={isPreview ? undefined : handleDragStart('openaiUsage', column)}
+          onDragEnd={isPreview ? undefined : handleDragEnd}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <Cpu className="w-4 h-4" />
+                OpenAI使用量
+              </CardTitle>
+              <CardDescription>
+                文字起こし翻訳の使用量を時計の下に表示します
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {isExpanded ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {isExpanded && (
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>表示を有効化</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  時計の下に今日の使用量を表示します
+                </p>
+              </div>
+              <Switch
+                checked={overlaySettings?.openai_usage_enabled ?? false}
+                onCheckedChange={(checked) => updateOverlaySettings({ openai_usage_enabled: checked })}
+              />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+              <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">今日の使用量</div>
+              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {dailyDate}（{timeZone}）
+              </div>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">入力</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">出力</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">合計</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetOpenAIUsageDaily}
+                  disabled={resettingOpenAIUsage}
+                >
+                  {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
     );
   };
 
@@ -1642,6 +1750,8 @@ export const OverlaySettings: React.FC = () => {
         return renderFaxCard(column, options);
       case 'clock':
         return renderClockCard(column, options);
+      case 'openaiUsage':
+        return renderOpenAIUsageCard(column, options);
       case 'micTranscript':
         return renderMicTranscriptCard(column, options);
       case 'rewardCount':

@@ -30,6 +30,8 @@ interface GeneralSettingsProps {
   testingNotification: boolean;
   resettingNotificationPosition: boolean;
   handleResetNotificationPosition: () => void;
+  resettingOpenAIUsage: boolean;
+  handleResetOpenAIUsageDaily: () => void;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
@@ -53,6 +55,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   testingNotification,
   resettingNotificationPosition,
   handleResetNotificationPosition,
+  resettingOpenAIUsage,
+  handleResetOpenAIUsageDaily,
 }) => {
   const openAiModels = [
     {
@@ -91,6 +95,12 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   const outputTokens = parseInt(getSettingValue('OPENAI_USAGE_OUTPUT_TOKENS') || '0', 10) || 0;
   const totalTokens = inputTokens + outputTokens;
   const costUsd = parseFloat(getSettingValue('OPENAI_USAGE_COST_USD') || '0') || 0;
+  const dailyInputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_INPUT_TOKENS') || '0', 10) || 0;
+  const dailyOutputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_OUTPUT_TOKENS') || '0', 10) || 0;
+  const dailyTotalTokens = dailyInputTokens + dailyOutputTokens;
+  const dailyCostUsd = parseFloat(getSettingValue('OPENAI_USAGE_DAILY_COST_USD') || '0') || 0;
+  const dailyDate = getSettingValue('OPENAI_USAGE_DAILY_DATE') || '未集計';
+  const timeZone = getSettingValue('TIMEZONE') || 'UTC';
   const formatNumber = (value: number) => value.toLocaleString('ja-JP');
   const formatUsd = (value: number) =>
     value.toLocaleString('en-US', {
@@ -266,22 +276,51 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 
             <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
               <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
+              <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                今日: {dailyDate}（{timeZone}）
+              </div>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
                   <div className="text-xs text-gray-500 dark:text-gray-400">入力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
                   <div className="text-xs text-gray-500 dark:text-gray-400">出力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
                   <div className="text-xs text-gray-500 dark:text-gray-400">合計トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetOpenAIUsageDaily}
+                  disabled={resettingOpenAIUsage}
+                >
+                  {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
+                </Button>
+              </div>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">累計入力トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">累計出力トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">累計合計トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(totalTokens)}</div>
                 </div>
               </div>
               <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
-                推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
+                累計推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
               </div>
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 OpenAIの公式価格に基づく概算（未対応モデルは除外・モデル変更時は誤差が出る可能性あり）

@@ -213,6 +213,10 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))
 	mux.HandleFunc("/api/mic/restart", corsMiddleware(handleMicRestart))
 
+	// OpenAI usage endpoints
+	mux.HandleFunc("/api/openai/usage", corsMiddleware(handleOpenAIUsage))
+	mux.HandleFunc("/api/openai/usage/reset", corsMiddleware(handleOpenAIUsageReset))
+
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
 
