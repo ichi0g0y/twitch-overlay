@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Gift, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Gift, Mic, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
@@ -10,13 +10,13 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 
-type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'rewardCount' | 'lottery';
+type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
 type CardsLayout = { left: CardKey[]; right: CardKey[] };
 
-const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'rewardCount', 'lottery'];
+const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'micTranscript', 'rewardCount', 'lottery'];
 const DEFAULT_CARDS_LAYOUT: CardsLayout = {
-  left: ['musicPlayer', 'fax', 'clock'],
+  left: ['musicPlayer', 'fax', 'clock', 'micTranscript'],
   right: ['rewardCount', 'lottery'],
 };
 
@@ -111,6 +111,7 @@ export const OverlaySettings: React.FC = () => {
       musicPlayer: true,
       fax: true,
       clock: true,
+      micTranscript: true,
       rewardCount: true,
       lottery: true,
     };
@@ -1049,6 +1050,110 @@ export const OverlaySettings: React.FC = () => {
     );
   };
 
+  const renderMicTranscriptCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
+    const isPreview = options?.preview ?? false;
+    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.micTranscript : expandedCards.micTranscript;
+    const isDraggingSelf = draggingCard === 'micTranscript';
+    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
+    const headerClassName = isPreview
+      ? 'cursor-default'
+      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+
+    const positionValue = overlaySettings?.mic_transcript_position || 'bottom-left';
+
+    return (
+      <Card className={cardClassName}>
+        <CardHeader
+          className={headerClassName}
+          onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, micTranscript: !prev.micTranscript }))}
+          draggable={!isPreview}
+          onDragStart={isPreview ? undefined : handleDragStart('micTranscript', column)}
+          onDragEnd={isPreview ? undefined : handleDragEnd}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <Mic className="w-4 h-4" />
+                マイク文字起こし
+              </CardTitle>
+              <CardDescription>
+                mic-recog の文字起こしをオーバーレイに表示します
+              </CardDescription>
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              {isExpanded ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {isExpanded && (
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>表示を有効化</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  受信した文字起こしをオーバーレイに表示します
+                </p>
+              </div>
+              <Switch
+                checked={overlaySettings?.mic_transcript_enabled ?? false}
+                onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_enabled: checked })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label>表示位置</Label>
+                <Select
+                  value={positionValue}
+                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_position: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="表示位置を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bottom-left">左下</SelectItem>
+                    <SelectItem value="bottom-center">中央下</SelectItem>
+                    <SelectItem value="bottom-right">右下</SelectItem>
+                    <SelectItem value="top-left">左上</SelectItem>
+                    <SelectItem value="top-center">中央上</SelectItem>
+                    <SelectItem value="top-right">右上</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mic-font-size">文字サイズ</Label>
+                <Input
+                  id="mic-font-size"
+                  type="number"
+                  min="10"
+                  max="80"
+                  value={overlaySettings?.mic_transcript_font_size ?? 20}
+                  onChange={(e) => updateOverlaySettings({ mic_transcript_font_size: parseInt(e.target.value, 10) || 0 })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mic-max-lines">最大行数</Label>
+              <Input
+                id="mic-max-lines"
+                type="number"
+                min="1"
+                max="10"
+                value={overlaySettings?.mic_transcript_max_lines ?? 3}
+                onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
+              />
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
+
   const renderRewardCountCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
     const isPreview = options?.preview ?? false;
     const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.rewardCount : expandedCards.rewardCount;
@@ -1482,6 +1587,8 @@ export const OverlaySettings: React.FC = () => {
         return renderFaxCard(column, options);
       case 'clock':
         return renderClockCard(column, options);
+      case 'micTranscript':
+        return renderMicTranscriptCard(column, options);
       case 'rewardCount':
         return renderRewardCountCard(column, options);
       case 'lottery':

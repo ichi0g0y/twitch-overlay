@@ -143,6 +143,72 @@ var DefaultSettings = map[string]Setting{
 		Description: "Web server port for OBS overlay",
 	},
 
+	// 音声認識設定（mic-recog）
+	"MIC_RECOG_ENABLED": {
+		Key: "MIC_RECOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic-recog transcription",
+	},
+	"MIC_RECOG_DEVICE": {
+		Key: "MIC_RECOG_DEVICE", Value: "auto", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper device (auto/cpu/mps/cuda)",
+	},
+	"MIC_RECOG_MIC_INDEX": {
+		Key: "MIC_RECOG_MIC_INDEX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Microphone device index (empty for default)",
+	},
+	"MIC_RECOG_MODEL": {
+		Key: "MIC_RECOG_MODEL", Value: "large-v3", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper model size",
+	},
+	"MIC_RECOG_LANGUAGE": {
+		Key: "MIC_RECOG_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper language code (empty for auto)",
+	},
+	"MIC_RECOG_VAD": {
+		Key: "MIC_RECOG_VAD", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable VAD segmentation",
+	},
+	"MIC_RECOG_VAD_THRESHOLD": {
+		Key: "MIC_RECOG_VAD_THRESHOLD", Value: "0.7", Type: SettingTypeNormal, Required: false,
+		Description: "VAD speech probability threshold",
+	},
+	"MIC_RECOG_VAD_END_MS": {
+		Key: "MIC_RECOG_VAD_END_MS", Value: "600", Type: SettingTypeNormal, Required: false,
+		Description: "Silence duration (ms) to end a segment",
+	},
+	"MIC_RECOG_VAD_PRE_ROLL_MS": {
+		Key: "MIC_RECOG_VAD_PRE_ROLL_MS", Value: "150", Type: SettingTypeNormal, Required: false,
+		Description: "Audio kept before speech start (ms)",
+	},
+	"MIC_RECOG_NO_SPEECH_THRESHOLD": {
+		Key: "MIC_RECOG_NO_SPEECH_THRESHOLD", Value: "0.85", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper no_speech_threshold",
+	},
+	"MIC_RECOG_LOGPROB_THRESHOLD": {
+		Key: "MIC_RECOG_LOGPROB_THRESHOLD", Value: "-0.3", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper logprob_threshold",
+	},
+	"MIC_RECOG_EXCLUDE": {
+		Key: "MIC_RECOG_EXCLUDE", Value: "ご視聴ありがとうございました", Type: SettingTypeNormal, Required: false,
+		Description: "Exclude phrases (comma or newline separated)",
+	},
+	"MIC_RECOG_INTERIM": {
+		Key: "MIC_RECOG_INTERIM", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable interim (real-time) transcription updates",
+	},
+	"MIC_RECOG_INTERIM_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_SECONDS", Value: "0.5", Type: SettingTypeNormal, Required: false,
+		Description: "Interval between interim updates (seconds)",
+	},
+	"MIC_RECOG_INTERIM_WINDOW_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_WINDOW_SECONDS", Value: "3", Type: SettingTypeNormal, Required: false,
+		Description: "Window size for interim transcription (seconds)",
+	},
+	"MIC_RECOG_INTERIM_MIN_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_MIN_SECONDS", Value: "1", Type: SettingTypeNormal, Required: false,
+		Description: "Minimum audio length for interim transcription (seconds)",
+	},
+
 	// フォント設定
 	"FONT_FILENAME": {
 		Key: "FONT_FILENAME", Value: "", Type: SettingTypeNormal, Required: false,
@@ -165,6 +231,10 @@ var DefaultSettings = map[string]Setting{
 	"WINDOW_HEIGHT": {
 		Key: "WINDOW_HEIGHT", Value: "768", Type: SettingTypeNormal, Required: false,
 		Description: "Window height",
+	},
+	"WINDOW_FULLSCREEN": {
+		Key: "WINDOW_FULLSCREEN", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Window fullscreen state",
 	},
 	"WINDOW_SCREEN_HASH": {
 		Key: "WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
@@ -249,12 +319,28 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
 	"OVERLAY_CARDS_LAYOUT": {
-		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
 		Description: "Layout (column + order) of overlay setting cards",
+	},
+	"MIC_TRANSCRIPT_ENABLED": {
+		Key: "MIC_TRANSCRIPT_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_POSITION": {
+		Key: "MIC_TRANSCRIPT_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript position (top-left/right/center, bottom-left/right/center)",
+	},
+	"MIC_TRANSCRIPT_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_FONT_SIZE", Value: "20", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font size",
+	},
+	"MIC_TRANSCRIPT_MAX_LINES": {
+		Key: "MIC_TRANSCRIPT_MAX_LINES", Value: "3", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript max lines",
 	},
 
 	// プレゼントルーレット設定

@@ -39,6 +39,12 @@ interface OverlaySettings {
   ticker_notice_font_size?: number;
   ticker_notice_align?: 'left' | 'center' | 'right';
 
+  // マイク文字起こし表示設定
+  mic_transcript_enabled?: boolean;
+  mic_transcript_position?: string;
+  mic_transcript_font_size?: number;
+  mic_transcript_max_lines?: number;
+
   // UI状態設定
   overlay_cards_expanded?: string;
   overlay_cards_layout?: string;

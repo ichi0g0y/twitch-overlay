@@ -39,3 +39,10 @@ coverage/
 
 # Claude設定
 .claude/settings.local.json
+
+# mic-recog (Python)
+mic-recog/.venv/
+mic-recog/__pycache__/
+mic-recog/dist/
+mic-recog/build/
+mic-recog/*.spec

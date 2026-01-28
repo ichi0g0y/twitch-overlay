@@ -209,13 +209,16 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/logs/clear", corsMiddleware(handleLogsClear))
 	mux.HandleFunc("/api/chat/history", corsMiddleware(handleChatHistory))
 
+	// Mic-recog endpoints
+	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))
+	mux.HandleFunc("/api/mic/restart", corsMiddleware(handleMicRestart))
+
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)
 
 	// リモートコントロールUI
 	mux.HandleFunc("/remote", handleRemoteControl)
 	mux.HandleFunc("/remote/", handleRemoteControl)
-
 
 	// Fax image endpoint
 	mux.HandleFunc("/fax/", handleFaxImage)
@@ -361,7 +364,7 @@ func StartWebServer(port int) error {
 	// Create HTTP server instance
 	httpServer = &http.Server{
 		Addr:         addr,
-		Handler:      mux, // Use our custom ServeMux
+		Handler:      mux,              // Use our custom ServeMux
 		WriteTimeout: 30 * time.Second, // SSE用に書き込みタイムアウトを設定
 		ReadTimeout:  10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -405,7 +408,6 @@ func Shutdown() {
 		logger.Info("Web server shutdown complete")
 	}
 }
-
 
 // handleFaxImage serves fax images
 func handleFaxImage(w http.ResponseWriter, r *http.Request) {

@@ -11,6 +11,10 @@ body {
   font-family: 'Press Start 2P', 'BestTenDot';
 }
 
+.font-readable {
+  font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+}
+
 .text-outline {
   text-shadow: -4px -4px 0 #000000, -4px -2px 0 #000000, -4px 0px 0 #000000,
     -4px 2px 0 #000000, -4px 4px 0 #000000, -2px -4px 0 #000000,
@@ -383,4 +387,3 @@ body {
 .reward-count-item-hidden {
   display: none;
 }
-

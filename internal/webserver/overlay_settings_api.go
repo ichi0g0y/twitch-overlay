@@ -54,10 +54,16 @@ type OverlaySettings struct {
 	LotteryTickerEnabled   bool    `json:"lottery_ticker_enabled"`   // 参加者ティッカーの有効/無効
 
 	// ティッカーお知らせ設定
-	TickerNoticeEnabled  bool   `json:"ticker_notice_enabled"`  // お知らせ文の有効/無効
-	TickerNoticeText     string `json:"ticker_notice_text"`     // お知らせ文の内容
+	TickerNoticeEnabled  bool   `json:"ticker_notice_enabled"`   // お知らせ文の有効/無効
+	TickerNoticeText     string `json:"ticker_notice_text"`      // お知らせ文の内容
 	TickerNoticeFontSize int    `json:"ticker_notice_font_size"` // フォントサイズ（px）
-	TickerNoticeAlign    string `json:"ticker_notice_align"`    // 配置（left/center/right）
+	TickerNoticeAlign    string `json:"ticker_notice_align"`     // 配置（left/center/right）
+
+	// マイク文字起こし表示設定
+	MicTranscriptEnabled  bool   `json:"mic_transcript_enabled"`
+	MicTranscriptPosition string `json:"mic_transcript_position"`
+	MicTranscriptFontSize int    `json:"mic_transcript_font_size"`
+	MicTranscriptMaxLines int    `json:"mic_transcript_max_lines"`
 
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
@@ -142,8 +148,12 @@ func loadOverlaySettingsFromDB() {
 		TickerNoticeText:       getStringSettingWithDefault(allSettings, "TICKER_NOTICE_TEXT", ""),
 		TickerNoticeFontSize:   getIntSetting(allSettings, "TICKER_NOTICE_FONT_SIZE", 16),
 		TickerNoticeAlign:      getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
-		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`),
-		OverlayCardsLayout:     getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`),
+		MicTranscriptEnabled:   getBoolSetting(allSettings, "MIC_TRANSCRIPT_ENABLED", false),
+		MicTranscriptPosition:  getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_POSITION", "bottom-left"),
+		MicTranscriptFontSize:  getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_SIZE", 20),
+		MicTranscriptMaxLines:  getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_LINES", 3),
+		OverlayCardsExpanded:   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
+		OverlayCardsLayout:     getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`),
 		ShowDebugInfo:          false, // 廃止予定
 		DebugEnabled:           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 
@@ -154,7 +164,7 @@ func loadOverlaySettingsFromDB() {
 		AutoRotate:  getBoolPointerSetting(allSettings, "AUTO_ROTATE"),
 		RotatePrint: getBoolPointerSetting(allSettings, "ROTATE_PRINT"),
 
-		UpdatedAt:              time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -236,24 +246,28 @@ func getBoolPointerSetting(settings map[string]settings.Setting, key string) *bo
 
 func useDefaultSettings() {
 	defaultSettings := &OverlaySettings{
-		MusicEnabled:         true,
-		MusicPlaylist:        nil,
-		MusicVolume:          70,
-		MusicAutoPlay:        false,
-		FaxEnabled:           true,
-		FaxAnimationSpeed:    1.0,
-		FaxImageType:         "color",
-		ClockEnabled:         true,
-		ClockFormat:          "24h",
-		ClockShowIcons:       true,
-		LocationEnabled:      true,
-		DateEnabled:          true,
-		TimeEnabled:          true,
-		LotteryTickerEnabled: false,
-		OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
-		ShowDebugInfo:        false,
-		DebugEnabled:         false,
-		UpdatedAt:            time.Now(),
+		MusicEnabled:          true,
+		MusicPlaylist:         nil,
+		MusicVolume:           70,
+		MusicAutoPlay:         false,
+		FaxEnabled:            true,
+		FaxAnimationSpeed:     1.0,
+		FaxImageType:          "color",
+		ClockEnabled:          true,
+		ClockFormat:           "24h",
+		ClockShowIcons:        true,
+		LocationEnabled:       true,
+		DateEnabled:           true,
+		TimeEnabled:           true,
+		LotteryTickerEnabled:  false,
+		MicTranscriptEnabled:  false,
+		MicTranscriptPosition: "bottom-left",
+		MicTranscriptFontSize: 20,
+		MicTranscriptMaxLines: 3,
+		OverlayCardsExpanded:  `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+		ShowDebugInfo:         false,
+		DebugEnabled:          false,
+		UpdatedAt:             time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -313,20 +327,20 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 
 	// 各設定を保存
 	settingsToSave := map[string]string{
-		"MUSIC_ENABLED":             strconv.FormatBool(overlaySettings.MusicEnabled),
-		"MUSIC_VOLUME":              strconv.Itoa(overlaySettings.MusicVolume),
-		"MUSIC_AUTO_PLAY":           strconv.FormatBool(overlaySettings.MusicAutoPlay),
-		"FAX_ENABLED":               strconv.FormatBool(overlaySettings.FaxEnabled),
-		"FAX_ANIMATION_SPEED":       fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
-		"FAX_IMAGE_TYPE":            overlaySettings.FaxImageType,
-		"OVERLAY_CLOCK_ENABLED":     strconv.FormatBool(overlaySettings.ClockEnabled),
-		"OVERLAY_CLOCK_FORMAT":      overlaySettings.ClockFormat,
-		"CLOCK_SHOW_ICONS":          strconv.FormatBool(overlaySettings.ClockShowIcons),
-		"OVERLAY_LOCATION_ENABLED":  strconv.FormatBool(overlaySettings.LocationEnabled),
-		"OVERLAY_DATE_ENABLED":      strconv.FormatBool(overlaySettings.DateEnabled),
-		"OVERLAY_TIME_ENABLED":      strconv.FormatBool(overlaySettings.TimeEnabled),
-		"REWARD_COUNT_ENABLED":      strconv.FormatBool(overlaySettings.RewardCountEnabled),
-		"REWARD_COUNT_POSITION":     overlaySettings.RewardCountPosition,
+		"MUSIC_ENABLED":            strconv.FormatBool(overlaySettings.MusicEnabled),
+		"MUSIC_VOLUME":             strconv.Itoa(overlaySettings.MusicVolume),
+		"MUSIC_AUTO_PLAY":          strconv.FormatBool(overlaySettings.MusicAutoPlay),
+		"FAX_ENABLED":              strconv.FormatBool(overlaySettings.FaxEnabled),
+		"FAX_ANIMATION_SPEED":      fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
+		"FAX_IMAGE_TYPE":           overlaySettings.FaxImageType,
+		"OVERLAY_CLOCK_ENABLED":    strconv.FormatBool(overlaySettings.ClockEnabled),
+		"OVERLAY_CLOCK_FORMAT":     overlaySettings.ClockFormat,
+		"CLOCK_SHOW_ICONS":         strconv.FormatBool(overlaySettings.ClockShowIcons),
+		"OVERLAY_LOCATION_ENABLED": strconv.FormatBool(overlaySettings.LocationEnabled),
+		"OVERLAY_DATE_ENABLED":     strconv.FormatBool(overlaySettings.DateEnabled),
+		"OVERLAY_TIME_ENABLED":     strconv.FormatBool(overlaySettings.TimeEnabled),
+		"REWARD_COUNT_ENABLED":     strconv.FormatBool(overlaySettings.RewardCountEnabled),
+		"REWARD_COUNT_POSITION":    overlaySettings.RewardCountPosition,
 		"LOTTERY_ENABLED":          strconv.FormatBool(overlaySettings.LotteryEnabled),
 		"LOTTERY_DISPLAY_DURATION": strconv.Itoa(overlaySettings.LotteryDisplayDuration),
 		"LOTTERY_ANIMATION_SPEED":  fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
@@ -335,6 +349,10 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"TICKER_NOTICE_TEXT":       overlaySettings.TickerNoticeText,
 		"TICKER_NOTICE_FONT_SIZE":  strconv.Itoa(overlaySettings.TickerNoticeFontSize),
 		"TICKER_NOTICE_ALIGN":      overlaySettings.TickerNoticeAlign,
+		"MIC_TRANSCRIPT_ENABLED":   strconv.FormatBool(overlaySettings.MicTranscriptEnabled),
+		"MIC_TRANSCRIPT_POSITION":  overlaySettings.MicTranscriptPosition,
+		"MIC_TRANSCRIPT_FONT_SIZE": strconv.Itoa(overlaySettings.MicTranscriptFontSize),
+		"MIC_TRANSCRIPT_MAX_LINES": strconv.Itoa(overlaySettings.MicTranscriptMaxLines),
 		"OVERLAY_CARDS_EXPANDED":   overlaySettings.OverlayCardsExpanded,
 		"OVERLAY_CARDS_LAYOUT":     overlaySettings.OverlayCardsLayout,
 		"OVERLAY_DEBUG_ENABLED":    strconv.FormatBool(overlaySettings.DebugEnabled),
@@ -441,12 +459,12 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	// Initialize if nil
 	if currentOverlaySettings == nil {
 		currentOverlaySettings = &OverlaySettings{
-			MusicEnabled:      true,
-			MusicVolume:       70,
-			FaxEnabled:        true,
-			FaxAnimationSpeed: 1.0,
-			ClockEnabled:      true,
-			ClockFormat:       "24h",
+			MusicEnabled:         true,
+			MusicVolume:          70,
+			FaxEnabled:           true,
+			FaxAnimationSpeed:    1.0,
+			ClockEnabled:         true,
+			ClockFormat:          "24h",
 			LocationEnabled:      true,
 			DateEnabled:          true,
 			TimeEnabled:          true,
@@ -546,12 +564,12 @@ func handleOverlaySettingsGet(w http.ResponseWriter, r *http.Request) {
 	if settings == nil {
 		// Return default settings if not initialized
 		settings = &OverlaySettings{
-			MusicEnabled:      true,
-			MusicVolume:       70,
-			FaxEnabled:        true,
-			FaxAnimationSpeed: 1.0,
-			ClockEnabled:      true,
-			ClockFormat:       "24h",
+			MusicEnabled:         true,
+			MusicVolume:          70,
+			FaxEnabled:           true,
+			FaxAnimationSpeed:    1.0,
+			ClockEnabled:         true,
+			ClockFormat:          "24h",
 			LocationEnabled:      true,
 			DateEnabled:          true,
 			TimeEnabled:          true,

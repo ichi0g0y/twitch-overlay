@@ -32,6 +32,10 @@ type wsOutboundMessage struct {
 	data        []byte
 }
 
+type micTranscriptEnvelope struct {
+	Type string `json:"type"`
+}
+
 // WSHub はすべてのWebSocket接続を管理
 type WSHub struct {
 	clients    map[*WSClient]bool
@@ -109,7 +113,7 @@ func (h *WSHub) run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			
+
 			logger.Info("WebSocket client connected",
 				zap.String("clientId", client.clientID),
 				zap.Int("total_clients", len(h.clients)))
@@ -133,7 +137,7 @@ func (h *WSHub) run() {
 				delete(h.clients, client)
 				close(client.send)
 				h.mu.Unlock()
-				
+
 				logger.Info("WebSocket client disconnected",
 					zap.String("clientId", client.clientID),
 					zap.Int("remaining_clients", len(h.clients)))
@@ -144,14 +148,14 @@ func (h *WSHub) run() {
 		case message := <-h.broadcast:
 			data, err := json.Marshal(message)
 			if err != nil {
-				logger.Error("Failed to marshal WebSocket message", 
+				logger.Error("Failed to marshal WebSocket message",
 					zap.Error(err),
 					zap.String("messageType", message.Type),
 					zap.Int("dataLength", len(message.Data)),
 					zap.String("dataPreview", string(message.Data[:min(100, len(message.Data))])))
 				continue
 			}
-			
+
 			// デバッグログ：実際に送信されるJSONデータ
 			logger.Debug("Sending WebSocket message to clients",
 				zap.String("jsonData", string(data[:min(200, len(data))])))
@@ -193,7 +197,7 @@ func (h *WSHub) run() {
 func BroadcastWSMessage(msgType string, data interface{}) {
 	// dataをjson.RawMessageに変換
 	var jsonData json.RawMessage
-	
+
 	// dataが既にbyte配列やjson.RawMessageの場合はそのまま使用
 	switch v := data.(type) {
 	case json.RawMessage:
@@ -204,7 +208,7 @@ func BroadcastWSMessage(msgType string, data interface{}) {
 		// それ以外の場合はMarshal
 		marshaledData, err := json.Marshal(data)
 		if err != nil {
-			logger.Error("Failed to marshal WebSocket broadcast data", 
+			logger.Error("Failed to marshal WebSocket broadcast data",
 				zap.Error(err),
 				zap.String("msgType", msgType),
 				zap.Any("data", data))
@@ -217,7 +221,7 @@ func BroadcastWSMessage(msgType string, data interface{}) {
 		Type: msgType,
 		Data: jsonData,
 	}
-	
+
 	// デバッグログ：送信するメッセージの内容を確認
 	logger.Info("Broadcasting WebSocket message",
 		zap.String("type", msgType),
@@ -327,6 +331,14 @@ func (c *WSClient) readPump() {
 			}
 		}
 
+		var transcript micTranscriptEnvelope
+		if err := json.Unmarshal(message, &transcript); err == nil {
+			if transcript.Type == "transcript" {
+				BroadcastWSMessage("mic_transcript", json.RawMessage(message))
+				continue
+			}
+		}
+
 		// その他のクライアントからのメッセージを処理
 		logger.Debug("Received WebSocket message from client",
 			zap.String("clientId", c.clientID),
@@ -363,7 +375,7 @@ func generateClientID() string {
 // RegisterWebSocketRoute WebSocketルートを登録
 func RegisterWebSocketRoute(mux *http.ServeMux) {
 	mux.HandleFunc("/ws", handleWS)
-	
+
 	// WebSocketハブを起動
 	StartWSHub()
 }

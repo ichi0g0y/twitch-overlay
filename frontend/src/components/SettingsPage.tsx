@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
@@ -15,6 +15,7 @@ import { PrinterSettings } from './settings/PrinterSettings';
 import { OverlaySettings } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
+import { MicrophoneSettings } from './settings/MicrophoneSettings';
 import { ChatSidebar } from './ChatSidebar';
 
 const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
@@ -201,10 +202,11 @@ export const SettingsPage: React.FC = () => {
             />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-8 mb-6">
+              <TabsList className="grid w-full grid-cols-9 mb-6">
                 <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
                 <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
                 <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
+                <TabsTrigger value="mic"><Mic className="w-4 h-4 mr-1" />マイク</TabsTrigger>
                 <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
                 <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
                 <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
@@ -244,6 +246,11 @@ export const SettingsPage: React.FC = () => {
               <TabsContent value="printer">
                 <SettingsPageContext.Provider value={contextValue}>
                   <PrinterSettings />
+                </SettingsPageContext.Provider>
+              </TabsContent>
+              <TabsContent value="mic">
+                <SettingsPageContext.Provider value={contextValue}>
+                  <MicrophoneSettings />
                 </SettingsPageContext.Provider>
               </TabsContent>
               <TabsContent value="music"><MusicSettings /></TabsContent>

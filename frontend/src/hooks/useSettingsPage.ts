@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
@@ -15,6 +15,7 @@ import {
   AuthStatus,
   BluetoothDevice,
   FeatureStatus, PrinterStatusInfo,
+  MicDevice,
   StreamStatus,
   SystemPrinter,
   TestResponse,
@@ -69,6 +70,11 @@ export const useSettingsPage = () => {
   // System printer related (USB)
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinter[]>([]);
   const [loadingSystemPrinters, setLoadingSystemPrinters] = useState(false);
+
+  // Mic devices
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
+  const [loadingMicDevices, setLoadingMicDevices] = useState(false);
+  const [restartingMicRecog, setRestartingMicRecog] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -465,6 +471,61 @@ export const useSettingsPage = () => {
     }
   };
 
+  const handleRefreshMicDevices = useCallback(async () => {
+    setLoadingMicDevices(true);
+    try {
+      const url = await buildApiUrlAsync('/api/mic/devices');
+      const response = await fetch(url);
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMessage = text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed.error === 'string') {
+            errorMessage = parsed.error;
+          }
+        } catch {
+          // keep raw text
+        }
+        throw new Error(errorMessage || `HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setMicDevices(Array.isArray(data.devices) ? data.devices : []);
+    } catch (error: any) {
+      console.error('Failed to get mic devices:', error);
+      toast.error('マイクデバイスの取得に失敗しました: ' + (error?.message || 'unknown error'));
+      setMicDevices([]);
+    } finally {
+      setLoadingMicDevices(false);
+    }
+  }, []);
+
+  const handleRestartMicRecog = useCallback(async () => {
+    setRestartingMicRecog(true);
+    try {
+      const url = await buildApiUrlAsync('/api/mic/restart');
+      const response = await fetch(url, { method: 'POST' });
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data && typeof data.error === 'string') {
+            errorMessage = data.error;
+          }
+        } catch {
+          // ignore parse error
+        }
+        throw new Error(errorMessage);
+      }
+      toast.success('マイク音声認識を再起動しました');
+    } catch (error: any) {
+      console.error('Failed to restart mic-recog:', error);
+      toast.error('マイク音声認識の再起動に失敗しました: ' + (error?.message || 'unknown error'));
+    } finally {
+      setRestartingMicRecog(false);
+    }
+  }, []);
+
   const handleTokenRefresh = async () => {
     try {
       const response = await fetch(buildApiUrl('/api/twitch/refresh-token'), {
@@ -633,6 +694,13 @@ export const useSettingsPage = () => {
     systemPrinters,
     loadingSystemPrinters,
     handleRefreshSystemPrinters,
+
+    // Mic devices
+    micDevices,
+    loadingMicDevices,
+    handleRefreshMicDevices,
+    restartingMicRecog,
+    handleRestartMicRecog,
 
     // Show/hide secrets
     showSecrets,
