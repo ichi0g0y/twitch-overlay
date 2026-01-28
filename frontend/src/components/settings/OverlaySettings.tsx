@@ -1148,6 +1148,61 @@ export const OverlaySettings: React.FC = () => {
                 onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
               />
             </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>翻訳を併記</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  確定文を指定言語へ翻訳して表示します（OpenAI APIキー必須）
+                </p>
+              </div>
+              <Switch
+                checked={overlaySettings?.mic_transcript_translation_enabled ?? false}
+                onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_translation_enabled: checked })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label>翻訳先言語</Label>
+                <Select
+                  value={overlaySettings?.mic_transcript_translation_language ?? 'en'}
+                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_translation_language: value })}
+                  disabled={!overlaySettings?.mic_transcript_translation_enabled}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="言語を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">英語（en）</SelectItem>
+                    <SelectItem value="zh">中国語（zh）</SelectItem>
+                    <SelectItem value="ko">韓国語（ko）</SelectItem>
+                    <SelectItem value="fr">フランス語（fr）</SelectItem>
+                    <SelectItem value="de">ドイツ語（de）</SelectItem>
+                    <SelectItem value="es">スペイン語（es）</SelectItem>
+                    <SelectItem value="pt">ポルトガル語（pt）</SelectItem>
+                    <SelectItem value="ru">ロシア語（ru）</SelectItem>
+                    <SelectItem value="it">イタリア語（it）</SelectItem>
+                    <SelectItem value="id">インドネシア語（id）</SelectItem>
+                    <SelectItem value="th">タイ語（th）</SelectItem>
+                    <SelectItem value="vi">ベトナム語（vi）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mic-translation-font">翻訳文字サイズ</Label>
+                <Input
+                  id="mic-translation-font"
+                  type="number"
+                  min="10"
+                  max="80"
+                  value={overlaySettings?.mic_transcript_translation_font_size ?? 16}
+                  onChange={(e) =>
+                    updateOverlaySettings({ mic_transcript_translation_font_size: parseInt(e.target.value, 10) || 0 })}
+                  disabled={!overlaySettings?.mic_transcript_translation_enabled}
+                />
+              </div>
+            </div>
           </CardContent>
         )}
       </Card>

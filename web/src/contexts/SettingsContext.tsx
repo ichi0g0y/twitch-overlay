@@ -38,6 +38,9 @@ interface OverlaySettings {
   mic_transcript_position?: string;
   mic_transcript_font_size?: number;
   mic_transcript_max_lines?: number;
+  mic_transcript_translation_enabled?: boolean;
+  mic_transcript_translation_language?: string;
+  mic_transcript_translation_font_size?: number;
 
   // 開発者設定
   debug_enabled: boolean;

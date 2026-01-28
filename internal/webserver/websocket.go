@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/nantokaworks/twitch-overlay/internal/settings"
 	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/nantokaworks/twitch-overlay/internal/translation"
 	"go.uber.org/zap"
 )
 
@@ -32,8 +36,16 @@ type wsOutboundMessage struct {
 	data        []byte
 }
 
-type micTranscriptEnvelope struct {
-	Type string `json:"type"`
+type micTranscriptPayload struct {
+	Type       string `json:"type"`
+	ID         string `json:"id"`
+	Text       string `json:"text"`
+	IsInterim  bool   `json:"is_interim"`
+	Timestamp  int64  `json:"timestamp_ms"`
+	Source     string `json:"source"`
+	Language   string `json:"language"`
+	Model      string `json:"model"`
+	SampleRate int    `json:"sample_rate"`
 }
 
 // WSHub はすべてのWebSocket接続を管理
@@ -49,6 +61,60 @@ type WSHub struct {
 type WSRetryQueue struct {
 	messages []WSMessage
 	mu       sync.Mutex
+}
+
+func getMicTranscriptTranslationConfig() (bool, string) {
+	overlaySettingsMutex.RLock()
+	settingsSnapshot := currentOverlaySettings
+	overlaySettingsMutex.RUnlock()
+
+	if settingsSnapshot == nil {
+		return false, ""
+	}
+	if !settingsSnapshot.MicTranscriptEnabled || !settingsSnapshot.MicTranscriptTranslationEnabled {
+		return false, ""
+	}
+	targetLang := strings.TrimSpace(settingsSnapshot.MicTranscriptTranslationLanguage)
+	if targetLang == "" {
+		return false, ""
+	}
+	return true, targetLang
+}
+
+func translateMicTranscript(payload micTranscriptPayload, targetLang string) {
+	if strings.TrimSpace(payload.Text) == "" || strings.TrimSpace(payload.ID) == "" {
+		return
+	}
+
+	db := localdb.GetDB()
+	if db == nil {
+		logger.Warn("Mic transcript translation skipped: database not initialized")
+		return
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
+	if err != nil || strings.TrimSpace(apiKey) == "" {
+		return
+	}
+
+	modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
+	translated, sourceLang, err := translation.TranslateToTargetLanguage(apiKey, payload.Text, modelName, targetLang)
+	if err != nil {
+		logger.Warn("Failed to translate mic transcript", zap.Error(err))
+		return
+	}
+
+	if strings.TrimSpace(translated) == "" {
+		return
+	}
+
+	BroadcastWSMessage("mic_transcript_translation", map[string]interface{}{
+		"id":              payload.ID,
+		"translation":     translated,
+		"target_language": targetLang,
+		"source_language": sourceLang,
+	})
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -331,10 +397,15 @@ func (c *WSClient) readPump() {
 			}
 		}
 
-		var transcript micTranscriptEnvelope
+		var transcript micTranscriptPayload
 		if err := json.Unmarshal(message, &transcript); err == nil {
 			if transcript.Type == "transcript" {
 				BroadcastWSMessage("mic_transcript", json.RawMessage(message))
+				if !transcript.IsInterim {
+					if enabled, targetLang := getMicTranscriptTranslationConfig(); enabled {
+						go translateMicTranscript(transcript, targetLang)
+					}
+				}
 				continue
 			}
 		}

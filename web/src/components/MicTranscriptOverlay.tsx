@@ -9,6 +9,13 @@ interface MicTranscriptPayload {
   timestamp_ms?: number;
 }
 
+interface MicTranscriptTranslationPayload {
+  id?: string;
+  translation?: string;
+  target_language?: string;
+  source_language?: string;
+}
+
 const POSITION_CLASS: Record<string, string> = {
   'bottom-left': 'bottom-6 left-6 items-start text-left',
   'bottom-center': 'bottom-6 left-1/2 -translate-x-1/2 items-center text-center',
@@ -21,7 +28,15 @@ const POSITION_CLASS: Record<string, string> = {
 const FINAL_LINE_TTL_MS = 8000;
 const INTERIM_CLEAR_DELAY_MS = 1500;
 
-type TranscriptLine = { id: string; text: string; isInterim?: boolean; expiresAt?: number };
+type TranscriptLine = {
+  id: string;
+  text: string;
+  isInterim?: boolean;
+  expiresAt?: number;
+  translation?: string;
+  targetLanguage?: string;
+  sourceLanguage?: string;
+};
 
 export const MicTranscriptOverlay: React.FC = () => {
   const { settings } = useSettings();
@@ -31,8 +46,10 @@ export const MicTranscriptOverlay: React.FC = () => {
   const interimClearTimerRef = useRef<number | null>(null);
   const maxLines = settings?.mic_transcript_max_lines ?? 3;
   const enabled = settings?.mic_transcript_enabled ?? false;
+  const translationEnabled = settings?.mic_transcript_translation_enabled ?? false;
   const position = settings?.mic_transcript_position || 'bottom-left';
   const fontSize = settings?.mic_transcript_font_size ?? 20;
+  const translationFontSize = settings?.mic_transcript_translation_font_size ?? Math.max(fontSize - 6, 12);
   const positionClass = POSITION_CLASS[position] || POSITION_CLASS['bottom-left'];
 
   const scheduleExpiryCheck = useCallback((nextLines: TranscriptLine[]) => {
@@ -79,7 +96,7 @@ export const MicTranscriptOverlay: React.FC = () => {
           const last = prev[prev.length - 1];
           if (last.text === text) {
             const next = [...prev];
-            next[next.length - 1] = { ...last, text, expiresAt };
+            next[next.length - 1] = { ...last, id, text, expiresAt };
             return next;
           }
           if (text.startsWith(last.text) || last.text.startsWith(text)) {
@@ -110,6 +127,23 @@ export const MicTranscriptOverlay: React.FC = () => {
     },
     [scheduleInterimClear]
   );
+
+  const applyTranslation = useCallback((payload: MicTranscriptTranslationPayload) => {
+    const id = payload?.id;
+    const translation = (payload?.translation || '').trim();
+    if (!id || !translation) return;
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== id) return line;
+        return {
+          ...line,
+          translation,
+          targetLanguage: payload?.target_language,
+          sourceLanguage: payload?.source_language,
+        };
+      })
+    );
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -151,12 +185,17 @@ export const MicTranscriptOverlay: React.FC = () => {
 
   useWebSocket({
     onMessage: (message) => {
-      if (message.type !== 'mic_transcript') return;
-      const payload = message.data as MicTranscriptPayload;
-      if (payload?.is_interim) {
-        pushInterimLine(payload);
-      } else {
-        pushFinalLine(payload);
+      if (message.type === 'mic_transcript') {
+        const payload = message.data as MicTranscriptPayload;
+        if (payload?.is_interim) {
+          pushInterimLine(payload);
+        } else {
+          pushFinalLine(payload);
+        }
+        return;
+      }
+      if (message.type === 'mic_transcript_translation') {
+        applyTranslation(message.data as MicTranscriptTranslationPayload);
       }
     },
   });
@@ -193,7 +232,17 @@ export const MicTranscriptOverlay: React.FC = () => {
             line.isInterim ? 'opacity-80' : ''
           }`}
         >
-          {line.text}
+          <div className="leading-snug">{line.text}</div>
+          {translationEnabled &&
+            line.translation &&
+            line.translation !== line.text && (
+              <div
+                className="mt-1 opacity-90 leading-snug"
+                style={{ fontSize: `${translationFontSize}px` }}
+              >
+                {line.translation}
+              </div>
+            )}
         </div>
       ))}
     </div>

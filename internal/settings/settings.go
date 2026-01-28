@@ -342,6 +342,18 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_MAX_LINES", Value: "3", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript max lines",
 	},
+	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable translation for mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for mic transcript translation",
+	},
 
 	// プレゼントルーレット設定
 	"LOTTERY_ENABLED": {

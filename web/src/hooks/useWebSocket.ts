@@ -71,6 +71,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       'lottery_winner',
       'lottery_participants_cleared',
       'mic_transcript',
+      'mic_transcript_translation',
       // 必要に応じて他のメッセージタイプを追加
     ];
 
