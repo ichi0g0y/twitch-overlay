@@ -135,6 +135,41 @@ export const useSettingsPage = () => {
     }
   };
 
+  const refreshOpenAIUsage = useCallback(async () => {
+    try {
+      const allSettings = await GetAllSettings();
+      const usageKeys = [
+        'OPENAI_USAGE_INPUT_TOKENS',
+        'OPENAI_USAGE_OUTPUT_TOKENS',
+        'OPENAI_USAGE_COST_USD',
+      ];
+      setSettings((prev) => {
+        const next = { ...prev };
+        usageKeys.forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(allSettings, key)) {
+            const value = allSettings[key] ?? '';
+            const existing = prev[key] || {
+              key,
+              value: '',
+              type: 'normal',
+              required: false,
+              description: '',
+              has_value: false,
+            };
+            next[key] = {
+              ...existing,
+              value,
+              has_value: value !== null && value !== undefined && value !== '',
+            };
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error('[refreshOpenAIUsage] Failed to refresh OpenAI usage:', err);
+    }
+  }, []);
+
   const fetchAuthStatus = async () => {
     try {
       const port = await GetServerPort();
@@ -609,6 +644,14 @@ export const useSettingsPage = () => {
       unsubscribeWebStarted();
     };
   }, []);
+
+  useEffect(() => {
+    refreshOpenAIUsage();
+    const interval = setInterval(() => {
+      refreshOpenAIUsage();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [refreshOpenAIUsage]);
 
   // プリンター設定済みの場合、プリンター状態を取得
   useEffect(() => {

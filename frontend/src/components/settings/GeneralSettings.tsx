@@ -87,6 +87,18 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     },
   ];
   const selectedOpenAiModel = getSettingValue('OPENAI_MODEL') || 'gpt-4o-mini';
+  const inputTokens = parseInt(getSettingValue('OPENAI_USAGE_INPUT_TOKENS') || '0', 10) || 0;
+  const outputTokens = parseInt(getSettingValue('OPENAI_USAGE_OUTPUT_TOKENS') || '0', 10) || 0;
+  const totalTokens = inputTokens + outputTokens;
+  const costUsd = parseFloat(getSettingValue('OPENAI_USAGE_COST_USD') || '0') || 0;
+  const formatNumber = (value: number) => value.toLocaleString('ja-JP');
+  const formatUsd = (value: number) =>
+    value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    });
 
   return (
     <div className="space-y-6 focus:outline-none">
@@ -249,6 +261,30 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 価格はStandardの1Mトークンあたり（入力 / 出力）
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+              <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">入力トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">出力トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
+                </div>
+                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">合計トークン</div>
+                  <div className="mt-1 font-semibold">{formatNumber(totalTokens)}</div>
+                </div>
+              </div>
+              <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                OpenAIの公式価格に基づく概算（未対応モデルは除外・モデル変更時は誤差が出る可能性あり）
               </p>
             </div>
           </div>

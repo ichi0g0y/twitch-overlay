@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -23,6 +26,13 @@ type responsesAPIResponse struct {
 			Text string `json:"text"`
 		} `json:"content"`
 	} `json:"output"`
+	Usage *responseUsage `json:"usage"`
+}
+
+type responseUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
 }
 
 type translationResult struct {
@@ -107,6 +117,12 @@ func TranslateToTargetLanguage(apiKey, text, model, targetLanguage string) (stri
 	var parsed responsesAPIResponse
 	if err := json.Unmarshal(responseBody, &parsed); err != nil {
 		return "", "", err
+	}
+
+	if parsed.Usage != nil && (parsed.Usage.InputTokens > 0 || parsed.Usage.OutputTokens > 0) {
+		if _, _, err := AddOpenAIUsage(model, parsed.Usage.InputTokens, parsed.Usage.OutputTokens); err != nil {
+			logger.Warn("Failed to record OpenAI usage", zap.Error(err))
+		}
 	}
 
 	outputText := extractResponseText(parsed)

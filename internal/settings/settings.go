@@ -64,6 +64,18 @@ var DefaultSettings = map[string]Setting{
 		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
 		Description: "OpenAI model for chat translation",
 	},
+	"OPENAI_USAGE_INPUT_TOKENS": {
+		Key: "OPENAI_USAGE_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Accumulated OpenAI input tokens",
+	},
+	"OPENAI_USAGE_OUTPUT_TOKENS": {
+		Key: "OPENAI_USAGE_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Accumulated OpenAI output tokens",
+	},
+	"OPENAI_USAGE_COST_USD": {
+		Key: "OPENAI_USAGE_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Estimated OpenAI usage cost in USD",
+	},
 	"CHAT_TRANSLATION_ENABLED": {
 		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Enable chat translation",
