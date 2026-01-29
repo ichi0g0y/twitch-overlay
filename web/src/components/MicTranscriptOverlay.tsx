@@ -25,13 +25,16 @@ const POSITION_CLASS: Record<string, string> = {
   'top-right': 'top-6 right-6 items-end text-right',
 };
 
-const FINAL_LINE_TTL_MS = 8000;
+const DEFAULT_LINE_TTL_MS = 8000;
+const DEFAULT_LAST_TTL_MS = 8000;
 const INTERIM_CLEAR_DELAY_MS = 1500;
+const INFINITE_EXPIRY = Number.POSITIVE_INFINITY;
 
 type TranscriptLine = {
   id: string;
   text: string;
   isInterim?: boolean;
+  createdAt: number;
   expiresAt?: number;
   translation?: string;
   targetLanguage?: string;
@@ -50,7 +53,25 @@ export const MicTranscriptOverlay: React.FC = () => {
   const position = settings?.mic_transcript_position || 'bottom-left';
   const fontSize = settings?.mic_transcript_font_size ?? 20;
   const translationFontSize = settings?.mic_transcript_translation_font_size ?? Math.max(fontSize - 6, 12);
+  const lineTtlMs = Math.max(1, settings?.mic_transcript_line_ttl_seconds ?? DEFAULT_LINE_TTL_MS / 1000) * 1000;
+  const lastTtlSeconds = settings?.mic_transcript_last_ttl_seconds ?? DEFAULT_LAST_TTL_MS / 1000;
+  const lastTtlMs = lastTtlSeconds <= 0 ? INFINITE_EXPIRY : Math.max(1, lastTtlSeconds) * 1000;
   const positionClass = POSITION_CLASS[position] || POSITION_CLASS['bottom-left'];
+
+  const applyExpiryRules = useCallback((nextLines: TranscriptLine[]) => {
+    if (nextLines.length === 0) return [];
+    const now = Date.now();
+    const lastIndex = nextLines.length - 1;
+    return nextLines
+      .map((line, index) => {
+        const isLast = index === lastIndex;
+        const ttl = isLast ? lastTtlMs : lineTtlMs;
+        const createdAt = Number.isFinite(line.createdAt) ? line.createdAt : now;
+        const expiresAt = ttl === INFINITE_EXPIRY ? INFINITE_EXPIRY : createdAt + ttl;
+        return { ...line, createdAt, expiresAt };
+      })
+      .filter((line) => line.expiresAt === INFINITE_EXPIRY || line.expiresAt > now);
+  }, [lastTtlMs, lineTtlMs]);
 
   const scheduleExpiryCheck = useCallback((nextLines: TranscriptLine[]) => {
     if (expiryTimerRef.current !== null) {
@@ -62,17 +83,20 @@ export const MicTranscriptOverlay: React.FC = () => {
     }
     const now = Date.now();
     const nextExpiry = nextLines.reduce((min, line) => {
-      const expiresAt = (line as TranscriptLine & { expiresAt?: number }).expiresAt ?? now;
+      const expiresAt = (line as TranscriptLine & { expiresAt?: number }).expiresAt;
+      if (expiresAt === undefined || expiresAt === INFINITE_EXPIRY) {
+        return min;
+      }
       return Math.min(min, expiresAt);
     }, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(nextExpiry)) {
+      return;
+    }
     const delay = Math.max(nextExpiry - now, 0);
     expiryTimerRef.current = window.setTimeout(() => {
-      setLines((prev) => {
-        const nowInner = Date.now();
-        return prev.filter((line) => ((line as TranscriptLine & { expiresAt?: number }).expiresAt ?? nowInner) > nowInner);
-      });
+      setLines((prev) => applyExpiryRules(prev));
     }, delay);
-  }, []);
+  }, [applyExpiryRules]);
 
   const scheduleInterimClear = useCallback(() => {
     if (interimClearTimerRef.current !== null) {
@@ -88,7 +112,7 @@ export const MicTranscriptOverlay: React.FC = () => {
       const text = (payload?.text || '').trim();
       if (!text) return;
       const id = payload.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const expiresAt = Date.now() + FINAL_LINE_TTL_MS;
+      const now = Date.now();
 
       setInterimLine(null);
       setLines((prev) => {
@@ -96,19 +120,20 @@ export const MicTranscriptOverlay: React.FC = () => {
           const last = prev[prev.length - 1];
           if (last.text === text) {
             const next = [...prev];
-            next[next.length - 1] = { ...last, id, text, expiresAt };
-            return next;
+            next[next.length - 1] = { ...last, id, text, createdAt: now };
+            return applyExpiryRules(next);
           }
           if (text.startsWith(last.text) || last.text.startsWith(text)) {
             const next = [...prev];
-            next[next.length - 1] = { id, text, expiresAt };
-            return next;
+            next[next.length - 1] = { id, text, createdAt: now };
+            return applyExpiryRules(next);
           }
         }
-        return [...prev, { id, text, expiresAt }].slice(-maxLines);
+        const next = [...prev, { id, text, createdAt: now }].slice(-maxLines);
+        return applyExpiryRules(next);
       });
     },
-    [maxLines]
+    [applyExpiryRules, maxLines]
   );
 
   const pushInterimLine = useCallback(
@@ -116,12 +141,13 @@ export const MicTranscriptOverlay: React.FC = () => {
       const text = (payload?.text || '').trim();
       if (!text) return;
       const id = payload.id || 'interim';
+      const now = Date.now();
 
       setInterimLine((prev) => {
         if (prev?.text === text) {
           return prev;
         }
-        return { id, text };
+        return { id, text, createdAt: now };
       });
       scheduleInterimClear();
     },
@@ -163,6 +189,10 @@ export const MicTranscriptOverlay: React.FC = () => {
     }
     setLines((prev) => prev.slice(-maxLines));
   }, [maxLines]);
+
+  useEffect(() => {
+    setLines((prev) => applyExpiryRules(prev));
+  }, [applyExpiryRules]);
 
   useEffect(() => {
     scheduleExpiryCheck(lines);

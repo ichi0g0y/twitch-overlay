@@ -382,6 +382,14 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
 		Description: "Font size for mic transcript translation",
 	},
+	"MIC_TRANSCRIPT_LINE_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LINE_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript line display duration (seconds)",
+	},
+	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
+	},
 	"OPENAI_USAGE_OVERLAY_ENABLED": {
 		Key: "OPENAI_USAGE_OVERLAY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Show OpenAI usage overlay under clock",
@@ -734,6 +742,14 @@ func ValidateSetting(key, value string) error {
 	case "NOTIFICATION_DISPLAY_MODE":
 		if value != "queue" && value != "overwrite" {
 			return fmt.Errorf("must be 'queue' or 'overwrite'")
+		}
+	case "MIC_TRANSCRIPT_LINE_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("must be integer between 1 and 300 seconds")
+		}
+	case "MIC_TRANSCRIPT_LAST_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
+			return fmt.Errorf("must be integer between 0 and 300 seconds")
 		}
 	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
 		// boolean値のチェック

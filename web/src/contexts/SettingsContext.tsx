@@ -41,6 +41,8 @@ interface OverlaySettings {
   mic_transcript_translation_enabled?: boolean;
   mic_transcript_translation_language?: string;
   mic_transcript_translation_font_size?: number;
+  mic_transcript_line_ttl_seconds?: number;
+  mic_transcript_last_ttl_seconds?: number;
 
   // OpenAI使用量表示
   openai_usage_enabled?: boolean;

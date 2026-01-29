@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Cpu, Gift, Mic, Music, Pause, Play, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Cpu, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
@@ -646,8 +646,11 @@ export const OverlaySettings: React.FC = () => {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
-            <CardTitle>再生コントロール</CardTitle>
-            <CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Music className="w-4 h-4" />
+              再生コントロール
+            </CardTitle>
+            <CardDescription className="text-left">
               オーバーレイの音楽プレイヤーをリモート操作します
             </CardDescription>
           </div>
@@ -661,7 +664,7 @@ export const OverlaySettings: React.FC = () => {
         </div>
       </CardHeader>
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 text-left">
         {/* 現在の曲情報 */}
         {musicStatus.current_track ? (
           <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -870,8 +873,11 @@ export const OverlaySettings: React.FC = () => {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
-            <CardTitle>FAX表示</CardTitle>
-            <CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              FAX表示
+            </CardTitle>
+            <CardDescription className="text-left">
               FAX受信時のアニメーション設定
             </CardDescription>
           </div>
@@ -885,7 +891,7 @@ export const OverlaySettings: React.FC = () => {
         </div>
       </CardHeader>
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 text-left">
         <div className="flex items-center justify-between">
           <Label htmlFor="fax-enabled" className="flex flex-col">
             <span>FAXアニメーションを表示</span>
@@ -962,8 +968,11 @@ export const OverlaySettings: React.FC = () => {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
-            <CardTitle>時計表示</CardTitle>
-            <CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              時計表示
+            </CardTitle>
+            <CardDescription className="text-left">
               オーバーレイの時計表示設定
             </CardDescription>
           </div>
@@ -977,7 +986,7 @@ export const OverlaySettings: React.FC = () => {
         </div>
       </CardHeader>
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 text-left">
         <div className="flex items-center justify-between">
           <Label htmlFor="clock-enabled" className="flex flex-col">
             <span>時計を表示</span>
@@ -1092,7 +1101,7 @@ export const OverlaySettings: React.FC = () => {
                 <Cpu className="w-4 h-4" />
                 OpenAI使用量
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-left">
                 文字起こし翻訳の使用量を時計の下に表示します
               </CardDescription>
             </div>
@@ -1106,7 +1115,7 @@ export const OverlaySettings: React.FC = () => {
           </div>
         </CardHeader>
         {isExpanded && (
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 text-left">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>表示を有効化</Label>
@@ -1184,7 +1193,7 @@ export const OverlaySettings: React.FC = () => {
                 <Mic className="w-4 h-4" />
                 マイク文字起こし
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-left">
                 mic-recog の文字起こしをオーバーレイに表示します
               </CardDescription>
             </div>
@@ -1198,7 +1207,7 @@ export const OverlaySettings: React.FC = () => {
           </div>
         </CardHeader>
         {isExpanded && (
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 text-left">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>表示を有効化</Label>
@@ -1245,16 +1254,48 @@ export const OverlaySettings: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="mic-max-lines">最大行数</Label>
-              <Input
-                id="mic-max-lines"
-                type="number"
-                min="1"
-                max="10"
-                value={overlaySettings?.mic_transcript_max_lines ?? 3}
-                onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="mic-max-lines">最大行数</Label>
+                <Input
+                  id="mic-max-lines"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={overlaySettings?.mic_transcript_max_lines ?? 3}
+                  onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="mic-line-ttl">通常行の表示秒数</Label>
+                <Input
+                  id="mic-line-ttl"
+                  type="number"
+                  min="1"
+                  max="300"
+                  value={overlaySettings?.mic_transcript_line_ttl_seconds ?? 8}
+                  onChange={(e) =>
+                    updateOverlaySettings({ mic_transcript_line_ttl_seconds: parseInt(e.target.value, 10) || 1 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mic-last-ttl">最後の行の表示秒数（0で無限）</Label>
+                <Input
+                  id="mic-last-ttl"
+                  type="number"
+                  min="0"
+                  max="300"
+                  value={overlaySettings?.mic_transcript_last_ttl_seconds ?? 8}
+                  onChange={(e) =>
+                    updateOverlaySettings({ mic_transcript_last_ttl_seconds: parseInt(e.target.value, 10) || 0 })}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  0を指定すると次の発言が来るまで残ります
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
@@ -1337,8 +1378,11 @@ export const OverlaySettings: React.FC = () => {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
-            <CardTitle>リワードカウント表示</CardTitle>
-            <CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="w-4 h-4" />
+              リワードカウント表示
+            </CardTitle>
+            <CardDescription className="text-left">
               使用されたリワードの回数を蓄積表示します
             </CardDescription>
           </div>
@@ -1352,7 +1396,7 @@ export const OverlaySettings: React.FC = () => {
         </div>
       </CardHeader>
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 text-left">
         <div className="flex items-center justify-between">
           <Label htmlFor="reward-count-enabled" className="flex flex-col">
             <span>カウント表示を有効化</span>
@@ -1493,7 +1537,7 @@ export const OverlaySettings: React.FC = () => {
                           カウント: {reward.count}
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-1">
+                      <CardContent className="space-y-1 text-left">
                         {/* ユーザー名リスト */}
                         {reward.user_names && reward.user_names.length > 0 && (
                           <div className="flex flex-wrap gap-2">
@@ -1588,10 +1632,10 @@ export const OverlaySettings: React.FC = () => {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <CardTitle className="flex items-center gap-2">
-              <Gift className="w-5 h-5" />
+              <Gift className="w-4 h-4" />
               プレゼントルーレット
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-left">
               チャンネルポイントリワードを使った抽選機能の設定
             </CardDescription>
           </div>
@@ -1605,7 +1649,7 @@ export const OverlaySettings: React.FC = () => {
         </div>
       </CardHeader>
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 text-left">
           {/* LOTTERY_ENABLEDは廃止され、常に有効として扱われます */}
             <div className="space-y-2">
               <Label htmlFor="lottery-reward">抽選対象リワード</Label>
