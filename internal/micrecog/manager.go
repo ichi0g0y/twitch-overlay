@@ -81,17 +81,20 @@ func (m *Manager) Start(port int) error {
 
 	go streamOutput("stdout", stdout, false)
 	go streamOutput("stderr", stderr, true)
+	cmdRef := cmd
 	go func() {
 		defer close(done)
-		err := cmd.Wait()
+		err := cmdRef.Wait()
 		if err != nil {
 			logger.Warn("mic-recog exited with error", zap.Error(err))
 		} else {
 			logger.Info("mic-recog exited")
 		}
 		m.mu.Lock()
-		m.cmd = nil
-		m.done = nil
+		if m.cmd == cmdRef {
+			m.cmd = nil
+			m.done = nil
+		}
 		m.mu.Unlock()
 	}()
 
@@ -101,14 +104,14 @@ func (m *Manager) Start(port int) error {
 	return nil
 }
 
-func (m *Manager) Stop() {
+func (m *Manager) Stop() bool {
 	m.mu.Lock()
 	cmd := m.cmd
 	done := m.done
 	m.mu.Unlock()
 
 	if cmd == nil {
-		return
+		return true
 	}
 
 	logger.Info("Stopping mic-recog")
@@ -117,12 +120,12 @@ func (m *Manager) Stop() {
 	}
 
 	if done == nil {
-		return
+		return true
 	}
 
 	select {
 	case <-done:
-		return
+		return true
 	case <-time.After(5 * time.Second):
 	}
 
@@ -132,8 +135,18 @@ func (m *Manager) Stop() {
 
 	select {
 	case <-done:
+		return true
 	case <-time.After(2 * time.Second):
 	}
+
+	logger.Warn("mic-recog stop timed out; clearing state")
+	m.mu.Lock()
+	if m.cmd == cmd {
+		m.cmd = nil
+		m.done = nil
+	}
+	m.mu.Unlock()
+	return false
 }
 
 func streamOutput(name string, r io.Reader, isErr bool) {

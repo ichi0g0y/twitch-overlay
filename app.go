@@ -540,7 +540,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 
 	if a.micRecog != nil {
-		a.micRecog.Stop()
+		if stopped := a.micRecog.Stop(); !stopped {
+			logger.Warn("mic-recog did not stop cleanly during shutdown")
+		}
 	}
 
 	// プリンターを停止（Bluetoothのみ）

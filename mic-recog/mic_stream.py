@@ -12,9 +12,7 @@ import time
 import threading
 import uuid
 
-import numpy as np
 import sounddevice as sd
-import whisper
 
 
 def _parse_args() -> argparse.Namespace:
@@ -384,6 +382,11 @@ def main() -> int:
     if args.list_devices:
         _list_devices()
         return 0
+
+    # Heavy imports are delayed to avoid slowing down device listing.
+    global np
+    import numpy as np
+    import whisper
 
     if not args.vad and args.overlap_seconds >= args.chunk_seconds:
         print("overlap-seconds must be smaller than chunk-seconds", file=sys.stderr)

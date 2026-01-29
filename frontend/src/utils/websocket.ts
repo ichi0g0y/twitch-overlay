@@ -17,7 +17,7 @@ class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
+  private maxReconnectAttempts = Infinity;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private messageHandlers: Map<string, Set<MessageHandler>> = new Map();

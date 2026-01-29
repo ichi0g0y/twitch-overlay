@@ -60,7 +60,7 @@ func handleMicRestart(w http.ResponseWriter, r *http.Request) {
 		port = 8080
 	}
 
-	micRecogManager.Stop()
+	stopped := micRecogManager.Stop()
 	time.Sleep(300 * time.Millisecond)
 
 	if err := micRecogManager.Start(port); err != nil {
@@ -74,7 +74,11 @@ func handleMicRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"success": true,
-	})
+	}
+	if !stopped {
+		response["warning"] = "mic-recog stop timed out; forced restart"
+	}
+	_ = json.NewEncoder(w).Encode(response)
 }
