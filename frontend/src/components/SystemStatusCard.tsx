@@ -50,8 +50,11 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
 
   return (
     <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="text-lg">システム状態</CardTitle>
+      <CardHeader className="text-left">
+        <CardTitle className="flex items-center gap-2">
+          <Wifi className="w-5 h-5 text-gray-400" />
+          システム状態
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

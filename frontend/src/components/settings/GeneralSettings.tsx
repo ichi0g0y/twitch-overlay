@@ -261,7 +261,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                     >
                       <div className="flex flex-col items-start text-left">
                         <span className="text-sm font-semibold">{model.name}</span>
-                        <span className={`text-xs ${isActive ? 'opacity-80' : 'text-gray-500 dark:text-gray-400'}`}>
+                        <span className={`text-sm ${isActive ? 'opacity-80' : 'text-gray-500 dark:text-gray-400'}`}>
                           {model.price}
                         </span>
                       </div>
@@ -269,31 +269,31 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                   );
                 })}
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 価格はStandardの1Mトークンあたり（入力 / 出力）
               </p>
             </div>
 
             <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-              <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
-              <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              <div className="text-base font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
+              <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
                 今日: {dailyDate}（{timeZone}）
               </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">入力トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">入力トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">出力トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">出力トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">合計トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">合計トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-base text-gray-600 dark:text-gray-300">
                 <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
                 <Button
                   type="button"
@@ -305,24 +305,24 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                   {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
                 </Button>
               </div>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">累計入力トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">累計入力トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">累計出力トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">累計出力トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
                 </div>
                 <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">累計合計トークン</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">累計合計トークン</div>
                   <div className="mt-1 font-semibold">{formatNumber(totalTokens)}</div>
                 </div>
               </div>
-              <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+              <div className="mt-3 text-base text-gray-600 dark:text-gray-300">
                 累計推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
               </div>
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 OpenAIの公式価格に基づく概算（未対応モデルは除外・モデル変更時は誤差が出る可能性あり）
               </p>
             </div>

@@ -1,9 +1,9 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Moon, Music, Settings2, Sun, Wifi } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import { useTheme } from '../hooks/useTheme';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Music, Settings2, Wifi } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
 import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 // Import tab components
@@ -29,7 +29,6 @@ const SIDEBAR_MAX_FONT_SIZE = 40;
 const SIDEBAR_DEFAULT_FONT_SIZE = 14;
 
 export const SettingsPage: React.FC = () => {
-  const { theme, toggleTheme } = useTheme();
   const contextValue = useSettingsPage();
   const [chatSidebarSide, setChatSidebarSide] = useState<'left' | 'right'>(() => {
     if (typeof window === 'undefined') return 'left';
@@ -123,51 +122,15 @@ export const SettingsPage: React.FC = () => {
       : { sidebar: 'order-1 lg:order-2', content: 'order-2 lg:order-1' };
   }, [chatSidebarSide]);
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
-        <div className="w-full px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Settings2 className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-                <h1 className="text-2xl font-bold dark:text-white">設定</h1>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline"
-                  onClick={handleOpenOverlay}
-                  className="flex items-center space-x-1">
-                  <Monitor className="w-3 h-3" />
-                  <span>オーバーレイ表示</span>
-                </Button>
-                <Button size="sm" variant="outline"
-                  onClick={handleOpenOverlayDebug}
-                  className="flex items-center space-x-1">
-                  <Bug className="w-3 h-3" />
-                  <span>オーバーレイ表示(デバッグ)</span>
-                </Button>
-                <Button size="sm" variant="outline"
-                  onClick={handleOpenPresent}
-                  className="flex items-center space-x-1">
-                  <Gift className="w-3 h-3" />
-                  <span>プレゼントルーレット</span>
-                </Button>
-                <Button size="sm" variant="outline"
-                  onClick={handleOpenPresentDebug}
-                  className="flex items-center space-x-1">
-                  <Gift className="w-3 h-3" />
-                  <span>プレゼント(デバッグ)</span>
-                </Button>
-              </div>
-            </div>
-            <Button size="sm" variant="outline" onClick={toggleTheme}>
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </Button>
-          </div>
-        </div>
-      </div>
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light');
+    root.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }, []);
 
+  return (
+    <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div className="w-full px-4 py-6">
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className={layoutOrders.sidebar}>
@@ -186,6 +149,42 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
           <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-gray-400" />
+                  クイック操作
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline"
+                    onClick={handleOpenOverlay}
+                    className="flex items-center space-x-1">
+                    <Monitor className="w-3 h-3" />
+                    <span>オーバーレイ表示</span>
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={handleOpenOverlayDebug}
+                    className="flex items-center space-x-1">
+                    <Bug className="w-3 h-3" />
+                    <span>オーバーレイ表示(デバッグ)</span>
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={handleOpenPresent}
+                    className="flex items-center space-x-1">
+                    <Gift className="w-3 h-3" />
+                    <span>プレゼントルーレット</span>
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={handleOpenPresentDebug}
+                    className="flex items-center space-x-1">
+                    <Gift className="w-3 h-3" />
+                    <span>プレゼント(デバッグ)</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
             <SystemStatusCard
               featureStatus={featureStatus}
               authStatus={authStatus}
