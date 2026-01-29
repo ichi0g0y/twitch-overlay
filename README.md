@@ -63,6 +63,7 @@ task build:all
 - **`web/`** - オーバーレイ用フロントエンド（ビルド後Wailsに埋め込み）
 - **`frontend/`** - Wails Settings画面用フロントエンド
 - **`internal/`** - Goバックエンド（API、プリンター制御等）
+- **`mic-recog/`** - 音声認識（Whisper）サブプロジェクト
 
 ### 開発コマンド
 ```bash
@@ -75,6 +76,12 @@ cd web && bun run build
 # テストの実行（DRY_RUN_MODE=trueで実行）
 task test
 ```
+
+### 音声認識（mic-recog）
+- `task build` で PyInstaller ビルド後、`.app` の `Resources/mic-recog` に同梱されます  
+- 開発中は `mic-recog/.venv` を作るか、`MIC_RECOG_DIR` でパスを指定してください  
+- macOS は `--device auto` で MPS（GPU）を自動選択します（未対応ならCPU）
+- 初回起動時に Whisper のモデルをダウンロードします
 
 ### オーバーレイの開発フロー
 1. `web/`ディレクトリで変更を行う

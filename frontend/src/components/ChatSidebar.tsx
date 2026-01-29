@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react
 import { buildApiUrlAsync } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
+import { Switch } from './ui/switch';
 
 type SidebarSide = 'left' | 'right';
 
@@ -13,6 +14,10 @@ type ChatSidebarProps = {
   onWidthChange: (width: number) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
+  translationEnabled: boolean;
+  onTranslationToggle: (enabled: boolean) => void;
+  notificationOverwrite: boolean;
+  onNotificationModeToggle: (enabled: boolean) => void;
 };
 
 const HISTORY_DAYS = 7;
@@ -36,6 +41,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onWidthChange,
   fontSize,
   onFontSizeChange,
+  translationEnabled,
+  onTranslationToggle,
+  notificationOverwrite,
+  onNotificationModeToggle,
 }) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -258,6 +267,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const resizeHandleSideClass = side === 'left' ? 'right-0' : 'left-0';
   const metaFontSize = Math.max(10, fontSize - 2);
   const translationFontSize = Math.max(10, fontSize - 2);
+  const fixedSideClass = side === 'left' ? 'lg:left-4' : 'lg:right-4';
+  const fixedOffsetClass = 'lg:top-6';
   const sidebarStyle = useMemo(() => ({
     '--chat-sidebar-width': `${width}px`,
   } as React.CSSProperties), [width]);
@@ -270,8 +281,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   ), []);
 
   return (
-    <aside className={`transition-all duration-200 ${sidebarWidthClass}`} style={sidebarStyle}>
-      <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-140px)] h-80 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">
+    <aside className={`transition-all duration-200 self-start ${sidebarWidthClass}`} style={sidebarStyle}>
+      <div
+        className={`${sidebarWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`}
+        style={sidebarStyle}
+      >
+        <div className="h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">
         {!collapsed && (
           <div
             role="separator"
@@ -324,7 +339,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             >
               <div className="space-y-3">
                 <div>
-                  <div className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
+                  <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
                   <div className="flex items-center gap-2">
                     <input
                       type="range"
@@ -334,16 +349,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       onChange={(event) => onFontSizeChange(Number(event.target.value))}
                       className="flex-1"
                     />
-                    <span className="w-8 text-right text-xs text-gray-600 dark:text-gray-300">{fontSize}px</span>
+                    <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
                   </div>
                 </div>
                 <div>
-                  <div className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">配置</div>
+                  <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSideChange('left')}
-                      className={`h-8 rounded-md border text-xs transition ${
+                      className={`h-8 rounded-md border text-sm transition ${
                         side === 'left'
                           ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
                           : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
@@ -354,7 +369,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     <button
                       type="button"
                       onClick={() => onSideChange('right')}
-                      className={`h-8 rounded-md border text-xs transition ${
+                      className={`h-8 rounded-md border text-sm transition ${
                         side === 'right'
                           ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
                           : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
@@ -363,6 +378,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       右
                     </button>
                   </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
+                  <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
+                  <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
                 </div>
               </div>
             </div>
@@ -403,6 +426,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             )}
           </div>
         )}
+        </div>
       </div>
     </aside>
   );

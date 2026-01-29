@@ -33,6 +33,20 @@ interface OverlaySettings {
   ticker_notice_font_size?: number;
   ticker_notice_align?: 'left' | 'center' | 'right';
 
+  // マイク文字起こし表示設定
+  mic_transcript_enabled?: boolean;
+  mic_transcript_position?: string;
+  mic_transcript_font_size?: number;
+  mic_transcript_max_lines?: number;
+  mic_transcript_translation_enabled?: boolean;
+  mic_transcript_translation_language?: string;
+  mic_transcript_translation_font_size?: number;
+  mic_transcript_line_ttl_seconds?: number;
+  mic_transcript_last_ttl_seconds?: number;
+
+  // OpenAI使用量表示
+  openai_usage_enabled?: boolean;
+
   // 開発者設定
   debug_enabled: boolean;
 

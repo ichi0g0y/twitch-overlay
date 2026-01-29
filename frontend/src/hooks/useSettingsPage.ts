@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
@@ -15,6 +15,7 @@ import {
   AuthStatus,
   BluetoothDevice,
   FeatureStatus, PrinterStatusInfo,
+  MicDevice,
   StreamStatus,
   SystemPrinter,
   TestResponse,
@@ -69,6 +70,12 @@ export const useSettingsPage = () => {
   // System printer related (USB)
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinter[]>([]);
   const [loadingSystemPrinters, setLoadingSystemPrinters] = useState(false);
+
+  // Mic devices
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
+  const [loadingMicDevices, setLoadingMicDevices] = useState(false);
+  const [restartingMicRecog, setRestartingMicRecog] = useState(false);
+  const [resettingOpenAIUsage, setResettingOpenAIUsage] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -128,6 +135,45 @@ export const useSettingsPage = () => {
       toast.error('設定の取得に失敗しました: ' + err.message);
     }
   };
+
+  const refreshOpenAIUsage = useCallback(async () => {
+    try {
+      const allSettings = await GetAllSettings();
+      const usageKeys = [
+        'OPENAI_USAGE_INPUT_TOKENS',
+        'OPENAI_USAGE_OUTPUT_TOKENS',
+        'OPENAI_USAGE_COST_USD',
+        'OPENAI_USAGE_DAILY_DATE',
+        'OPENAI_USAGE_DAILY_INPUT_TOKENS',
+        'OPENAI_USAGE_DAILY_OUTPUT_TOKENS',
+        'OPENAI_USAGE_DAILY_COST_USD',
+      ];
+      setSettings((prev) => {
+        const next = { ...prev };
+        usageKeys.forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(allSettings, key)) {
+            const value = allSettings[key] ?? '';
+            const existing = prev[key] || {
+              key,
+              value: '',
+              type: 'normal',
+              required: false,
+              description: '',
+              has_value: false,
+            };
+            next[key] = {
+              ...existing,
+              value,
+              has_value: value !== null && value !== undefined && value !== '',
+            };
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error('[refreshOpenAIUsage] Failed to refresh OpenAI usage:', err);
+    }
+  }, []);
 
   const fetchAuthStatus = async () => {
     try {
@@ -215,6 +261,33 @@ export const useSettingsPage = () => {
   };
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';
+
+  const handleResetOpenAIUsageDaily = useCallback(async () => {
+    setResettingOpenAIUsage(true);
+    try {
+      const timeZone = getSettingValue('TIMEZONE') || 'UTC';
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const today = formatter.format(new Date());
+      await UpdateSettings({
+        OPENAI_USAGE_DAILY_DATE: today,
+        OPENAI_USAGE_DAILY_INPUT_TOKENS: '0',
+        OPENAI_USAGE_DAILY_OUTPUT_TOKENS: '0',
+        OPENAI_USAGE_DAILY_COST_USD: '0',
+      });
+      await refreshOpenAIUsage();
+      toast.success('今日のOpenAI使用量をリセットしました');
+    } catch (err: any) {
+      console.error('[handleResetOpenAIUsageDaily] Failed to reset usage:', err);
+      toast.error('OpenAI使用量のリセットに失敗しました: ' + (err?.message || 'unknown error'));
+    } finally {
+      setResettingOpenAIUsage(false);
+    }
+  }, [getSettingValue, refreshOpenAIUsage]);
 
   const handleTwitchAuth = async () => {
     try {
@@ -465,6 +538,61 @@ export const useSettingsPage = () => {
     }
   };
 
+  const handleRefreshMicDevices = useCallback(async () => {
+    setLoadingMicDevices(true);
+    try {
+      const url = await buildApiUrlAsync('/api/mic/devices');
+      const response = await fetch(url);
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMessage = text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed.error === 'string') {
+            errorMessage = parsed.error;
+          }
+        } catch {
+          // keep raw text
+        }
+        throw new Error(errorMessage || `HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setMicDevices(Array.isArray(data.devices) ? data.devices : []);
+    } catch (error: any) {
+      console.error('Failed to get mic devices:', error);
+      toast.error('マイクデバイスの取得に失敗しました: ' + (error?.message || 'unknown error'));
+      setMicDevices([]);
+    } finally {
+      setLoadingMicDevices(false);
+    }
+  }, []);
+
+  const handleRestartMicRecog = useCallback(async () => {
+    setRestartingMicRecog(true);
+    try {
+      const url = await buildApiUrlAsync('/api/mic/restart');
+      const response = await fetch(url, { method: 'POST' });
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data && typeof data.error === 'string') {
+            errorMessage = data.error;
+          }
+        } catch {
+          // ignore parse error
+        }
+        throw new Error(errorMessage);
+      }
+      toast.success('マイク音声認識を再起動しました');
+    } catch (error: any) {
+      console.error('Failed to restart mic-recog:', error);
+      toast.error('マイク音声認識の再起動に失敗しました: ' + (error?.message || 'unknown error'));
+    } finally {
+      setRestartingMicRecog(false);
+    }
+  }, []);
+
   const handleTokenRefresh = async () => {
     try {
       const response = await fetch(buildApiUrl('/api/twitch/refresh-token'), {
@@ -548,6 +676,14 @@ export const useSettingsPage = () => {
       unsubscribeWebStarted();
     };
   }, []);
+
+  useEffect(() => {
+    refreshOpenAIUsage();
+    const interval = setInterval(() => {
+      refreshOpenAIUsage();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [refreshOpenAIUsage]);
 
   // プリンター設定済みの場合、プリンター状態を取得
   useEffect(() => {
@@ -633,6 +769,15 @@ export const useSettingsPage = () => {
     systemPrinters,
     loadingSystemPrinters,
     handleRefreshSystemPrinters,
+
+    // Mic devices
+    micDevices,
+    loadingMicDevices,
+    handleRefreshMicDevices,
+    restartingMicRecog,
+    handleRestartMicRecog,
+    resettingOpenAIUsage,
+    handleResetOpenAIUsageDaily,
 
     // Show/hide secrets
     showSecrets,

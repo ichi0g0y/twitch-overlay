@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import FaxReceiver from '../components/FaxReceiver';
+import { MicTranscriptOverlay } from '../components/MicTranscriptOverlay';
 import { Toaster } from 'sonner';
 import { ParticipantTicker } from '../components/ParticipantTicker';
 import { useSettings } from '../contexts/SettingsContext';
@@ -84,6 +85,7 @@ export const MainOverlay: React.FC = () => {
   return (
     <>
       <FaxReceiver />
+      <MicTranscriptOverlay />
       <Toaster position="top-right" richColors expand={true} duration={3000} />
 
       {/* 参加者ティッカー */}

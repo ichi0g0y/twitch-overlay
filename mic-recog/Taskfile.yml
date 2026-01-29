@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  run:
+    desc: Run mic_stream with preferred settings
+    cmds:
+      - bash -lc 'if [ -z "${VIRTUAL_ENV:-}" ]; then source .venv/bin/activate; fi; ./mic_stream.py --mic 13 -m large-v3 -l ja --vad --exclude "ご視聴ありがとうございました" --no-speech-threshold 0.85 --logprob-threshold -0.3 --vad-threshold 0.7'

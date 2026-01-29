@@ -64,6 +64,38 @@ var DefaultSettings = map[string]Setting{
 		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
 		Description: "OpenAI model for chat translation",
 	},
+	"OPENAI_USAGE_INPUT_TOKENS": {
+		Key: "OPENAI_USAGE_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Accumulated OpenAI input tokens",
+	},
+	"OPENAI_USAGE_OUTPUT_TOKENS": {
+		Key: "OPENAI_USAGE_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Accumulated OpenAI output tokens",
+	},
+	"OPENAI_USAGE_COST_USD": {
+		Key: "OPENAI_USAGE_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Estimated OpenAI usage cost in USD",
+	},
+	"OPENAI_USAGE_DAILY_DATE": {
+		Key: "OPENAI_USAGE_DAILY_DATE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Daily usage date (YYYY-MM-DD)",
+	},
+	"OPENAI_USAGE_DAILY_INPUT_TOKENS": {
+		Key: "OPENAI_USAGE_DAILY_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI input tokens",
+	},
+	"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": {
+		Key: "OPENAI_USAGE_DAILY_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI output tokens",
+	},
+	"OPENAI_USAGE_DAILY_COST_USD": {
+		Key: "OPENAI_USAGE_DAILY_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Daily OpenAI usage cost in USD",
+	},
+	"CHAT_TRANSLATION_ENABLED": {
+		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable chat translation",
+	},
 
 	// プリンター設定
 	"PRINTER_TYPE": {
@@ -139,6 +171,72 @@ var DefaultSettings = map[string]Setting{
 		Description: "Web server port for OBS overlay",
 	},
 
+	// 音声認識設定（mic-recog）
+	"MIC_RECOG_ENABLED": {
+		Key: "MIC_RECOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic-recog transcription",
+	},
+	"MIC_RECOG_DEVICE": {
+		Key: "MIC_RECOG_DEVICE", Value: "auto", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper device (auto/cpu/mps/cuda)",
+	},
+	"MIC_RECOG_MIC_INDEX": {
+		Key: "MIC_RECOG_MIC_INDEX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Microphone device index (empty for default)",
+	},
+	"MIC_RECOG_MODEL": {
+		Key: "MIC_RECOG_MODEL", Value: "large-v3", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper model size",
+	},
+	"MIC_RECOG_LANGUAGE": {
+		Key: "MIC_RECOG_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper language code (empty for auto)",
+	},
+	"MIC_RECOG_VAD": {
+		Key: "MIC_RECOG_VAD", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable VAD segmentation",
+	},
+	"MIC_RECOG_VAD_THRESHOLD": {
+		Key: "MIC_RECOG_VAD_THRESHOLD", Value: "0.7", Type: SettingTypeNormal, Required: false,
+		Description: "VAD speech probability threshold",
+	},
+	"MIC_RECOG_VAD_END_MS": {
+		Key: "MIC_RECOG_VAD_END_MS", Value: "600", Type: SettingTypeNormal, Required: false,
+		Description: "Silence duration (ms) to end a segment",
+	},
+	"MIC_RECOG_VAD_PRE_ROLL_MS": {
+		Key: "MIC_RECOG_VAD_PRE_ROLL_MS", Value: "150", Type: SettingTypeNormal, Required: false,
+		Description: "Audio kept before speech start (ms)",
+	},
+	"MIC_RECOG_NO_SPEECH_THRESHOLD": {
+		Key: "MIC_RECOG_NO_SPEECH_THRESHOLD", Value: "0.85", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper no_speech_threshold",
+	},
+	"MIC_RECOG_LOGPROB_THRESHOLD": {
+		Key: "MIC_RECOG_LOGPROB_THRESHOLD", Value: "-0.3", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper logprob_threshold",
+	},
+	"MIC_RECOG_EXCLUDE": {
+		Key: "MIC_RECOG_EXCLUDE", Value: "ご視聴ありがとうございました", Type: SettingTypeNormal, Required: false,
+		Description: "Exclude phrases (comma or newline separated)",
+	},
+	"MIC_RECOG_INTERIM": {
+		Key: "MIC_RECOG_INTERIM", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable interim (real-time) transcription updates",
+	},
+	"MIC_RECOG_INTERIM_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_SECONDS", Value: "0.5", Type: SettingTypeNormal, Required: false,
+		Description: "Interval between interim updates (seconds)",
+	},
+	"MIC_RECOG_INTERIM_WINDOW_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_WINDOW_SECONDS", Value: "3", Type: SettingTypeNormal, Required: false,
+		Description: "Window size for interim transcription (seconds)",
+	},
+	"MIC_RECOG_INTERIM_MIN_SECONDS": {
+		Key: "MIC_RECOG_INTERIM_MIN_SECONDS", Value: "1", Type: SettingTypeNormal, Required: false,
+		Description: "Minimum audio length for interim transcription (seconds)",
+	},
+
 	// フォント設定
 	"FONT_FILENAME": {
 		Key: "FONT_FILENAME", Value: "", Type: SettingTypeNormal, Required: false,
@@ -161,6 +259,10 @@ var DefaultSettings = map[string]Setting{
 	"WINDOW_HEIGHT": {
 		Key: "WINDOW_HEIGHT", Value: "768", Type: SettingTypeNormal, Required: false,
 		Description: "Window height",
+	},
+	"WINDOW_FULLSCREEN": {
+		Key: "WINDOW_FULLSCREEN", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Window fullscreen state",
 	},
 	"WINDOW_SCREEN_HASH": {
 		Key: "WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
@@ -245,12 +347,52 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
 	"OVERLAY_CARDS_LAYOUT": {
-		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
 		Description: "Layout (column + order) of overlay setting cards",
+	},
+	"MIC_TRANSCRIPT_ENABLED": {
+		Key: "MIC_TRANSCRIPT_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_POSITION": {
+		Key: "MIC_TRANSCRIPT_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript position (top-left/right/center, bottom-left/right/center)",
+	},
+	"MIC_TRANSCRIPT_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_FONT_SIZE", Value: "20", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font size",
+	},
+	"MIC_TRANSCRIPT_MAX_LINES": {
+		Key: "MIC_TRANSCRIPT_MAX_LINES", Value: "3", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript max lines",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable translation for mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for mic transcript translation",
+	},
+	"MIC_TRANSCRIPT_LINE_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LINE_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript line display duration (seconds)",
+	},
+	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
+	},
+	"OPENAI_USAGE_OVERLAY_ENABLED": {
+		Key: "OPENAI_USAGE_OVERLAY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Show OpenAI usage overlay under clock",
 	},
 
 	// プレゼントルーレット設定
@@ -335,6 +477,10 @@ var DefaultSettings = map[string]Setting{
 	"NOTIFICATION_DISPLAY_DURATION": {
 		Key: "NOTIFICATION_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
 		Description: "Notification display duration in seconds",
+	},
+	"NOTIFICATION_DISPLAY_MODE": {
+		Key: "NOTIFICATION_DISPLAY_MODE", Value: "queue", Type: SettingTypeNormal, Required: false,
+		Description: "Notification display mode (queue/overwrite)",
 	},
 	"NOTIFICATION_FONT_SIZE": {
 		Key: "NOTIFICATION_FONT_SIZE", Value: "14", Type: SettingTypeNormal, Required: false,
@@ -593,7 +739,19 @@ func ValidateSetting(key, value string) error {
 		if value != "left" && value != "center" && value != "right" {
 			return fmt.Errorf("alignment must be left, center, or right")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
+	case "NOTIFICATION_DISPLAY_MODE":
+		if value != "queue" && value != "overwrite" {
+			return fmt.Errorf("must be 'queue' or 'overwrite'")
+		}
+	case "MIC_TRANSCRIPT_LINE_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("must be integer between 1 and 300 seconds")
+		}
+	case "MIC_TRANSCRIPT_LAST_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
+			return fmt.Errorf("must be integer between 0 and 300 seconds")
+		}
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

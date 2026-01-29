@@ -11,6 +11,10 @@ body {
   font-family: 'Press Start 2P', 'BestTenDot';
 }
 
+.font-readable {
+  font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+}
+
 .text-outline {
   text-shadow: -4px -4px 0 #000000, -4px -2px 0 #000000, -4px 0px 0 #000000,
     -4px 2px 0 #000000, -4px 4px 0 #000000, -2px -4px 0 #000000,
@@ -170,6 +174,31 @@ body {
     0px 2px 0 #000000, 0px 4px 0 #000000, 2px -4px 0 #000000, 2px -2px 0 #000000,
     2px 0px 0 #000000, 2px 2px 0 #000000, 2px 4px 0 #000000, 4px -4px 0 #000000,
     4px -2px 0 #000000, 4px 0px 0 #000000, 4px 2px 0 #000000, 4px 4px 0 #000000;
+}
+
+/* OpenAI usage overlay */
+.openai-usage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-right: 10px;
+  text-align: right;
+}
+
+.openai-usage-label {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.openai-usage-main {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.openai-usage-value {
+  font-size: 12px;
 }
 
 /* Music player animations */
@@ -383,4 +412,3 @@ body {
 .reward-count-item-hidden {
   display: none;
 }
-

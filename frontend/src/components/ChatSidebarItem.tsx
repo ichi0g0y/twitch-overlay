@@ -1,6 +1,6 @@
 import React from 'react';
-import * as CountryFlags from 'country-flag-icons/react/3x2';
 import { MessageContent } from './notification/MessageContent';
+import languageNames from '../data/iso6393-names.json';
 
 export type ChatFragment = {
   type: 'text' | 'emote';
@@ -68,25 +68,6 @@ const ISO6391_TO_3: Record<string, string> = {
   ta: 'tam',
 };
 
-const ISO6393_TO_1: Record<string, string> = Object.fromEntries(
-  Object.entries(ISO6391_TO_3).map(([iso1, iso3]) => [iso3, iso1]),
-);
-
-const ISO6391_TO_COUNTRY_OVERRIDES: Record<string, string> = {
-  en: 'US',
-  zh: 'CN',
-  ko: 'KR',
-  ar: 'SA',
-  hi: 'IN',
-  bn: 'BD',
-  ur: 'PK',
-  ta: 'IN',
-  tl: 'PH',
-  fa: 'IR',
-  he: 'IL',
-  el: 'GR',
-};
-
 const normalizeLangCode = (lang?: string) => {
   if (!lang) return '';
   const normalized = lang.toLowerCase().split(/[-_]/)[0];
@@ -96,15 +77,11 @@ const normalizeLangCode = (lang?: string) => {
   return normalized;
 };
 
-const resolveCountryCode = (langCode: string) => {
+const resolveLangLabel = (langCode: string) => {
   if (!langCode || langCode === 'und') return '';
-  const normalized = langCode.toLowerCase();
-  if (normalized.length === 2) {
-    return (ISO6391_TO_COUNTRY_OVERRIDES[normalized] ?? normalized.toUpperCase());
-  }
-  const iso1 = ISO6393_TO_1[normalized];
-  if (!iso1) return '';
-  return (ISO6391_TO_COUNTRY_OVERRIDES[iso1] ?? iso1.toUpperCase());
+  const entry = (languageNames as Record<string, { ja?: string; en?: string }>)[langCode];
+  if (!entry) return '';
+  return entry.ja ?? entry.en ?? '';
 };
 
 type ChatSidebarItemProps = {
@@ -116,6 +93,8 @@ type ChatSidebarItemProps = {
   timestampLabel: string;
 };
 
+const BOT_USER_ID = '774281749';
+
 export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   message,
   index,
@@ -125,31 +104,25 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   timestampLabel,
 }) => {
   const isEven = index % 2 === 0;
+  const isBotMessage = message.userId === BOT_USER_ID;
   const hasTranslationLine =
     message.translationStatus === 'pending' || (message.translationStatus !== 'pending' && !!message.translation);
   const showLangInMeta = message.translationLang && !hasTranslationLine;
 
   const langCode = normalizeLangCode(message.translationLang);
-  const shouldShowLang = langCode !== '' && langCode !== 'und' && langCode !== 'jpn';
-  const countryCode = shouldShowLang ? resolveCountryCode(langCode) : '';
-  const flagComponents = CountryFlags as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>;
-  const langComponent = countryCode ? flagComponents[countryCode] : undefined;
+  const langLabel = resolveLangLabel(langCode);
+  const shouldShowLang = !isBotMessage && langCode !== '' && langCode !== 'und' && langCode !== 'jpn' && langLabel !== '';
+  const isPendingTranslation = message.translationStatus === 'pending';
 
-  const renderLangLabel = (fontBase: number, className: string, spacingClass?: string) => {
+  const renderLangLabel = (className: string, spacingClass?: string, uncertain?: boolean) => {
     if (!shouldShowLang) return null;
-    const Flag = langComponent;
-    const height = Math.max(10, Math.round(fontBase * 0.9));
-    const width = Math.round(height * 1.5);
+    const suffix = uncertain ? '?' : '';
     return (
       <span className={`inline-flex items-center gap-1 ${spacingClass ?? ''} ${className}`}>
-        {Flag && (
-          <Flag
-            aria-hidden="true"
-            className="rounded-[2px] shadow-[0_0_0_1px_rgba(0,0,0,0.06)]"
-            style={{ width: `${width}px`, height: `${height}px` }}
-          />
-        )}
-        <span>{langCode}</span>
+        <span>
+          ({langLabel} {langCode}
+          {suffix})
+        </span>
       </span>
     );
   };
@@ -157,9 +130,11 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   return (
     <div
       className={`py-3 px-4 first:pt-0 last:pb-0 text-sm text-left ${
-        isEven
-          ? 'bg-gray-50/60 dark:bg-gray-800/40'
-          : 'bg-white/60 dark:bg-gray-900/30'
+        isBotMessage
+          ? 'bg-amber-50/70 dark:bg-amber-900/20 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)]'
+          : isEven
+            ? 'bg-gray-50/60 dark:bg-gray-800/40'
+            : 'bg-white/60 dark:bg-gray-900/30'
       }`}
       style={{ fontSize }}
     >
@@ -181,14 +156,19 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
           </div>
         )}
         <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
+        {isBotMessage && (
+          <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+            BOT
+          </span>
+        )}
         <span>{timestampLabel}</span>
-        {showLangInMeta && renderLangLabel(metaFontSize, 'text-amber-500/80 dark:text-amber-200/80')}
       </div>
       <div
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
         style={{ lineHeight: `${Math.round(fontSize * 1.1)}px` }}
       >
         <MessageContent message={message.message} fragments={message.fragments} fontSize={fontSize} />
+        {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
       </div>
       {message.translationStatus === 'pending' && (
         <div
@@ -203,7 +183,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2.2a5.8 5.8 0 00-5.8 5.8H4z" />
           </svg>
           <span className="ml-2">翻訳中</span>
-          {renderLangLabel(translationFontSize, 'text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
+          {renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2', isPendingTranslation)}
         </div>
       )}
       {message.translationStatus !== 'pending' && message.translation && (
@@ -215,7 +195,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
           }}
         >
           <span>{message.translation}</span>
-          {renderLangLabel(translationFontSize, 'text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
+          {renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
         </div>
       )}
     </div>

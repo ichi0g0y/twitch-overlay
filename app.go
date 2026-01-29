@@ -22,6 +22,7 @@ import (
 	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
 	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/nantokaworks/twitch-overlay/internal/micrecog"
 	"github.com/nantokaworks/twitch-overlay/internal/music"
 	"github.com/nantokaworks/twitch-overlay/internal/notification"
 	"github.com/nantokaworks/twitch-overlay/internal/output"
@@ -46,6 +47,7 @@ type App struct {
 	streamStatus     status.StreamStatus
 	webAssets        *embed.FS
 	tokenRefreshDone chan struct{}
+	micRecog         *micrecog.Manager
 }
 
 // TODO(v3): Temporary stub for runtime.Screen - replace with proper v3 screen API
@@ -59,7 +61,9 @@ type Screen struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		micRecog: micrecog.NewManager(),
+	}
 }
 
 // SetWebAssets sets the embedded web assets for the web server
@@ -265,6 +269,7 @@ func (a *App) Startup(ctx context.Context) {
 
 		// 埋め込みアセットをWebサーバーに設定
 		webserver.SetWebAssets(a.webAssets)
+		webserver.SetMicRecogManager(a.micRecog)
 		if err := webserver.StartWebServer(port); err != nil {
 			logger.Error("Failed to start web server", zap.Error(err))
 			// Notify frontend about the error
@@ -282,6 +287,12 @@ func (a *App) Startup(ctx context.Context) {
 				})
 			}
 
+			if a.micRecog != nil {
+				if err := a.micRecog.Start(port); err != nil {
+					logger.Warn("Failed to start mic-recog", zap.Error(err))
+				}
+			}
+
 			// WebSocketクライアントを起動してバックエンドメッセージをフロントエンドに転送
 			// NOTE: Settings画面が直接WebSocketに接続するようになったため、このブリッジは不要
 			// go a.connectToWebSocketServer(port)
@@ -292,7 +303,7 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 // restoreRelativePosition restores window using relative position (fallback method)
-func (a *App) restoreRelativePosition(pos map[string]int) {
+func (a *App) restoreRelativePosition(pos map[string]int, savedFullscreen bool) {
 	logger.Info("Falling back to relative position restore",
 		zap.Int("x", pos["x"]), zap.Int("y", pos["y"]),
 		zap.Int("width", pos["width"]), zap.Int("height", pos["height"]))
@@ -305,6 +316,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 				a.mainWindow.Show()
 				logger.Info("Window shown at restored relative position")
 				a.registerWindowEventListeners()
+				a.applyFullscreenState(savedFullscreen)
 			}
 		} else {
 			logger.Warn("Saved position is invalid, centering window")
@@ -314,6 +326,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 				a.mainWindow.Show()
 				logger.Info("Window centered and shown (invalid position)")
 				a.registerWindowEventListeners()
+				a.applyFullscreenState(savedFullscreen)
 			}
 		}
 	} else {
@@ -324,6 +337,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 			a.mainWindow.Show()
 			logger.Info("Window centered and shown (no saved position)")
 			a.registerWindowEventListeners()
+			a.applyFullscreenState(savedFullscreen)
 		}
 	}
 }
@@ -371,6 +385,8 @@ func (a *App) restoreWindowState() {
 	absoluteXStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_X")
 	absoluteYStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_Y")
 	screenIndexStr, _ := settingsManager.GetRealValue("WINDOW_SCREEN_INDEX")
+	fullscreenStr, _ := settingsManager.GetRealValue("WINDOW_FULLSCREEN")
+	savedFullscreen := parseBoolOrDefault(fullscreenStr, false)
 
 	// 画面構成が変更されているかチェック（警告のみ、復帰は続行）
 	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
@@ -420,6 +436,7 @@ func (a *App) restoreWindowState() {
 					a.mainWindow.Show()
 					logger.Info("Window shown at restored absolute position")
 					a.registerWindowEventListeners()
+					a.applyFullscreenState(savedFullscreen)
 				}
 			} else {
 				logger.Warn("Saved screen index no longer exists, centering window",
@@ -430,6 +447,7 @@ func (a *App) restoreWindowState() {
 					logger.Info("Calling Show() to display window (invalid screen index)")
 					a.mainWindow.Show()
 					a.registerWindowEventListeners()
+					a.applyFullscreenState(savedFullscreen)
 				}
 			}
 			return
@@ -437,7 +455,7 @@ func (a *App) restoreWindowState() {
 	}
 
 	// 絶対座標がない、またはパースに失敗した場合は相対座標にフォールバック
-	a.restoreRelativePosition(pos)
+	a.restoreRelativePosition(pos, savedFullscreen)
 	logger.Info("Window position restoration completed")
 }
 
@@ -483,6 +501,23 @@ func (a *App) registerWindowEventListeners() {
 		}
 	})
 
+	// フルスクリーン状態変更のイベントリスナー
+	a.mainWindow.OnWindowEvent(events.Common.WindowFullscreen, func(e *application.WindowEvent) {
+		if err := a.SaveWindowFullscreenState(true); err != nil {
+			logger.Error("Failed to save fullscreen state", zap.Error(err))
+		} else {
+			logger.Debug("Window fullscreen state saved")
+		}
+	})
+
+	a.mainWindow.OnWindowEvent(events.Common.WindowUnFullscreen, func(e *application.WindowEvent) {
+		if err := a.SaveWindowFullscreenState(false); err != nil {
+			logger.Error("Failed to save fullscreen state", zap.Error(err))
+		} else {
+			logger.Debug("Window fullscreen state saved")
+		}
+	})
+
 	logger.Info("Window event listeners registered")
 }
 
@@ -493,6 +528,7 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	// ウィンドウ位置を保存
 	if a.mainWindow != nil {
+		_ = a.SaveWindowFullscreenState(a.mainWindow.IsFullscreen())
 		a.mainWindow.EmitEvent("save_window_position")
 	}
 	// 保存処理を待つ
@@ -501,6 +537,10 @@ func (a *App) Shutdown(ctx context.Context) {
 	// トークンリフレッシュgoroutineを停止
 	if a.tokenRefreshDone != nil {
 		close(a.tokenRefreshDone)
+	}
+
+	if a.micRecog != nil {
+		a.micRecog.Stop()
 	}
 
 	// プリンターを停止（Bluetoothのみ）
@@ -657,6 +697,17 @@ func parseIntOrDefault(s string, defaultValue int) int {
 	return v
 }
 
+func parseBoolOrDefault(s string, defaultValue bool) bool {
+	if s == "" {
+		return defaultValue
+	}
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return defaultValue
+	}
+	return v
+}
+
 // SaveWindowPosition saves the window position and size to database
 func (a *App) SaveWindowPosition(x, y, width, height int) error {
 	logger.Info("Saving window position",
@@ -698,6 +749,33 @@ func (a *App) SaveWindowPosition(x, y, width, height int) error {
 	}
 
 	return nil
+}
+
+// SaveWindowFullscreenState saves fullscreen state to database
+func (a *App) SaveWindowFullscreenState(fullscreen bool) error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	settingsManager := settings.NewSettingsManager(db)
+	value := "false"
+	if fullscreen {
+		value = "true"
+	}
+	return settingsManager.SetSetting("WINDOW_FULLSCREEN", value)
+}
+
+func (a *App) applyFullscreenState(savedFullscreen bool) {
+	if !savedFullscreen || a.mainWindow == nil {
+		return
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		if a.mainWindow != nil && !a.mainWindow.IsFullscreen() {
+			logger.Info("Restoring fullscreen state")
+			a.mainWindow.Fullscreen()
+		}
+	}()
 }
 
 // GetWindowPosition returns the saved window position and size
@@ -1263,35 +1341,60 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 
 		// 有効なキーかチェック
 		validKeys := map[string]bool{
-			"PRINTER_ADDRESS":               true,
-			"DEBUG_OUTPUT":                  true,
-			"DRY_RUN_MODE":                  true,
-			"BEST_QUALITY":                  true,
-			"DITHER":                        true,
-			"AUTO_ROTATE":                   true,
-			"BLACK_POINT":                   true,
-			"ROTATE_PRINT":                  true,
-			"PRINTER_TYPE":                  true,
-			"USB_PRINTER_NAME":              true,
-			"TWITCH_USER_ID":                true,
-			"CLIENT_ID":                     true,
-			"CLIENT_SECRET":                 true,
-			"TRIGGER_CUSTOM_REWORD_ID":      true,
-			"OPENAI_API_KEY":                true,
-			"OPENAI_MODEL":                  true,
-			"SERVER_PORT":                   true,
-			"AUTO_DRY_RUN_WHEN_OFFLINE":     true,
-			"TIMEZONE":                      true,
-			"KEEP_ALIVE_ENABLED":            true,
-			"KEEP_ALIVE_INTERVAL":           true,
-			"CLOCK_ENABLED":                 true,
-			"CLOCK_WEIGHT":                  true,
-			"CLOCK_WALLET":                  true,
-			"CLOCK_SHOW_ICONS":              true,
-			"FONT_FILENAME":                 true,
-			"NOTIFICATION_ENABLED":          true,
-			"NOTIFICATION_DISPLAY_DURATION": true,
-			"NOTIFICATION_FONT_SIZE":        true,
+			"PRINTER_ADDRESS":                  true,
+			"DEBUG_OUTPUT":                     true,
+			"DRY_RUN_MODE":                     true,
+			"BEST_QUALITY":                     true,
+			"DITHER":                           true,
+			"AUTO_ROTATE":                      true,
+			"BLACK_POINT":                      true,
+			"ROTATE_PRINT":                     true,
+			"PRINTER_TYPE":                     true,
+			"USB_PRINTER_NAME":                 true,
+			"TWITCH_USER_ID":                   true,
+			"CLIENT_ID":                        true,
+			"CLIENT_SECRET":                    true,
+			"TRIGGER_CUSTOM_REWORD_ID":         true,
+			"OPENAI_API_KEY":                   true,
+			"OPENAI_MODEL":                     true,
+			"OPENAI_USAGE_INPUT_TOKENS":        true,
+			"OPENAI_USAGE_OUTPUT_TOKENS":       true,
+			"OPENAI_USAGE_COST_USD":            true,
+			"OPENAI_USAGE_DAILY_DATE":          true,
+			"OPENAI_USAGE_DAILY_INPUT_TOKENS":  true,
+			"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": true,
+			"OPENAI_USAGE_DAILY_COST_USD":      true,
+			"CHAT_TRANSLATION_ENABLED":         true,
+			"SERVER_PORT":                      true,
+			"AUTO_DRY_RUN_WHEN_OFFLINE":        true,
+			"TIMEZONE":                         true,
+			"KEEP_ALIVE_ENABLED":               true,
+			"KEEP_ALIVE_INTERVAL":              true,
+			"CLOCK_ENABLED":                    true,
+			"CLOCK_WEIGHT":                     true,
+			"CLOCK_WALLET":                     true,
+			"CLOCK_SHOW_ICONS":                 true,
+			"FONT_FILENAME":                    true,
+			"NOTIFICATION_ENABLED":             true,
+			"NOTIFICATION_DISPLAY_DURATION":    true,
+			"NOTIFICATION_DISPLAY_MODE":        true,
+			"NOTIFICATION_FONT_SIZE":           true,
+			"MIC_RECOG_ENABLED":                true,
+			"MIC_RECOG_DEVICE":                 true,
+			"MIC_RECOG_MIC_INDEX":              true,
+			"MIC_RECOG_MODEL":                  true,
+			"MIC_RECOG_LANGUAGE":               true,
+			"MIC_RECOG_VAD":                    true,
+			"MIC_RECOG_VAD_THRESHOLD":          true,
+			"MIC_RECOG_VAD_END_MS":             true,
+			"MIC_RECOG_VAD_PRE_ROLL_MS":        true,
+			"MIC_RECOG_NO_SPEECH_THRESHOLD":    true,
+			"MIC_RECOG_LOGPROB_THRESHOLD":      true,
+			"MIC_RECOG_EXCLUDE":                true,
+			"MIC_RECOG_INTERIM":                true,
+			"MIC_RECOG_INTERIM_SECONDS":        true,
+			"MIC_RECOG_INTERIM_WINDOW_SECONDS": true,
+			"MIC_RECOG_INTERIM_MIN_SECONDS":    true,
 		}
 
 		if !validKeys[dbKey] {

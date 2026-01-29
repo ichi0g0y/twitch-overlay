@@ -178,6 +178,17 @@ export interface SystemPrinter {
   status: string;
 }
 
+// マイクデバイス
+export interface MicDevice {
+  index: number;
+  name: string;
+  max_input_channels: number;
+  default_samplerate: number;
+  hostapi?: number | null;
+  hostapi_name?: string | null;
+  is_default?: boolean;
+}
+
 // プリンタースキャン結果
 export interface ScanResponse {
   devices: BluetoothDevice[];
