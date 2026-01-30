@@ -27,7 +27,29 @@ const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
 
 export const SettingsPageContext = createContext<ReturnType<typeof useSettingsPage> | null>(null);
 
+const readErrorMessage = async (response: Response): Promise<string> => {
+  const fallback = `HTTP ${response.status}`;
+  try {
+    const text = await response.text();
+    if (!text) return fallback;
+    try {
+      const data = JSON.parse(text) as { detail?: string; error?: string; message?: string };
+      const detail = data.detail || data.error || data.message;
+      if (detail) {
+        return `HTTP ${response.status}: ${detail}`;
+      }
+    } catch {
+      // ignore json parse errors
+    }
+    return `HTTP ${response.status}: ${text}`;
+  } catch {
+    return fallback;
+  }
+};
+
 export const useSettingsPage = () => {
+  type OllamaModelItem = { id: string; size_bytes?: number | null; modified_at?: string };
+  type OllamaStatus = { running: boolean; healthy: boolean; version?: string; model?: string; error?: string };
   const [activeTab, setActiveTab] = useState(() => {
     try {
       return localStorage.getItem(SETTINGS_TAB_KEY) || 'general';
@@ -76,9 +98,52 @@ export const useSettingsPage = () => {
   const [loadingMicDevices, setLoadingMicDevices] = useState(false);
   const [restartingMicRecog, setRestartingMicRecog] = useState(false);
   const [resettingOpenAIUsage, setResettingOpenAIUsage] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<OllamaModelItem[]>([]);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
+  const [ollamaModelsFetchedAt, setOllamaModelsFetchedAt] = useState<number | null>(null);
+  const [pullingOllamaModel, setPullingOllamaModel] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [creatingOllamaModelfile, setCreatingOllamaModelfile] = useState(false);
+  const [ollamaModelfilePreview, setOllamaModelfilePreview] = useState('');
+  const [ollamaModelfileError, setOllamaModelfileError] = useState<string | null>(null);
+  const translationTestStorageKeys = {
+    text: 'settings.translationTest.text',
+    source: 'settings.translationTest.source',
+    target: 'settings.translationTest.target',
+    backend: 'settings.translationTest.backend',
+  };
+  const readStoredValue = (key: string, fallback: string) => {
+    try {
+      const value = localStorage.getItem(key);
+      return value ?? fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const [translationTestText, setTranslationTestText] = useState(() =>
+    readStoredValue(translationTestStorageKeys.text, 'こんにちは'),
+  );
+  const [translationTestSourceLang, setTranslationTestSourceLang] = useState(() =>
+    readStoredValue(translationTestStorageKeys.source, ''),
+  );
+  const [translationTestTargetLang, setTranslationTestTargetLang] = useState(() =>
+    readStoredValue(translationTestStorageKeys.target, 'eng'),
+  );
+  const [translationTestBackend, setTranslationTestBackend] = useState<'openai' | 'ollama'>(() => {
+    const saved = readStoredValue(translationTestStorageKeys.backend, 'openai');
+    return saved === 'ollama' ? 'ollama' : 'openai';
+  });
+  const [translationTestResult, setTranslationTestResult] = useState<string>('');
+  const [translationTestTookMs, setTranslationTestTookMs] = useState<number | null>(null);
+  const [translationTesting, setTranslationTesting] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  const getSettingValue = (key: string): string => {
+    return (key in unsavedChanges) ? unsavedChanges[key] : (settings[key]?.value || '');
+  };
 
   // Overlay settings
   const { settings: overlaySettings, updateSettings: updateOverlaySettings } = useSettings();
@@ -175,6 +240,8 @@ export const useSettingsPage = () => {
     }
   }, []);
 
+  // moved below handleSettingChange to avoid TDZ issues
+
   const fetchAuthStatus = async () => {
     try {
       const port = await GetServerPort();
@@ -256,9 +323,299 @@ export const useSettingsPage = () => {
     }
   };
 
-  const getSettingValue = (key: string): string => {
-    return (key in unsavedChanges) ? unsavedChanges[key] : (settings[key]?.value || '');
+  const applySavedSettings = (updates: Record<string, string>) => {
+    setSettings(prev => {
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(updates)) {
+        const existing = next[key];
+        next[key] = {
+          key,
+          value,
+          type: existing?.type || 'normal',
+          required: existing?.required || false,
+          description: existing?.description || '',
+          has_value: value !== '',
+        };
+      }
+      return next;
+    });
+    setUnsavedChanges(prev => {
+      const updated = { ...prev };
+      for (const key of Object.keys(updates)) {
+        delete updated[key];
+      }
+      return updated;
+    });
   };
+
+  const fetchOllamaStatus = useCallback(async (silent?: boolean): Promise<OllamaStatus | null> => {
+    try {
+      const url = await buildApiUrlAsync('/api/ollama/status');
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const status = {
+        running: Boolean(data?.running),
+        healthy: Boolean(data?.healthy),
+        version: data?.version,
+        model: data?.model,
+        error: data?.error,
+      };
+      setOllamaStatus(status);
+      return status;
+    } catch (err: any) {
+      const status = {
+        running: false,
+        healthy: false,
+        error: err?.message || 'ollama status failed',
+      };
+      setOllamaStatus(status);
+      if (!silent) {
+        toast.error(`Ollama状態の取得に失敗しました: ${status.error}`);
+      }
+      return status;
+    }
+  }, []);
+
+  const fetchOllamaModels = useCallback(async (options?: { silent?: boolean }) => {
+    setOllamaModelsLoading(true);
+    setOllamaModelsError(null);
+    try {
+      const status = await fetchOllamaStatus(true);
+      if (!status?.healthy) {
+        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
+        throw new Error(message);
+      }
+
+      const url = await buildApiUrlAsync('/api/ollama/models');
+      const response = await fetch(url);
+      if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message);
+      }
+      const data = await response.json();
+      const models: OllamaModelItem[] = Array.isArray(data?.models)
+        ? data.models
+            .map((item: any) => {
+              if (!item) return null;
+              const id = item.id || item.name;
+              if (!id) return null;
+              const size = item.size_bytes ?? item.size ?? null;
+              return {
+                id,
+                size_bytes: typeof size === 'number' ? size : null,
+                modified_at: item.modified_at,
+              };
+            })
+            .filter((item: any) => item)
+        : [];
+      setOllamaModels(models);
+      if (data?.cached_at) {
+        setOllamaModelsFetchedAt(Number(data.cached_at));
+      }
+    } catch (err: any) {
+      console.error('[fetchOllamaModels] Failed to fetch ollama models:', err);
+      const message = err?.message || 'Failed to fetch models';
+      setOllamaModelsError(message);
+      if (!options?.silent) {
+        toast.error(`モデル一覧の取得に失敗しました: ${message}`);
+      }
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  }, [fetchOllamaStatus]);
+
+  const pullOllamaModel = useCallback(async (modelId: string) => {
+    const trimmed = modelId.trim();
+    if (!trimmed) return;
+    setPullingOllamaModel(true);
+    try {
+      const status = await fetchOllamaStatus(true);
+      if (!status?.healthy) {
+        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
+        throw new Error(message);
+      }
+      const url = await buildApiUrlAsync('/api/ollama/pull');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: trimmed }),
+      });
+      if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message);
+      }
+      toast.success(`モデルを取得しました: ${trimmed}`);
+      await fetchOllamaModels({ silent: true });
+    } catch (err: any) {
+      console.error('[pullOllamaModel] Failed to pull model:', err);
+      toast.error(`モデル取得に失敗しました: ${err?.message || 'unknown error'}`);
+    } finally {
+      setPullingOllamaModel(false);
+    }
+  }, [fetchOllamaStatus, fetchOllamaModels]);
+
+  const handleTestTranslation = useCallback(async () => {
+    const text = translationTestText.trim();
+    if (!text) {
+      toast.error('テスト文を入力してください');
+      return;
+    }
+    setTranslationTesting(true);
+    try {
+      if (translationTestBackend === 'ollama') {
+        const status = await fetchOllamaStatus(true);
+        if (!status?.healthy) {
+          const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
+          throw new Error(message);
+        }
+      }
+      const url = await buildApiUrlAsync('/api/translation/test');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          src_lang: translationTestSourceLang || undefined,
+          tgt_lang: translationTestTargetLang || undefined,
+          backend: translationTestBackend,
+        }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setTranslationTestResult(data?.text || '');
+      setTranslationTestTookMs(typeof data?.took_ms === 'number' ? data.took_ms : null);
+    } catch (err: any) {
+      console.error('[handleTestTranslation] Failed to translate:', err);
+      toast.error(`翻訳テストに失敗しました: ${err?.message || 'unknown error'}`);
+      setTranslationTestTookMs(null);
+    } finally {
+      setTranslationTesting(false);
+    }
+  }, [
+    fetchOllamaStatus,
+    translationTestBackend,
+    translationTestSourceLang,
+    translationTestTargetLang,
+    translationTestText,
+  ]);
+
+  const handleCreateOllamaModelfile = useCallback(async (apply: boolean) => {
+    setCreatingOllamaModelfile(true);
+    setOllamaModelfileError(null);
+    try {
+      const name = (getSettingValue('OLLAMA_CUSTOM_MODEL_NAME') || '').trim();
+      if (!name) {
+        throw new Error('モデル名を入力してください');
+      }
+      const settingsPayload: UpdateSettingsRequest = {
+        OLLAMA_CUSTOM_MODEL_NAME: name,
+        OLLAMA_MODEL: getSettingValue('OLLAMA_MODEL'),
+        OLLAMA_BASE_MODEL: getSettingValue('OLLAMA_BASE_MODEL') || getSettingValue('OLLAMA_MODEL'),
+        OLLAMA_NUM_PREDICT: getSettingValue('OLLAMA_NUM_PREDICT'),
+        OLLAMA_TEMPERATURE: getSettingValue('OLLAMA_TEMPERATURE'),
+        OLLAMA_TOP_P: getSettingValue('OLLAMA_TOP_P'),
+        OLLAMA_NUM_CTX: getSettingValue('OLLAMA_NUM_CTX'),
+        OLLAMA_STOP: getSettingValue('OLLAMA_STOP'),
+        OLLAMA_SYSTEM_PROMPT: getSettingValue('OLLAMA_SYSTEM_PROMPT'),
+      };
+      await UpdateSettings(settingsPayload);
+      applySavedSettings(settingsPayload);
+      const url = await buildApiUrlAsync('/api/ollama/modelfile');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          create: true,
+          apply,
+          base_model: settingsPayload.OLLAMA_BASE_MODEL,
+        }),
+      });
+      if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message);
+      }
+      const data = await response.json();
+      if (typeof data?.modelfile === 'string') {
+        setOllamaModelfilePreview(data.modelfile);
+      }
+      if (data?.applied && data?.name) {
+        applySavedSettings({ OLLAMA_MODEL: data.name });
+      }
+      toast.success(`Modelfileを生成しました: ${name}`);
+      await fetchOllamaModels({ silent: true });
+    } catch (err: any) {
+      console.error('[handleCreateOllamaModelfile] Failed to create modelfile:', err);
+      const message = err?.message || 'unknown error';
+      setOllamaModelfileError(message);
+      toast.error(`Modelfile生成に失敗しました: ${message}`);
+    } finally {
+      setCreatingOllamaModelfile(false);
+    }
+  }, [fetchOllamaModels, getSettingValue, applySavedSettings]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const tick = async () => {
+      if (!mounted) return;
+      await fetchOllamaStatus(true);
+    };
+    tick();
+    const interval = window.setInterval(tick, 5000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [fetchOllamaStatus]);
+
+  const prevOllamaHealthyRef = useRef(false);
+  React.useEffect(() => {
+    const wasHealthy = prevOllamaHealthyRef.current;
+    const isHealthy = ollamaStatus?.healthy ?? false;
+    if (!wasHealthy && isHealthy) {
+      setOllamaModelsError(null);
+      fetchOllamaModels({ silent: true });
+    }
+    prevOllamaHealthyRef.current = isHealthy;
+  }, [ollamaStatus, fetchOllamaModels]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(translationTestStorageKeys.text, translationTestText);
+    } catch {
+      // ignore storage errors
+    }
+  }, [translationTestText, translationTestStorageKeys.text]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(translationTestStorageKeys.source, translationTestSourceLang);
+    } catch {
+      // ignore storage errors
+    }
+  }, [translationTestSourceLang, translationTestStorageKeys.source]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(translationTestStorageKeys.target, translationTestTargetLang);
+    } catch {
+      // ignore storage errors
+    }
+  }, [translationTestTargetLang, translationTestStorageKeys.target]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(translationTestStorageKeys.backend, translationTestBackend);
+    } catch {
+      // ignore storage errors
+    }
+  }, [translationTestBackend, translationTestStorageKeys.backend]);
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';
 
@@ -778,6 +1135,30 @@ export const useSettingsPage = () => {
     handleRestartMicRecog,
     resettingOpenAIUsage,
     handleResetOpenAIUsageDaily,
+    ollamaModels,
+    ollamaModelsLoading,
+    ollamaModelsError,
+    ollamaModelsFetchedAt,
+    pullingOllamaModel,
+    ollamaStatus,
+    creatingOllamaModelfile,
+    ollamaModelfilePreview,
+    ollamaModelfileError,
+    handleCreateOllamaModelfile,
+    fetchOllamaModels,
+    pullOllamaModel,
+    translationTestText,
+    setTranslationTestText,
+    translationTestSourceLang,
+    setTranslationTestSourceLang,
+    translationTestTargetLang,
+    setTranslationTestTargetLang,
+    translationTestBackend,
+    setTranslationTestBackend,
+    translationTestResult,
+    translationTestTookMs,
+    translationTesting,
+    handleTestTranslation,
 
     // Show/hide secrets
     showSecrets,

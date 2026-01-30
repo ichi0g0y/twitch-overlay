@@ -64,6 +64,50 @@ var DefaultSettings = map[string]Setting{
 		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
 		Description: "OpenAI model for chat translation",
 	},
+	"TRANSLATION_BACKEND": {
+		Key: "TRANSLATION_BACKEND", Value: "openai", Type: SettingTypeNormal, Required: false,
+		Description: "Translation backend (openai/ollama)",
+	},
+	"OLLAMA_BASE_URL": {
+		Key: "OLLAMA_BASE_URL", Value: "http://127.0.0.1:11434", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama base URL",
+	},
+	"OLLAMA_MODEL": {
+		Key: "OLLAMA_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama model name",
+	},
+	"OLLAMA_BASE_MODEL": {
+		Key: "OLLAMA_BASE_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama base model for modelfile",
+	},
+	"OLLAMA_CUSTOM_MODEL_NAME": {
+		Key: "OLLAMA_CUSTOM_MODEL_NAME", Value: "translator-custom", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama modelfile output model name",
+	},
+	"OLLAMA_NUM_PREDICT": {
+		Key: "OLLAMA_NUM_PREDICT", Value: "128", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama num_predict per request",
+	},
+	"OLLAMA_TEMPERATURE": {
+		Key: "OLLAMA_TEMPERATURE", Value: "0.1", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama temperature (0.0 - 2.0)",
+	},
+	"OLLAMA_TOP_P": {
+		Key: "OLLAMA_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama top_p (0.0 - 1.0)",
+	},
+	"OLLAMA_NUM_CTX": {
+		Key: "OLLAMA_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama num_ctx (optional)",
+	},
+	"OLLAMA_STOP": {
+		Key: "OLLAMA_STOP", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama stop sequences (comma or newline separated)",
+	},
+	"OLLAMA_SYSTEM_PROMPT": {
+		Key: "OLLAMA_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama system prompt (optional)",
+	},
 	"OPENAI_USAGE_INPUT_TOKENS": {
 		Key: "OPENAI_USAGE_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
 		Description: "Accumulated OpenAI input tokens",
@@ -394,9 +438,13 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable translation for mic transcript overlay",
 	},
+	"MIC_TRANSCRIPT_TRANSLATION_MODE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_MODE", Value: "off", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript translation mode (off/openai/ollama)",
+	},
 	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
-		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
-		Description: "Target language for mic transcript translation",
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "eng", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation (e.g. jpn/eng)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
@@ -750,6 +798,45 @@ func ValidateSetting(key, value string) error {
 		// アニメーション速度のチェック（0.5〜2.0）
 		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.5 || val > 2.0 {
 			return fmt.Errorf("must be float between 0.5 and 2.0")
+		}
+	case "TRANSLATION_BACKEND":
+		if value != "openai" && value != "ollama" {
+			return fmt.Errorf("must be 'openai' or 'ollama'")
+		}
+	case "MIC_TRANSCRIPT_TRANSLATION_MODE":
+		if value != "off" && value != "openai" && value != "ollama" {
+			return fmt.Errorf("must be 'off', 'openai', or 'ollama'")
+		}
+	case "OLLAMA_NUM_PREDICT":
+		if value != "" {
+			if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 4096 {
+				return fmt.Errorf("must be integer between 1 and 4096")
+			}
+		}
+	case "OLLAMA_TEMPERATURE":
+		if value != "" {
+			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 2.0 {
+				return fmt.Errorf("must be float between 0.0 and 2.0")
+			}
+		}
+	case "OLLAMA_TOP_P":
+		if value != "" {
+			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 1.0 {
+				return fmt.Errorf("must be float between 0.0 and 1.0")
+			}
+		}
+	case "OLLAMA_NUM_CTX":
+		if value != "" {
+			if val, err := strconv.Atoi(value); err != nil || val < 128 || val > 131072 {
+				return fmt.Errorf("must be integer between 128 and 131072")
+			}
+		}
+	case "OLLAMA_CUSTOM_MODEL_NAME":
+		if value != "" {
+			matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`, value)
+			if !matched {
+				return fmt.Errorf("must be 1-128 chars (alnum, . _ : -)")
+			}
 		}
 	case "TICKER_NOTICE_FONT_SIZE":
 		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 48 {

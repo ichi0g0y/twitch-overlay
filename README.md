@@ -83,6 +83,17 @@ task test
 - macOS は `--device auto` で MPS（GPU）を自動選択します（未対応ならCPU）
 - 初回起動時に Whisper のモデルをダウンロードします
 
+### ローカル翻訳（Ollama）
+ローカル翻訳は Ollama を使います。Settings画面のAIタブで翻訳バックエンドを `Ollama` に切り替え、モデルとサーバURLを設定してください。言語コードは `jpn_Jpan` 形式（例: `jpn_Jpan`, `eng_Latn`, `rus_Cyrl`）を使用します。
+
+```bash
+# 例: サーバ起動（localhostのときはアプリが自動起動を試みます）
+ollama serve
+
+# 例: モデル取得（UIの「モデルを取得」でもOK）
+ollama pull translategemma:12b
+```
+
 ### オーバーレイの開発フロー
 1. `web/`ディレクトリで変更を行う
 2. `cd web && bun run build`でビルド

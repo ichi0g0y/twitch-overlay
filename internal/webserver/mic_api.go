@@ -82,3 +82,22 @@ func handleMicRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(response)
 }
+
+func handleMicStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := map[string]interface{}{
+		"running": false,
+	}
+	if micRecogManager == nil {
+		status["error"] = "mic-recog manager not available"
+	} else {
+		status["running"] = micRecogManager.IsRunning()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(status)
+}

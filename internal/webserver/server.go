@@ -212,10 +212,20 @@ func StartWebServer(port int) error {
 	// Mic-recog endpoints
 	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))
 	mux.HandleFunc("/api/mic/restart", corsMiddleware(handleMicRestart))
+	mux.HandleFunc("/api/mic/status", corsMiddleware(handleMicStatus))
 
 	// OpenAI usage endpoints
 	mux.HandleFunc("/api/openai/usage", corsMiddleware(handleOpenAIUsage))
 	mux.HandleFunc("/api/openai/usage/reset", corsMiddleware(handleOpenAIUsageReset))
+
+	// Translation test endpoint
+	mux.HandleFunc("/api/translation/test", corsMiddleware(handleTranslationTest))
+
+	// Ollama endpoints
+	mux.HandleFunc("/api/ollama/status", corsMiddleware(handleOllamaStatus))
+	mux.HandleFunc("/api/ollama/models", corsMiddleware(handleOllamaModels))
+	mux.HandleFunc("/api/ollama/pull", corsMiddleware(handleOllamaPull))
+	mux.HandleFunc("/api/ollama/modelfile", corsMiddleware(handleOllamaModelfile))
 
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)

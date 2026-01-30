@@ -327,23 +327,58 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 			},
 		})
 
-		apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
-		if err != nil || apiKey == "" {
-			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
-			broadcast.Send(map[string]interface{}{
-				"type": "chat-translation",
-				"data": map[string]interface{}{
-					"messageId":         messageID,
-					"translation":       "",
-					"translationStatus": "skip",
-					"translationLang":   langCode,
-				},
-			})
-			return
+		backendValue, _ := settingsManager.GetRealValue("TRANSLATION_BACKEND")
+		backend := translation.ResolveTranslationBackend(backendValue)
+
+		var translated string
+		var detectedLang string
+		var err error
+
+		switch backend {
+		case translation.BackendOllama:
+			baseURL, _ := settingsManager.GetRealValue("OLLAMA_BASE_URL")
+			modelName, _ := settingsManager.GetRealValue("OLLAMA_MODEL")
+			numPredictValue, _ := settingsManager.GetRealValue("OLLAMA_NUM_PREDICT")
+			numPredict := translation.ParseOllamaNumPredict(numPredictValue)
+			getSetting := func(key string) string {
+				value, _ := settingsManager.GetRealValue(key)
+				return strings.TrimSpace(value)
+			}
+			opts := translation.OllamaRequestOptions{
+				NumPredict:   numPredict,
+				Temperature:  translation.ParseOllamaTemperature(getSetting("OLLAMA_TEMPERATURE")),
+				TopP:         translation.ParseOllamaTopP(getSetting("OLLAMA_TOP_P")),
+				NumCtx:       translation.ParseOllamaNumCtx(getSetting("OLLAMA_NUM_CTX")),
+				Stop:         translation.ParseOllamaStop(getSetting("OLLAMA_STOP")),
+				SystemPrompt: getSetting("OLLAMA_SYSTEM_PROMPT"),
+			}
+			translated, detectedLang, err = translation.TranslateToTargetLanguageOllama(
+				translation.ResolveOllamaBaseURL(baseURL),
+				modelName,
+				rawMessage,
+				langCode,
+				translation.DefaultTargetJapanese,
+				opts,
+			)
+		default:
+			apiKey, keyErr := settingsManager.GetRealValue("OPENAI_API_KEY")
+			if keyErr != nil || apiKey == "" {
+				_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
+				broadcast.Send(map[string]interface{}{
+					"type": "chat-translation",
+					"data": map[string]interface{}{
+						"messageId":         messageID,
+						"translation":       "",
+						"translationStatus": "skip",
+						"translationLang":   langCode,
+					},
+				})
+				return
+			}
+			modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
+			translated, detectedLang, err = translation.TranslateToJapanese(apiKey, rawMessage, modelName)
 		}
 
-		modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
-		translated, detectedLang, err := translation.TranslateToJapanese(apiKey, rawMessage, modelName)
 		if err != nil {
 			logger.Warn("Failed to translate chat message", zap.Error(err))
 			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)

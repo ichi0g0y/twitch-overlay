@@ -221,6 +221,11 @@ tasks:
         "$PYTHON_BIN" -m venv mic-recog/.venv
         mic-recog/.venv/bin/python -m pip install -r mic-recog/requirements.txt
 
+  venv:all:
+    desc: mic-recog のvenv作成
+    deps:
+      - mic-recog:venv
+
   mic-recog:bundle:
     desc: mic-recog を .app に同梱
     cmds:

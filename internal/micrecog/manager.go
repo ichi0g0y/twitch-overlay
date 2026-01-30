@@ -104,6 +104,12 @@ func (m *Manager) Start(port int) error {
 	return nil
 }
 
+func (m *Manager) IsRunning() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cmd != nil
+}
+
 func (m *Manager) Stop() bool {
 	m.mu.Lock()
 	cmd := m.cmd

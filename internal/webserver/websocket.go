@@ -74,6 +74,12 @@ func getMicTranscriptTranslationConfig() (bool, string) {
 	if !settingsSnapshot.MicTranscriptEnabled || !settingsSnapshot.MicTranscriptTranslationEnabled {
 		return false, ""
 	}
+	mode := strings.TrimSpace(strings.ToLower(settingsSnapshot.MicTranscriptTranslationMode))
+	if mode != "" {
+		if mode == "off" {
+			return false, ""
+		}
+	}
 	targetLang := strings.TrimSpace(settingsSnapshot.MicTranscriptTranslationLanguage)
 	if targetLang == "" {
 		return false, ""
@@ -93,13 +99,67 @@ func translateMicTranscript(payload micTranscriptPayload, targetLang string) {
 	}
 
 	settingsManager := settings.NewSettingsManager(db)
-	apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
-	if err != nil || strings.TrimSpace(apiKey) == "" {
+	backendValue, _ := settingsManager.GetRealValue("TRANSLATION_BACKEND")
+	backend := translation.ResolveTranslationBackend(backendValue)
+	modeValue, _ := settingsManager.GetRealValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+	mode := strings.TrimSpace(strings.ToLower(modeValue))
+	switch mode {
+	case "openai":
+		backend = translation.BackendOpenAI
+	case "ollama":
+		backend = translation.BackendOllama
+	case "off":
 		return
 	}
 
-	modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
-	translated, sourceLang, err := translation.TranslateToTargetLanguage(apiKey, payload.Text, modelName, targetLang)
+	var translated string
+	var sourceLang string
+	var err error
+
+	switch backend {
+	case translation.BackendOllama:
+		baseURL, _ := settingsManager.GetRealValue("OLLAMA_BASE_URL")
+		modelName, _ := settingsManager.GetRealValue("OLLAMA_MODEL")
+		numPredictValue, _ := settingsManager.GetRealValue("OLLAMA_NUM_PREDICT")
+		numPredict := translation.ParseOllamaNumPredict(numPredictValue)
+		getSetting := func(key string) string {
+			value, _ := settingsManager.GetRealValue(key)
+			return strings.TrimSpace(value)
+		}
+		srcLang := strings.TrimSpace(payload.Language)
+		if srcLang == "" {
+			normalized := translation.NormalizeForLanguageDetection(payload.Text)
+			srcLang = translation.DetectLanguageCode(normalized)
+		}
+		opts := translation.OllamaRequestOptions{
+			NumPredict:   numPredict,
+			Temperature:  translation.ParseOllamaTemperature(getSetting("OLLAMA_TEMPERATURE")),
+			TopP:         translation.ParseOllamaTopP(getSetting("OLLAMA_TOP_P")),
+			NumCtx:       translation.ParseOllamaNumCtx(getSetting("OLLAMA_NUM_CTX")),
+			Stop:         translation.ParseOllamaStop(getSetting("OLLAMA_STOP")),
+			SystemPrompt: getSetting("OLLAMA_SYSTEM_PROMPT"),
+		}
+		translated, sourceLang, err = translation.TranslateToTargetLanguageOllama(
+			translation.ResolveOllamaBaseURL(baseURL),
+			modelName,
+			payload.Text,
+			srcLang,
+			targetLang,
+			opts,
+		)
+	default:
+		apiKey, keyErr := settingsManager.GetRealValue("OPENAI_API_KEY")
+		if keyErr != nil || strings.TrimSpace(apiKey) == "" {
+			return
+		}
+		modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
+		openAITarget := translation.NormalizeFromLangTag(targetLang)
+		if openAITarget == "" {
+			openAITarget = targetLang
+		}
+		translated, sourceLang, err = translation.TranslateToTargetLanguage(apiKey, payload.Text, modelName, openAITarget)
+	}
+
 	if err != nil {
 		logger.Warn("Failed to translate mic transcript", zap.Error(err))
 		return

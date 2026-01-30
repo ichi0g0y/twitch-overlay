@@ -53,14 +53,14 @@ func TranslateToTargetLanguage(apiKey, text, model, targetLanguage string) (stri
 
 	targetLanguage = strings.TrimSpace(targetLanguage)
 	if targetLanguage == "" {
-		targetLanguage = "en"
+		targetLanguage = "eng"
 	}
 
 	payload := map[string]interface{}{
 		"model":       model,
 		"temperature": 0.2,
 		"input": fmt.Sprintf(
-			"次の文章を指定言語へ翻訳してください。対象言語コードは次です: %s。\n入力が既に対象言語なら原文をそのまま返してください。\n元の言語コードはISO 639-3の3文字で返してください。\n\n%s",
+			"次の文章を指定言語へ翻訳してください。対象言語コード（ISO 639-3）は次です: %s。\n入力が既に対象言語なら原文をそのまま返してください。\n元の言語コードはISO 639-3の3文字で返してください。\n\n%s",
 			targetLanguage,
 			text,
 		),
@@ -140,7 +140,7 @@ func TranslateToTargetLanguage(apiKey, text, model, targetLanguage string) (stri
 
 // TranslateToJapanese translates text to Japanese using OpenAI Responses API.
 func TranslateToJapanese(apiKey, text, model string) (string, string, error) {
-	return TranslateToTargetLanguage(apiKey, text, model, "ja")
+	return TranslateToTargetLanguage(apiKey, text, model, DefaultTargetJapanese)
 }
 
 func extractResponseText(parsed responsesAPIResponse) string {

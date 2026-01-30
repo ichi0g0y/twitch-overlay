@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,7 @@ type OverlaySettings struct {
 	MicTranscriptFontSize            int    `json:"mic_transcript_font_size"`
 	MicTranscriptMaxLines            int    `json:"mic_transcript_max_lines"`
 	MicTranscriptTranslationEnabled  bool   `json:"mic_transcript_translation_enabled"`
+	MicTranscriptTranslationMode     string `json:"mic_transcript_translation_mode"`
 	MicTranscriptTranslationLanguage string `json:"mic_transcript_translation_language"`
 	MicTranscriptTranslationFontSize int    `json:"mic_transcript_translation_font_size"`
 	MicTranscriptLineTtlSeconds      int    `json:"mic_transcript_line_ttl_seconds"`
@@ -161,7 +163,8 @@ func loadOverlaySettingsFromDB() {
 		MicTranscriptFontSize:            getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_SIZE", 20),
 		MicTranscriptMaxLines:            getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_LINES", 3),
 		MicTranscriptTranslationEnabled:  getBoolSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_ENABLED", false),
-		MicTranscriptTranslationLanguage: getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "en"),
+		MicTranscriptTranslationMode:     getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MODE", ""),
+		MicTranscriptTranslationLanguage: getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "eng"),
 		MicTranscriptTranslationFontSize: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
 		MicTranscriptLineTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_TTL_SECONDS", 8),
 		MicTranscriptLastTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LAST_TTL_SECONDS", 8),
@@ -180,6 +183,15 @@ func loadOverlaySettingsFromDB() {
 
 		UpdatedAt: time.Now(),
 	}
+
+	if strings.TrimSpace(overlaySettings.MicTranscriptTranslationMode) == "" {
+		if overlaySettings.MicTranscriptTranslationEnabled {
+			overlaySettings.MicTranscriptTranslationMode = "openai"
+		} else {
+			overlaySettings.MicTranscriptTranslationMode = "off"
+		}
+	}
+	overlaySettings.MicTranscriptTranslationEnabled = overlaySettings.MicTranscriptTranslationMode != "off"
 
 	overlaySettingsMutex.Lock()
 	currentOverlaySettings = overlaySettings
@@ -279,7 +291,8 @@ func useDefaultSettings() {
 		MicTranscriptFontSize:            20,
 		MicTranscriptMaxLines:            3,
 		MicTranscriptTranslationEnabled:  false,
-		MicTranscriptTranslationLanguage: "en",
+		MicTranscriptTranslationMode:     "off",
+		MicTranscriptTranslationLanguage: "eng",
 		MicTranscriptTranslationFontSize: 16,
 		MicTranscriptLineTtlSeconds:      8,
 		MicTranscriptLastTtlSeconds:      8,
@@ -346,6 +359,11 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 
 	settingsManager := settings.NewSettingsManager(db)
 
+	translationEnabled := overlaySettings.MicTranscriptTranslationEnabled
+	if strings.TrimSpace(overlaySettings.MicTranscriptTranslationMode) != "" {
+		translationEnabled = overlaySettings.MicTranscriptTranslationMode != "off"
+	}
+
 	// 各設定を保存
 	settingsToSave := map[string]string{
 		"MUSIC_ENABLED":                        strconv.FormatBool(overlaySettings.MusicEnabled),
@@ -374,7 +392,8 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"MIC_TRANSCRIPT_POSITION":              overlaySettings.MicTranscriptPosition,
 		"MIC_TRANSCRIPT_FONT_SIZE":             strconv.Itoa(overlaySettings.MicTranscriptFontSize),
 		"MIC_TRANSCRIPT_MAX_LINES":             strconv.Itoa(overlaySettings.MicTranscriptMaxLines),
-		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":   strconv.FormatBool(overlaySettings.MicTranscriptTranslationEnabled),
+		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":   strconv.FormatBool(translationEnabled),
+		"MIC_TRANSCRIPT_TRANSLATION_MODE":      overlaySettings.MicTranscriptTranslationMode,
 		"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE":  overlaySettings.MicTranscriptTranslationLanguage,
 		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
 		"MIC_TRANSCRIPT_LINE_TTL_SECONDS":      strconv.Itoa(overlaySettings.MicTranscriptLineTtlSeconds),
@@ -499,7 +518,7 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
 			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`,
 			MicTranscriptTranslationEnabled:  false,
-			MicTranscriptTranslationLanguage: "en",
+			MicTranscriptTranslationLanguage: "eng",
 			MicTranscriptTranslationFontSize: 16,
 			OpenAIUsageOverlayEnabled:        false,
 		}
@@ -539,6 +558,15 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to merge settings", http.StatusInternalServerError)
 		return
 	}
+
+	if strings.TrimSpace(mergedSettings.MicTranscriptTranslationMode) == "" {
+		if mergedSettings.MicTranscriptTranslationEnabled {
+			mergedSettings.MicTranscriptTranslationMode = "openai"
+		} else {
+			mergedSettings.MicTranscriptTranslationMode = "off"
+		}
+	}
+	mergedSettings.MicTranscriptTranslationEnabled = mergedSettings.MicTranscriptTranslationMode != "off"
 
 	currentOverlaySettings = &mergedSettings
 	overlaySettingsMutex.Unlock()

@@ -186,6 +186,10 @@ func DetectLanguageCode(text string) string {
 		return ""
 	}
 
+	if hasKanaOrSymbol(text) {
+		return "jpn"
+	}
+
 	info := whatlanggo.Detect(text)
 	code := info.Lang.Iso6393()
 	if code == "" {

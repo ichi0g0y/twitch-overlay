@@ -39,6 +39,7 @@ interface OverlaySettings {
   mic_transcript_font_size?: number;
   mic_transcript_max_lines?: number;
   mic_transcript_translation_enabled?: boolean;
+  mic_transcript_translation_mode?: string;
   mic_transcript_translation_language?: string;
   mic_transcript_translation_font_size?: number;
   mic_transcript_line_ttl_seconds?: number;
