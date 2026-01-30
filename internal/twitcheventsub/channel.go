@@ -40,14 +40,24 @@ const chatBotUserID = "774281749"
 
 func buildLanguageDetectionMessage(fragments []twitch.ChatMessageFragment, fallback string) string {
 	var builder strings.Builder
+	hasText := false
+	hasEmote := false
 	for _, fragment := range fragments {
 		if fragment.Type == "text" {
 			builder.WriteString(fragment.Text)
+			hasText = true
+			continue
+		}
+		if fragment.Type == "emote" {
+			hasEmote = true
 		}
 	}
 
 	plain := strings.TrimSpace(builder.String())
 	if plain == "" {
+		if hasEmote && !hasText {
+			return ""
+		}
 		return fallback
 	}
 	return plain
