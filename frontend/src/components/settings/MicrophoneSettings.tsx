@@ -19,6 +19,11 @@ const MODEL_OPTIONS = [
   'large-v3',
 ];
 
+const BACKEND_OPTIONS = [
+  { value: 'whisper', label: 'Whisper（openai-whisper）' },
+  { value: 'whispercpp', label: 'whisper.cpp（GGUF）' },
+];
+
 const DEVICE_OPTIONS = [
   { value: 'auto', label: '自動 (MPS/CUDA/CPU)' },
   { value: 'mps', label: 'MPS (Apple GPU)' },
@@ -43,8 +48,13 @@ export const MicrophoneSettings: React.FC = () => {
     handleRestartMicRecog,
   } = context;
 
+  const backendValue = getSettingValue('MIC_RECOG_BACKEND') || 'whisper';
   const deviceValue = getSettingValue('MIC_RECOG_DEVICE') || 'auto';
   const modelValue = getSettingValue('MIC_RECOG_MODEL') || 'large-v3';
+  const whispercppBinValue = getSettingValue('MIC_RECOG_WHISPERCPP_BIN') || '';
+  const whispercppModelValue = getSettingValue('MIC_RECOG_WHISPERCPP_MODEL') || '';
+  const whispercppThreadsValue = getSettingValue('MIC_RECOG_WHISPERCPP_THREADS') || '';
+  const whispercppExtraArgsValue = getSettingValue('MIC_RECOG_WHISPERCPP_EXTRA_ARGS') || '';
   const languageValue = getSettingValue('MIC_RECOG_LANGUAGE') || '';
   const excludeValue = getSettingValue('MIC_RECOG_EXCLUDE') || '';
   const micIndexValue = getSettingValue('MIC_RECOG_MIC_INDEX') || '';
@@ -53,6 +63,7 @@ export const MicrophoneSettings: React.FC = () => {
   const interimSeconds = getSettingValue('MIC_RECOG_INTERIM_SECONDS') || '0.5';
   const interimWindowSeconds = getSettingValue('MIC_RECOG_INTERIM_WINDOW_SECONDS') || '3';
   const interimMinSeconds = getSettingValue('MIC_RECOG_INTERIM_MIN_SECONDS') || '1';
+  const isWhisper = backendValue !== 'whispercpp';
 
   useEffect(() => {
     handleRefreshMicDevices();
@@ -98,42 +109,20 @@ export const MicrophoneSettings: React.FC = () => {
             設定変更後に再起動すると即反映されます
           </p>
 
-          <div className="space-y-2">
-            <Label>実行デバイス</Label>
-            <Select
-              value={deviceValue}
-              onValueChange={(value) => handleSettingChange('MIC_RECOG_DEVICE', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="デバイスを選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {DEVICE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              MPSはApple SiliconのGPUを使用します
-            </p>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>モデル</Label>
+              <Label>エンジン</Label>
               <Select
-                value={modelValue}
-                onValueChange={(value) => handleSettingChange('MIC_RECOG_MODEL', value)}
+                value={backendValue}
+                onValueChange={(value) => handleSettingChange('MIC_RECOG_BACKEND', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="モデルを選択" />
+                  <SelectValue placeholder="エンジンを選択" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MODEL_OPTIONS.map((model) => (
-                    <SelectItem key={model} value={model}>
-                      {model}
+                  {BACKEND_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -141,15 +130,132 @@ export const MicrophoneSettings: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="mic-language">言語コード</Label>
-              <Input
-                id="mic-language"
-                placeholder="ja / en / 空欄で自動"
-                value={languageValue}
-                onChange={(e) => handleSettingChange('MIC_RECOG_LANGUAGE', e.target.value)}
-              />
+              <Label>エンジン切替時の注意</Label>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isWhisper
+                  ? 'Whisper設定とwhisper.cpp設定は別に保持されます'
+                  : 'whisper.cppはinterim非対応です（設定は保持されます）'}
+              </p>
             </div>
           </div>
+
+          {isWhisper ? (
+            <>
+              <div className="space-y-2">
+                <Label>実行デバイス</Label>
+                <Select
+                  value={deviceValue}
+                  onValueChange={(value) => handleSettingChange('MIC_RECOG_DEVICE', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="デバイスを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEVICE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  MPSはApple SiliconのGPUを使用します
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>モデル</Label>
+                  <Select
+                    value={modelValue}
+                    onValueChange={(value) => handleSettingChange('MIC_RECOG_MODEL', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="モデルを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MODEL_OPTIONS.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mic-language">言語コード</Label>
+                  <Input
+                    id="mic-language"
+                    placeholder="ja / en / 空欄で自動"
+                    value={languageValue}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_LANGUAGE', e.target.value)}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="whispercpp-bin">whisper.cpp バイナリ</Label>
+                  <Input
+                    id="whispercpp-bin"
+                    placeholder="/path/to/whisper.cpp/main"
+                    value={whispercppBinValue}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_WHISPERCPP_BIN', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="whispercpp-model">モデル（GGUF）</Label>
+                  <Input
+                    id="whispercpp-model"
+                    placeholder="/path/to/model.gguf"
+                    value={whispercppModelValue}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_WHISPERCPP_MODEL', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="whispercpp-threads">スレッド数</Label>
+                  <Input
+                    id="whispercpp-threads"
+                    type="number"
+                    min="1"
+                    placeholder="空欄で自動"
+                    value={whispercppThreadsValue}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_WHISPERCPP_THREADS', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mic-language-cpp">言語コード</Label>
+                  <Input
+                    id="mic-language-cpp"
+                    placeholder="ja / en / 空欄で自動"
+                    value={languageValue}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_LANGUAGE', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="whispercpp-extra-args">追加引数</Label>
+                <Input
+                  id="whispercpp-extra-args"
+                  placeholder="-ng -nt"
+                  value={whispercppExtraArgsValue}
+                  onChange={(e) => handleSettingChange('MIC_RECOG_WHISPERCPP_EXTRA_ARGS', e.target.value)}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  空白区切りで指定します（必要な場合のみ）
+                </p>
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -261,29 +367,33 @@ export const MicrophoneSettings: React.FC = () => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="no-speech-threshold">無音しきい値</Label>
-              <Input
-                id="no-speech-threshold"
-                type="number"
-                step="0.05"
-                min="0"
-                max="1"
-                value={getSettingValue('MIC_RECOG_NO_SPEECH_THRESHOLD')}
-                onChange={(e) => handleSettingChange('MIC_RECOG_NO_SPEECH_THRESHOLD', e.target.value)}
-              />
-            </div>
+            {isWhisper && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="no-speech-threshold">無音しきい値</Label>
+                  <Input
+                    id="no-speech-threshold"
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={getSettingValue('MIC_RECOG_NO_SPEECH_THRESHOLD')}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_NO_SPEECH_THRESHOLD', e.target.value)}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="logprob-threshold">logprobしきい値</Label>
-              <Input
-                id="logprob-threshold"
-                type="number"
-                step="0.1"
-                value={getSettingValue('MIC_RECOG_LOGPROB_THRESHOLD')}
-                onChange={(e) => handleSettingChange('MIC_RECOG_LOGPROB_THRESHOLD', e.target.value)}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="logprob-threshold">logprobしきい値</Label>
+                  <Input
+                    id="logprob-threshold"
+                    type="number"
+                    step="0.1"
+                    value={getSettingValue('MIC_RECOG_LOGPROB_THRESHOLD')}
+                    onChange={(e) => handleSettingChange('MIC_RECOG_LOGPROB_THRESHOLD', e.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -299,69 +409,71 @@ export const MicrophoneSettings: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>リアルタイム表示（interim）</CardTitle>
-          <CardDescription>
-            Chrome風のリアルタイム認識表示を有効にします（負荷が増えます）
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>リアルタイム更新を有効化</Label>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                interim結果をWSで送信し、オーバーレイに即時反映します
-              </p>
-            </div>
-            <Switch
-              checked={interimEnabled}
-              onCheckedChange={(checked) => handleSettingChange('MIC_RECOG_INTERIM', checked)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="interim-seconds">更新間隔（秒）</Label>
-              <Input
-                id="interim-seconds"
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={interimSeconds}
-                onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_SECONDS', e.target.value)}
-                disabled={!interimEnabled}
+      {isWhisper && (
+        <Card>
+          <CardHeader>
+            <CardTitle>リアルタイム表示（interim）</CardTitle>
+            <CardDescription>
+              Chrome風のリアルタイム認識表示を有効にします（負荷が増えます）
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>リアルタイム更新を有効化</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  interim結果をWSで送信し、オーバーレイに即時反映します
+                </p>
+              </div>
+              <Switch
+                checked={interimEnabled}
+                onCheckedChange={(checked) => handleSettingChange('MIC_RECOG_INTERIM', checked)}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="interim-window-seconds">ウィンドウ長（秒）</Label>
-              <Input
-                id="interim-window-seconds"
-                type="number"
-                step="0.5"
-                min="1"
-                value={interimWindowSeconds}
-                onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_WINDOW_SECONDS', e.target.value)}
-                disabled={!interimEnabled}
-              />
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="interim-seconds">更新間隔（秒）</Label>
+                <Input
+                  id="interim-seconds"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={interimSeconds}
+                  onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_SECONDS', e.target.value)}
+                  disabled={!interimEnabled}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="interim-min-seconds">最小長（秒）</Label>
-              <Input
-                id="interim-min-seconds"
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={interimMinSeconds}
-                onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_MIN_SECONDS', e.target.value)}
-                disabled={!interimEnabled}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="interim-window-seconds">ウィンドウ長（秒）</Label>
+                <Input
+                  id="interim-window-seconds"
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  value={interimWindowSeconds}
+                  onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_WINDOW_SECONDS', e.target.value)}
+                  disabled={!interimEnabled}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="interim-min-seconds">最小長（秒）</Label>
+                <Input
+                  id="interim-min-seconds"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={interimMinSeconds}
+                  onChange={(e) => handleSettingChange('MIC_RECOG_INTERIM_MIN_SECONDS', e.target.value)}
+                  disabled={!interimEnabled}
+                />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

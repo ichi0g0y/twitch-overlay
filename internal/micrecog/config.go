@@ -11,41 +11,51 @@ import (
 )
 
 type Config struct {
-	Enabled           bool
-	Device            string
-	MicIndex          *int
-	Model             string
-	Language          string
-	VadEnabled        bool
-	VadThreshold      float64
-	NoSpeechThreshold float64
-	LogprobThreshold  float64
-	ExcludePhrases    []string
-	InterimEnabled    bool
-	InterimSeconds    float64
-	InterimWindow     float64
-	InterimMinSeconds float64
-	VadEndMs          int
-	VadPreRollMs      int
+	Enabled             bool
+	Backend             string
+	Device              string
+	MicIndex            *int
+	Model               string
+	WhisperCppBin       string
+	WhisperCppModel     string
+	WhisperCppThreads   int
+	WhisperCppExtraArgs []string
+	Language            string
+	VadEnabled          bool
+	VadThreshold        float64
+	NoSpeechThreshold   float64
+	LogprobThreshold    float64
+	ExcludePhrases      []string
+	InterimEnabled      bool
+	InterimSeconds      float64
+	InterimWindow       float64
+	InterimMinSeconds   float64
+	VadEndMs            int
+	VadPreRollMs        int
 }
 
 func DefaultConfig() Config {
 	return Config{
-		Enabled:           true,
-		Device:            "auto",
-		Model:             "large-v3",
-		Language:          "ja",
-		VadEnabled:        true,
-		VadThreshold:      0.7,
-		NoSpeechThreshold: 0.85,
-		LogprobThreshold:  -0.3,
-		ExcludePhrases:    []string{"ご視聴ありがとうございました"},
-		InterimEnabled:    true,
-		InterimSeconds:    0.5,
-		InterimWindow:     3,
-		InterimMinSeconds: 1,
-		VadEndMs:          600,
-		VadPreRollMs:      150,
+		Enabled:             true,
+		Backend:             "whisper",
+		Device:              "auto",
+		Model:               "large-v3",
+		WhisperCppBin:       "",
+		WhisperCppModel:     "",
+		WhisperCppThreads:   0,
+		WhisperCppExtraArgs: []string{},
+		Language:            "ja",
+		VadEnabled:          true,
+		VadThreshold:        0.7,
+		NoSpeechThreshold:   0.85,
+		LogprobThreshold:    -0.3,
+		ExcludePhrases:      []string{"ご視聴ありがとうございました"},
+		InterimEnabled:      true,
+		InterimSeconds:      0.5,
+		InterimWindow:       3,
+		InterimMinSeconds:   1,
+		VadEndMs:            600,
+		VadPreRollMs:        150,
 	}
 }
 
@@ -60,8 +70,13 @@ func LoadConfig() Config {
 	manager := settings.NewSettingsManager(db)
 
 	cfg.Enabled = parseBool(getSetting(manager, "MIC_RECOG_ENABLED"), cfg.Enabled)
+	cfg.Backend = normalizeBackend(getSettingOrDefault(manager, "MIC_RECOG_BACKEND", cfg.Backend), cfg.Backend)
 	cfg.Device = normalizeDevice(getSetting(manager, "MIC_RECOG_DEVICE"), cfg.Device)
 	cfg.Model = getSettingOrDefault(manager, "MIC_RECOG_MODEL", cfg.Model)
+	cfg.WhisperCppBin = getSetting(manager, "MIC_RECOG_WHISPERCPP_BIN")
+	cfg.WhisperCppModel = getSetting(manager, "MIC_RECOG_WHISPERCPP_MODEL")
+	cfg.WhisperCppThreads = parseInt(getSetting(manager, "MIC_RECOG_WHISPERCPP_THREADS"), cfg.WhisperCppThreads)
+	cfg.WhisperCppExtraArgs = parseArgs(getSetting(manager, "MIC_RECOG_WHISPERCPP_EXTRA_ARGS"))
 	cfg.Language = getSetting(manager, "MIC_RECOG_LANGUAGE")
 	cfg.VadEnabled = parseBool(getSetting(manager, "MIC_RECOG_VAD"), cfg.VadEnabled)
 	cfg.VadThreshold = parseFloat(getSetting(manager, "MIC_RECOG_VAD_THRESHOLD"), cfg.VadThreshold)
@@ -85,14 +100,38 @@ func LoadConfig() Config {
 }
 
 func (c Config) Args() []string {
-	args := []string{
-		"-m", c.Model,
+	args := []string{}
+
+	if c.Backend != "" {
+		args = append(args, "--backend", c.Backend)
+	}
+
+	if c.Backend == "whisper" && c.Model != "" {
+		args = append(args, "-m", c.Model)
+	}
+
+	if c.Backend == "whispercpp" {
+		if c.WhisperCppBin != "" {
+			args = append(args, "--whispercpp-bin", c.WhisperCppBin)
+		}
+		if c.WhisperCppModel != "" {
+			args = append(args, "--whispercpp-model", c.WhisperCppModel)
+		}
+		if c.WhisperCppThreads > 0 {
+			args = append(args, "--whispercpp-threads", strconv.Itoa(c.WhisperCppThreads))
+		}
+		for _, arg := range c.WhisperCppExtraArgs {
+			if arg == "" {
+				continue
+			}
+			args = append(args, "--whispercpp-extra-args", arg)
+		}
 	}
 
 	if c.Language != "" {
 		args = append(args, "-l", c.Language)
 	}
-	if c.Device != "" {
+	if c.Backend == "whisper" && c.Device != "" {
 		args = append(args, "--device", c.Device)
 	}
 	if c.MicIndex != nil {
@@ -106,11 +145,13 @@ func (c Config) Args() []string {
 			"--vad-pre-roll-ms", strconv.Itoa(c.VadPreRollMs),
 		)
 	}
-	args = append(args,
-		"--no-speech-threshold", formatFloat(c.NoSpeechThreshold),
-		"--logprob-threshold", formatFloat(c.LogprobThreshold),
-	)
-	if c.InterimEnabled {
+	if c.Backend == "whisper" {
+		args = append(args,
+			"--no-speech-threshold", formatFloat(c.NoSpeechThreshold),
+			"--logprob-threshold", formatFloat(c.LogprobThreshold),
+		)
+	}
+	if c.Backend == "whisper" && c.InterimEnabled {
 		args = append(args,
 			"--interim",
 			"--interim-seconds", formatFloat(c.InterimSeconds),
@@ -193,6 +234,24 @@ func normalizeDevice(raw string, fallback string) string {
 	}
 }
 
+func normalizeBackend(raw string, fallback string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	switch value {
+	case "whisper", "whispercpp":
+		return value
+	case "":
+		if fallback != "" {
+			return fallback
+		}
+		return "whisper"
+	default:
+		if fallback != "" {
+			return fallback
+		}
+		return "whisper"
+	}
+}
+
 func parseList(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -210,4 +269,13 @@ func parseList(raw string) []string {
 		items = append(items, item)
 	}
 	return items
+}
+
+func parseArgs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	normalized := strings.ReplaceAll(raw, ",", " ")
+	return strings.Fields(normalized)
 }

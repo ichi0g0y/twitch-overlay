@@ -6,11 +6,16 @@ from __future__ import annotations
 import argparse
 from collections import deque
 import json
+import os
 import queue
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import threading
 import uuid
+import wave
 
 import sounddevice as sd
 
@@ -21,19 +26,16 @@ def _parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument(
+        "--backend",
+        default="whisper",
+        choices=["whisper", "whispercpp"],
+        help="Transcription backend",
+    )
+    p.add_argument(
         "-m",
         "--model",
         default="base",
-        choices=[
-            "tiny",
-            "base",
-            "small",
-            "medium",
-            "large",
-            "large-v2",
-            "large-v3",
-        ],
-        help="Whisper model size",
+        help="Whisper model name or path (backend=whisper)",
     )
     p.add_argument(
         "-l",
@@ -224,6 +226,28 @@ def _parse_args() -> argparse.Namespace:
         default=5.0,
         help="WebSocket connection timeout (seconds)",
     )
+    p.add_argument(
+        "--whispercpp-bin",
+        default=None,
+        help="Path to whisper.cpp binary (backend=whispercpp)",
+    )
+    p.add_argument(
+        "--whispercpp-model",
+        default=None,
+        help="Path to whisper.cpp GGUF model (backend=whispercpp)",
+    )
+    p.add_argument(
+        "--whispercpp-threads",
+        type=int,
+        default=None,
+        help="Threads for whisper.cpp (backend=whispercpp)",
+    )
+    p.add_argument(
+        "--whispercpp-extra-args",
+        action="append",
+        default=[],
+        help="Extra args for whisper.cpp (repeatable)",
+    )
     return p.parse_args()
 
 
@@ -288,6 +312,15 @@ def _resolve_whisper_device(device: str) -> str:
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
+
+
+def _resolve_whispercpp_bin(bin_path: str) -> str:
+    if not bin_path:
+        return ""
+    if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
+        return bin_path
+    resolved = shutil.which(bin_path)
+    return resolved or bin_path
 
 
 class _RollingBuffer:
@@ -386,7 +419,6 @@ def main() -> int:
     # Heavy imports are delayed to avoid slowing down device listing.
     global np
     import numpy as np
-    import whisper
 
     if not args.vad and args.overlap_seconds >= args.chunk_seconds:
         print("overlap-seconds must be smaller than chunk-seconds", file=sys.stderr)
@@ -408,15 +440,45 @@ def main() -> int:
             return 1
         ws_sender = _WebSocketSender(args.ws_url, args.ws_reconnect_seconds, args.ws_timeout)
 
-    device = _resolve_whisper_device(args.device)
-    model = whisper.load_model(args.model, device=device)
+    model = None
     interim_model = None
-    if args.interim and args.interim_model:
-        interim_model = whisper.load_model(args.interim_model, device=device)
+    device = None
+    fp16 = False
+    whispercpp_bin = ""
 
-    fp16 = args.fp16
-    if device == "cpu":
-        fp16 = False
+    if args.backend == "whispercpp":
+        if args.interim or args.interim_model:
+            print("backend=whispercpp does not support --interim or --interim-model", file=sys.stderr)
+            return 2
+        if args.fp16:
+            print("warning: --fp16 is ignored for backend=whispercpp", file=sys.stderr)
+        if args.device != "auto":
+            print("warning: --device is ignored for backend=whispercpp", file=sys.stderr)
+        if not args.whispercpp_bin or not args.whispercpp_model:
+            print("backend=whispercpp requires --whispercpp-bin and --whispercpp-model", file=sys.stderr)
+            return 2
+        whispercpp_bin = _resolve_whispercpp_bin(args.whispercpp_bin)
+        if not os.path.exists(whispercpp_bin):
+            print(f"whisper.cpp binary not found: {args.whispercpp_bin}", file=sys.stderr)
+            return 2
+        if not os.path.exists(args.whispercpp_model):
+            print(f"whisper.cpp model not found: {args.whispercpp_model}", file=sys.stderr)
+            return 2
+    else:
+        import whisper
+
+        device = _resolve_whisper_device(args.device)
+        model = whisper.load_model(args.model, device=device)
+        if args.interim and args.interim_model:
+            interim_model = whisper.load_model(args.interim_model, device=device)
+
+        fp16 = args.fp16
+        if device == "cpu":
+            fp16 = False
+
+    model_label = args.model
+    if args.backend == "whispercpp":
+        model_label = os.path.basename(args.whispercpp_model or "")
     transcribe_lock = threading.Lock()
     interim_transcribe_lock = transcribe_lock if interim_model is None else threading.Lock()
 
@@ -425,6 +487,95 @@ def main() -> int:
     blocksize = int(args.samplerate * args.block_seconds)
     chunk_samples = int(args.samplerate * args.chunk_seconds)
     overlap_samples = int(args.samplerate * args.overlap_seconds)
+
+    def _write_wav(path: str, samples: np.ndarray) -> None:
+        if samples.size == 0:
+            return
+        clipped = np.clip(samples, -1.0, 1.0)
+        pcm = (clipped * 32767).astype(np.int16)
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(args.samplerate)
+            wf.writeframes(pcm.tobytes())
+
+    def _transcribe_whispercpp(audio: np.ndarray) -> str:
+        if audio.size == 0:
+            return ""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "audio.wav")
+            out_prefix = os.path.join(tmpdir, "out")
+            _write_wav(wav_path, audio)
+            cmd = [
+                whispercpp_bin,
+                "-m",
+                args.whispercpp_model,
+                "-f",
+                wav_path,
+                "-otxt",
+                "-of",
+                out_prefix,
+            ]
+            if args.language:
+                cmd += ["-l", args.language]
+            if args.task == "translate":
+                cmd += ["-tr"]
+            if args.whispercpp_threads:
+                cmd += ["-t", str(args.whispercpp_threads)]
+            if args.whispercpp_extra_args:
+                cmd += args.whispercpp_extra_args
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if proc.returncode != 0:
+                print(
+                    "whisper.cpp failed.\n"
+                    f"command: {' '.join(cmd)}\n"
+                    f"stdout:\n{proc.stdout}\n"
+                    f"stderr:\n{proc.stderr}",
+                    file=sys.stderr,
+                )
+                return ""
+            txt_path = out_prefix + ".txt"
+            if not os.path.exists(txt_path):
+                print("whisper.cpp did not produce a .txt output.", file=sys.stderr)
+                return ""
+            with open(txt_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read().strip()
+
+    def transcribe_final(audio: np.ndarray) -> str:
+        if args.backend == "whispercpp":
+            return _transcribe_whispercpp(audio)
+        result = model.transcribe(
+            audio,
+            language=args.language,
+            task=args.task,
+            fp16=fp16,
+            no_speech_threshold=args.no_speech_threshold,
+            logprob_threshold=args.logprob_threshold,
+            compression_ratio_threshold=args.compression_ratio_threshold,
+            temperature=args.temperature,
+        )
+        return (result.get("text") or "").strip()
+
+    def transcribe_interim(audio: np.ndarray) -> str:
+        if args.backend == "whispercpp":
+            return ""
+        target = interim_model or model
+        result = target.transcribe(
+            audio,
+            language=args.language,
+            task=args.task,
+            fp16=fp16,
+            no_speech_threshold=args.no_speech_threshold,
+            logprob_threshold=args.logprob_threshold,
+            compression_ratio_threshold=args.compression_ratio_threshold,
+            temperature=args.temperature,
+        )
+        return (result.get("text") or "").strip()
 
     def callback(indata: np.ndarray, frames: int, t: sd.CallbackTime, status: sd.CallbackFlags) -> None:
         if status:
@@ -476,17 +627,7 @@ def main() -> int:
             if min_samples and segment.shape[0] < min_samples:
                 return
             with transcribe_lock:
-                result = model.transcribe(
-                    segment,
-                    language=args.language,
-                    task=args.task,
-                    fp16=fp16,
-                    no_speech_threshold=args.no_speech_threshold,
-                    logprob_threshold=args.logprob_threshold,
-                    compression_ratio_threshold=args.compression_ratio_threshold,
-                    temperature=args.temperature,
-                )
-            text = (result.get("text") or "").strip()
+                text = transcribe_final(segment)
             emit_final(text, "vad", segment.shape[0])
 
         def process_vad(samples: np.ndarray) -> None:
@@ -555,7 +696,7 @@ def main() -> int:
                 "text": text,
                 "is_interim": False,
                 "source": source,
-                "model": args.model,
+                "model": model_label,
                 "language": args.language,
                 "task": args.task,
                 "sample_rate": args.samplerate,
@@ -575,17 +716,7 @@ def main() -> int:
             if audio.size < min_samples:
                 continue
             with interim_transcribe_lock:
-                result = (interim_model or model).transcribe(
-                    audio,
-                    language=args.language,
-                    task=args.task,
-                    fp16=fp16,
-                    no_speech_threshold=args.no_speech_threshold,
-                    logprob_threshold=args.logprob_threshold,
-                    compression_ratio_threshold=args.compression_ratio_threshold,
-                    temperature=args.temperature,
-                )
-            text = (result.get("text") or "").strip()
+                text = transcribe_interim(audio)
             if text and not _is_excluded(text, args.exclude):
                 if last_final_text:
                     recent_window = max(args.interim_window_seconds, 2.5)
@@ -608,7 +739,7 @@ def main() -> int:
                             "text": text,
                             "is_interim": True,
                             "source": "interim",
-                            "model": args.interim_model or args.model,
+                            "model": args.interim_model or model_label,
                             "language": args.language,
                             "task": args.task,
                             "sample_rate": args.samplerate,
@@ -651,18 +782,7 @@ def main() -> int:
                     buffer = buffer[chunk_samples - overlap_samples :]
 
                     with transcribe_lock:
-                        result = model.transcribe(
-                            chunk,
-                            language=args.language,
-                            task=args.task,
-                            fp16=fp16,
-                            no_speech_threshold=args.no_speech_threshold,
-                            logprob_threshold=args.logprob_threshold,
-                            compression_ratio_threshold=args.compression_ratio_threshold,
-                            temperature=args.temperature,
-                        )
-
-                    text = (result.get("text") or "").strip()
+                        text = transcribe_final(chunk)
                     emit_final(text, "chunk", chunk.shape[0])
         except KeyboardInterrupt:
             if args.interim:

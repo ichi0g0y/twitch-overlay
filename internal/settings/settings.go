@@ -176,6 +176,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_RECOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Enable mic-recog transcription",
 	},
+	"MIC_RECOG_BACKEND": {
+		Key: "MIC_RECOG_BACKEND", Value: "whisper", Type: SettingTypeNormal, Required: false,
+		Description: "Mic-recog backend (whisper/whispercpp)",
+	},
 	"MIC_RECOG_DEVICE": {
 		Key: "MIC_RECOG_DEVICE", Value: "auto", Type: SettingTypeNormal, Required: false,
 		Description: "Whisper device (auto/cpu/mps/cuda)",
@@ -187,6 +191,22 @@ var DefaultSettings = map[string]Setting{
 	"MIC_RECOG_MODEL": {
 		Key: "MIC_RECOG_MODEL", Value: "large-v3", Type: SettingTypeNormal, Required: false,
 		Description: "Whisper model size",
+	},
+	"MIC_RECOG_WHISPERCPP_BIN": {
+		Key: "MIC_RECOG_WHISPERCPP_BIN", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Path to whisper.cpp binary",
+	},
+	"MIC_RECOG_WHISPERCPP_MODEL": {
+		Key: "MIC_RECOG_WHISPERCPP_MODEL", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Path to whisper.cpp GGUF model",
+	},
+	"MIC_RECOG_WHISPERCPP_THREADS": {
+		Key: "MIC_RECOG_WHISPERCPP_THREADS", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper.cpp threads (empty = default)",
+	},
+	"MIC_RECOG_WHISPERCPP_EXTRA_ARGS": {
+		Key: "MIC_RECOG_WHISPERCPP_EXTRA_ARGS", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Extra args for whisper.cpp",
 	},
 	"MIC_RECOG_LANGUAGE": {
 		Key: "MIC_RECOG_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
