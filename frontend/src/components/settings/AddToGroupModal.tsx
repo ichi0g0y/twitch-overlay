@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import type { RewardGroup } from './RewardGroupsManager';
 
 interface AddToGroupModalProps {

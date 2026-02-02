@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/micrecog"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/micrecog"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 

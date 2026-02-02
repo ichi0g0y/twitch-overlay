@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp, Clock, Cpu, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrlAsync } from '../../utils/api';
 import { Button } from '../ui/button';

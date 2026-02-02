@@ -7,11 +7,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/music"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/webserver"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/music"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
 	"go.uber.org/zap"
 )
 

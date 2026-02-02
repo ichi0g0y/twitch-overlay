@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 export interface RewardGroup {
   id: number;

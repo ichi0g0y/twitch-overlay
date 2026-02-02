@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Wifi, Radio, Link2 } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface SystemStatusCardProps {
   featureStatus: FeatureStatus | null;

@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -108,17 +108,17 @@ func StartMicRecogWatchdog() {
 func runMicRecogWatchdog() {
 	wasRunning := false
 	for {
-		checkSeconds := getIntSetting("MIC_RECOG_WATCHDOG_CHECK_SECONDS", 10)
+		checkSeconds := micWatchdogGetIntSetting("MIC_RECOG_WATCHDOG_CHECK_SECONDS", 10)
 		if checkSeconds < 3 {
 			checkSeconds = 3
 		}
 		time.Sleep(time.Duration(checkSeconds) * time.Second)
 
-		if !getBoolSetting("MIC_RECOG_WATCHDOG_ENABLED", true) {
+		if !micWatchdogGetBoolSetting("MIC_RECOG_WATCHDOG_ENABLED", true) {
 			continue
 		}
 
-		if !getBoolSetting("MIC_RECOG_ENABLED", true) {
+		if !micWatchdogGetBoolSetting("MIC_RECOG_ENABLED", true) {
 			continue
 		}
 
@@ -139,8 +139,8 @@ func runMicRecogWatchdog() {
 		}
 
 		state := snapshotMicRecogState()
-		graceSeconds := getIntSetting("MIC_RECOG_WATCHDOG_GRACE_SECONDS", 30)
-		idleSeconds := getIntSetting("MIC_RECOG_WATCHDOG_IDLE_SECONDS", 90)
+		graceSeconds := micWatchdogGetIntSetting("MIC_RECOG_WATCHDOG_GRACE_SECONDS", 30)
+		idleSeconds := micWatchdogGetIntSetting("MIC_RECOG_WATCHDOG_IDLE_SECONDS", 90)
 
 		if state.lastSeen.IsZero() {
 			if !state.lastStart.IsZero() && now.Sub(state.lastStart) > time.Duration(graceSeconds)*time.Second {
@@ -160,7 +160,7 @@ func runMicRecogWatchdog() {
 
 func tryMicRecogRestart(reason string) {
 	state := snapshotMicRecogState()
-	cooldownSeconds := getIntSetting("MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS", 30)
+	cooldownSeconds := micWatchdogGetIntSetting("MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS", 30)
 	if cooldownSeconds < 1 {
 		cooldownSeconds = 1
 	}
@@ -190,7 +190,7 @@ func tryMicRecogRestart(reason string) {
 	markMicRecogRestart(time.Now())
 }
 
-func getBoolSetting(key string, fallback bool) bool {
+func micWatchdogGetBoolSetting(key string, fallback bool) bool {
 	db := localdb.GetDB()
 	if db == nil {
 		return fallback
@@ -211,7 +211,7 @@ func getBoolSetting(key string, fallback bool) bool {
 	return parsed
 }
 
-func getIntSetting(key string, fallback int) int {
+func micWatchdogGetIntSetting(key string, fallback int) int {
 	db := localdb.GetDB()
 	if db == nil {
 		return fallback

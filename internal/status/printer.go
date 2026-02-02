@@ -2,7 +2,7 @@ package status
 
 import (
 	"sync"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
 )
 
 // PrinterStatusChangeCallback is called when printer connection status changes

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Loader2, Check } from 'lucide-react';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import type { RewardGroup } from './RewardGroupsManager';
 
 interface AddToGroupDropdownProps {

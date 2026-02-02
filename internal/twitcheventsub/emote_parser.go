@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
 

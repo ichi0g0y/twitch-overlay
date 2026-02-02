@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { GetCacheSettings, UpdateCacheSettings, GetCacheStats, ClearAllCache, RunCacheCleanup } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetCacheSettings, UpdateCacheSettings, GetCacheStats, ClearAllCache, RunCacheCleanup } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface CacheSettings {
   expiry_days: number;

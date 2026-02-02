@@ -8,7 +8,7 @@ import {
   TestNotification,
   TestPrint,
   UpdateSettings, UploadFont
-} from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+} from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { Browser, Events } from '@wailsio/runtime';
 import { useSettings } from '../contexts/SettingsContext';
 import {

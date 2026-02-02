@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
 )
 
 type openAIUsageResponse struct {

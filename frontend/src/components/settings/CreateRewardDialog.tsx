@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus } from 'lucide-react';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface CreateRewardDialogProps {
   isOpen: boolean;

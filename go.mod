@@ -1,4 +1,4 @@
-module github.com/nantokaworks/twitch-overlay
+module github.com/ichi0g0y/twitch-overlay
 
 go 1.24.8
 

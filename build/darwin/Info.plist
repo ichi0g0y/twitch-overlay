@@ -8,7 +8,7 @@
         <key>CFBundleExecutable</key>
         <string>twitch-overlay</string>
         <key>CFBundleIdentifier</key>
-        <string>com.nantokaworks.twitch-overlay</string>
+        <string>com.ichi0g0y.twitch-overlay</string>
         <key>CFBundleVersion</key>
         <string>1.0.0</string>
         <key>CFBundleGetInfoString</key>
@@ -22,7 +22,7 @@
         <key>NSHighResolutionCapable</key>
         <string>true</string>
         <key>NSHumanReadableCopyright</key>
-        <string>Copyright © 2025 nantokaworks</string>
+        <string>Copyright © 2025 ichi0g0y</string>
         <key>NSAppleEventsUsageDescription</key>
         <string>This app needs to send events to other applications.</string>
         <key>NSPrincipalClass</key>

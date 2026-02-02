@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface OverlaySettings {
   // 音楽プレイヤー設定

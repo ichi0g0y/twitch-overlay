@@ -3,11 +3,11 @@ version: '3'
 
 # Application information
 info:
-  companyName: "nantokaworks"
+  companyName: "ichi0g0y"
   productName: "Twitch Overlay"
-  productIdentifier: "com.nantokaworks.twitch-overlay"
+  productIdentifier: "com.ichi0g0y.twitch-overlay"
   description: "Twitch overlay application with thermal printer support"
-  copyright: "Copyright © 2025 nantokaworks"
+  copyright: "Copyright © 2025 ichi0g0y"
   comments: "Twitch overlay application with thermal printer support"
   version: "1.0.0"
 

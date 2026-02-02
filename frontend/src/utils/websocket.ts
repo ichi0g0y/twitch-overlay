@@ -1,5 +1,5 @@
 import { buildApiUrl } from './api';
-import { GetServerPort } from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort } from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 type MessageHandler = (data: any) => void;
 type ConnectionHandler = () => void;
