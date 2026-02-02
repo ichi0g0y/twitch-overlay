@@ -227,6 +227,12 @@ def _parse_args() -> argparse.Namespace:
         help="WebSocket connection timeout (seconds)",
     )
     p.add_argument(
+        "--ws-ping-seconds",
+        type=float,
+        default=20.0,
+        help="Send JSON ping to WebSocket at this interval (0 to disable)",
+    )
+    p.add_argument(
         "--whispercpp-bin",
         default=None,
         help="Path to whisper.cpp binary (backend=whispercpp)",
@@ -363,10 +369,17 @@ def _is_excluded(text: str, excludes: list[str]) -> bool:
 
 
 class _WebSocketSender:
-    def __init__(self, url: str, reconnect_seconds: float, timeout: float) -> None:
+    def __init__(
+        self,
+        url: str,
+        reconnect_seconds: float,
+        timeout: float,
+        ping_seconds: float,
+    ) -> None:
         self._url = url
         self._reconnect_seconds = reconnect_seconds
         self._timeout = timeout
+        self._ping_seconds = max(0.0, float(ping_seconds or 0.0))
         self._queue: queue.Queue[str] = queue.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -389,12 +402,19 @@ class _WebSocketSender:
             ws = None
             try:
                 ws = websocket.create_connection(self._url, timeout=self._timeout)
+                last_ping = time.monotonic()
                 while not self._stop.is_set():
                     try:
                         msg = self._queue.get(timeout=0.2)
+                        ws.send(msg)
                     except queue.Empty:
-                        continue
-                    ws.send(msg)
+                        pass
+
+                    if self._ping_seconds > 0:
+                        now = time.monotonic()
+                        if now - last_ping >= self._ping_seconds:
+                            ws.send(json.dumps({"type": "ping"}, ensure_ascii=False))
+                            last_ping = now
             except Exception:
                 time.sleep(self._reconnect_seconds)
             finally:
@@ -438,7 +458,12 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
-        ws_sender = _WebSocketSender(args.ws_url, args.ws_reconnect_seconds, args.ws_timeout)
+        ws_sender = _WebSocketSender(
+            args.ws_url,
+            args.ws_reconnect_seconds,
+            args.ws_timeout,
+            args.ws_ping_seconds,
+        )
 
     model = None
     interim_model = None

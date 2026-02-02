@@ -300,6 +300,30 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_RECOG_INTERIM_MIN_SECONDS", Value: "1", Type: SettingTypeNormal, Required: false,
 		Description: "Minimum audio length for interim transcription (seconds)",
 	},
+	"MIC_RECOG_WS_PING_SECONDS": {
+		Key: "MIC_RECOG_WS_PING_SECONDS", Value: "20", Type: SettingTypeNormal, Required: false,
+		Description: "WebSocket ping interval for mic-recog (seconds, 0 to disable)",
+	},
+	"MIC_RECOG_WATCHDOG_ENABLED": {
+		Key: "MIC_RECOG_WATCHDOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic-recog watchdog",
+	},
+	"MIC_RECOG_WATCHDOG_IDLE_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_IDLE_SECONDS", Value: "90", Type: SettingTypeNormal, Required: false,
+		Description: "Restart mic-recog if no messages within this time (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_GRACE_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_GRACE_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
+		Description: "Grace period after start before watchdog kicks in (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_CHECK_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_CHECK_SECONDS", Value: "10", Type: SettingTypeNormal, Required: false,
+		Description: "Watchdog check interval (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
+		Description: "Cooldown between watchdog restarts (seconds)",
+	},
 
 	// フォント設定
 	"FONT_FILENAME": {
@@ -858,7 +882,27 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
 			return fmt.Errorf("must be integer between 0 and 300 seconds")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
+	case "MIC_RECOG_WS_PING_SECONDS":
+		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 120 {
+			return fmt.Errorf("must be float between 0 and 120 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_IDLE_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 30 || val > 900 {
+			return fmt.Errorf("must be integer between 30 and 900 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_GRACE_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 5 || val > 300 {
+			return fmt.Errorf("must be integer between 5 and 300 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_CHECK_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 3 || val > 120 {
+			return fmt.Errorf("must be integer between 3 and 120 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 900 {
+			return fmt.Errorf("must be integer between 10 and 900 seconds")
+		}
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_RECOG_WATCHDOG_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

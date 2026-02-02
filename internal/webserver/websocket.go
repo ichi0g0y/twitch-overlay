@@ -240,6 +240,8 @@ func (h *WSHub) run() {
 			h.clients[client] = true
 			h.mu.Unlock()
 
+			markMicRecogConnected(client.clientID)
+
 			logger.Info("WebSocket client connected",
 				zap.String("clientId", client.clientID),
 				zap.Int("total_clients", len(h.clients)))
@@ -263,6 +265,8 @@ func (h *WSHub) run() {
 				delete(h.clients, client)
 				close(client.send)
 				h.mu.Unlock()
+
+				markMicRecogDisconnected(client.clientID)
 
 				logger.Info("WebSocket client disconnected",
 					zap.String("clientId", client.clientID),
@@ -431,6 +435,8 @@ func (c *WSClient) readPump() {
 			}
 			break
 		}
+
+		markMicRecogSeen(c.clientID)
 
 		// JSON形式のpingメッセージを認識してReadDeadlineを延長
 		var msg WSMessage

@@ -116,6 +116,7 @@ func SetWebAssets(assets *embed.FS) {
 func StartWebServer(port int) error {
 	// Register WebSocket broadcaster
 	broadcast.SetBroadcaster(&webSocketBroadcaster{})
+	StartMicRecogWatchdog()
 
 	// Register stream status change callback
 	status.RegisterStatusChangeCallback(func(streamStatus status.StreamStatus) {

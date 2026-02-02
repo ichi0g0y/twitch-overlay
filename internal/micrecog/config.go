@@ -32,6 +32,7 @@ type Config struct {
 	InterimMinSeconds   float64
 	VadEndMs            int
 	VadPreRollMs        int
+	WsPingSeconds       float64
 }
 
 func DefaultConfig() Config {
@@ -56,6 +57,7 @@ func DefaultConfig() Config {
 		InterimMinSeconds:   1,
 		VadEndMs:            600,
 		VadPreRollMs:        150,
+		WsPingSeconds:       20,
 	}
 }
 
@@ -89,6 +91,7 @@ func LoadConfig() Config {
 	cfg.InterimMinSeconds = parseFloat(getSetting(manager, "MIC_RECOG_INTERIM_MIN_SECONDS"), cfg.InterimMinSeconds)
 	cfg.VadEndMs = parseInt(getSetting(manager, "MIC_RECOG_VAD_END_MS"), cfg.VadEndMs)
 	cfg.VadPreRollMs = parseInt(getSetting(manager, "MIC_RECOG_VAD_PRE_ROLL_MS"), cfg.VadPreRollMs)
+	cfg.WsPingSeconds = parseFloat(getSetting(manager, "MIC_RECOG_WS_PING_SECONDS"), cfg.WsPingSeconds)
 
 	if raw := strings.TrimSpace(getSetting(manager, "MIC_RECOG_MIC_INDEX")); raw != "" {
 		if idx, err := strconv.Atoi(raw); err == nil && idx >= 0 {
@@ -164,6 +167,9 @@ func (c Config) Args() []string {
 			continue
 		}
 		args = append(args, "--exclude", phrase)
+	}
+	if c.WsPingSeconds > 0 {
+		args = append(args, "--ws-ping-seconds", formatFloat(c.WsPingSeconds))
 	}
 	return args
 }

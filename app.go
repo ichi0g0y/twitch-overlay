@@ -1489,6 +1489,12 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"MIC_RECOG_INTERIM_SECONDS":           true,
 			"MIC_RECOG_INTERIM_WINDOW_SECONDS":    true,
 			"MIC_RECOG_INTERIM_MIN_SECONDS":       true,
+			"MIC_RECOG_WS_PING_SECONDS":           true,
+			"MIC_RECOG_WATCHDOG_ENABLED":          true,
+			"MIC_RECOG_WATCHDOG_IDLE_SECONDS":     true,
+			"MIC_RECOG_WATCHDOG_GRACE_SECONDS":    true,
+			"MIC_RECOG_WATCHDOG_CHECK_SECONDS":    true,
+			"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": true,
 		}
 
 		if !validKeys[dbKey] {
