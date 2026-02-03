@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronUp, Clock, Cpu, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrlAsync } from '../../utils/api';
 import { Button } from '../ui/button';
@@ -10,13 +10,13 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 
-type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'openaiUsage' | 'micTranscript' | 'rewardCount' | 'lottery';
+type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
 type CardsLayout = { left: CardKey[]; right: CardKey[] };
 
-const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'openaiUsage', 'micTranscript', 'rewardCount', 'lottery'];
+const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'micTranscript', 'rewardCount', 'lottery'];
 const DEFAULT_CARDS_LAYOUT: CardsLayout = {
-  left: ['musicPlayer', 'fax', 'clock', 'openaiUsage', 'micTranscript'],
+  left: ['musicPlayer', 'fax', 'clock', 'micTranscript'],
   right: ['rewardCount', 'lottery'],
 };
 
@@ -70,8 +70,6 @@ export const OverlaySettings: React.FC = () => {
     handleSettingChange,
     overlaySettings,
     updateOverlaySettings,
-    resettingOpenAIUsage,
-    handleResetOpenAIUsageDaily,
     musicStatus,
     playlists,
     isControlDisabled,
@@ -97,21 +95,6 @@ export const OverlaySettings: React.FC = () => {
   const groupRewardIdsRef = useRef<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
-  const dailyInputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_INPUT_TOKENS') || '0', 10) || 0;
-  const dailyOutputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_OUTPUT_TOKENS') || '0', 10) || 0;
-  const dailyTotalTokens = dailyInputTokens + dailyOutputTokens;
-  const dailyCostUsd = parseFloat(getSettingValue('OPENAI_USAGE_DAILY_COST_USD') || '0') || 0;
-  const dailyDate = getSettingValue('OPENAI_USAGE_DAILY_DATE') || '未集計';
-  const timeZone = getSettingValue('TIMEZONE') || 'UTC';
-  const formatNumber = (value: number) => value.toLocaleString('ja-JP');
-  const formatUsd = (value: number) =>
-    value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    });
-
   // カードの折りたたみ状態（overlaySettingsから復帰）
   const [expandedCards, setExpandedCards] = useState(() => {
     try {
@@ -127,7 +110,6 @@ export const OverlaySettings: React.FC = () => {
       musicPlayer: true,
       fax: true,
       clock: true,
-      openaiUsage: true,
       micTranscript: true,
       rewardCount: true,
       lottery: true,
@@ -1077,96 +1059,6 @@ export const OverlaySettings: React.FC = () => {
     );
   };
 
-  const renderOpenAIUsageCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.openaiUsage : expandedCards.openaiUsage;
-    const isDraggingSelf = draggingCard === 'openaiUsage';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
-
-    return (
-      <Card className={cardClassName}>
-        <CardHeader
-          className={headerClassName}
-          onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, openaiUsage: !prev.openaiUsage }))}
-          draggable={!isPreview}
-          onDragStart={isPreview ? undefined : handleDragStart('openaiUsage', column)}
-          onDragEnd={isPreview ? undefined : handleDragEnd}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <CardTitle className="flex items-center gap-2">
-                <Cpu className="w-4 h-4" />
-                OpenAI使用量
-              </CardTitle>
-              <CardDescription className="text-left">
-                文字起こし翻訳の使用量を時計の下に表示します
-              </CardDescription>
-            </div>
-            <div className="flex-shrink-0 pt-1">
-              {isExpanded ? (
-                <ChevronUp className="w-5 h-5 text-gray-500" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-gray-500" />
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        {isExpanded && (
-          <CardContent className="space-y-4 text-left">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>表示を有効化</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  時計の下に今日の使用量を表示します
-                </p>
-              </div>
-              <Switch
-                checked={overlaySettings?.openai_usage_enabled ?? false}
-                onCheckedChange={(checked) => updateOverlaySettings({ openai_usage_enabled: checked })}
-              />
-            </div>
-
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-              <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">今日の使用量</div>
-              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {dailyDate}（{timeZone}）
-              </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">入力</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">出力</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">合計</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-                <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetOpenAIUsageDaily}
-                  disabled={resettingOpenAIUsage}
-                >
-                  {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        )}
-      </Card>
-    );
-  };
-
   const renderMicTranscriptCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
     const isPreview = options?.preview ?? false;
     const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.micTranscript : expandedCards.micTranscript;
@@ -1298,43 +1190,56 @@ export const OverlaySettings: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>翻訳を併記</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  確定文を指定言語へ翻訳して表示します（OpenAI APIキー必須）
-                </p>
-              </div>
-              <Switch
-                checked={overlaySettings?.mic_transcript_translation_enabled ?? false}
-                onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_translation_enabled: checked })}
-              />
+            <div className="space-y-2">
+              <Label>翻訳モード</Label>
+              <Select
+                value={
+                  overlaySettings?.mic_transcript_translation_mode
+                  ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'ollama' : 'off')
+                }
+                onValueChange={(value) =>
+                  updateOverlaySettings({
+                    mic_transcript_translation_mode: value,
+                    mic_transcript_translation_enabled: value !== 'off',
+                  })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="翻訳モードを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">オフ</SelectItem>
+                  <SelectItem value="ollama">Ollama（ローカル）</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                確定文を指定言語へ翻訳して表示します
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2 md:col-span-2">
                 <Label>翻訳先言語</Label>
                 <Select
-                  value={overlaySettings?.mic_transcript_translation_language ?? 'en'}
+                  value={overlaySettings?.mic_transcript_translation_language ?? 'eng'}
                   onValueChange={(value) => updateOverlaySettings({ mic_transcript_translation_language: value })}
-                  disabled={!overlaySettings?.mic_transcript_translation_enabled}
+                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="言語を選択" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">英語（en）</SelectItem>
-                    <SelectItem value="zh">中国語（zh）</SelectItem>
-                    <SelectItem value="ko">韓国語（ko）</SelectItem>
-                    <SelectItem value="fr">フランス語（fr）</SelectItem>
-                    <SelectItem value="de">ドイツ語（de）</SelectItem>
-                    <SelectItem value="es">スペイン語（es）</SelectItem>
-                    <SelectItem value="pt">ポルトガル語（pt）</SelectItem>
-                    <SelectItem value="ru">ロシア語（ru）</SelectItem>
-                    <SelectItem value="it">イタリア語（it）</SelectItem>
-                    <SelectItem value="id">インドネシア語（id）</SelectItem>
-                    <SelectItem value="th">タイ語（th）</SelectItem>
-                    <SelectItem value="vi">ベトナム語（vi）</SelectItem>
+                    <SelectItem value="eng">英語（eng）</SelectItem>
+                    <SelectItem value="zho">中国語（zho）</SelectItem>
+                    <SelectItem value="kor">韓国語（kor）</SelectItem>
+                    <SelectItem value="fra">フランス語（fra）</SelectItem>
+                    <SelectItem value="deu">ドイツ語（deu）</SelectItem>
+                    <SelectItem value="spa">スペイン語（spa）</SelectItem>
+                    <SelectItem value="por">ポルトガル語（por）</SelectItem>
+                    <SelectItem value="rus">ロシア語（rus）</SelectItem>
+                    <SelectItem value="ita">イタリア語（ita）</SelectItem>
+                    <SelectItem value="ind">インドネシア語（ind）</SelectItem>
+                    <SelectItem value="tha">タイ語（tha）</SelectItem>
+                    <SelectItem value="vie">ベトナム語（vie）</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1348,7 +1253,7 @@ export const OverlaySettings: React.FC = () => {
                   value={overlaySettings?.mic_transcript_translation_font_size ?? 16}
                   onChange={(e) =>
                     updateOverlaySettings({ mic_transcript_translation_font_size: parseInt(e.target.value, 10) || 0 })}
-                  disabled={!overlaySettings?.mic_transcript_translation_enabled}
+                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
                 />
               </div>
             </div>
@@ -1794,8 +1699,6 @@ export const OverlaySettings: React.FC = () => {
         return renderFaxCard(column, options);
       case 'clock':
         return renderClockCard(column, options);
-      case 'openaiUsage':
-        return renderOpenAIUsageCard(column, options);
       case 'micTranscript':
         return renderMicTranscriptCard(column, options);
       case 'rewardCount':

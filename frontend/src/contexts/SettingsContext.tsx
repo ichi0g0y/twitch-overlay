@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface OverlaySettings {
   // 音楽プレイヤー設定
@@ -45,13 +45,11 @@ interface OverlaySettings {
   mic_transcript_font_size?: number;
   mic_transcript_max_lines?: number;
   mic_transcript_translation_enabled?: boolean;
+  mic_transcript_translation_mode?: string;
   mic_transcript_translation_language?: string;
   mic_transcript_translation_font_size?: number;
   mic_transcript_line_ttl_seconds?: number;
   mic_transcript_last_ttl_seconds?: number;
-
-  // OpenAI使用量表示
-  openai_usage_enabled?: boolean;
 
   // UI状態設定
   overlay_cards_expanded?: string;

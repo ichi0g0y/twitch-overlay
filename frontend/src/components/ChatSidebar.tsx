@@ -288,122 +288,114 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       >
         <div className="h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">
         {!collapsed && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="コメント欄の幅を調整"
-            onPointerDown={handleResizeStart}
-            className={`absolute top-0 ${resizeHandleSideClass} h-full w-1 cursor-col-resize touch-none`}
-          >
-            <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
-          </div>
-        )}
-        <div
-          className={`flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative ${
-            collapsed ? 'px-2 py-1 justify-center' : 'px-3 py-2 justify-between'
-          }`}
-        >
-          {!collapsed && (
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">コメント欄</span>
-            </div>
-          )}
-          <div className="flex items-center gap-1">
-            {!collapsed && (
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(prev => !prev)}
-                className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-                aria-label="コメント欄の設定を開く"
-                aria-expanded={settingsOpen}
-                ref={settingsButtonRef}
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleToggle}
-              className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-              aria-label={collapsed ? 'コメント欄を開く' : 'コメント欄を閉じる'}
-              aria-expanded={!collapsed}
-            >
-              {toggleIcon}
-            </button>
-          </div>
-          {settingsOpen && (
+          <>
             <div
-              ref={settingsPanelRef}
-              className="absolute right-2 top-10 z-20 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-sm"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="コメント欄の幅を調整"
+              onPointerDown={handleResizeStart}
+              className={`absolute top-0 ${resizeHandleSideClass} h-full w-1 cursor-col-resize touch-none`}
             >
-              <div className="space-y-3">
-                <div>
-                  <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min={FONT_MIN_SIZE}
-                      max={FONT_MAX_SIZE}
-                      value={fontSize}
-                      onChange={(event) => onFontSizeChange(Number(event.target.value))}
-                      className="flex-1"
-                    />
-                    <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onSideChange('left')}
-                      className={`h-8 rounded-md border text-sm transition ${
-                        side === 'left'
-                          ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      左
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSideChange('right')}
-                      className={`h-8 rounded-md border text-sm transition ${
-                        side === 'right'
-                          ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      右
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
-                  <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
-                  <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
-                </div>
-              </div>
+              <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
             </div>
-          )}
-        </div>
+            <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">コメント欄</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(prev => !prev)}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                  aria-label="コメント欄の設定を開く"
+                  aria-expanded={settingsOpen}
+                  ref={settingsButtonRef}
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggle}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                  aria-label="コメント欄を閉じる"
+                  aria-expanded={!collapsed}
+                >
+                  {toggleIcon}
+                </button>
+              </div>
+              {settingsOpen && (
+                <div
+                  ref={settingsPanelRef}
+                  className="absolute right-2 top-10 z-20 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-sm"
+                >
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={FONT_MIN_SIZE}
+                          max={FONT_MAX_SIZE}
+                          value={fontSize}
+                          onChange={(event) => onFontSizeChange(Number(event.target.value))}
+                          className="flex-1"
+                        />
+                        <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onSideChange('left')}
+                          className={`h-8 rounded-md border text-sm transition ${
+                            side === 'left'
+                              ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          }`}
+                        >
+                          左
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onSideChange('right')}
+                          className={`h-8 rounded-md border text-sm transition ${
+                            side === 'right'
+                              ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          }`}
+                        >
+                          右
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
+                      <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
+                      <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {collapsed ? (
-          <div className="flex-1 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={handleToggle}
-              className="flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-              aria-label="コメント欄を開く"
-            >
-              <MessageCircle className="w-5 h-5" />
-              <span className="text-[10px] leading-none">開く</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+            aria-label="コメント欄を開く"
+          >
+            <MessageCircle className="w-5 h-5" />
+            <span className="text-[10px] leading-none">開く</span>
+          </button>
         ) : (
           <div
             ref={listRef}

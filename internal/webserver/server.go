@@ -13,18 +13,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/status"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/status"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
-	"github.com/nantokaworks/twitch-overlay/internal/twitcheventsub"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
 	"go.uber.org/zap"
 )
 
@@ -116,6 +116,7 @@ func SetWebAssets(assets *embed.FS) {
 func StartWebServer(port int) error {
 	// Register WebSocket broadcaster
 	broadcast.SetBroadcaster(&webSocketBroadcaster{})
+	StartMicRecogWatchdog()
 
 	// Register stream status change callback
 	status.RegisterStatusChangeCallback(func(streamStatus status.StreamStatus) {
@@ -208,14 +209,21 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/logs/stream", handleLogsStream) // WebSocketは独自のUpgrade処理
 	mux.HandleFunc("/api/logs/clear", corsMiddleware(handleLogsClear))
 	mux.HandleFunc("/api/chat/history", corsMiddleware(handleChatHistory))
+	mux.HandleFunc("/api/chat/test", corsMiddleware(handleChatTest))
 
 	// Mic-recog endpoints
 	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))
 	mux.HandleFunc("/api/mic/restart", corsMiddleware(handleMicRestart))
+	mux.HandleFunc("/api/mic/status", corsMiddleware(handleMicStatus))
 
-	// OpenAI usage endpoints
-	mux.HandleFunc("/api/openai/usage", corsMiddleware(handleOpenAIUsage))
-	mux.HandleFunc("/api/openai/usage/reset", corsMiddleware(handleOpenAIUsageReset))
+	// Translation test endpoint
+	mux.HandleFunc("/api/translation/test", corsMiddleware(handleTranslationTest))
+
+	// Ollama endpoints
+	mux.HandleFunc("/api/ollama/status", corsMiddleware(handleOllamaStatus))
+	mux.HandleFunc("/api/ollama/models", corsMiddleware(handleOllamaModels))
+	mux.HandleFunc("/api/ollama/pull", corsMiddleware(handleOllamaPull))
+	mux.HandleFunc("/api/ollama/modelfile", corsMiddleware(handleOllamaModelfile))
 
 	// WebSocket endpoint (新しい統合エンドポイント)
 	RegisterWebSocketRoute(mux)

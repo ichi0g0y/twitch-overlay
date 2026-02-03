@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 	
-	"github.com/nantokaworks/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
 )
 
 var scopes = []string{

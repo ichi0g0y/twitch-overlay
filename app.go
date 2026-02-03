@@ -12,28 +12,31 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/cache"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/micrecog"
+	"github.com/ichi0g0y/twitch-overlay/internal/music"
+	"github.com/ichi0g0y/twitch-overlay/internal/notification"
+	"github.com/ichi0g0y/twitch-overlay/internal/ollama"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/status"
+	"github.com/ichi0g0y/twitch-overlay/internal/translation"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
+	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/cache"
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/micrecog"
-	"github.com/nantokaworks/twitch-overlay/internal/music"
-	"github.com/nantokaworks/twitch-overlay/internal/notification"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/status"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
-	"github.com/nantokaworks/twitch-overlay/internal/twitcheventsub"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
-	"github.com/nantokaworks/twitch-overlay/internal/webserver"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.uber.org/zap"
@@ -48,6 +51,7 @@ type App struct {
 	webAssets        *embed.FS
 	tokenRefreshDone chan struct{}
 	micRecog         *micrecog.Manager
+	ollama           *ollama.Manager
 }
 
 // TODO(v3): Temporary stub for runtime.Screen - replace with proper v3 screen API
@@ -63,6 +67,7 @@ type Screen struct {
 func NewApp() *App {
 	return &App{
 		micRecog: micrecog.NewManager(),
+		ollama:   ollama.NewManager(),
 	}
 }
 
@@ -106,6 +111,8 @@ func (a *App) Startup(ctx context.Context) {
 		logger.Warn("Failed to fix entry counts over 3", zap.Error(err))
 		// エラーがあっても起動は続行
 	}
+
+	migrateLegacyTranslationSettings()
 
 	// 環境変数を読み込み（DBが初期化された後）
 	env.LoadEnv()
@@ -270,6 +277,7 @@ func (a *App) Startup(ctx context.Context) {
 		// 埋め込みアセットをWebサーバーに設定
 		webserver.SetWebAssets(a.webAssets)
 		webserver.SetMicRecogManager(a.micRecog)
+		webserver.SetOllamaManager(a.ollama)
 		if err := webserver.StartWebServer(port); err != nil {
 			logger.Error("Failed to start web server", zap.Error(err))
 			// Notify frontend about the error
@@ -299,7 +307,70 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}()
 
+	if a.ollama != nil {
+		go func() {
+			if err := a.ollama.Start(); err != nil {
+				logger.Warn("Failed to start ollama", zap.Error(err))
+			}
+		}()
+	}
+
 	// Note: Window restoration is now handled by WindowRuntimeReady event in main.go
+}
+
+func migrateLegacyTranslationSettings() {
+	db := localdb.GetDB()
+	if db == nil {
+		return
+	}
+	manager := settings.NewSettingsManager(db)
+	migrateValue := func(key string) {
+		value, err := manager.GetRealValue(key)
+		if err != nil {
+			return
+		}
+		normalized := strings.TrimSpace(strings.ToLower(value))
+		if normalized == "nllb" || normalized == "local" {
+			_ = manager.SetSetting(key, "ollama")
+		}
+	}
+	migrateValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+
+	migrateLang := func(key string) {
+		value, err := manager.GetRealValue(key)
+		if err != nil {
+			return
+		}
+		normalized := translation.NormalizeFromLangTag(value)
+		if normalized == "" {
+			normalized = translation.NormalizeLanguageCode(value)
+		}
+		if normalized != "" && normalized != value {
+			_ = manager.SetSetting(key, normalized)
+		}
+	}
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE")
+
+	migrateOllamaModel := func() {
+		value, err := manager.GetRealValue("OLLAMA_MODEL")
+		if err != nil {
+			return
+		}
+		normalized := strings.TrimSpace(strings.ToLower(value))
+		var next string
+		switch normalized {
+		case "shisa-ai/shisa-v2.1-qwen3-8b", "shisa-v2.1-qwen3-8b":
+			next = "hf.co/XpressAI/shisa-v2.1-qwen3-8b-GGUF:Q4_K_M"
+		case "shisa-ai/shisa-v2.1-llama3.2-3b", "shisa-v2.1-llama3.2-3b":
+			next = "hf.co/XpressAI/shisa-v2.1-llama3.2-3b-GGUF:Q4_K_M"
+		case "shisa-ai/shisa-v2.1-unphi4-14b", "shisa-v2.1-unphi4-14b":
+			next = "hf.co/mradermacher/shisa-v2.1-unphi4-14b-GGUF:Q4_K_M"
+		}
+		if next != "" && value != next {
+			_ = manager.SetSetting("OLLAMA_MODEL", next)
+		}
+	}
+	migrateOllamaModel()
 }
 
 // restoreRelativePosition restores window using relative position (fallback method)
@@ -540,7 +611,15 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 
 	if a.micRecog != nil {
-		a.micRecog.Stop()
+		if stopped := a.micRecog.Stop(); !stopped {
+			logger.Warn("mic-recog did not stop cleanly during shutdown")
+		}
+	}
+
+	if a.ollama != nil {
+		if stopped := a.ollama.Stop(); !stopped {
+			logger.Warn("ollama did not stop cleanly during shutdown")
+		}
 	}
 
 	// プリンターを停止（Bluetoothのみ）
@@ -1326,6 +1405,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 	}
 
 	settingsManager := settings.NewSettingsManager(db)
+	ollamaStartRequested := false
 
 	// 各設定項目をデータベースに保存
 	for key, value := range newSettings {
@@ -1341,60 +1421,76 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 
 		// 有効なキーかチェック
 		validKeys := map[string]bool{
-			"PRINTER_ADDRESS":                  true,
-			"DEBUG_OUTPUT":                     true,
-			"DRY_RUN_MODE":                     true,
-			"BEST_QUALITY":                     true,
-			"DITHER":                           true,
-			"AUTO_ROTATE":                      true,
-			"BLACK_POINT":                      true,
-			"ROTATE_PRINT":                     true,
-			"PRINTER_TYPE":                     true,
-			"USB_PRINTER_NAME":                 true,
-			"TWITCH_USER_ID":                   true,
-			"CLIENT_ID":                        true,
-			"CLIENT_SECRET":                    true,
-			"TRIGGER_CUSTOM_REWORD_ID":         true,
-			"OPENAI_API_KEY":                   true,
-			"OPENAI_MODEL":                     true,
-			"OPENAI_USAGE_INPUT_TOKENS":        true,
-			"OPENAI_USAGE_OUTPUT_TOKENS":       true,
-			"OPENAI_USAGE_COST_USD":            true,
-			"OPENAI_USAGE_DAILY_DATE":          true,
-			"OPENAI_USAGE_DAILY_INPUT_TOKENS":  true,
-			"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": true,
-			"OPENAI_USAGE_DAILY_COST_USD":      true,
-			"CHAT_TRANSLATION_ENABLED":         true,
-			"SERVER_PORT":                      true,
-			"AUTO_DRY_RUN_WHEN_OFFLINE":        true,
-			"TIMEZONE":                         true,
-			"KEEP_ALIVE_ENABLED":               true,
-			"KEEP_ALIVE_INTERVAL":              true,
-			"CLOCK_ENABLED":                    true,
-			"CLOCK_WEIGHT":                     true,
-			"CLOCK_WALLET":                     true,
-			"CLOCK_SHOW_ICONS":                 true,
-			"FONT_FILENAME":                    true,
-			"NOTIFICATION_ENABLED":             true,
-			"NOTIFICATION_DISPLAY_DURATION":    true,
-			"NOTIFICATION_DISPLAY_MODE":        true,
-			"NOTIFICATION_FONT_SIZE":           true,
-			"MIC_RECOG_ENABLED":                true,
-			"MIC_RECOG_DEVICE":                 true,
-			"MIC_RECOG_MIC_INDEX":              true,
-			"MIC_RECOG_MODEL":                  true,
-			"MIC_RECOG_LANGUAGE":               true,
-			"MIC_RECOG_VAD":                    true,
-			"MIC_RECOG_VAD_THRESHOLD":          true,
-			"MIC_RECOG_VAD_END_MS":             true,
-			"MIC_RECOG_VAD_PRE_ROLL_MS":        true,
-			"MIC_RECOG_NO_SPEECH_THRESHOLD":    true,
-			"MIC_RECOG_LOGPROB_THRESHOLD":      true,
-			"MIC_RECOG_EXCLUDE":                true,
-			"MIC_RECOG_INTERIM":                true,
-			"MIC_RECOG_INTERIM_SECONDS":        true,
-			"MIC_RECOG_INTERIM_WINDOW_SECONDS": true,
-			"MIC_RECOG_INTERIM_MIN_SECONDS":    true,
+			"PRINTER_ADDRESS":                     true,
+			"DEBUG_OUTPUT":                        true,
+			"DRY_RUN_MODE":                        true,
+			"BEST_QUALITY":                        true,
+			"DITHER":                              true,
+			"AUTO_ROTATE":                         true,
+			"BLACK_POINT":                         true,
+			"ROTATE_PRINT":                        true,
+			"PRINTER_TYPE":                        true,
+			"USB_PRINTER_NAME":                    true,
+			"TWITCH_USER_ID":                      true,
+			"CLIENT_ID":                           true,
+			"CLIENT_SECRET":                       true,
+			"TRIGGER_CUSTOM_REWORD_ID":            true,
+			"CHAT_TRANSLATION_ENABLED":            true,
+			"OLLAMA_BASE_URL":                     true,
+			"OLLAMA_MODEL":                        true,
+			"OLLAMA_BASE_MODEL":                   true,
+			"OLLAMA_NUM_PREDICT":                  true,
+			"OLLAMA_TEMPERATURE":                  true,
+			"OLLAMA_TOP_P":                        true,
+			"OLLAMA_NUM_CTX":                      true,
+			"OLLAMA_STOP":                         true,
+			"OLLAMA_SYSTEM_PROMPT":                true,
+			"OLLAMA_CUSTOM_MODEL_NAME":            true,
+			"OLLAMA_CHAT_MODEL":                   true,
+			"OLLAMA_CHAT_NUM_PREDICT":             true,
+			"OLLAMA_CHAT_TEMPERATURE":             true,
+			"OLLAMA_CHAT_TOP_P":                   true,
+			"OLLAMA_CHAT_NUM_CTX":                 true,
+			"OLLAMA_CHAT_STOP":                    true,
+			"OLLAMA_CHAT_SYSTEM_PROMPT":           true,
+			"MIC_TRANSCRIPT_TRANSLATION_MODE":     true,
+			"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": true,
+			"SERVER_PORT":                         true,
+			"AUTO_DRY_RUN_WHEN_OFFLINE":           true,
+			"TIMEZONE":                            true,
+			"KEEP_ALIVE_ENABLED":                  true,
+			"KEEP_ALIVE_INTERVAL":                 true,
+			"CLOCK_ENABLED":                       true,
+			"CLOCK_WEIGHT":                        true,
+			"CLOCK_WALLET":                        true,
+			"CLOCK_SHOW_ICONS":                    true,
+			"FONT_FILENAME":                       true,
+			"NOTIFICATION_ENABLED":                true,
+			"NOTIFICATION_DISPLAY_DURATION":       true,
+			"NOTIFICATION_DISPLAY_MODE":           true,
+			"NOTIFICATION_FONT_SIZE":              true,
+			"MIC_RECOG_ENABLED":                   true,
+			"MIC_RECOG_DEVICE":                    true,
+			"MIC_RECOG_MIC_INDEX":                 true,
+			"MIC_RECOG_MODEL":                     true,
+			"MIC_RECOG_LANGUAGE":                  true,
+			"MIC_RECOG_VAD":                       true,
+			"MIC_RECOG_VAD_THRESHOLD":             true,
+			"MIC_RECOG_VAD_END_MS":                true,
+			"MIC_RECOG_VAD_PRE_ROLL_MS":           true,
+			"MIC_RECOG_NO_SPEECH_THRESHOLD":       true,
+			"MIC_RECOG_LOGPROB_THRESHOLD":         true,
+			"MIC_RECOG_EXCLUDE":                   true,
+			"MIC_RECOG_INTERIM":                   true,
+			"MIC_RECOG_INTERIM_SECONDS":           true,
+			"MIC_RECOG_INTERIM_WINDOW_SECONDS":    true,
+			"MIC_RECOG_INTERIM_MIN_SECONDS":       true,
+			"MIC_RECOG_WS_PING_SECONDS":           true,
+			"MIC_RECOG_WATCHDOG_ENABLED":          true,
+			"MIC_RECOG_WATCHDOG_IDLE_SECONDS":     true,
+			"MIC_RECOG_WATCHDOG_GRACE_SECONDS":    true,
+			"MIC_RECOG_WATCHDOG_CHECK_SECONDS":    true,
+			"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": true,
 		}
 
 		if !validKeys[dbKey] {
@@ -1434,12 +1530,25 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		}
 
 		logger.Info("Setting saved", zap.String("key", dbKey), zap.String("value", strValue))
+
+		switch dbKey {
+		case "MIC_TRANSCRIPT_TRANSLATION_MODE", "OLLAMA_BASE_URL", "OLLAMA_MODEL", "OLLAMA_CHAT_MODEL":
+			ollamaStartRequested = true
+		}
 	}
 
 	// 環境変数を再読み込み
 	if err := env.ReloadFromDatabase(); err != nil {
 		logger.Error("Failed to reload environment from database", zap.Error(err))
 		return fmt.Errorf("failed to reload settings: %w", err)
+	}
+
+	if ollamaStartRequested && a.ollama != nil {
+		go func() {
+			if err := a.ollama.Start(); err != nil {
+				logger.Warn("Failed to start ollama after settings update", zap.Error(err))
+			}
+		}()
 	}
 
 	// Bluetooth設定時のみプリンターオプションを再設定

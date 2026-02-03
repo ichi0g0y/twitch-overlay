@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -56,41 +56,73 @@ var DefaultSettings = map[string]Setting{
 		Key: "TRIGGER_CUSTOM_REWORD_ID", Value: "", Type: SettingTypeSecret, Required: true,
 		Description: "Custom Reward ID for triggering FAX",
 	},
-	"OPENAI_API_KEY": {
-		Key: "OPENAI_API_KEY", Value: "", Type: SettingTypeSecret, Required: false,
-		Description: "OpenAI API key for chat translation",
+	"OLLAMA_BASE_URL": {
+		Key: "OLLAMA_BASE_URL", Value: "http://127.0.0.1:11434", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama base URL (shared)",
 	},
-	"OPENAI_MODEL": {
-		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
-		Description: "OpenAI model for chat translation",
+	"OLLAMA_MODEL": {
+		Key: "OLLAMA_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama model name for translation",
 	},
-	"OPENAI_USAGE_INPUT_TOKENS": {
-		Key: "OPENAI_USAGE_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Accumulated OpenAI input tokens",
+	"OLLAMA_BASE_MODEL": {
+		Key: "OLLAMA_BASE_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama base model for translation modelfile",
 	},
-	"OPENAI_USAGE_OUTPUT_TOKENS": {
-		Key: "OPENAI_USAGE_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Accumulated OpenAI output tokens",
+	"OLLAMA_CUSTOM_MODEL_NAME": {
+		Key: "OLLAMA_CUSTOM_MODEL_NAME", Value: "translator-custom", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation modelfile output model name",
 	},
-	"OPENAI_USAGE_COST_USD": {
-		Key: "OPENAI_USAGE_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Estimated OpenAI usage cost in USD",
+	"OLLAMA_NUM_PREDICT": {
+		Key: "OLLAMA_NUM_PREDICT", Value: "128", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation num_predict per request",
 	},
-	"OPENAI_USAGE_DAILY_DATE": {
-		Key: "OPENAI_USAGE_DAILY_DATE", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Daily usage date (YYYY-MM-DD)",
+	"OLLAMA_TEMPERATURE": {
+		Key: "OLLAMA_TEMPERATURE", Value: "0.1", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation temperature (0.0 - 2.0)",
 	},
-	"OPENAI_USAGE_DAILY_INPUT_TOKENS": {
-		Key: "OPENAI_USAGE_DAILY_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI input tokens",
+	"OLLAMA_TOP_P": {
+		Key: "OLLAMA_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation top_p (0.0 - 1.0)",
 	},
-	"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": {
-		Key: "OPENAI_USAGE_DAILY_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI output tokens",
+	"OLLAMA_NUM_CTX": {
+		Key: "OLLAMA_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation num_ctx (optional)",
 	},
-	"OPENAI_USAGE_DAILY_COST_USD": {
-		Key: "OPENAI_USAGE_DAILY_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI usage cost in USD",
+	"OLLAMA_STOP": {
+		Key: "OLLAMA_STOP", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation stop sequences (comma or newline separated)",
+	},
+	"OLLAMA_SYSTEM_PROMPT": {
+		Key: "OLLAMA_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama translation system prompt (optional)",
+	},
+	"OLLAMA_CHAT_MODEL": {
+		Key: "OLLAMA_CHAT_MODEL", Value: "llama3.1:8b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama model name for general use",
+	},
+	"OLLAMA_CHAT_NUM_PREDICT": {
+		Key: "OLLAMA_CHAT_NUM_PREDICT", Value: "256", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general num_predict per request",
+	},
+	"OLLAMA_CHAT_TEMPERATURE": {
+		Key: "OLLAMA_CHAT_TEMPERATURE", Value: "0.7", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general temperature (0.0 - 2.0)",
+	},
+	"OLLAMA_CHAT_TOP_P": {
+		Key: "OLLAMA_CHAT_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general top_p (0.0 - 1.0)",
+	},
+	"OLLAMA_CHAT_NUM_CTX": {
+		Key: "OLLAMA_CHAT_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general num_ctx (optional)",
+	},
+	"OLLAMA_CHAT_STOP": {
+		Key: "OLLAMA_CHAT_STOP", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general stop sequences (comma or newline separated)",
+	},
+	"OLLAMA_CHAT_SYSTEM_PROMPT": {
+		Key: "OLLAMA_CHAT_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general system prompt (optional)",
 	},
 	"CHAT_TRANSLATION_ENABLED": {
 		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
@@ -176,6 +208,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_RECOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
 		Description: "Enable mic-recog transcription",
 	},
+	"MIC_RECOG_BACKEND": {
+		Key: "MIC_RECOG_BACKEND", Value: "whisper", Type: SettingTypeNormal, Required: false,
+		Description: "Mic-recog backend (whisper/whispercpp)",
+	},
 	"MIC_RECOG_DEVICE": {
 		Key: "MIC_RECOG_DEVICE", Value: "auto", Type: SettingTypeNormal, Required: false,
 		Description: "Whisper device (auto/cpu/mps/cuda)",
@@ -187,6 +223,22 @@ var DefaultSettings = map[string]Setting{
 	"MIC_RECOG_MODEL": {
 		Key: "MIC_RECOG_MODEL", Value: "large-v3", Type: SettingTypeNormal, Required: false,
 		Description: "Whisper model size",
+	},
+	"MIC_RECOG_WHISPERCPP_BIN": {
+		Key: "MIC_RECOG_WHISPERCPP_BIN", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Path to whisper.cpp binary",
+	},
+	"MIC_RECOG_WHISPERCPP_MODEL": {
+		Key: "MIC_RECOG_WHISPERCPP_MODEL", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Path to whisper.cpp GGUF model",
+	},
+	"MIC_RECOG_WHISPERCPP_THREADS": {
+		Key: "MIC_RECOG_WHISPERCPP_THREADS", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Whisper.cpp threads (empty = default)",
+	},
+	"MIC_RECOG_WHISPERCPP_EXTRA_ARGS": {
+		Key: "MIC_RECOG_WHISPERCPP_EXTRA_ARGS", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Extra args for whisper.cpp",
 	},
 	"MIC_RECOG_LANGUAGE": {
 		Key: "MIC_RECOG_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
@@ -235,6 +287,30 @@ var DefaultSettings = map[string]Setting{
 	"MIC_RECOG_INTERIM_MIN_SECONDS": {
 		Key: "MIC_RECOG_INTERIM_MIN_SECONDS", Value: "1", Type: SettingTypeNormal, Required: false,
 		Description: "Minimum audio length for interim transcription (seconds)",
+	},
+	"MIC_RECOG_WS_PING_SECONDS": {
+		Key: "MIC_RECOG_WS_PING_SECONDS", Value: "20", Type: SettingTypeNormal, Required: false,
+		Description: "WebSocket ping interval for mic-recog (seconds, 0 to disable)",
+	},
+	"MIC_RECOG_WATCHDOG_ENABLED": {
+		Key: "MIC_RECOG_WATCHDOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic-recog watchdog",
+	},
+	"MIC_RECOG_WATCHDOG_IDLE_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_IDLE_SECONDS", Value: "90", Type: SettingTypeNormal, Required: false,
+		Description: "Restart mic-recog if no messages within this time (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_GRACE_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_GRACE_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
+		Description: "Grace period after start before watchdog kicks in (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_CHECK_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_CHECK_SECONDS", Value: "10", Type: SettingTypeNormal, Required: false,
+		Description: "Watchdog check interval (seconds)",
+	},
+	"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": {
+		Key: "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
+		Description: "Cooldown between watchdog restarts (seconds)",
 	},
 
 	// フォント設定
@@ -347,11 +423,11 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
 	"OVERLAY_CARDS_LAYOUT": {
-		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
 		Description: "Layout (column + order) of overlay setting cards",
 	},
 	"MIC_TRANSCRIPT_ENABLED": {
@@ -374,9 +450,13 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable translation for mic transcript overlay",
 	},
+	"MIC_TRANSCRIPT_TRANSLATION_MODE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_MODE", Value: "off", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript translation mode (off/ollama)",
+	},
 	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
-		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
-		Description: "Target language for mic transcript translation",
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "eng", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation (e.g. jpn/eng)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
@@ -389,10 +469,6 @@ var DefaultSettings = map[string]Setting{
 	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
 		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
-	},
-	"OPENAI_USAGE_OVERLAY_ENABLED": {
-		Key: "OPENAI_USAGE_OVERLAY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
-		Description: "Show OpenAI usage overlay under clock",
 	},
 
 	// プレゼントルーレット設定
@@ -657,7 +733,7 @@ func (sm *SettingsManager) MigrateFromEnv() error {
 }
 
 func hasSecretInEnv() bool {
-	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID", "OPENAI_API_KEY"}
+	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID"}
 	for _, key := range secretKeys {
 		if os.Getenv(key) != "" {
 			return true
@@ -731,6 +807,41 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.5 || val > 2.0 {
 			return fmt.Errorf("must be float between 0.5 and 2.0")
 		}
+	case "MIC_TRANSCRIPT_TRANSLATION_MODE":
+		if value != "off" && value != "ollama" {
+			return fmt.Errorf("must be 'off' or 'ollama'")
+		}
+	case "OLLAMA_NUM_PREDICT", "OLLAMA_CHAT_NUM_PREDICT":
+		if value != "" {
+			if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 4096 {
+				return fmt.Errorf("must be integer between 1 and 4096")
+			}
+		}
+	case "OLLAMA_TEMPERATURE", "OLLAMA_CHAT_TEMPERATURE":
+		if value != "" {
+			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 2.0 {
+				return fmt.Errorf("must be float between 0.0 and 2.0")
+			}
+		}
+	case "OLLAMA_TOP_P", "OLLAMA_CHAT_TOP_P":
+		if value != "" {
+			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 1.0 {
+				return fmt.Errorf("must be float between 0.0 and 1.0")
+			}
+		}
+	case "OLLAMA_NUM_CTX", "OLLAMA_CHAT_NUM_CTX":
+		if value != "" {
+			if val, err := strconv.Atoi(value); err != nil || val < 128 || val > 131072 {
+				return fmt.Errorf("must be integer between 128 and 131072")
+			}
+		}
+	case "OLLAMA_CUSTOM_MODEL_NAME":
+		if value != "" {
+			matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`, value)
+			if !matched {
+				return fmt.Errorf("must be 1-128 chars (alnum, . _ : -)")
+			}
+		}
 	case "TICKER_NOTICE_FONT_SIZE":
 		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 48 {
 			return fmt.Errorf("font size must be between 10 and 48 pixels")
@@ -751,7 +862,27 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
 			return fmt.Errorf("must be integer between 0 and 300 seconds")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
+	case "MIC_RECOG_WS_PING_SECONDS":
+		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 120 {
+			return fmt.Errorf("must be float between 0 and 120 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_IDLE_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 30 || val > 900 {
+			return fmt.Errorf("must be integer between 30 and 900 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_GRACE_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 5 || val > 300 {
+			return fmt.Errorf("must be integer between 5 and 300 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_CHECK_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 3 || val > 120 {
+			return fmt.Errorf("must be integer between 3 and 120 seconds")
+		}
+	case "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 900 {
+			return fmt.Errorf("must be integer between 10 and 900 seconds")
+		}
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_RECOG_WATCHDOG_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

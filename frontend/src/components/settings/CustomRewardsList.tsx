@@ -3,7 +3,7 @@ import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2, Edit
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { RewardGroupBadge } from './RewardGroupBadge';
 import { AddToGroupDropdown } from './AddToGroupDropdown';
 import { CreateRewardDialog } from './CreateRewardDialog';

@@ -4,7 +4,6 @@ import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
 import MusicPlayer from './music/MusicPlayer';
 import ClockDisplay from './ClockDisplay';
-import OpenAIUsageOverlay from './OpenAIUsageOverlay';
 import RewardCountDisplay from './RewardCountDisplay';
 import { LAYOUT } from '../constants/layout';
 import { buildApiUrl } from '../utils/api';
@@ -65,7 +64,6 @@ const FaxReceiver = () => {
   const showDate = settings?.date_enabled ?? true;
   const showTime = settings?.time_enabled ?? true;
   const showClockIcons = settings?.clock_show_icons ?? true;
-  const showOpenAIUsage = settings?.openai_usage_enabled ?? false;
 
   // デバッグ: 時計表示設定を確認
   useEffect(() => {
@@ -260,8 +258,8 @@ const FaxReceiver = () => {
 
   return (
     <div className="h-screen text-white relative overflow-hidden" style={backgroundStyle}>
-      {/* 時計・OpenAI使用量表示（右上） */}
-      {(showClock || showOpenAIUsage) && (
+      {/* 時計表示（右上） */}
+      {showClock && (
         <div className="fixed top-0 right-0 z-20 flex flex-col items-end gap-2">
           {showClock && (
             <ClockDisplay
@@ -271,7 +269,6 @@ const FaxReceiver = () => {
               showIcons={showClockIcons}
             />
           )}
-          {showOpenAIUsage && <OpenAIUsageOverlay />}
         </div>
       )}
 

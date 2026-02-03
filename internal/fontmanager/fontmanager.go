@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
 	"go.uber.org/zap"
 	"golang.org/x/image/font/opentype"
 )

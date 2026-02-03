@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/translation"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/translation"
 	"go.uber.org/zap"
 )
 
@@ -74,6 +74,12 @@ func getMicTranscriptTranslationConfig() (bool, string) {
 	if !settingsSnapshot.MicTranscriptEnabled || !settingsSnapshot.MicTranscriptTranslationEnabled {
 		return false, ""
 	}
+	mode := strings.TrimSpace(strings.ToLower(settingsSnapshot.MicTranscriptTranslationMode))
+	if mode != "" {
+		if mode == "off" {
+			return false, ""
+		}
+	}
 	targetLang := strings.TrimSpace(settingsSnapshot.MicTranscriptTranslationLanguage)
 	if targetLang == "" {
 		return false, ""
@@ -93,13 +99,50 @@ func translateMicTranscript(payload micTranscriptPayload, targetLang string) {
 	}
 
 	settingsManager := settings.NewSettingsManager(db)
-	apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
-	if err != nil || strings.TrimSpace(apiKey) == "" {
+	modeValue, _ := settingsManager.GetRealValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+	mode := strings.TrimSpace(strings.ToLower(modeValue))
+	if mode == "off" {
 		return
 	}
+	backend := translation.BackendOllama
 
-	modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
-	translated, sourceLang, err := translation.TranslateToTargetLanguage(apiKey, payload.Text, modelName, targetLang)
+	var translated string
+	var sourceLang string
+	var err error
+
+	switch backend {
+	case translation.BackendOllama:
+		baseURL, _ := settingsManager.GetRealValue("OLLAMA_BASE_URL")
+		modelName, _ := settingsManager.GetRealValue("OLLAMA_MODEL")
+		numPredictValue, _ := settingsManager.GetRealValue("OLLAMA_NUM_PREDICT")
+		numPredict := translation.ParseOllamaNumPredict(numPredictValue)
+		getSetting := func(key string) string {
+			value, _ := settingsManager.GetRealValue(key)
+			return strings.TrimSpace(value)
+		}
+		srcLang := strings.TrimSpace(payload.Language)
+		if srcLang == "" {
+			normalized := translation.NormalizeForLanguageDetection(payload.Text)
+			srcLang = translation.DetectLanguageCode(normalized)
+		}
+		opts := translation.OllamaRequestOptions{
+			NumPredict:   numPredict,
+			Temperature:  translation.ParseOllamaTemperature(getSetting("OLLAMA_TEMPERATURE")),
+			TopP:         translation.ParseOllamaTopP(getSetting("OLLAMA_TOP_P")),
+			NumCtx:       translation.ParseOllamaNumCtx(getSetting("OLLAMA_NUM_CTX")),
+			Stop:         translation.ParseOllamaStop(getSetting("OLLAMA_STOP")),
+			SystemPrompt: getSetting("OLLAMA_SYSTEM_PROMPT"),
+		}
+		translated, sourceLang, err = translation.TranslateToTargetLanguageOllama(
+			translation.ResolveOllamaBaseURL(baseURL),
+			modelName,
+			payload.Text,
+			srcLang,
+			targetLang,
+			opts,
+		)
+	}
+
 	if err != nil {
 		logger.Warn("Failed to translate mic transcript", zap.Error(err))
 		return
@@ -180,6 +223,8 @@ func (h *WSHub) run() {
 			h.clients[client] = true
 			h.mu.Unlock()
 
+			markMicRecogConnected(client.clientID)
+
 			logger.Info("WebSocket client connected",
 				zap.String("clientId", client.clientID),
 				zap.Int("total_clients", len(h.clients)))
@@ -203,6 +248,8 @@ func (h *WSHub) run() {
 				delete(h.clients, client)
 				close(client.send)
 				h.mu.Unlock()
+
+				markMicRecogDisconnected(client.clientID)
 
 				logger.Info("WebSocket client disconnected",
 					zap.String("clientId", client.clientID),
@@ -371,6 +418,8 @@ func (c *WSClient) readPump() {
 			}
 			break
 		}
+
+		markMicRecogSeen(c.clientID)
 
 		// JSON形式のpingメッセージを認識してReadDeadlineを延長
 		var msg WSMessage

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/micrecog"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/micrecog"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -60,7 +60,7 @@ func handleMicRestart(w http.ResponseWriter, r *http.Request) {
 		port = 8080
 	}
 
-	micRecogManager.Stop()
+	stopped := micRecogManager.Stop()
 	time.Sleep(300 * time.Millisecond)
 
 	if err := micRecogManager.Start(port); err != nil {
@@ -74,7 +74,30 @@ func handleMicRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"success": true,
-	})
+	}
+	if !stopped {
+		response["warning"] = "mic-recog stop timed out; forced restart"
+	}
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func handleMicStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := map[string]interface{}{
+		"running": false,
+	}
+	if micRecogManager == nil {
+		status["error"] = "mic-recog manager not available"
+	} else {
+		status["running"] = micRecogManager.IsRunning()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(status)
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
 	"go.uber.org/zap"
 )
 

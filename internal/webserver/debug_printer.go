@@ -3,7 +3,7 @@ package webserver
 import (
 	"encoding/json"
 	"net/http"
-	"github.com/nantokaworks/twitch-overlay/internal/status"
+	"github.com/ichi0g0y/twitch-overlay/internal/status"
 )
 
 // handleDebugPrinterStatus はデバッグ用にプリンター接続状態を手動で変更する

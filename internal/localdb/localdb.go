@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )

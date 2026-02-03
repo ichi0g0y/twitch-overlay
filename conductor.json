@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "setup": "task install"
+    "setup": "task install && task mic-recog:venv"
   }
 }

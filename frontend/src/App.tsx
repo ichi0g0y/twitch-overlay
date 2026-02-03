@@ -5,7 +5,7 @@ import { NotificationWindow } from './components/notification/NotificationWindow
 import { Toaster } from 'sonner';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { Events, Window as WailsWindow } from '@wailsio/runtime';
-import * as WailsApp from '../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as WailsApp from '../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 function App() {
   useEffect(() => {

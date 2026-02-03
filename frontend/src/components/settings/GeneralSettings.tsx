@@ -1,5 +1,5 @@
 import { StreamStatus } from '@/types';
-import { Bell, Eye, EyeOff, RefreshCw, Upload, X } from 'lucide-react';
+import { Bell, RefreshCw, Upload, X } from 'lucide-react';
 import React from 'react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
@@ -13,8 +13,6 @@ interface GeneralSettingsProps {
   getSettingValue: (key: string) => string;
   handleSettingChange: (key: string, value: string | boolean) => void;
   getBooleanValue: (key: string) => boolean;
-  showSecrets: Record<string, boolean>;
-  setShowSecrets: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   webServerError: { error: string; port: number } | null;
   webServerPort: number;
   streamStatus: StreamStatus | null;
@@ -30,16 +28,12 @@ interface GeneralSettingsProps {
   testingNotification: boolean;
   resettingNotificationPosition: boolean;
   handleResetNotificationPosition: () => void;
-  resettingOpenAIUsage: boolean;
-  handleResetOpenAIUsageDaily: () => void;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   getSettingValue,
   handleSettingChange,
   getBooleanValue,
-  showSecrets,
-  setShowSecrets,
   webServerError,
   webServerPort,
   streamStatus,
@@ -55,61 +49,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   testingNotification,
   resettingNotificationPosition,
   handleResetNotificationPosition,
-  resettingOpenAIUsage,
-  handleResetOpenAIUsageDaily,
 }) => {
-  const openAiModels = [
-    {
-      id: 'gpt-5',
-      name: 'GPT-5',
-      price: '入力 $1.25 / 出力 $10.00',
-    },
-    {
-      id: 'gpt-5-mini',
-      name: 'GPT-5 mini',
-      price: '入力 $0.25 / 出力 $2.00',
-    },
-    {
-      id: 'gpt-5-nano',
-      name: 'GPT-5 nano',
-      price: '入力 $0.05 / 出力 $0.40',
-    },
-    {
-      id: 'gpt-4o-mini',
-      name: 'GPT-4o mini',
-      price: '入力 $0.15 / 出力 $0.60',
-    },
-    {
-      id: 'gpt-4o',
-      name: 'GPT-4o',
-      price: '入力 $2.50 / 出力 $10.00',
-    },
-    {
-      id: 'gpt-4.1-mini',
-      name: 'GPT-4.1 mini',
-      price: '入力 $0.40 / 出力 $1.60',
-    },
-  ];
-  const selectedOpenAiModel = getSettingValue('OPENAI_MODEL') || 'gpt-4o-mini';
-  const inputTokens = parseInt(getSettingValue('OPENAI_USAGE_INPUT_TOKENS') || '0', 10) || 0;
-  const outputTokens = parseInt(getSettingValue('OPENAI_USAGE_OUTPUT_TOKENS') || '0', 10) || 0;
-  const totalTokens = inputTokens + outputTokens;
-  const costUsd = parseFloat(getSettingValue('OPENAI_USAGE_COST_USD') || '0') || 0;
-  const dailyInputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_INPUT_TOKENS') || '0', 10) || 0;
-  const dailyOutputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_OUTPUT_TOKENS') || '0', 10) || 0;
-  const dailyTotalTokens = dailyInputTokens + dailyOutputTokens;
-  const dailyCostUsd = parseFloat(getSettingValue('OPENAI_USAGE_DAILY_COST_USD') || '0') || 0;
-  const dailyDate = getSettingValue('OPENAI_USAGE_DAILY_DATE') || '未集計';
-  const timeZone = getSettingValue('TIMEZONE') || 'UTC';
-  const formatNumber = (value: number) => value.toLocaleString('ja-JP');
-  const formatUsd = (value: number) =>
-    value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    });
-
   return (
     <div className="space-y-6 focus:outline-none">
       <Card>
@@ -225,107 +165,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               checked={getBooleanValue('DEBUG_OUTPUT')}
               onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="openai_api_key">OpenAI APIキー</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="openai_api_key"
-                type={showSecrets['OPENAI_API_KEY'] ? 'text' : 'password'}
-                placeholder={getSettingValue('OPENAI_API_KEY') ? '（設定済み）' : 'OpenAI API Key'}
-                value={getSettingValue('OPENAI_API_KEY')}
-                onChange={(e) => handleSettingChange('OPENAI_API_KEY', e.target.value)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setShowSecrets(prev => ({ ...prev, OPENAI_API_KEY: !prev.OPENAI_API_KEY }))}
-                aria-label="OpenAI APIキーの表示切り替え"
-              >
-                {showSecrets['OPENAI_API_KEY'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </Button>
-            </div>
-            <div className="mt-3 space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {openAiModels.map((model) => {
-                  const isActive = selectedOpenAiModel === model.id;
-                  return (
-                    <Button
-                      key={model.id}
-                      type="button"
-                      variant={isActive ? 'default' : 'outline'}
-                      onClick={() => handleSettingChange('OPENAI_MODEL', model.id)}
-                      className="h-auto px-3 py-2"
-                    >
-                      <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-semibold">{model.name}</span>
-                        <span className={`text-sm ${isActive ? 'opacity-80' : 'text-gray-500 dark:text-gray-400'}`}>
-                          {model.price}
-                        </span>
-                      </div>
-                    </Button>
-                  );
-                })}
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                価格はStandardの1Mトークンあたり（入力 / 出力）
-              </p>
-            </div>
-
-            <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-              <div className="text-base font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
-              <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-                今日: {dailyDate}（{timeZone}）
-              </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">入力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">出力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">合計トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-base text-gray-600 dark:text-gray-300">
-                <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetOpenAIUsageDaily}
-                  disabled={resettingOpenAIUsage}
-                >
-                  {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
-                </Button>
-              </div>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">累計入力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">累計出力トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
-                </div>
-                <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">累計合計トークン</div>
-                  <div className="mt-1 font-semibold">{formatNumber(totalTokens)}</div>
-                </div>
-              </div>
-              <div className="mt-3 text-base text-gray-600 dark:text-gray-300">
-                累計推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
-              </div>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                OpenAIの公式価格に基づく概算（未対応モデルは除外・モデル変更時は誤差が出る可能性あり）
-              </p>
-            </div>
           </div>
         </CardContent>
       </Card>

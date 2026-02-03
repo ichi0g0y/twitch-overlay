@@ -8,18 +8,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/notification"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/translation"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/types"
 	"github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/notification"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/translation"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
-	"github.com/nantokaworks/twitch-overlay/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -40,14 +40,24 @@ const chatBotUserID = "774281749"
 
 func buildLanguageDetectionMessage(fragments []twitch.ChatMessageFragment, fallback string) string {
 	var builder strings.Builder
+	hasText := false
+	hasEmote := false
 	for _, fragment := range fragments {
 		if fragment.Type == "text" {
 			builder.WriteString(fragment.Text)
+			hasText = true
+			continue
+		}
+		if fragment.Type == "emote" {
+			hasEmote = true
 		}
 	}
 
 	plain := strings.TrimSpace(builder.String())
 	if plain == "" {
+		if hasEmote && !hasText {
+			return ""
+		}
 		return fallback
 	}
 	return plain
@@ -327,23 +337,30 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 			},
 		})
 
-		apiKey, err := settingsManager.GetRealValue("OPENAI_API_KEY")
-		if err != nil || apiKey == "" {
-			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)
-			broadcast.Send(map[string]interface{}{
-				"type": "chat-translation",
-				"data": map[string]interface{}{
-					"messageId":         messageID,
-					"translation":       "",
-					"translationStatus": "skip",
-					"translationLang":   langCode,
-				},
-			})
-			return
+		baseURL, _ := settingsManager.GetRealValue("OLLAMA_BASE_URL")
+		modelName, _ := settingsManager.GetRealValue("OLLAMA_MODEL")
+		numPredictValue, _ := settingsManager.GetRealValue("OLLAMA_NUM_PREDICT")
+		numPredict := translation.ParseOllamaNumPredict(numPredictValue)
+		getSetting := func(key string) string {
+			value, _ := settingsManager.GetRealValue(key)
+			return strings.TrimSpace(value)
 		}
-
-		modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
-		translated, detectedLang, err := translation.TranslateToJapanese(apiKey, rawMessage, modelName)
+		opts := translation.OllamaRequestOptions{
+			NumPredict:   numPredict,
+			Temperature:  translation.ParseOllamaTemperature(getSetting("OLLAMA_TEMPERATURE")),
+			TopP:         translation.ParseOllamaTopP(getSetting("OLLAMA_TOP_P")),
+			NumCtx:       translation.ParseOllamaNumCtx(getSetting("OLLAMA_NUM_CTX")),
+			Stop:         translation.ParseOllamaStop(getSetting("OLLAMA_STOP")),
+			SystemPrompt: getSetting("OLLAMA_SYSTEM_PROMPT"),
+		}
+		translated, detectedLang, err := translation.TranslateToTargetLanguageOllama(
+			translation.ResolveOllamaBaseURL(baseURL),
+			modelName,
+			rawMessage,
+			langCode,
+			translation.DefaultTargetJapanese,
+			opts,
+		)
 		if err != nil {
 			logger.Warn("Failed to translate chat message", zap.Error(err))
 			_ = localdb.UpdateChatTranslation(messageID, "", "skip", langCode)

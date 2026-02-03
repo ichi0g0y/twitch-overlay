@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { buildApiUrl } from '../utils/api';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface LogEntry {
   timestamp: string;

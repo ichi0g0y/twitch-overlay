@@ -1,9 +1,9 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Wifi, Radio } from "lucide-react";
+import { RefreshCw, Wifi, Radio, Link2 } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface SystemStatusCardProps {
   featureStatus: FeatureStatus | null;
@@ -39,12 +39,69 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   onTestPrint,
 }) => {
   const [currentPort, setCurrentPort] = React.useState<number>(8080);
+  const [ollamaStatus, setOllamaStatus] = React.useState<{
+    running: boolean;
+    healthy: boolean;
+    model?: string;
+    version?: string;
+    error?: string;
+  } | null>(null);
+  const [micStatus, setMicStatus] = React.useState<{ running: boolean; error?: string } | null>(null);
+  const [checkingServices, setCheckingServices] = React.useState(false);
 
   React.useEffect(() => {
     App.GetServerPort()
       .then(port => setCurrentPort(port))
       .catch(error => console.error('Failed to get server port:', error));
   }, []);
+
+  const refreshServices = React.useCallback(async () => {
+    if (!currentPort) return;
+    setCheckingServices(true);
+    try {
+      const [ollamaRes, micRes] = await Promise.all([
+        fetch(`http://localhost:${currentPort}/api/ollama/status`),
+        fetch(`http://localhost:${currentPort}/api/mic/status`),
+      ]);
+
+      if (ollamaRes.ok) {
+        const data = await ollamaRes.json();
+        setOllamaStatus({
+          running: Boolean(data?.running),
+          healthy: Boolean(data?.healthy),
+          model: data?.model,
+          version: data?.version,
+          error: data?.error,
+        });
+      } else {
+        setOllamaStatus({
+          running: false,
+          healthy: false,
+          error: `HTTP ${ollamaRes.status}`,
+        });
+      }
+
+      if (micRes.ok) {
+        const data = await micRes.json();
+        setMicStatus({ running: Boolean(data?.running), error: data?.error });
+      } else {
+        setMicStatus({ running: false, error: `HTTP ${micRes.status}` });
+      }
+    } catch (err: any) {
+      setOllamaStatus({ running: false, healthy: false, error: err?.message || 'failed' });
+      setMicStatus({ running: false, error: err?.message || 'failed' });
+    } finally {
+      setCheckingServices(false);
+    }
+  }, [currentPort]);
+
+  React.useEffect(() => {
+    refreshServices();
+    const interval = window.setInterval(() => {
+      refreshServices();
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [refreshServices]);
 
   if (!featureStatus) return null;
 
@@ -57,7 +114,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* Twitch連携状態 */}
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
@@ -233,6 +290,64 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 ポート {currentPort}
               </span>
+            </div>
+          </div>
+
+          {/* ローカル連携状態 */}
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <Link2 className="w-4 h-4 text-gray-400" />
+              <span className="font-medium dark:text-gray-200">ローカル連携</span>
+              <Button
+                onClick={refreshServices}
+                disabled={checkingServices}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+              >
+                <RefreshCw className={`h-3 w-3 ${checkingServices ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            <div className="ml-1 text-sm space-y-1">
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    ollamaStatus?.healthy ? 'bg-green-500' : ollamaStatus?.running ? 'bg-yellow-500' : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-gray-600 dark:text-gray-300">Ollama</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {ollamaStatus
+                    ? ollamaStatus.healthy
+                      ? '接続中'
+                      : ollamaStatus.running
+                        ? '起動中...'
+                        : '停止中'
+                    : '確認中...'}
+                </span>
+              </div>
+              {ollamaStatus?.healthy && ollamaStatus.model && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  モデル: {ollamaStatus.model}
+                </div>
+              )}
+              {ollamaStatus && !ollamaStatus.healthy && ollamaStatus.error && (
+                <div className="text-xs text-red-500">
+                  {ollamaStatus.error}
+                </div>
+              )}
+              <div className="flex items-center space-x-2">
+                <div className={`w-2.5 h-2.5 rounded-full ${micStatus?.running ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                <span className="text-gray-600 dark:text-gray-300">mic-recog</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {micStatus ? (micStatus.running ? '接続中' : '停止中') : '確認中...'}
+                </span>
+              </div>
+              {micStatus && micStatus.error && !micStatus.running && (
+                <div className="text-xs text-red-500">
+                  {micStatus.error}
+                </div>
+              )}
             </div>
           </div>
 

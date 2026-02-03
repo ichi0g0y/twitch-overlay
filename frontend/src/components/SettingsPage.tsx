@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Music, Settings2, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Music, Settings2, Sparkles, Wifi } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 // Import tab components
 import { GeneralSettings } from './settings/GeneralSettings';
+import { AISettings } from './settings/AISettings';
 import { MusicSettings } from './settings/MusicSettings';
 import { LogsTab } from './settings/LogsTab';
 import { TwitchSettings } from './settings/TwitchSettings';
@@ -72,8 +73,6 @@ export const SettingsPage: React.FC = () => {
     fileInputRef,
     getSettingValue,
     getBooleanValue,
-    showSecrets,
-    setShowSecrets,
     handleSettingChange,
     handleTwitchAuth,
     handleRefreshStreamStatus,
@@ -89,8 +88,34 @@ export const SettingsPage: React.FC = () => {
     handleOpenOverlayDebug,
     handleOpenPresent,
     handleOpenPresentDebug,
-    resettingOpenAIUsage,
-    handleResetOpenAIUsageDaily,
+    ollamaModels,
+    ollamaModelsLoading,
+    ollamaModelsError,
+    ollamaModelsFetchedAt,
+    pullingOllamaModel,
+    ollamaStatus,
+    creatingOllamaModelfile,
+    ollamaModelfilePreview,
+    ollamaModelfileError,
+    handleCreateOllamaModelfile,
+    fetchOllamaModels,
+    pullOllamaModel,
+    translationTestText,
+    setTranslationTestText,
+    translationTestSourceLang,
+    setTranslationTestSourceLang,
+    translationTestTargetLang,
+    setTranslationTestTargetLang,
+    translationTestResult,
+    translationTestTookMs,
+    translationTesting,
+    handleTestTranslation,
+    chatTestText,
+    setChatTestText,
+    chatTestResult,
+    chatTestTookMs,
+    chatTesting,
+    handleTestChat,
   } = contextValue;
 
   const handleChatSidebarSideChange = (side: 'left' | 'right') => {
@@ -203,8 +228,9 @@ export const SettingsPage: React.FC = () => {
             />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-9 mb-6">
+              <TabsList className="grid w-full grid-cols-10 mb-6">
                 <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
+                <TabsTrigger value="ai"><Sparkles className="w-4 h-4 mr-1" />AI</TabsTrigger>
                 <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
                 <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
                 <TabsTrigger value="mic"><Mic className="w-4 h-4 mr-1" />マイク</TabsTrigger>
@@ -219,27 +245,57 @@ export const SettingsPage: React.FC = () => {
                 <GeneralSettings
                   getSettingValue={getSettingValue}
                   handleSettingChange={handleSettingChange}
-                getBooleanValue={getBooleanValue}
-                showSecrets={showSecrets}
-                setShowSecrets={setShowSecrets}
-                webServerError={webServerError}
-                webServerPort={webServerPort}
-                streamStatus={streamStatus}
-                fileInputRef={fileInputRef}
-                uploadingFont={uploadingFont}
-                handleFontUpload={handleFontUpload}
-                previewText={previewText}
-                setPreviewText={setPreviewText}
-                previewImage={previewImage}
-                handleFontPreview={handleFontPreview}
-                handleDeleteFont={handleDeleteFont}
-                handleTestNotification={handleTestNotification}
-                testingNotification={testingNotification}
-                resettingNotificationPosition={resettingNotificationPosition}
-                handleResetNotificationPosition={handleResetNotificationPosition}
-                resettingOpenAIUsage={resettingOpenAIUsage}
-                handleResetOpenAIUsageDaily={handleResetOpenAIUsageDaily}
-              />
+                  getBooleanValue={getBooleanValue}
+                  webServerError={webServerError}
+                  webServerPort={webServerPort}
+                  streamStatus={streamStatus}
+                  fileInputRef={fileInputRef}
+                  uploadingFont={uploadingFont}
+                  handleFontUpload={handleFontUpload}
+                  previewText={previewText}
+                  setPreviewText={setPreviewText}
+                  previewImage={previewImage}
+                  handleFontPreview={handleFontPreview}
+                  handleDeleteFont={handleDeleteFont}
+                  handleTestNotification={handleTestNotification}
+                  testingNotification={testingNotification}
+                  resettingNotificationPosition={resettingNotificationPosition}
+                  handleResetNotificationPosition={handleResetNotificationPosition}
+                />
+              </TabsContent>
+              <TabsContent value="ai">
+                <AISettings
+                  getSettingValue={getSettingValue}
+                  handleSettingChange={handleSettingChange}
+                  ollamaModels={ollamaModels}
+                  ollamaModelsLoading={ollamaModelsLoading}
+                  ollamaModelsError={ollamaModelsError}
+                  ollamaModelsFetchedAt={ollamaModelsFetchedAt}
+                  pullingOllamaModel={pullingOllamaModel}
+                  creatingOllamaModelfile={creatingOllamaModelfile}
+                  ollamaModelfilePreview={ollamaModelfilePreview}
+                  ollamaModelfileError={ollamaModelfileError}
+                  handleCreateOllamaModelfile={handleCreateOllamaModelfile}
+                  fetchOllamaModels={fetchOllamaModels}
+                  pullOllamaModel={pullOllamaModel}
+                  ollamaStatus={ollamaStatus}
+                  translationTestText={translationTestText}
+                  setTranslationTestText={setTranslationTestText}
+                  translationTestSourceLang={translationTestSourceLang}
+                  setTranslationTestSourceLang={setTranslationTestSourceLang}
+                  translationTestTargetLang={translationTestTargetLang}
+                  setTranslationTestTargetLang={setTranslationTestTargetLang}
+                  translationTestResult={translationTestResult}
+                  translationTestTookMs={translationTestTookMs}
+                  translationTesting={translationTesting}
+                  handleTestTranslation={handleTestTranslation}
+                  chatTestText={chatTestText}
+                  setChatTestText={setChatTestText}
+                  chatTestResult={chatTestResult}
+                  chatTestTookMs={chatTestTookMs}
+                  chatTesting={chatTesting}
+                  handleTestChat={handleTestChat}
+                />
               </TabsContent>
               <TabsContent value="twitch">
                 <SettingsPageContext.Provider value={contextValue}>

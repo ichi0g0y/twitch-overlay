@@ -3,7 +3,7 @@ package twitchtoken
 import (
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
 )
 
 type Token struct {
