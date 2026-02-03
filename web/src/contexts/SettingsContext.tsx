@@ -45,9 +45,6 @@ interface OverlaySettings {
   mic_transcript_line_ttl_seconds?: number;
   mic_transcript_last_ttl_seconds?: number;
 
-  // OpenAI使用量表示
-  openai_usage_enabled?: boolean;
-
   // 開発者設定
   debug_enabled: boolean;
 

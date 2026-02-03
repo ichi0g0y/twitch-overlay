@@ -1,4 +1,3 @@
-import { Eye, EyeOff } from 'lucide-react';
 import React from 'react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
@@ -11,10 +10,6 @@ import { Textarea } from '../ui/textarea';
 interface AISettingsProps {
   getSettingValue: (key: string) => string;
   handleSettingChange: (key: string, value: string | boolean) => void;
-  showSecrets: Record<string, boolean>;
-  setShowSecrets: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  resettingOpenAIUsage: boolean;
-  handleResetOpenAIUsageDaily: () => void;
   ollamaModels: { id: string; size_bytes?: number | null; modified_at?: string }[];
   ollamaModelsLoading: boolean;
   ollamaModelsError: string | null;
@@ -33,8 +28,6 @@ interface AISettingsProps {
   setTranslationTestSourceLang: (lang: string) => void;
   translationTestTargetLang: string;
   setTranslationTestTargetLang: (lang: string) => void;
-  translationTestBackend: 'openai' | 'ollama';
-  setTranslationTestBackend: (backend: 'openai' | 'ollama') => void;
   translationTestResult: string;
   translationTestTookMs: number | null;
   translationTesting: boolean;
@@ -44,10 +37,6 @@ interface AISettingsProps {
 export const AISettings: React.FC<AISettingsProps> = ({
   getSettingValue,
   handleSettingChange,
-  showSecrets,
-  setShowSecrets,
-  resettingOpenAIUsage,
-  handleResetOpenAIUsageDaily,
   ollamaModels,
   ollamaModelsLoading,
   ollamaModelsError,
@@ -66,8 +55,6 @@ export const AISettings: React.FC<AISettingsProps> = ({
   setTranslationTestSourceLang,
   translationTestTargetLang,
   setTranslationTestTargetLang,
-  translationTestBackend,
-  setTranslationTestBackend,
   translationTestResult,
   translationTestTookMs,
   translationTesting,
@@ -113,62 +100,9 @@ export const AISettings: React.FC<AISettingsProps> = ({
     const normalizedQuant = quant.trim();
     return normalizedQuant ? `hf.co/${normalizedRepo}:${normalizedQuant}` : `hf.co/${normalizedRepo}`;
   };
-  const openAiModels = [
-    {
-      id: 'gpt-5',
-      name: 'GPT-5',
-      price: '入力 $1.25 / 出力 $10.00',
-    },
-    {
-      id: 'gpt-5-mini',
-      name: 'GPT-5 mini',
-      price: '入力 $0.25 / 出力 $2.00',
-    },
-    {
-      id: 'gpt-5-nano',
-      name: 'GPT-5 nano',
-      price: '入力 $0.05 / 出力 $0.40',
-    },
-    {
-      id: 'gpt-4o-mini',
-      name: 'GPT-4o mini',
-      price: '入力 $0.15 / 出力 $0.60',
-    },
-    {
-      id: 'gpt-4o',
-      name: 'GPT-4o',
-      price: '入力 $2.50 / 出力 $10.00',
-    },
-    {
-      id: 'gpt-4.1-mini',
-      name: 'GPT-4.1 mini',
-      price: '入力 $0.40 / 出力 $1.60',
-    },
-  ];
-
-  const selectedOpenAiModel = getSettingValue('OPENAI_MODEL') || 'gpt-4o-mini';
-  const inputTokens = parseInt(getSettingValue('OPENAI_USAGE_INPUT_TOKENS') || '0', 10) || 0;
-  const outputTokens = parseInt(getSettingValue('OPENAI_USAGE_OUTPUT_TOKENS') || '0', 10) || 0;
-  const totalTokens = inputTokens + outputTokens;
-  const costUsd = parseFloat(getSettingValue('OPENAI_USAGE_COST_USD') || '0') || 0;
-  const dailyInputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_INPUT_TOKENS') || '0', 10) || 0;
-  const dailyOutputTokens = parseInt(getSettingValue('OPENAI_USAGE_DAILY_OUTPUT_TOKENS') || '0', 10) || 0;
-  const dailyTotalTokens = dailyInputTokens + dailyOutputTokens;
-  const dailyCostUsd = parseFloat(getSettingValue('OPENAI_USAGE_DAILY_COST_USD') || '0') || 0;
-  const dailyDate = getSettingValue('OPENAI_USAGE_DAILY_DATE') || '未集計';
-  const timeZone = getSettingValue('TIMEZONE') || 'UTC';
-  const formatNumber = (value: number) => value.toLocaleString('ja-JP');
-  const formatUsd = (value: number) =>
-    value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    });
-
-  const translationBackend = getSettingValue('TRANSLATION_BACKEND') || 'openai';
   const activeOllamaModel = getSettingValue('OLLAMA_MODEL') || 'translategemma:12b';
   const baseOllamaModel = getSettingValue('OLLAMA_BASE_MODEL') || activeOllamaModel;
+  const chatOllamaModel = getSettingValue('OLLAMA_CHAT_MODEL') || 'llama3.1:8b';
   const isOllamaModelInstalled = ollamaModels.some(
     (model) => model.id.toLowerCase() === activeOllamaModel.toLowerCase(),
   );
@@ -281,18 +215,19 @@ export const AISettings: React.FC<AISettingsProps> = ({
     return Array.from(map.values());
   })();
 
+  const chatModelInList = mergedOllamaModels.some((model) => model.id === chatOllamaModel);
+
   const ollamaReady = ollamaStatus?.healthy ?? false;
   const ollamaStarting = ollamaStatus?.running && !ollamaStatus?.healthy;
 
   React.useEffect(() => {
-    if (translationBackend !== 'ollama') return;
     if (ollamaModelsLoading) return;
     if (ollamaModels.length > 0) return;
     if (autoFetchRequestedRef.current) return;
     if (!ollamaReady) return;
     autoFetchRequestedRef.current = true;
     fetchOllamaModels({ silent: true });
-  }, [translationBackend, ollamaModelsLoading, ollamaModels.length, ollamaReady, fetchOllamaModels]);
+  }, [ollamaModelsLoading, ollamaModels.length, ollamaReady, fetchOllamaModels]);
 
   const formatModelSize = (sizeBytes?: number | null) => {
     if (!sizeBytes || sizeBytes <= 0) return '未取得';
@@ -336,440 +271,396 @@ export const AISettings: React.FC<AISettingsProps> = ({
     <div className="space-y-6 focus:outline-none">
       <Card>
         <CardHeader>
-          <CardTitle>OpenAI 設定</CardTitle>
+          <CardTitle>Ollama 通常設定</CardTitle>
           <CardDescription>
-            OpenAI APIキーと翻訳モデル、使用量を管理します
+            通常のAI応答に使うOllama設定です
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="openai_api_key">OpenAI APIキー</Label>
-            <div className="flex items-center gap-2">
+            <Label htmlFor="ollama_base_url">OllamaサーバURL（共通）</Label>
+            <Input
+              id="ollama_base_url"
+              placeholder="http://127.0.0.1:11434"
+              value={getSettingValue('OLLAMA_BASE_URL')}
+              onChange={(e) => handleSettingChange('OLLAMA_BASE_URL', e.target.value)}
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              翻訳用と共通の接続先です
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ollama_chat_model">モデル</Label>
+            <Input
+              id="ollama_chat_model"
+              placeholder="例: llama3.1:8b"
+              value={chatOllamaModel}
+              onChange={(e) => handleSettingChange('OLLAMA_CHAT_MODEL', e.target.value)}
+            />
+            {mergedOllamaModels.length > 0 && (
+              <Select
+                value={chatModelInList ? chatOllamaModel : ''}
+                onValueChange={(value) => handleSettingChange('OLLAMA_CHAT_MODEL', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="モデル一覧から選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mergedOllamaModels.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.id} ({formatModelSize(model.size_bytes)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ollama_chat_system_prompt">System Prompt</Label>
+            <Textarea
+              id="ollama_chat_system_prompt"
+              value={getSettingValue('OLLAMA_CHAT_SYSTEM_PROMPT')}
+              onChange={(e) => handleSettingChange('OLLAMA_CHAT_SYSTEM_PROMPT', e.target.value)}
+              rows={3}
+              placeholder="通常のAI応答向けのsystem指示"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="ollama_chat_num_predict">num_predict</Label>
               <Input
-                id="openai_api_key"
-                type={showSecrets['OPENAI_API_KEY'] ? 'text' : 'password'}
-                placeholder={getSettingValue('OPENAI_API_KEY') ? '（設定済み）' : 'OpenAI API Key'}
-                value={getSettingValue('OPENAI_API_KEY')}
-                onChange={(e) => handleSettingChange('OPENAI_API_KEY', e.target.value)}
+                id="ollama_chat_num_predict"
+                type="number"
+                min="1"
+                max="4096"
+                value={getSettingValue('OLLAMA_CHAT_NUM_PREDICT')}
+                onChange={(e) => handleSettingChange('OLLAMA_CHAT_NUM_PREDICT', e.target.value)}
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setShowSecrets(prev => ({ ...prev, OPENAI_API_KEY: !prev.OPENAI_API_KEY }))}
-                aria-label="OpenAI APIキーの表示切り替え"
-              >
-                {showSecrets['OPENAI_API_KEY'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ollama_chat_temperature">temperature</Label>
+              <Input
+                id="ollama_chat_temperature"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                value={getSettingValue('OLLAMA_CHAT_TEMPERATURE')}
+                onChange={(e) => handleSettingChange('OLLAMA_CHAT_TEMPERATURE', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ollama_chat_top_p">top_p</Label>
+              <Input
+                id="ollama_chat_top_p"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value={getSettingValue('OLLAMA_CHAT_TOP_P')}
+                onChange={(e) => handleSettingChange('OLLAMA_CHAT_TOP_P', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ollama_chat_num_ctx">num_ctx</Label>
+              <Input
+                id="ollama_chat_num_ctx"
+                type="number"
+                min="128"
+                max="131072"
+                value={getSettingValue('OLLAMA_CHAT_NUM_CTX')}
+                onChange={(e) => handleSettingChange('OLLAMA_CHAT_NUM_CTX', e.target.value)}
+                placeholder="空欄でモデル既定"
+              />
             </div>
           </div>
 
-          <div className="mt-3 space-y-2">
-            <div className="flex flex-wrap gap-2">
-              {openAiModels.map((model) => {
-                const isActive = selectedOpenAiModel === model.id;
-                return (
-                  <Button
-                    key={model.id}
-                    type="button"
-                    variant={isActive ? 'default' : 'outline'}
-                    onClick={() => handleSettingChange('OPENAI_MODEL', model.id)}
-                    className="h-auto px-3 py-2"
-                  >
-                    <div className="flex flex-col items-start text-left">
-                      <span className="text-sm font-semibold">{model.name}</span>
-                      <span className={`text-sm ${isActive ? 'opacity-80' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {model.price}
-                      </span>
-                    </div>
-                  </Button>
-                );
-              })}
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              価格はStandardの1Mトークンあたり（入力 / 出力）
-            </p>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-            <div className="text-base font-semibold text-gray-700 dark:text-gray-200">OpenAI 使用量（概算）</div>
-            <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              今日: {dailyDate}（{timeZone}）
-            </div>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">入力トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(dailyInputTokens)}</div>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">出力トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(dailyOutputTokens)}</div>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">合計トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(dailyTotalTokens)}</div>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-base text-gray-600 dark:text-gray-300">
-              <span>推定料金: <span className="font-semibold">{formatUsd(dailyCostUsd)}</span></span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleResetOpenAIUsageDaily}
-                disabled={resettingOpenAIUsage}
-              >
-                {resettingOpenAIUsage ? 'リセット中…' : '今日の使用量をリセット'}
-              </Button>
-            </div>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-base">
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">累計入力トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(inputTokens)}</div>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">累計出力トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(outputTokens)}</div>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-900 p-3 border border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">累計合計トークン</div>
-                <div className="mt-1 font-semibold">{formatNumber(totalTokens)}</div>
-              </div>
-            </div>
-            <div className="mt-3 text-base text-gray-600 dark:text-gray-300">
-              累計推定料金: <span className="font-semibold">{formatUsd(costUsd)}</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              OpenAIの公式価格に基づく概算（未対応モデルは除外・モデル変更時は誤差が出る可能性あり）
-            </p>
+          <div className="space-y-2">
+            <Label htmlFor="ollama_chat_stop">stop（カンマ/改行区切り）</Label>
+            <Textarea
+              id="ollama_chat_stop"
+              value={getSettingValue('OLLAMA_CHAT_STOP')}
+              onChange={(e) => handleSettingChange('OLLAMA_CHAT_STOP', e.target.value)}
+              rows={2}
+              placeholder="例: \n*( \n###"
+            />
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>翻訳設定</CardTitle>
+          <CardTitle>Ollama 翻訳設定</CardTitle>
           <CardDescription>
-            チャット翻訳とマイク文字起こし翻訳のバックエンドを切り替えます
+            チャット翻訳とマイク文字起こし翻訳で使用する設定です
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label>翻訳バックエンド</Label>
-            <Select
-              value={translationBackend}
-              onValueChange={(value) => handleSettingChange('TRANSLATION_BACKEND', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="バックエンドを選択" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="openai">OpenAI（クラウド）</SelectItem>
-                <SelectItem value="ollama">Ollama（ローカル）</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Ollamaを使用する場合はローカルサーバの起動を確認してください（localhostは自動起動）
-            </p>
-          </div>
+          <div className="space-y-4">
+            {!ollamaReady && (
+              <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
+                <AlertDescription className="text-yellow-700 dark:text-yellow-200">
+                  {ollamaStarting ? 'Ollamaを起動中です。接続後に操作できます。' : 'Ollama未接続です。起動を確認してください。'}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="ollama_system_prompt">Ollama System Prompt</Label>
+              <Textarea
+                id="ollama_system_prompt"
+                value={getSettingValue('OLLAMA_SYSTEM_PROMPT')}
+                onChange={(e) => handleSettingChange('OLLAMA_SYSTEM_PROMPT', e.target.value)}
+                rows={3}
+                placeholder="翻訳エンジン向けのsystem指示（空ならデフォルト）"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                入力するとOllama翻訳の全リクエストに適用されます
+              </p>
+            </div>
 
-          {translationBackend === 'openai' && (
-            <Alert className="dark:bg-blue-900/20 dark:border-blue-700">
-              <AlertDescription className="text-blue-700 dark:text-blue-200">
-                OpenAIバックエンドではAPIキーが必要です
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {translationBackend === 'ollama' && (
             <div className="space-y-4">
-              {!ollamaReady && (
-                <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
-                  <AlertDescription className="text-yellow-700 dark:text-yellow-200">
-                    {ollamaStarting ? 'Ollamaを起動中です。接続後に操作できます。' : 'Ollama未接続です。起動を確認してください。'}
-                  </AlertDescription>
-                </Alert>
-              )}
               <div className="space-y-2">
-                <Label htmlFor="ollama_base_url">OllamaサーバURL</Label>
-                <Input
-                  id="ollama_base_url"
-                  placeholder="http://127.0.0.1:11434"
-                  value={getSettingValue('OLLAMA_BASE_URL')}
-                  onChange={(e) => handleSettingChange('OLLAMA_BASE_URL', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ollama_system_prompt">Ollama System Prompt</Label>
-                <Textarea
-                  id="ollama_system_prompt"
-                  value={getSettingValue('OLLAMA_SYSTEM_PROMPT')}
-                  onChange={(e) => handleSettingChange('OLLAMA_SYSTEM_PROMPT', e.target.value)}
-                  rows={3}
-                  placeholder="翻訳エンジン向けのsystem指示（空ならデフォルト）"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  入力するとOllama翻訳の全リクエストに適用されます
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>モデルソース</Label>
+                <Label>モデルソース</Label>
                 <Select
                   value={modelSource}
                   onValueChange={(value) => handleModelSourceChange(value as 'ollama' | 'hf')}
                 >
+                  <SelectTrigger>
+                    <SelectValue placeholder="モデルソースを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ollama">Ollamaライブラリ</SelectItem>
+                    <SelectItem value="hf">Hugging Face（GGUF）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {modelSource === 'ollama' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="ollama_model">モデル</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchOllamaModels()}
+                        disabled={ollamaModelsLoading || !ollamaReady}
+                      >
+                        更新
+                      </Button>
+                    </div>
+                  </div>
+                  <Select
+                    value={baseOllamaModel}
+                    onValueChange={(value) => {
+                      handleSettingChange('OLLAMA_BASE_MODEL', value);
+                      handleSettingChange('OLLAMA_MODEL', value);
+                    }}
+                    disabled={mergedOllamaModels.length === 0}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="モデルソースを選択" />
+                      <SelectValue placeholder="モデルを選択" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ollama">Ollamaライブラリ</SelectItem>
-                      <SelectItem value="hf">Hugging Face（GGUF）</SelectItem>
+                      {mergedOllamaModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.id} ({formatModelSize(model.size_bytes)})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                </div>
-
-                {modelSource === 'ollama' ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label htmlFor="ollama_model">モデル</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => fetchOllamaModels()}
-                          disabled={ollamaModelsLoading || !ollamaReady}
-                        >
-                          更新
-                        </Button>
-                      </div>
-                    </div>
-                    <Select
-                  value={baseOllamaModel}
-                  onValueChange={(value) => {
-                    handleSettingChange('OLLAMA_BASE_MODEL', value);
-                    handleSettingChange('OLLAMA_MODEL', value);
-                  }}
-                  disabled={mergedOllamaModels.length === 0}
-                >
-                      <SelectTrigger>
-                        <SelectValue placeholder="モデルを選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mergedOllamaModels.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.id} ({formatModelSize(model.size_bytes)})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {mergedOllamaModels.length === 0 && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        モデル一覧を取得してください
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label>HF GGUF リポジトリ</Label>
-                    <Select value={selectedHfRepo} onValueChange={handleHfRepoChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="モデルを選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {hfModelPresets.map((preset) => (
-                          <SelectItem key={preset.repo} value={preset.repo}>
-                            {preset.label}（{preset.repo}）
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Label>量子化</Label>
-                    <Select value={selectedHfQuant} onValueChange={handleHfQuantChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="量子化を選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectedHfPreset.quants.map((quant) => (
-                          <SelectItem key={quant.id} value={quant.id}>
-                            {quant.id} ({formatModelSize(quant.size_bytes)})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {mergedOllamaModels.length === 0 && (
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      使用モデルID: {hfModelIdPreview}
+                      モデル一覧を取得してください
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      HF GGUFは初回ダウンロードが大きいので時間がかかる場合があります
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                  onClick={() => pullOllamaModel(activeOllamaModel)}
-                  disabled={
-                    pullingOllamaModel ||
-                      !activeOllamaModel ||
-                      !ollamaReady ||
-                      isOllamaModelInstalled
-                    }
-                >
-                    {pullingOllamaModel
-                      ? '取得中...'
-                      : isOllamaModelInstalled
-                        ? '取得済み'
-                        : 'モデルを取得'}
-                  </Button>
-                  <span>未取得の場合はここでダウンロード</span>
-                  {ollamaModelsFetchedAt && (
-                    <span>更新: {new Date(ollamaModelsFetchedAt * 1000).toLocaleString('ja-JP')}</span>
                   )}
                 </div>
-                {ollamaModelsError && (
-                  <p className="text-xs text-red-500">{ollamaModelsError}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2 md:col-span-1">
-                  <Label htmlFor="ollama_num_predict">num_predict</Label>
-                  <Input
-                    id="ollama_num_predict"
-                    type="number"
-                    min="1"
-                    max="4096"
-                    value={getSettingValue('OLLAMA_NUM_PREDICT')}
-                    onChange={(e) => handleSettingChange('OLLAMA_NUM_PREDICT', e.target.value)}
-                  />
-                </div>
+              ) : (
                 <div className="space-y-2">
-                  <Label htmlFor="ollama_temperature">temperature</Label>
-                  <Input
-                    id="ollama_temperature"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={getSettingValue('OLLAMA_TEMPERATURE')}
-                    onChange={(e) => handleSettingChange('OLLAMA_TEMPERATURE', e.target.value)}
-                  />
+                  <Label>HF GGUF リポジトリ</Label>
+                  <Select value={selectedHfRepo} onValueChange={handleHfRepoChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="モデルを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hfModelPresets.map((preset) => (
+                        <SelectItem key={preset.repo} value={preset.repo}>
+                          {preset.label}（{preset.repo}）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Label>量子化</Label>
+                  <Select value={selectedHfQuant} onValueChange={handleHfQuantChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="量子化を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedHfPreset.quants.map((quant) => (
+                        <SelectItem key={quant.id} value={quant.id}>
+                          {quant.id} ({formatModelSize(quant.size_bytes)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    使用モデルID: {hfModelIdPreview}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    HF GGUFは初回ダウンロードが大きいので時間がかかる場合があります
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ollama_top_p">top_p</Label>
-                  <Input
-                    id="ollama_top_p"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={getSettingValue('OLLAMA_TOP_P')}
-                    onChange={(e) => handleSettingChange('OLLAMA_TOP_P', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ollama_num_ctx">num_ctx</Label>
-                  <Input
-                    id="ollama_num_ctx"
-                    type="number"
-                    min="128"
-                    max="131072"
-                    value={getSettingValue('OLLAMA_NUM_CTX')}
-                    onChange={(e) => handleSettingChange('OLLAMA_NUM_CTX', e.target.value)}
-                    placeholder="空欄でモデル既定"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ollama_stop">stop（カンマ/改行区切り）</Label>
-                <Textarea
-                  id="ollama_stop"
-                  value={getSettingValue('OLLAMA_STOP')}
-                  onChange={(e) => handleSettingChange('OLLAMA_STOP', e.target.value)}
-                  rows={2}
-                  placeholder="例: \\n*( \\n###"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ollama_custom_model_name">Modelfile 出力モデル名</Label>
-                <Input
-                  id="ollama_custom_model_name"
-                  value={getSettingValue('OLLAMA_CUSTOM_MODEL_NAME')}
-                  onChange={(e) => handleSettingChange('OLLAMA_CUSTOM_MODEL_NAME', e.target.value)}
-                  placeholder="例: shisa-translator"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ここで指定した名前で `ollama create` を実行します
-                </p>
-              </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => handleCreateOllamaModelfile(true)}
-                  disabled={creatingOllamaModelfile || !ollamaReady}
+                  onClick={() => pullOllamaModel(activeOllamaModel)}
+                  disabled={
+                    pullingOllamaModel ||
+                    !activeOllamaModel ||
+                    !ollamaReady ||
+                    isOllamaModelInstalled
+                  }
                 >
-                  {creatingOllamaModelfile ? '生成中...' : 'Modelfile生成＆適用'}
+                  {pullingOllamaModel
+                    ? '取得中...'
+                    : isOllamaModelInstalled
+                      ? '取得済み'
+                      : 'モデルを取得'}
                 </Button>
-                <span>現在の設定からModelfileを作り、Ollamaモデルとして登録します</span>
+                <span>未取得の場合はここでダウンロード</span>
+                {ollamaModelsFetchedAt && (
+                  <span>更新: {new Date(ollamaModelsFetchedAt * 1000).toLocaleString('ja-JP')}</span>
+                )}
               </div>
-              {ollamaModelfileError && (
-                <p className="text-xs text-red-500">{ollamaModelfileError}</p>
+              {ollamaModelsError && (
+                <p className="text-xs text-red-500">{ollamaModelsError}</p>
               )}
-              {ollamaModelfilePreview && (
-                <div className="space-y-2">
-                  <Label>生成されたModelfile</Label>
-                  <Textarea readOnly rows={6} value={ollamaModelfilePreview} />
-                </div>
-              )}
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2 md:col-span-2">
-                  <Label>ステータス</Label>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">
-                    {ollamaStatus?.healthy
-                      ? `接続中${ollamaStatus.version ? ` (v${ollamaStatus.version})` : ''}`
-                      : ollamaStatus?.running
-                        ? '起動中'
-                        : '停止中'}
-                  </div>
-                  {ollamaStatus?.error && !ollamaStatus.healthy && (
-                    <p className="text-xs text-red-500">{ollamaStatus.error}</p>
-                  )}
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2 md:col-span-1">
+                <Label htmlFor="ollama_num_predict">num_predict</Label>
+                <Input
+                  id="ollama_num_predict"
+                  type="number"
+                  min="1"
+                  max="4096"
+                  value={getSettingValue('OLLAMA_NUM_PREDICT')}
+                  onChange={(e) => handleSettingChange('OLLAMA_NUM_PREDICT', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ollama_temperature">temperature</Label>
+                <Input
+                  id="ollama_temperature"
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  value={getSettingValue('OLLAMA_TEMPERATURE')}
+                  onChange={(e) => handleSettingChange('OLLAMA_TEMPERATURE', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ollama_top_p">top_p</Label>
+                <Input
+                  id="ollama_top_p"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={getSettingValue('OLLAMA_TOP_P')}
+                  onChange={(e) => handleSettingChange('OLLAMA_TOP_P', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ollama_num_ctx">num_ctx</Label>
+                <Input
+                  id="ollama_num_ctx"
+                  type="number"
+                  min="128"
+                  max="131072"
+                  value={getSettingValue('OLLAMA_NUM_CTX')}
+                  onChange={(e) => handleSettingChange('OLLAMA_NUM_CTX', e.target.value)}
+                  placeholder="空欄でモデル既定"
+                />
               </div>
             </div>
-          )}
+
+            <div className="space-y-2">
+              <Label htmlFor="ollama_stop">stop（カンマ/改行区切り）</Label>
+              <Textarea
+                id="ollama_stop"
+                value={getSettingValue('OLLAMA_STOP')}
+                onChange={(e) => handleSettingChange('OLLAMA_STOP', e.target.value)}
+                rows={2}
+                placeholder="例: \n*( \n###"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ollama_custom_model_name">Modelfile 出力モデル名</Label>
+              <Input
+                id="ollama_custom_model_name"
+                value={getSettingValue('OLLAMA_CUSTOM_MODEL_NAME')}
+                onChange={(e) => handleSettingChange('OLLAMA_CUSTOM_MODEL_NAME', e.target.value)}
+                placeholder="例: shisa-translator"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                ここで指定した名前で `ollama create` を実行します
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => handleCreateOllamaModelfile(true)}
+                disabled={creatingOllamaModelfile || !ollamaReady}
+              >
+                {creatingOllamaModelfile ? '生成中...' : 'Modelfile生成＆適用'}
+              </Button>
+              <span>現在の設定からModelfileを作り、Ollamaモデルとして登録します</span>
+            </div>
+            {ollamaModelfileError && (
+              <p className="text-xs text-red-500">{ollamaModelfileError}</p>
+            )}
+            {ollamaModelfilePreview && (
+              <div className="space-y-2">
+                <Label>生成されたModelfile</Label>
+                <Textarea readOnly rows={6} value={ollamaModelfilePreview} />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label>ステータス</Label>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  {ollamaStatus?.healthy
+                    ? `接続中${ollamaStatus.version ? ` (v${ollamaStatus.version})` : ''}`
+                    : ollamaStatus?.running
+                      ? '起動中'
+                      : '停止中'}
+                </div>
+                {ollamaStatus?.error && !ollamaStatus.healthy && (
+                  <p className="text-xs text-red-500">{ollamaStatus.error}</p>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-3">
             <div className="text-base font-semibold text-gray-700 dark:text-gray-200">翻訳テスト</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label>バックエンド</Label>
-                <Select
-                  value={translationTestBackend}
-                  onValueChange={(value) => setTranslationTestBackend(value as 'openai' | 'ollama')}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="ollama">Ollama</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Source</Label>
                 <Select
@@ -824,13 +715,13 @@ export const AISettings: React.FC<AISettingsProps> = ({
               <Button
                 type="button"
                 onClick={handleTestTranslation}
-                disabled={translationTesting || (translationTestBackend === 'ollama' && !ollamaReady)}
+                disabled={translationTesting || !ollamaReady}
                 variant="outline"
               >
                 {translationTesting ? '翻訳中...' : '翻訳テスト'}
               </Button>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                OpenAI/OllamaどちらもISO 639-3（例: jpn/eng）を推奨
+                ISO 639-3（例: jpn/eng）を推奨
               </span>
             </div>
             <div className="space-y-2">

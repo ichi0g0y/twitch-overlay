@@ -20,7 +20,7 @@ const MODEL_OPTIONS = [
 ];
 
 const BACKEND_OPTIONS = [
-  { value: 'whisper', label: 'Whisper（openai-whisper）' },
+  { value: 'whisper', label: 'Whisper（Python）' },
   { value: 'whispercpp', label: 'whisper.cpp（GGUF）' },
 ];
 

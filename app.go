@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
 	"github.com/ichi0g0y/twitch-overlay/internal/cache"
 	"github.com/ichi0g0y/twitch-overlay/internal/env"
@@ -37,6 +36,7 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
 	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
+	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.uber.org/zap"
@@ -334,7 +334,6 @@ func migrateLegacyTranslationSettings() {
 			_ = manager.SetSetting(key, "ollama")
 		}
 	}
-	migrateValue("TRANSLATION_BACKEND")
 	migrateValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
 
 	migrateLang := func(key string) {
@@ -1436,17 +1435,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"CLIENT_ID":                           true,
 			"CLIENT_SECRET":                       true,
 			"TRIGGER_CUSTOM_REWORD_ID":            true,
-			"OPENAI_API_KEY":                      true,
-			"OPENAI_MODEL":                        true,
-			"OPENAI_USAGE_INPUT_TOKENS":           true,
-			"OPENAI_USAGE_OUTPUT_TOKENS":          true,
-			"OPENAI_USAGE_COST_USD":               true,
-			"OPENAI_USAGE_DAILY_DATE":             true,
-			"OPENAI_USAGE_DAILY_INPUT_TOKENS":     true,
-			"OPENAI_USAGE_DAILY_OUTPUT_TOKENS":    true,
-			"OPENAI_USAGE_DAILY_COST_USD":         true,
 			"CHAT_TRANSLATION_ENABLED":            true,
-			"TRANSLATION_BACKEND":                 true,
 			"OLLAMA_BASE_URL":                     true,
 			"OLLAMA_MODEL":                        true,
 			"OLLAMA_BASE_MODEL":                   true,
@@ -1457,6 +1446,13 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"OLLAMA_STOP":                         true,
 			"OLLAMA_SYSTEM_PROMPT":                true,
 			"OLLAMA_CUSTOM_MODEL_NAME":            true,
+			"OLLAMA_CHAT_MODEL":                   true,
+			"OLLAMA_CHAT_NUM_PREDICT":             true,
+			"OLLAMA_CHAT_TEMPERATURE":             true,
+			"OLLAMA_CHAT_TOP_P":                   true,
+			"OLLAMA_CHAT_NUM_CTX":                 true,
+			"OLLAMA_CHAT_STOP":                    true,
+			"OLLAMA_CHAT_SYSTEM_PROMPT":           true,
 			"MIC_TRANSCRIPT_TRANSLATION_MODE":     true,
 			"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": true,
 			"SERVER_PORT":                         true,
@@ -1536,7 +1532,7 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		logger.Info("Setting saved", zap.String("key", dbKey), zap.String("value", strValue))
 
 		switch dbKey {
-		case "TRANSLATION_BACKEND", "MIC_TRANSCRIPT_TRANSLATION_MODE", "OLLAMA_BASE_URL", "OLLAMA_MODEL":
+		case "MIC_TRANSCRIPT_TRANSLATION_MODE", "OLLAMA_BASE_URL", "OLLAMA_MODEL", "OLLAMA_CHAT_MODEL":
 			ollamaStartRequested = true
 		}
 	}

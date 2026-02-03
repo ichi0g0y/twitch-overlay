@@ -72,9 +72,6 @@ type OverlaySettings struct {
 	MicTranscriptLineTtlSeconds      int    `json:"mic_transcript_line_ttl_seconds"`
 	MicTranscriptLastTtlSeconds      int    `json:"mic_transcript_last_ttl_seconds"`
 
-	// OpenAI使用量表示
-	OpenAIUsageOverlayEnabled bool `json:"openai_usage_enabled"`
-
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
 	OverlayCardsLayout   string `json:"overlay_cards_layout"`   // カードの配置（JSON文字列）
@@ -168,9 +165,8 @@ func loadOverlaySettingsFromDB() {
 		MicTranscriptTranslationFontSize: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
 		MicTranscriptLineTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_TTL_SECONDS", 8),
 		MicTranscriptLastTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LAST_TTL_SECONDS", 8),
-		OpenAIUsageOverlayEnabled:        getBoolSetting(allSettings, "OPENAI_USAGE_OVERLAY_ENABLED", false),
-		OverlayCardsExpanded:             getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
-		OverlayCardsLayout:               getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`),
+		OverlayCardsExpanded:             getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
+		OverlayCardsLayout:               getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`),
 		ShowDebugInfo:                    false, // 廃止予定
 		DebugEnabled:                     getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 
@@ -186,7 +182,7 @@ func loadOverlaySettingsFromDB() {
 
 	if strings.TrimSpace(overlaySettings.MicTranscriptTranslationMode) == "" {
 		if overlaySettings.MicTranscriptTranslationEnabled {
-			overlaySettings.MicTranscriptTranslationMode = "openai"
+			overlaySettings.MicTranscriptTranslationMode = "ollama"
 		} else {
 			overlaySettings.MicTranscriptTranslationMode = "off"
 		}
@@ -296,9 +292,8 @@ func useDefaultSettings() {
 		MicTranscriptTranslationFontSize: 16,
 		MicTranscriptLineTtlSeconds:      8,
 		MicTranscriptLastTtlSeconds:      8,
-		OpenAIUsageOverlayEnabled:        false,
-		OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
-		OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`,
+		OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+		OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
 		ShowDebugInfo:                    false,
 		DebugEnabled:                     false,
 		UpdatedAt:                        time.Now(),
@@ -398,7 +393,6 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
 		"MIC_TRANSCRIPT_LINE_TTL_SECONDS":      strconv.Itoa(overlaySettings.MicTranscriptLineTtlSeconds),
 		"MIC_TRANSCRIPT_LAST_TTL_SECONDS":      strconv.Itoa(overlaySettings.MicTranscriptLastTtlSeconds),
-		"OPENAI_USAGE_OVERLAY_ENABLED":         strconv.FormatBool(overlaySettings.OpenAIUsageOverlayEnabled),
 		"OVERLAY_CARDS_EXPANDED":               overlaySettings.OverlayCardsExpanded,
 		"OVERLAY_CARDS_LAYOUT":                 overlaySettings.OverlayCardsLayout,
 		"OVERLAY_DEBUG_ENABLED":                strconv.FormatBool(overlaySettings.DebugEnabled),
@@ -515,12 +509,11 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			DateEnabled:                      true,
 			TimeEnabled:                      true,
 			LotteryTickerEnabled:             false,
-			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
-			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`,
+			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
 			MicTranscriptTranslationEnabled:  false,
 			MicTranscriptTranslationLanguage: "eng",
 			MicTranscriptTranslationFontSize: 16,
-			OpenAIUsageOverlayEnabled:        false,
 		}
 	}
 
@@ -561,7 +554,7 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if strings.TrimSpace(mergedSettings.MicTranscriptTranslationMode) == "" {
 		if mergedSettings.MicTranscriptTranslationEnabled {
-			mergedSettings.MicTranscriptTranslationMode = "openai"
+			mergedSettings.MicTranscriptTranslationMode = "ollama"
 		} else {
 			mergedSettings.MicTranscriptTranslationMode = "off"
 		}

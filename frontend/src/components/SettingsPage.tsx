@@ -73,8 +73,6 @@ export const SettingsPage: React.FC = () => {
     fileInputRef,
     getSettingValue,
     getBooleanValue,
-    showSecrets,
-    setShowSecrets,
     handleSettingChange,
     handleTwitchAuth,
     handleRefreshStreamStatus,
@@ -90,8 +88,6 @@ export const SettingsPage: React.FC = () => {
     handleOpenOverlayDebug,
     handleOpenPresent,
     handleOpenPresentDebug,
-    resettingOpenAIUsage,
-    handleResetOpenAIUsageDaily,
     ollamaModels,
     ollamaModelsLoading,
     ollamaModelsError,
@@ -110,8 +106,6 @@ export const SettingsPage: React.FC = () => {
     setTranslationTestSourceLang,
     translationTestTargetLang,
     setTranslationTestTargetLang,
-    translationTestBackend,
-    setTranslationTestBackend,
     translationTestResult,
     translationTestTookMs,
     translationTesting,
@@ -267,10 +261,6 @@ export const SettingsPage: React.FC = () => {
                 <AISettings
                   getSettingValue={getSettingValue}
                   handleSettingChange={handleSettingChange}
-                  showSecrets={showSecrets}
-                  setShowSecrets={setShowSecrets}
-                  resettingOpenAIUsage={resettingOpenAIUsage}
-                  handleResetOpenAIUsageDaily={handleResetOpenAIUsageDaily}
                   ollamaModels={ollamaModels}
                   ollamaModelsLoading={ollamaModelsLoading}
                   ollamaModelsError={ollamaModelsError}
@@ -289,8 +279,6 @@ export const SettingsPage: React.FC = () => {
                   setTranslationTestSourceLang={setTranslationTestSourceLang}
                   translationTestTargetLang={translationTestTargetLang}
                   setTranslationTestTargetLang={setTranslationTestTargetLang}
-                  translationTestBackend={translationTestBackend}
-                  setTranslationTestBackend={setTranslationTestBackend}
                   translationTestResult={translationTestResult}
                   translationTestTookMs={translationTestTookMs}
                   translationTesting={translationTesting}

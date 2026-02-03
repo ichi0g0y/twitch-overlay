@@ -99,18 +99,12 @@ func translateMicTranscript(payload micTranscriptPayload, targetLang string) {
 	}
 
 	settingsManager := settings.NewSettingsManager(db)
-	backendValue, _ := settingsManager.GetRealValue("TRANSLATION_BACKEND")
-	backend := translation.ResolveTranslationBackend(backendValue)
 	modeValue, _ := settingsManager.GetRealValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
 	mode := strings.TrimSpace(strings.ToLower(modeValue))
-	switch mode {
-	case "openai":
-		backend = translation.BackendOpenAI
-	case "ollama":
-		backend = translation.BackendOllama
-	case "off":
+	if mode == "off" {
 		return
 	}
+	backend := translation.BackendOllama
 
 	var translated string
 	var sourceLang string
@@ -147,17 +141,6 @@ func translateMicTranscript(payload micTranscriptPayload, targetLang string) {
 			targetLang,
 			opts,
 		)
-	default:
-		apiKey, keyErr := settingsManager.GetRealValue("OPENAI_API_KEY")
-		if keyErr != nil || strings.TrimSpace(apiKey) == "" {
-			return
-		}
-		modelName, _ := settingsManager.GetRealValue("OPENAI_MODEL")
-		openAITarget := translation.NormalizeFromLangTag(targetLang)
-		if openAITarget == "" {
-			openAITarget = targetLang
-		}
-		translated, sourceLang, err = translation.TranslateToTargetLanguage(apiKey, payload.Text, modelName, openAITarget)
 	}
 
 	if err != nil {

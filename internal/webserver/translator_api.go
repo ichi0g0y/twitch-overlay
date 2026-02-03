@@ -61,6 +61,10 @@ func handleTranslationTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	backend = translation.ResolveTranslationBackend(backend)
+	if backend != translation.BackendOllama {
+		http.Error(w, "invalid backend", http.StatusBadRequest)
+		return
+	}
 
 	srcLang := strings.TrimSpace(req.SrcLang)
 	tgtLang := strings.TrimSpace(req.TgtLang)
@@ -97,22 +101,6 @@ func handleTranslationTest(w http.ResponseWriter, r *http.Request) {
 			SystemPrompt: getSettingValueFromDB("OLLAMA_SYSTEM_PROMPT"),
 		}
 		translated, detectedLang, err = translation.TranslateToTargetLanguageOllama(baseURL, model, text, srcLang, tgtLang, opts)
-	case translation.BackendOpenAI:
-		apiKey := getSettingValueFromDB("OPENAI_API_KEY")
-		if strings.TrimSpace(apiKey) == "" {
-			http.Error(w, "OpenAI API key is not set", http.StatusBadRequest)
-			return
-		}
-		modelName := getSettingValueFromDB("OPENAI_MODEL")
-		if tgtLang == "" {
-			tgtLang = "eng"
-		}
-		openAITarget := translation.NormalizeFromLangTag(tgtLang)
-		if openAITarget == "" {
-			openAITarget = tgtLang
-		}
-		translated, detectedLang, err = translation.TranslateToTargetLanguage(apiKey, text, modelName, openAITarget)
-		tgtLang = openAITarget
 	default:
 		http.Error(w, "invalid backend", http.StatusBadRequest)
 		return

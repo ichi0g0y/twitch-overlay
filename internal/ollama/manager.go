@@ -33,8 +33,6 @@ type runtimeConfig struct {
 	host      string
 	port      int
 	autoStart bool
-	backend   string
-	micMode   string
 }
 
 func NewManager() *Manager {
@@ -55,7 +53,7 @@ func (m *Manager) Start() error {
 		return err
 	}
 
-	if !cfg.autoStart && cfg.backend != translation.BackendOllama && cfg.micMode != translation.BackendOllama {
+	if !cfg.autoStart {
 		logger.Info("ollama auto start disabled")
 		return nil
 	}
@@ -209,8 +207,6 @@ func loadRuntimeConfig() (runtimeConfig, error) {
 		host:      host,
 		port:      port,
 		autoStart: autoStart,
-		backend:   translation.ResolveTranslationBackend(getSetting("TRANSLATION_BACKEND")),
-		micMode:   strings.TrimSpace(strings.ToLower(getSetting("MIC_TRANSCRIPT_TRANSLATION_MODE"))),
 	}
 	return cfg, nil
 }

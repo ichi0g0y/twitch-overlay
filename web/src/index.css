@@ -176,31 +176,6 @@ body {
     4px -2px 0 #000000, 4px 0px 0 #000000, 4px 2px 0 #000000, 4px 4px 0 #000000;
 }
 
-/* OpenAI usage overlay */
-.openai-usage {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  padding-right: 10px;
-  text-align: right;
-}
-
-.openai-usage-label {
-  font-size: 10px;
-  opacity: 0.85;
-}
-
-.openai-usage-main {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.openai-usage-value {
-  font-size: 12px;
-}
-
 /* Music player animations */
 @keyframes music-enter {
   0% {

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
 	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
@@ -25,6 +24,7 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
+	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"go.uber.org/zap"
 )
 
@@ -214,10 +214,6 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))
 	mux.HandleFunc("/api/mic/restart", corsMiddleware(handleMicRestart))
 	mux.HandleFunc("/api/mic/status", corsMiddleware(handleMicStatus))
-
-	// OpenAI usage endpoints
-	mux.HandleFunc("/api/openai/usage", corsMiddleware(handleOpenAIUsage))
-	mux.HandleFunc("/api/openai/usage/reset", corsMiddleware(handleOpenAIUsageReset))
 
 	// Translation test endpoint
 	mux.HandleFunc("/api/translation/test", corsMiddleware(handleTranslationTest))

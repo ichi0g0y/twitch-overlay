@@ -56,85 +56,73 @@ var DefaultSettings = map[string]Setting{
 		Key: "TRIGGER_CUSTOM_REWORD_ID", Value: "", Type: SettingTypeSecret, Required: true,
 		Description: "Custom Reward ID for triggering FAX",
 	},
-	"OPENAI_API_KEY": {
-		Key: "OPENAI_API_KEY", Value: "", Type: SettingTypeSecret, Required: false,
-		Description: "OpenAI API key for chat translation",
-	},
-	"OPENAI_MODEL": {
-		Key: "OPENAI_MODEL", Value: "gpt-4o-mini", Type: SettingTypeNormal, Required: false,
-		Description: "OpenAI model for chat translation",
-	},
-	"TRANSLATION_BACKEND": {
-		Key: "TRANSLATION_BACKEND", Value: "openai", Type: SettingTypeNormal, Required: false,
-		Description: "Translation backend (openai/ollama)",
-	},
 	"OLLAMA_BASE_URL": {
 		Key: "OLLAMA_BASE_URL", Value: "http://127.0.0.1:11434", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama base URL",
+		Description: "Ollama base URL (shared)",
 	},
 	"OLLAMA_MODEL": {
 		Key: "OLLAMA_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama model name",
+		Description: "Ollama model name for translation",
 	},
 	"OLLAMA_BASE_MODEL": {
 		Key: "OLLAMA_BASE_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama base model for modelfile",
+		Description: "Ollama base model for translation modelfile",
 	},
 	"OLLAMA_CUSTOM_MODEL_NAME": {
 		Key: "OLLAMA_CUSTOM_MODEL_NAME", Value: "translator-custom", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama modelfile output model name",
+		Description: "Ollama translation modelfile output model name",
 	},
 	"OLLAMA_NUM_PREDICT": {
 		Key: "OLLAMA_NUM_PREDICT", Value: "128", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama num_predict per request",
+		Description: "Ollama translation num_predict per request",
 	},
 	"OLLAMA_TEMPERATURE": {
 		Key: "OLLAMA_TEMPERATURE", Value: "0.1", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama temperature (0.0 - 2.0)",
+		Description: "Ollama translation temperature (0.0 - 2.0)",
 	},
 	"OLLAMA_TOP_P": {
 		Key: "OLLAMA_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama top_p (0.0 - 1.0)",
+		Description: "Ollama translation top_p (0.0 - 1.0)",
 	},
 	"OLLAMA_NUM_CTX": {
 		Key: "OLLAMA_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama num_ctx (optional)",
+		Description: "Ollama translation num_ctx (optional)",
 	},
 	"OLLAMA_STOP": {
 		Key: "OLLAMA_STOP", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama stop sequences (comma or newline separated)",
+		Description: "Ollama translation stop sequences (comma or newline separated)",
 	},
 	"OLLAMA_SYSTEM_PROMPT": {
 		Key: "OLLAMA_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama system prompt (optional)",
+		Description: "Ollama translation system prompt (optional)",
 	},
-	"OPENAI_USAGE_INPUT_TOKENS": {
-		Key: "OPENAI_USAGE_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Accumulated OpenAI input tokens",
+	"OLLAMA_CHAT_MODEL": {
+		Key: "OLLAMA_CHAT_MODEL", Value: "llama3.1:8b", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama model name for general use",
 	},
-	"OPENAI_USAGE_OUTPUT_TOKENS": {
-		Key: "OPENAI_USAGE_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Accumulated OpenAI output tokens",
+	"OLLAMA_CHAT_NUM_PREDICT": {
+		Key: "OLLAMA_CHAT_NUM_PREDICT", Value: "256", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general num_predict per request",
 	},
-	"OPENAI_USAGE_COST_USD": {
-		Key: "OPENAI_USAGE_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Estimated OpenAI usage cost in USD",
+	"OLLAMA_CHAT_TEMPERATURE": {
+		Key: "OLLAMA_CHAT_TEMPERATURE", Value: "0.7", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general temperature (0.0 - 2.0)",
 	},
-	"OPENAI_USAGE_DAILY_DATE": {
-		Key: "OPENAI_USAGE_DAILY_DATE", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Daily usage date (YYYY-MM-DD)",
+	"OLLAMA_CHAT_TOP_P": {
+		Key: "OLLAMA_CHAT_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general top_p (0.0 - 1.0)",
 	},
-	"OPENAI_USAGE_DAILY_INPUT_TOKENS": {
-		Key: "OPENAI_USAGE_DAILY_INPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI input tokens",
+	"OLLAMA_CHAT_NUM_CTX": {
+		Key: "OLLAMA_CHAT_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general num_ctx (optional)",
 	},
-	"OPENAI_USAGE_DAILY_OUTPUT_TOKENS": {
-		Key: "OPENAI_USAGE_DAILY_OUTPUT_TOKENS", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI output tokens",
+	"OLLAMA_CHAT_STOP": {
+		Key: "OLLAMA_CHAT_STOP", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general stop sequences (comma or newline separated)",
 	},
-	"OPENAI_USAGE_DAILY_COST_USD": {
-		Key: "OPENAI_USAGE_DAILY_COST_USD", Value: "0", Type: SettingTypeNormal, Required: false,
-		Description: "Daily OpenAI usage cost in USD",
+	"OLLAMA_CHAT_SYSTEM_PROMPT": {
+		Key: "OLLAMA_CHAT_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Ollama general system prompt (optional)",
 	},
 	"CHAT_TRANSLATION_ENABLED": {
 		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
@@ -435,11 +423,11 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"openaiUsage":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
 	},
 	"OVERLAY_CARDS_LAYOUT": {
-		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","openaiUsage","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
 		Description: "Layout (column + order) of overlay setting cards",
 	},
 	"MIC_TRANSCRIPT_ENABLED": {
@@ -464,7 +452,7 @@ var DefaultSettings = map[string]Setting{
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_MODE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_MODE", Value: "off", Type: SettingTypeNormal, Required: false,
-		Description: "Mic transcript translation mode (off/openai/ollama)",
+		Description: "Mic transcript translation mode (off/ollama)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "eng", Type: SettingTypeNormal, Required: false,
@@ -481,10 +469,6 @@ var DefaultSettings = map[string]Setting{
 	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
 		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
-	},
-	"OPENAI_USAGE_OVERLAY_ENABLED": {
-		Key: "OPENAI_USAGE_OVERLAY_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
-		Description: "Show OpenAI usage overlay under clock",
 	},
 
 	// プレゼントルーレット設定
@@ -749,7 +733,7 @@ func (sm *SettingsManager) MigrateFromEnv() error {
 }
 
 func hasSecretInEnv() bool {
-	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID", "OPENAI_API_KEY"}
+	secretKeys := []string{"CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID"}
 	for _, key := range secretKeys {
 		if os.Getenv(key) != "" {
 			return true
@@ -823,33 +807,29 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.5 || val > 2.0 {
 			return fmt.Errorf("must be float between 0.5 and 2.0")
 		}
-	case "TRANSLATION_BACKEND":
-		if value != "openai" && value != "ollama" {
-			return fmt.Errorf("must be 'openai' or 'ollama'")
-		}
 	case "MIC_TRANSCRIPT_TRANSLATION_MODE":
-		if value != "off" && value != "openai" && value != "ollama" {
-			return fmt.Errorf("must be 'off', 'openai', or 'ollama'")
+		if value != "off" && value != "ollama" {
+			return fmt.Errorf("must be 'off' or 'ollama'")
 		}
-	case "OLLAMA_NUM_PREDICT":
+	case "OLLAMA_NUM_PREDICT", "OLLAMA_CHAT_NUM_PREDICT":
 		if value != "" {
 			if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 4096 {
 				return fmt.Errorf("must be integer between 1 and 4096")
 			}
 		}
-	case "OLLAMA_TEMPERATURE":
+	case "OLLAMA_TEMPERATURE", "OLLAMA_CHAT_TEMPERATURE":
 		if value != "" {
 			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 2.0 {
 				return fmt.Errorf("must be float between 0.0 and 2.0")
 			}
 		}
-	case "OLLAMA_TOP_P":
+	case "OLLAMA_TOP_P", "OLLAMA_CHAT_TOP_P":
 		if value != "" {
 			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 1.0 {
 				return fmt.Errorf("must be float between 0.0 and 1.0")
 			}
 		}
-	case "OLLAMA_NUM_CTX":
+	case "OLLAMA_NUM_CTX", "OLLAMA_CHAT_NUM_CTX":
 		if value != "" {
 			if val, err := strconv.Atoi(value); err != nil || val < 128 || val > 131072 {
 				return fmt.Errorf("must be integer between 128 and 131072")
