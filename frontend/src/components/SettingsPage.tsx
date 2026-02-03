@@ -110,6 +110,12 @@ export const SettingsPage: React.FC = () => {
     translationTestTookMs,
     translationTesting,
     handleTestTranslation,
+    chatTestText,
+    setChatTestText,
+    chatTestResult,
+    chatTestTookMs,
+    chatTesting,
+    handleTestChat,
   } = contextValue;
 
   const handleChatSidebarSideChange = (side: 'left' | 'right') => {
@@ -283,6 +289,12 @@ export const SettingsPage: React.FC = () => {
                   translationTestTookMs={translationTestTookMs}
                   translationTesting={translationTesting}
                   handleTestTranslation={handleTestTranslation}
+                  chatTestText={chatTestText}
+                  setChatTestText={setChatTestText}
+                  chatTestResult={chatTestResult}
+                  chatTestTookMs={chatTestTookMs}
+                  chatTesting={chatTesting}
+                  handleTestChat={handleTestChat}
                 />
               </TabsContent>
               <TabsContent value="twitch">

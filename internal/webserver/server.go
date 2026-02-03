@@ -209,6 +209,7 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/logs/stream", handleLogsStream) // WebSocketは独自のUpgrade処理
 	mux.HandleFunc("/api/logs/clear", corsMiddleware(handleLogsClear))
 	mux.HandleFunc("/api/chat/history", corsMiddleware(handleChatHistory))
+	mux.HandleFunc("/api/chat/test", corsMiddleware(handleChatTest))
 
 	// Mic-recog endpoints
 	mux.HandleFunc("/api/mic/devices", corsMiddleware(handleMicDevices))

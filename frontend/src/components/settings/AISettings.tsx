@@ -32,6 +32,12 @@ interface AISettingsProps {
   translationTestTookMs: number | null;
   translationTesting: boolean;
   handleTestTranslation: () => void;
+  chatTestText: string;
+  setChatTestText: (text: string) => void;
+  chatTestResult: string;
+  chatTestTookMs: number | null;
+  chatTesting: boolean;
+  handleTestChat: () => void;
 }
 
 export const AISettings: React.FC<AISettingsProps> = ({
@@ -59,6 +65,12 @@ export const AISettings: React.FC<AISettingsProps> = ({
   translationTestTookMs,
   translationTesting,
   handleTestTranslation,
+  chatTestText,
+  setChatTestText,
+  chatTestResult,
+  chatTestTookMs,
+  chatTesting,
+  handleTestChat,
 }) => {
   const autoFetchRequestedRef = React.useRef(false);
   const gbToBytes = (gb: number) => Math.round(gb * 1024 * 1024 * 1024);
@@ -106,6 +118,10 @@ export const AISettings: React.FC<AISettingsProps> = ({
   const isOllamaModelInstalled = ollamaModels.some(
     (model) => model.id.toLowerCase() === activeOllamaModel.toLowerCase(),
   );
+  const normalizedChatModel = chatOllamaModel.trim().toLowerCase();
+  const isChatModelInstalled = normalizedChatModel !== ''
+    ? ollamaModels.some((model) => model.id.toLowerCase() === normalizedChatModel)
+    : false;
 
   const autoLangValue = 'auto';
   const languageOptions = [
@@ -271,12 +287,19 @@ export const AISettings: React.FC<AISettingsProps> = ({
     <div className="space-y-6 focus:outline-none">
       <Card>
         <CardHeader>
-          <CardTitle>Ollama 通常設定</CardTitle>
+          <CardTitle>AI 基本情報</CardTitle>
           <CardDescription>
-            通常のAI応答に使うOllama設定です
+            接続先など共通の設定です
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
+          {!ollamaReady && (
+            <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
+              <AlertDescription className="text-yellow-700 dark:text-yellow-200">
+                {ollamaStarting ? 'Ollamaを起動中です。接続後に操作できます。' : 'Ollama未接続です。起動を確認してください。'}
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-2">
             <Label htmlFor="ollama_base_url">OllamaサーバURL（共通）</Label>
             <Input
@@ -286,10 +309,33 @@ export const AISettings: React.FC<AISettingsProps> = ({
               onChange={(e) => handleSettingChange('OLLAMA_BASE_URL', e.target.value)}
             />
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              翻訳用と共通の接続先です
+              通常/翻訳で共通の接続先です
             </p>
           </div>
+          <div className="space-y-2">
+            <Label>ステータス</Label>
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              {ollamaStatus?.healthy
+                ? `接続中${ollamaStatus.version ? ` (v${ollamaStatus.version})` : ''}`
+                : ollamaStatus?.running
+                  ? '起動中'
+                  : '停止中'}
+            </div>
+            {ollamaStatus?.error && !ollamaStatus.healthy && (
+              <p className="text-xs text-red-500">{ollamaStatus.error}</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Ollama 通常設定</CardTitle>
+          <CardDescription>
+            通常のAI応答に使うOllama設定です
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="ollama_chat_model">モデル</Label>
             <Input
@@ -315,6 +361,27 @@ export const AISettings: React.FC<AISettingsProps> = ({
                 </SelectContent>
               </Select>
             )}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => pullOllamaModel(chatOllamaModel)}
+                disabled={
+                  pullingOllamaModel ||
+                  !chatOllamaModel ||
+                  !ollamaReady ||
+                  isChatModelInstalled
+                }
+              >
+                {pullingOllamaModel
+                  ? '取得中...'
+                  : isChatModelInstalled
+                    ? '取得済み'
+                    : 'モデルを取得'}
+              </Button>
+              <span>未取得の場合はここでダウンロード</span>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -388,6 +455,47 @@ export const AISettings: React.FC<AISettingsProps> = ({
               placeholder="例: \n*( \n###"
             />
           </div>
+
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-3">
+            <div className="text-base font-semibold text-gray-700 dark:text-gray-200">会話テスト</div>
+            <div className="space-y-2">
+              <Label htmlFor="chat-test-text">テスト文</Label>
+              <Textarea
+                id="chat-test-text"
+                value={chatTestText}
+                onChange={(e) => setChatTestText(e.target.value)}
+                rows={3}
+                placeholder="通常AIへの入力を確認します"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={handleTestChat}
+                disabled={chatTesting || !ollamaReady}
+                variant="outline"
+              >
+                {chatTesting ? '送信中...' : '会話テスト'}
+              </Button>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                OLLAMA_CHAT_* の設定で応答を確認します
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Label>結果</Label>
+              <Textarea
+                value={chatTestResult}
+                readOnly
+                rows={3}
+                placeholder="応答がここに表示されます"
+              />
+              {chatTestTookMs !== null && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  処理時間: {chatTestTookMs}ms
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -400,13 +508,6 @@ export const AISettings: React.FC<AISettingsProps> = ({
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
-            {!ollamaReady && (
-              <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
-                <AlertDescription className="text-yellow-700 dark:text-yellow-200">
-                  {ollamaStarting ? 'Ollamaを起動中です。接続後に操作できます。' : 'Ollama未接続です。起動を確認してください。'}
-                </AlertDescription>
-              </Alert>
-            )}
             <div className="space-y-2">
               <Label htmlFor="ollama_system_prompt">Ollama System Prompt</Label>
               <Textarea
@@ -640,22 +741,6 @@ export const AISettings: React.FC<AISettingsProps> = ({
                 <Textarea readOnly rows={6} value={ollamaModelfilePreview} />
               </div>
             )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>ステータス</Label>
-                <div className="text-sm text-gray-600 dark:text-gray-300">
-                  {ollamaStatus?.healthy
-                    ? `接続中${ollamaStatus.version ? ` (v${ollamaStatus.version})` : ''}`
-                    : ollamaStatus?.running
-                      ? '起動中'
-                      : '停止中'}
-                </div>
-                {ollamaStatus?.error && !ollamaStatus.healthy && (
-                  <p className="text-xs text-red-500">{ollamaStatus.error}</p>
-                )}
-              </div>
-            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-3">

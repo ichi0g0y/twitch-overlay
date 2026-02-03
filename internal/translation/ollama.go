@@ -273,6 +273,47 @@ func TranslateToTargetLanguageOllama(baseURL, model, text, srcLang, tgtLang stri
 	return translated, NormalizeLanguageCode(sourceLangCode), nil
 }
 
+func ChatWithOllama(baseURL, model, prompt string, opts OllamaRequestOptions) (string, error) {
+	if strings.TrimSpace(prompt) == "" {
+		return "", nil
+	}
+
+	baseURL = ResolveOllamaBaseURL(baseURL)
+	if baseURL == "" {
+		baseURL = DefaultOllamaBaseURL
+	}
+
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return "", fmt.Errorf("ollama model is not set")
+	}
+
+	temperature := 0.7
+	if opts.Temperature != nil {
+		temperature = *opts.Temperature
+	}
+	topP := 0.9
+	if opts.TopP != nil {
+		topP = *opts.TopP
+	}
+	options := map[string]interface{}{
+		"temperature": temperature,
+		"top_p":       topP,
+	}
+	if normalized := normalizeNumPredict(opts.NumPredict); normalized != nil {
+		options["num_predict"] = *normalized
+	}
+	if opts.NumCtx != nil && *opts.NumCtx > 0 {
+		options["num_ctx"] = *opts.NumCtx
+	}
+	if len(opts.Stop) > 0 {
+		options["stop"] = opts.Stop
+	}
+
+	systemPrompt := strings.TrimSpace(opts.SystemPrompt)
+	return translateWithOllamaChat(baseURL, model, prompt, systemPrompt, options)
+}
+
 func normalizeOllamaLangCode(code string) string {
 	trimmed := strings.TrimSpace(code)
 	if trimmed == "" {

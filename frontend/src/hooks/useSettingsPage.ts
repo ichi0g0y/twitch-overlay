@@ -106,6 +106,9 @@ export const useSettingsPage = () => {
   const [creatingOllamaModelfile, setCreatingOllamaModelfile] = useState(false);
   const [ollamaModelfilePreview, setOllamaModelfilePreview] = useState('');
   const [ollamaModelfileError, setOllamaModelfileError] = useState<string | null>(null);
+  const chatTestStorageKeys = {
+    text: 'settings.chatTest.text',
+  };
   const translationTestStorageKeys = {
     text: 'settings.translationTest.text',
     source: 'settings.translationTest.source',
@@ -131,6 +134,12 @@ export const useSettingsPage = () => {
   const [translationTestResult, setTranslationTestResult] = useState<string>('');
   const [translationTestTookMs, setTranslationTestTookMs] = useState<number | null>(null);
   const [translationTesting, setTranslationTesting] = useState(false);
+  const [chatTestText, setChatTestText] = useState(() =>
+    readStoredValue(chatTestStorageKeys.text, 'こんにちは'),
+  );
+  const [chatTestResult, setChatTestResult] = useState<string>('');
+  const [chatTestTookMs, setChatTestTookMs] = useState<number | null>(null);
+  const [chatTesting, setChatTesting] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -420,6 +429,18 @@ export const useSettingsPage = () => {
     }
     setTranslationTesting(true);
     try {
+      const translationSettingsPayload = {
+        OLLAMA_BASE_URL: getSettingValue('OLLAMA_BASE_URL'),
+        OLLAMA_MODEL: getSettingValue('OLLAMA_MODEL'),
+        OLLAMA_NUM_PREDICT: getSettingValue('OLLAMA_NUM_PREDICT'),
+        OLLAMA_TEMPERATURE: getSettingValue('OLLAMA_TEMPERATURE'),
+        OLLAMA_TOP_P: getSettingValue('OLLAMA_TOP_P'),
+        OLLAMA_NUM_CTX: getSettingValue('OLLAMA_NUM_CTX'),
+        OLLAMA_STOP: getSettingValue('OLLAMA_STOP'),
+        OLLAMA_SYSTEM_PROMPT: getSettingValue('OLLAMA_SYSTEM_PROMPT'),
+      };
+      await UpdateSettings(translationSettingsPayload);
+      applySavedSettings(translationSettingsPayload);
       const status = await fetchOllamaStatus(true);
       if (!status?.healthy) {
         const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
@@ -451,11 +472,60 @@ export const useSettingsPage = () => {
       setTranslationTesting(false);
     }
   }, [
+    applySavedSettings,
     fetchOllamaStatus,
+    getSettingValue,
     translationTestSourceLang,
     translationTestTargetLang,
     translationTestText,
   ]);
+
+  const handleTestChat = useCallback(async () => {
+    const text = chatTestText.trim();
+    if (!text) {
+      toast.error('テスト文を入力してください');
+      return;
+    }
+    setChatTesting(true);
+    try {
+      const chatSettingsPayload = {
+        OLLAMA_BASE_URL: getSettingValue('OLLAMA_BASE_URL'),
+        OLLAMA_CHAT_MODEL: getSettingValue('OLLAMA_CHAT_MODEL'),
+        OLLAMA_CHAT_NUM_PREDICT: getSettingValue('OLLAMA_CHAT_NUM_PREDICT'),
+        OLLAMA_CHAT_TEMPERATURE: getSettingValue('OLLAMA_CHAT_TEMPERATURE'),
+        OLLAMA_CHAT_TOP_P: getSettingValue('OLLAMA_CHAT_TOP_P'),
+        OLLAMA_CHAT_NUM_CTX: getSettingValue('OLLAMA_CHAT_NUM_CTX'),
+        OLLAMA_CHAT_STOP: getSettingValue('OLLAMA_CHAT_STOP'),
+        OLLAMA_CHAT_SYSTEM_PROMPT: getSettingValue('OLLAMA_CHAT_SYSTEM_PROMPT'),
+      };
+      await UpdateSettings(chatSettingsPayload);
+      applySavedSettings(chatSettingsPayload);
+      const status = await fetchOllamaStatus(true);
+      if (!status?.healthy) {
+        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
+        throw new Error(message);
+      }
+      const url = await buildApiUrlAsync('/api/chat/test');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setChatTestResult(data?.text || '');
+      setChatTestTookMs(typeof data?.took_ms === 'number' ? data.took_ms : null);
+    } catch (err: any) {
+      console.error('[handleTestChat] Failed to chat:', err);
+      toast.error(`会話テストに失敗しました: ${err?.message || 'unknown error'}`);
+      setChatTestTookMs(null);
+    } finally {
+      setChatTesting(false);
+    }
+  }, [applySavedSettings, chatTestText, fetchOllamaStatus, getSettingValue]);
 
   const handleCreateOllamaModelfile = useCallback(async (apply: boolean) => {
     setCreatingOllamaModelfile(true);
@@ -544,6 +614,14 @@ export const useSettingsPage = () => {
       // ignore storage errors
     }
   }, [translationTestText, translationTestStorageKeys.text]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(chatTestStorageKeys.text, chatTestText);
+    } catch {
+      // ignore storage errors
+    }
+  }, [chatTestText, chatTestStorageKeys.text]);
 
   React.useEffect(() => {
     try {
@@ -1064,6 +1142,12 @@ export const useSettingsPage = () => {
     translationTestTookMs,
     translationTesting,
     handleTestTranslation,
+    chatTestText,
+    setChatTestText,
+    chatTestResult,
+    chatTestTookMs,
+    chatTesting,
+    handleTestChat,
 
     // Show/hide secrets
     showSecrets,
