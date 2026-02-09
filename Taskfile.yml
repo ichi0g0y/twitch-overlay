@@ -19,9 +19,26 @@ tasks:
         go build -o build/bin/twitch-overlay
 
         echo "🚀 アプリケーションを起動中..."
-        echo "💡 フロントエンド変更時: Ctrl+C で停止 → 'task dev' で再起動"
-        echo "💡 より早い開発: 'task dev:quick' を使用（Goビルドのみ）"
-        ./build/bin/twitch-overlay
+        echo "💡 フロントエンド変更時: 再起動が必要"
+        echo "💡 より早い開発: 'task dev:quick'（Goビルドのみ）"
+        if [ "$(uname)" = "Darwin" ]; then
+          echo "📦 macOS: dev用.appを作成中..."
+          APP_DIR="build/bin/twitch-overlay.dev.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+          cp build/bin/twitch-overlay "$APP_DIR/Contents/MacOS/twitch-overlay"
+          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
+          # LaunchServices経由で起動しないとmacOSでSIGABRTすることがあるためopenを使用する
+          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
+          open -n "$APP_DIR"
+          echo "✅ 起動しました: $APP_DIR"
+          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay.dev.app/Contents/MacOS/twitch-overlay'"
+        else
+          ./build/bin/twitch-overlay
+        fi
 
   # クイック開発モード（フロントエンドは既にビルド済みと仮定）
   dev:quick:
@@ -32,7 +49,22 @@ tasks:
         go build -o build/bin/twitch-overlay
 
         echo "🚀 アプリケーションを起動中..."
-        ./build/bin/twitch-overlay
+        if [ "$(uname)" = "Darwin" ]; then
+          APP_DIR="build/bin/twitch-overlay.dev.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+          cp build/bin/twitch-overlay "$APP_DIR/Contents/MacOS/twitch-overlay"
+          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
+          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
+          open -n "$APP_DIR"
+          echo "✅ 起動しました: $APP_DIR"
+          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay.dev.app/Contents/MacOS/twitch-overlay'"
+        else
+          ./build/bin/twitch-overlay
+        fi
 
   # プロダクションビルド
   build:
