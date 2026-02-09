@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -63,8 +62,23 @@ func (m *Manager) Start() error {
 		return nil
 	}
 
-	if cfg.baseURL != "" && isServerHealthy(cfg.baseURL) {
-		logger.Info("ollama server already running", zap.String("url", cfg.baseURL))
+	healthBaseURL := normalizeBaseURL(cfg.baseURL)
+	if healthBaseURL == "" {
+		healthBaseURL = "http://" + net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port))
+	}
+
+	if isServerHealthy(healthBaseURL) {
+		logger.Info("ollama server already running", zap.String("url", healthBaseURL))
+		return nil
+	}
+
+	// If something is already listening on the configured port, don't try to start another "ollama serve".
+	// This prevents noisy "address already in use" errors when Ollama is already running externally.
+	if isPortOpen(cfg.host, cfg.port) {
+		logger.Info("ollama port is already in use; skipping auto start",
+			zap.String("host", cfg.host),
+			zap.Int("port", cfg.port),
+			zap.String("url", healthBaseURL))
 		return nil
 	}
 
@@ -98,10 +112,15 @@ func (m *Manager) Start() error {
 	go streamOutput("stdout", stdout, false)
 	go streamOutput("stderr", stderr, true)
 	cmdRef := cmd
+	healthURL := healthBaseURL
 	go func() {
 		defer close(done)
 		err := cmdRef.Wait()
-		if err != nil {
+		if err != nil && isServerHealthy(healthURL) {
+			// A server is already responding on the configured URL; treat this as a "lost the race"
+			// instead of an error (commonly happens when Ollama is started outside this app).
+			logger.Info("ollama exited (server already running)", zap.Error(err), zap.String("url", healthURL))
+		} else if err != nil {
 			logger.Warn("ollama exited with error", zap.Error(err))
 		} else {
 			logger.Info("ollama exited")
@@ -249,21 +268,6 @@ func isLocalHost(host string) bool {
 	default:
 		return false
 	}
-}
-
-func isServerHealthy(baseURL string) bool {
-	endpoint := strings.TrimRight(baseURL, "/") + "/api/version"
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return false
-	}
-	client := &http.Client{Timeout: 1 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 func streamOutput(name string, r io.Reader, isErr bool) {
