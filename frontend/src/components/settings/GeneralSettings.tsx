@@ -26,8 +26,6 @@ interface GeneralSettingsProps {
   handleDeleteFont: () => void;
   handleTestNotification: () => void;
   testingNotification: boolean;
-  resettingNotificationPosition: boolean;
-  handleResetNotificationPosition: () => void;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
@@ -47,8 +45,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleDeleteFont,
   handleTestNotification,
   testingNotification,
-  resettingNotificationPosition,
-  handleResetNotificationPosition,
 }) => {
   return (
     <div className="space-y-6 focus:outline-none">
@@ -174,7 +170,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
         <CardHeader>
           <CardTitle>通知設定</CardTitle>
           <CardDescription>
-            Twitchチャット受信時の通知ウインドウを設定します
+            Twitchチャット受信時の通知をブラウザ通知で受け取ります
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -182,7 +178,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
             <div className="space-y-0.5">
               <Label>チャット通知を有効化</Label>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Twitchチャットを受信したときに通知ウインドウを表示します
+                Twitchチャットを受信したときにブラウザ通知を表示します
               </p>
             </div>
             <Switch
@@ -196,7 +192,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               <Alert>
                 <Bell className="h-4 w-4" />
                 <AlertDescription>
-                  通知が有効です。Twitchチャットを受信すると、ドラッグ可能な通知ウインドウが表示されます。ドラッグして移動した位置が自動的に記憶されます。
+                  通知が有効です。Twitchチャットを受信すると、ブラウザの通知として表示されます（ブラウザ側で通知の許可が必要です）。
                 </AlertDescription>
               </Alert>
 
@@ -268,31 +264,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                   )}
                 </Button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  テスト通知ウインドウが表示されます。ドラッグして位置を変更できます。
-                </p>
-              </div>
-
-              <div>
-                <Button
-                  onClick={handleResetNotificationPosition}
-                  variant="outline"
-                  className="w-full"
-                  disabled={resettingNotificationPosition}
-                >
-                  {resettingNotificationPosition ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      リセット中...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      通知ウィンドウの位置をリセット
-                    </>
-                  )}
-                </Button>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  保存された通知ウィンドウの位置をクリアし、次回表示時にデフォルト位置で表示します
+                  ブラウザ通知が表示されます（許可が必要です）。
                 </p>
               </div>
             </div>

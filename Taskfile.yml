@@ -3,14 +3,23 @@ version: "3"
 tasks:
   # 開発モード
   dev:
-    desc: 開発モードでアプリを起動（OBS用オーバーレイも同時ビルド）
+    desc: WebUI（ヘッドレス）でサーバーを起動（Wailsなし）
+    cmds:
+      - task: dev:webui
+
+  dev:quick:
+    desc: クイック開発モード（Goのみ、distビルド済み前提）
+    cmds:
+      - |
+        echo "🚀 Webサーバーを起動中..."
+        go run ./cmd/server
+
+  dev:wails:
+    desc: 開発モードでアプリを起動（Wails/デスクトップ、OBS用オーバーレイも同時ビルド）
     cmds:
       - |
         echo "📦 OBS用オーバーレイをビルド中..."
         (cd web && bun run build)
-
-        echo "📦 リモートコントロールUIをビルド中..."
-        (cd web/remote && bun install && bun run build)
 
         echo "📦 フロントエンドをビルド中..."
         (cd frontend && bun run build)
@@ -20,7 +29,7 @@ tasks:
 
         echo "🚀 アプリケーションを起動中..."
         echo "💡 フロントエンド変更時: 再起動が必要"
-        echo "💡 より早い開発: 'task dev:quick'（Goビルドのみ）"
+        echo "💡 より早い開発: 'task dev:wails:quick'（Goビルドのみ）"
         if [ "$(uname)" = "Darwin" ]; then
           echo "📦 macOS: dev用.appを作成中..."
           APP_DIR="build/bin/twitch-overlay.dev.app"
@@ -40,9 +49,8 @@ tasks:
           ./build/bin/twitch-overlay
         fi
 
-  # クイック開発モード（フロントエンドは既にビルド済みと仮定）
-  dev:quick:
-    desc: クイック開発モード（Go再ビルドのみ、フロントエンドビルド済み前提）
+  dev:wails:quick:
+    desc: クイック開発モード（Wails/デスクトップ、Go再ビルドのみ、フロントエンドビルド済み前提）
     cmds:
       - |
         echo "🔨 Goバイナリをビルド中..."
@@ -66,14 +74,72 @@ tasks:
           ./build/bin/twitch-overlay
         fi
 
+  dev:webui:
+    desc: WebUI（ヘッドレス）でサーバーを起動（Wailsなし）
+    cmds:
+      - |
+        # Wails devアプリが起動中だとポート競合するため停止
+        if [ "$(uname)" = "Darwin" ]; then
+          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
+          # 既存のWebUI(dev)サーバーも停止（ポート競合回避）
+          pkill -f "twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server" >/dev/null 2>&1 || true
+        fi
+
+        echo "📦 オーバーレイをビルド中..."
+        (cd web && bun run build)
+
+        echo "📦 WebUIをビルド中..."
+        (cd frontend && bun run build)
+
+        # macOS: CoreBluetoothはCLI起動だとabort trapになることがあるため、.appバンドルで起動する
+        if [ "$(uname)" = "Darwin" ]; then
+          echo "🔨 Go(ヘッドレス)をビルド中..."
+          mkdir -p build/bin
+          go build -o build/bin/twitch-overlay-webui-server ./cmd/server
+
+          echo "📦 macOS: WebUI用.dev.appを作成中..."
+          APP_DIR="build/bin/twitch-overlay-webui.dev.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+          cp build/bin/twitch-overlay-webui-server "$APP_DIR/Contents/MacOS/twitch-overlay-webui-server"
+          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.webui.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay WebUI Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay-webui-server" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
+
+          echo "📦 アセットを同梱中..."
+          mkdir -p "$APP_DIR/Contents/Resources/web" "$APP_DIR/Contents/Resources/frontend"
+          rsync -av --delete web/dist/ "$APP_DIR/Contents/Resources/web/dist/"
+          rsync -av --delete frontend/dist/ "$APP_DIR/Contents/Resources/frontend/dist/"
+
+          echo "🔏 署名処理中（エンタイトルメント適用）..."
+          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
+
+          # 既存プロセスが残っているとポート競合するため停止
+          pkill -f "twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server" >/dev/null 2>&1 || true
+          open -n "$APP_DIR"
+          # PORT検出はDB依存にすると失敗しがちなので、devはENV優先で固定値にフォールバックする
+          PORT="${SERVER_PORT:-30303}"
+          echo "⏳ 起動確認中... http://localhost:$PORT/"
+          for i in {1..20}; do
+            if curl -fsS "http://localhost:$PORT/" >/dev/null 2>&1; then
+              echo "✅ WebUI OK: http://localhost:$PORT/"
+              break
+            fi
+            sleep 0.25
+          done
+          echo "✅ 起動しました: $APP_DIR"
+          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server'"
+        else
+          echo "🚀 Webサーバーを起動中..."
+          go run ./cmd/server
+        fi
+
   # プロダクションビルド
   build:
     desc: プロダクションビルドを実行
     cmds:
       - echo "OBS用オーバーレイをビルド中..."
       - cd web && bun run build
-      - echo "リモートコントロールUIをビルド中..."
-      - cd web/remote && bun install && bun run build
       - echo "フロントエンド依存関係をインストール中..."
       - cd frontend && bun install
       - echo "mic-recogをビルド中..."

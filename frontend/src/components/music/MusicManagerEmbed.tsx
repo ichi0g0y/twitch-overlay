@@ -4,7 +4,6 @@ import MusicUploadModal from './MusicUploadModal';
 import { Button } from '../ui/button';
 import { Upload, Plus, Trash2, Music as MusicIcon, ChevronLeft, ChevronRight, AlertTriangle, ListPlus } from 'lucide-react';
 import type { Track, Playlist } from '@shared/types/music';
-import { GetMusicPlaylists, GetMusicTracks, GetPlaylistTracks, CreateMusicPlaylist, DeleteMusicTrack, DeleteMusicPlaylist, AddTrackToPlaylist, RemoveTrackFromPlaylist, GetTrackArtwork } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 const MusicManagerEmbed = () => {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -27,25 +26,22 @@ const MusicManagerEmbed = () => {
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
-  // トラック一覧を取得（Wails API使用）
+  // トラック一覧を取得
   const loadTracks = async () => {
     try {
-      const data = await GetMusicTracks();
-      const trackList = data.tracks || [];
+      const response = await fetch(buildApiUrl('/api/music/tracks'));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const trackList = (data?.tracks || []) as Track[];
       setTracks(trackList);
       
       // アートワークURLを事前に取得
       const urls: Record<string, string> = {};
       for (const track of trackList) {
         if (track.has_artwork) {
-          try {
-            const url = await GetTrackArtwork(track.id);
-            if (url) {
-              urls[track.id] = url;
-            }
-          } catch (error) {
-            console.error(`Failed to load artwork for track ${track.id}:`, error);
-          }
+          urls[track.id] = buildApiUrl(`/api/music/track/${track.id}/artwork`);
         }
       }
       setArtworkUrls(urls);
@@ -54,11 +50,15 @@ const MusicManagerEmbed = () => {
     }
   };
 
-  // プレイリスト一覧を取得（Wails API使用）
+  // プレイリスト一覧を取得
   const loadPlaylists = async () => {
     try {
-      const data = await GetMusicPlaylists();
-      setPlaylists(data.playlists || []);
+      const response = await fetch(buildApiUrl('/api/music/playlists'));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setPlaylists((data?.playlists || []) as Playlist[]);
     } catch (error) {
       console.error('Failed to load playlists:', error);
     }
@@ -120,8 +120,14 @@ const MusicManagerEmbed = () => {
     if (!confirm('このトラックを削除しますか？')) return;
 
     try {
-      await DeleteMusicTrack(trackId);
+      const response = await fetch(buildApiUrl(`/api/music/track/${trackId}`), {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       setTracks(prev => prev.filter(t => t.id !== trackId));
+      setPlaylistTracks(prev => prev.filter(t => t.id !== trackId));
     } catch (error) {
       console.error('Failed to delete track:', error);
     }
@@ -135,6 +141,9 @@ const MusicManagerEmbed = () => {
       });
       if (response.ok) {
         setTracks([]);
+        setPlaylistTracks([]);
+        setArtworkUrls({});
+        setSelectedTracks([]);
         setCurrentPage(1);
         setShowDeleteConfirm(false);
       }
@@ -143,23 +152,38 @@ const MusicManagerEmbed = () => {
     }
   };
 
-  // プレイリストトラックを取得（Wails API使用）
+  // プレイリストトラックを取得
   const loadPlaylistTracks = async (playlistId: string) => {
     try {
-      const tracks = await GetPlaylistTracks(playlistId);
-      // PlaylistTrackはすでにTrackの全プロパティを含んでいる、nullを除外
-      setPlaylistTracks((tracks || []).filter(t => t !== null) as Track[]);
+      const response = await fetch(buildApiUrl(`/api/music/playlist/${playlistId}/tracks`));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const nextTracks = (data?.tracks || []) as Array<Track | null>;
+      setPlaylistTracks(nextTracks.filter((t): t is Track => t !== null));
     } catch (error) {
       console.error('Failed to load playlist tracks:', error);
     }
   };
   
-  // トラックをプレイリストに追加（Wails API使用）
+  // トラックをプレイリストに追加
   const handleAddToPlaylist = async (trackId: string, playlistId: string) => {
     setAddingToPlaylist(trackId);
     try {
       // 最後の位置に追加（position=0で自動的に最後に配置）
-      await AddTrackToPlaylist(playlistId, trackId, 0);
+      const response = await fetch(buildApiUrl(`/api/music/playlist/${playlistId}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_track',
+          track_id: trackId,
+          position: 0,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       
       // プレイリストを再読み込み
       await loadPlaylists();
@@ -174,12 +198,20 @@ const MusicManagerEmbed = () => {
     }
   };
 
-  // プレイリスト作成（Wails API使用）
+  // プレイリスト作成
   const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) return;
 
     try {
-      const playlist = await CreateMusicPlaylist(newPlaylistName, '');
+      const response = await fetch(buildApiUrl('/api/music/playlist'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newPlaylistName, description: '' }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const playlist = (await response.json()) as Playlist;
       if (playlist) {
         setPlaylists(prev => [...prev, playlist]);
       }
@@ -193,6 +225,12 @@ const MusicManagerEmbed = () => {
   // アップロード完了時の処理
   const handleUploadComplete = (track: Track) => {
     setTracks(prev => [track, ...prev]);
+    if (track.has_artwork) {
+      setArtworkUrls(prev => ({
+        ...prev,
+        [track.id]: buildApiUrl(`/api/music/track/${track.id}/artwork`),
+      }));
+    }
     setCurrentPage(1); // 新しいトラックを表示するため最初のページに戻る
     // モーダルは複数ファイル対応のため、自動で閉じない
   };

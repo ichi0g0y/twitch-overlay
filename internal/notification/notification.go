@@ -131,15 +131,16 @@ func EnqueueNotificationWithFragments(username, message string, fragments []Frag
 // EnqueueNotificationWithFragmentsAndAvatar は通知をキューに追加する（フラグメント+アバター付き）
 // この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
 func EnqueueNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if wailsApp == nil {
-		logger.Error("Notification manager not initialized")
-		return
-	}
-
 	// 通知が無効な場合はスキップ
 	if !isNotificationEnabled() {
 		logger.Debug("Notification is disabled, skipping",
 			zap.String("username", username))
+		return
+	}
+
+	// Wails無し（WebUI/headless）でも通知をWebSocketへ流す
+	if wailsApp == nil {
+		broadcastChatNotification(username, message, fragments, avatarURL)
 		return
 	}
 
@@ -376,15 +377,16 @@ func ShowChatNotificationWithFragments(username, message string, fragments []Fra
 
 // ShowChatNotificationWithFragmentsAndAvatar shows a chat notification window with fragments and avatar
 func ShowChatNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if wailsApp == nil {
-		logger.Error("Notification manager not initialized")
-		return
-	}
-
 	// 通知が無効な場合はスキップ
 	if !isNotificationEnabled() {
 		logger.Debug("Notification is disabled, skipping",
 			zap.String("username", username))
+		return
+	}
+
+	// Wails無し（WebUI/headless）でも通知をWebSocketへ流す
+	if wailsApp == nil {
+		broadcastChatNotification(username, message, fragments, avatarURL)
 		return
 	}
 
@@ -431,24 +433,21 @@ func updateWindowContentWithFragments(username, message string, fragments []Frag
 // updateWindowContentWithFragmentsAndAvatar updates the content of existing notification window with fragments and avatar
 // Note: This should only be called after WindowRuntimeReady event or when window already exists
 func updateWindowContentWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if notificationWindow == nil {
-		logger.Warn("updateWindowContent: notification window is nil")
-		return
-	}
+	broadcastChatNotification(username, message, fragments, avatarURL)
+}
 
+func broadcastChatNotification(username, message string, fragments []FragmentInfo, avatarURL string) {
 	// Get font size from settings
 	fontSize := getNotificationFontSize()
 
-	logger.Info("Updating notification window content",
+	logger.Info("Broadcasting chat notification via WebSocket",
 		zap.String("username", username),
 		zap.String("message", message),
 		zap.Int("fragments_count", len(fragments)),
 		zap.String("avatar_url", avatarURL),
-		zap.Int("font_size", fontSize))
-
-	// Broadcast notification via WebSocket to all connected clients
-	// This uses the same WebSocket connection as the settings window
-	// Using broadcast.Send() to avoid circular dependency
+		zap.Int("font_size", fontSize),
+		zap.Bool("wails_enabled", wailsApp != nil),
+		zap.Bool("window_created", notificationWindow != nil))
 
 	payload := map[string]interface{}{
 		"type":     "chat-notification",
@@ -468,8 +467,6 @@ func updateWindowContentWithFragmentsAndAvatar(username, message string, fragmen
 	}
 
 	broadcast.Send(payload)
-
-	logger.Info("Notification broadcast via WebSocket")
 }
 
 // getNotificationFontSize は設定から通知のフォントサイズを取得する

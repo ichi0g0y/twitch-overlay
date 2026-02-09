@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Wifi, Radio, Link2 } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
-import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
+import { buildApiUrl } from "@/utils/api";
 
 interface SystemStatusCardProps {
   featureStatus: FeatureStatus | null;
@@ -11,6 +11,7 @@ interface SystemStatusCardProps {
   streamStatus: StreamStatus | null;
   twitchUserInfo: TwitchUserInfo | null;
   printerStatusInfo: PrinterStatusInfo | null;
+  webServerPort?: number;
   refreshingStreamStatus: boolean;
   reconnectingPrinter: boolean;
   testingPrinter: boolean;
@@ -28,6 +29,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   streamStatus,
   twitchUserInfo,
   printerStatusInfo,
+  webServerPort,
   refreshingStreamStatus,
   reconnectingPrinter,
   testingPrinter,
@@ -38,7 +40,6 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   onPrinterReconnect,
   onTestPrint,
 }) => {
-  const [currentPort, setCurrentPort] = React.useState<number>(8080);
   const [ollamaStatus, setOllamaStatus] = React.useState<{
     running: boolean;
     healthy: boolean;
@@ -49,19 +50,24 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   const [micStatus, setMicStatus] = React.useState<{ running: boolean; error?: string } | null>(null);
   const [checkingServices, setCheckingServices] = React.useState(false);
 
-  React.useEffect(() => {
-    App.GetServerPort()
-      .then(port => setCurrentPort(port))
-      .catch(error => console.error('Failed to get server port:', error));
-  }, []);
+  const resolvedWebServerPort = React.useMemo(() => {
+    if (typeof webServerPort === 'number' && webServerPort > 0) {
+      return webServerPort;
+    }
+    if (typeof window === 'undefined') return undefined;
+    const fromLocation = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
+    if (!Number.isNaN(fromLocation) && fromLocation > 0) {
+      return fromLocation;
+    }
+    return undefined;
+  }, [webServerPort]);
 
   const refreshServices = React.useCallback(async () => {
-    if (!currentPort) return;
     setCheckingServices(true);
     try {
       const [ollamaRes, micRes] = await Promise.all([
-        fetch(`http://localhost:${currentPort}/api/ollama/status`),
-        fetch(`http://localhost:${currentPort}/api/mic/status`),
+        fetch(buildApiUrl(`/api/ollama/status`)),
+        fetch(buildApiUrl(`/api/mic/status`)),
       ]);
 
       if (ollamaRes.ok) {
@@ -93,7 +99,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
     } finally {
       setCheckingServices(false);
     }
-  }, [currentPort]);
+  }, []);
 
   React.useEffect(() => {
     refreshServices();
@@ -288,7 +294,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
               <div className="w-3 h-3 rounded-full bg-green-500" />
               <span className="font-medium dark:text-gray-200">Webサーバー</span>
               <span className="text-sm text-gray-500 dark:text-gray-400">
-                ポート {currentPort}
+                ポート {resolvedWebServerPort ?? '-'}
               </span>
             </div>
           </div>

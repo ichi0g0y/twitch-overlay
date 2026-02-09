@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react';
-import { buildApiUrlAsync } from '../utils/api';
+import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 import { Switch } from './ui/switch';
@@ -150,10 +150,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     let cancelled = false;
 
     const loadHistory = async () => {
-      const maxAttempts = 5;
+          const maxAttempts = 5;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try {
-          const url = await buildApiUrlAsync(`/api/chat/history?days=${HISTORY_DAYS}`);
+          const url = buildApiUrl(`/api/chat/history?days=${HISTORY_DAYS}`);
           const response = await fetch(url);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);

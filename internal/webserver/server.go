@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
 	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
@@ -113,10 +114,10 @@ func SetWebAssets(assets *embed.FS) {
 	webAssets = assets
 }
 
-func StartWebServer(port int) error {
-	// Register WebSocket broadcaster
-	broadcast.SetBroadcaster(&webSocketBroadcaster{})
-	StartMicRecogWatchdog()
+	func StartWebServer(port int) error {
+		// Register WebSocket broadcaster
+		broadcast.SetBroadcaster(&webSocketBroadcaster{})
+		StartMicRecogWatchdog()
 
 	// Register stream status change callback
 	status.RegisterStatusChangeCallback(func(streamStatus status.StreamStatus) {
@@ -124,58 +125,111 @@ func StartWebServer(port int) error {
 		BroadcastWSMessage("stream_status_changed", streamStatus)
 	})
 
-	// Prepare file server for static files
-	var fileServer http.Handler
-	var useEmbedded bool
+		// Prepare file servers for static files
+		// - WebUI:     /          -> frontend/dist
+		// - OverlayUI: /overlay/*  -> web/dist
+		var overlayServer http.Handler
+		var settingsServer http.Handler
+		var overlayEmbedded bool
+		var settingsEmbedded bool
+		var overlayFS fs.FS
+		var settingsFS fs.FS
+		var overlayDir string
+		var settingsDir string
 
-	if webAssets != nil {
-		// Use embedded assets if available (Wails build)
-		logger.Info("Using embedded web assets")
-		// Get the sub filesystem from "web/dist" directory in the embedded assets
-		webFS, err := fs.Sub(webAssets, "web/dist")
-		if err != nil {
-			logger.Error("Failed to get embedded web filesystem", zap.Error(err))
-			return fmt.Errorf("failed to get embedded web filesystem: %w", err)
-		}
-		fileServer = http.FileServer(http.FS(webFS))
-		useEmbedded = true
-	} else {
-		// Fall back to file system (development mode)
-		var staticDir string
-		possiblePaths := []string{}
+		if webAssets != nil {
+			// Use embedded assets if available (Wails build)
+			logger.Info("Using embedded web assets")
 
-		// First, try to find public directory relative to executable
-		if execPath, err := os.Executable(); err == nil {
-			execDir := filepath.Dir(execPath)
-			// Try public directory in the same directory as the executable
-			possiblePaths = append(possiblePaths, filepath.Join(execDir, "public"))
-		}
+			// Overlay assets (required)
+			oFS, err := fs.Sub(webAssets, "web/dist")
+			if err != nil {
+				logger.Error("Failed to get embedded overlay filesystem", zap.Error(err))
+				return fmt.Errorf("failed to get embedded overlay filesystem: %w", err)
+			}
+			overlayFS = oFS
+			overlayServer = http.FileServer(http.FS(oFS))
+			overlayEmbedded = true
 
-		// Then try relative paths from current working directory
-		possiblePaths = append(possiblePaths,
-			"./public",      // Production: same directory as executable
-			"./dist/public", // Development: built files
-			"./web/dist",    // Fallback: frontend build directory
-		)
-
-		for _, path := range possiblePaths {
-			if _, err := os.Stat(path); err == nil {
-				staticDir = path
-				logger.Info("Using static files directory", zap.String("path", staticDir))
-				break
+			// Settings assets (optional until embed includes it)
+			sFS, err := fs.Sub(webAssets, "frontend/dist")
+			if err != nil {
+				logger.Warn("Embedded settings assets not found, falling back to filesystem", zap.Error(err))
+			} else {
+				settingsFS = sFS
+				settingsServer = http.FileServer(http.FS(sFS))
+				settingsEmbedded = true
 			}
 		}
 
-		if staticDir == "" {
-			logger.Warn("No static files directory found, using default")
-			staticDir = "./web/dist"
-		}
-		fileServer = http.FileServer(http.Dir(staticDir))
-		useEmbedded = false
-	}
+		if !overlayEmbedded {
+			// Fall back to file system (development / headless mode)
+			possiblePaths := []string{}
 
-	// Create a new ServeMux for better routing control
-	mux := http.NewServeMux()
+			// First, try to find public directory relative to executable
+			if execPath, err := os.Executable(); err == nil {
+				execDir := filepath.Dir(execPath)
+				// macOS .app bundle layout: Contents/MacOS (exe) + Contents/Resources (assets)
+				possiblePaths = append(possiblePaths, filepath.Join(execDir, "..", "Resources", "web", "dist"))
+				possiblePaths = append(possiblePaths, filepath.Join(execDir, "public"))
+			}
+
+			// Then try relative paths from current working directory
+			possiblePaths = append(possiblePaths,
+				"./public",      // Production: same directory as executable
+				"./dist/public", // Development: built files
+				"./web/dist",    // Fallback: overlay build directory
+			)
+
+			for _, path := range possiblePaths {
+				if _, err := os.Stat(path); err == nil {
+					overlayDir = path
+					logger.Info("Using overlay static files directory", zap.String("path", overlayDir))
+					break
+				}
+			}
+
+			if overlayDir == "" {
+				logger.Warn("No overlay static files directory found, using default")
+				overlayDir = "./web/dist"
+			}
+			overlayServer = http.FileServer(http.Dir(overlayDir))
+		}
+
+		if !settingsEmbedded {
+			possiblePaths := []string{}
+
+			// First, try to find frontend/dist relative to executable
+			if execPath, err := os.Executable(); err == nil {
+				execDir := filepath.Dir(execPath)
+				// macOS .app bundle layout: Contents/MacOS (exe) + Contents/Resources (assets)
+				possiblePaths = append(possiblePaths, filepath.Join(execDir, "..", "Resources", "frontend", "dist"))
+				possiblePaths = append(possiblePaths, filepath.Join(execDir, "frontend", "dist"))
+			}
+
+			// Then try relative paths from current working directory
+			possiblePaths = append(possiblePaths,
+				"./frontend/dist",
+				"./dist/frontend",
+			)
+
+			for _, path := range possiblePaths {
+				if _, err := os.Stat(path); err == nil {
+					settingsDir = path
+					logger.Info("Using settings static files directory", zap.String("path", settingsDir))
+					break
+				}
+			}
+
+			if settingsDir == "" {
+				logger.Warn("No settings static files directory found, using default")
+				settingsDir = "./frontend/dist"
+			}
+			settingsServer = http.FileServer(http.Dir(settingsDir))
+		}
+
+		// Create a new ServeMux for better routing control
+		mux := http.NewServeMux()
 
 	// Music API endpoints
 	RegisterMusicRoutes(mux)
@@ -195,13 +249,20 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/settings/auth/status", corsMiddleware(handleAuthStatus))
 	mux.HandleFunc("/api/settings", corsMiddleware(handleSettings))
 
-	// Printer API endpoints
-	mux.HandleFunc("/api/printer/scan", corsMiddleware(handlePrinterScan))
-	mux.HandleFunc("/api/printer/test", corsMiddleware(handlePrinterTest))
-	mux.HandleFunc("/api/printer/status", corsMiddleware(handlePrinterStatus))
-	mux.HandleFunc("/api/printer/reconnect", corsMiddleware(handlePrinterReconnect))
-	mux.HandleFunc("/api/printer/system-printers", corsMiddleware(handleSystemPrinters))
-	mux.HandleFunc("/api/debug/printer-status", corsMiddleware(handleDebugPrinterStatus)) // デバッグ用
+		// Printer API endpoints
+		mux.HandleFunc("/api/printer/scan", corsMiddleware(handlePrinterScan))
+		mux.HandleFunc("/api/printer/test", corsMiddleware(handlePrinterTest))
+		mux.HandleFunc("/api/printer/test-print", corsMiddleware(handlePrinterTestPrint))
+		mux.HandleFunc("/api/printer/status", corsMiddleware(handlePrinterStatus))
+		mux.HandleFunc("/api/printer/reconnect", corsMiddleware(handlePrinterReconnect))
+		mux.HandleFunc("/api/printer/system-printers", corsMiddleware(handleSystemPrinters))
+		mux.HandleFunc("/api/debug/printer-status", corsMiddleware(handleDebugPrinterStatus)) // デバッグ用
+
+		// Cache API endpoints
+		mux.HandleFunc("/api/cache/settings", corsMiddleware(handleCacheSettings))
+		mux.HandleFunc("/api/cache/stats", corsMiddleware(handleCacheStats))
+		mux.HandleFunc("/api/cache/clear", corsMiddleware(handleCacheClear))
+		mux.HandleFunc("/api/cache/cleanup", corsMiddleware(handleCacheCleanup))
 
 	// Logs API endpoints
 	mux.HandleFunc("/api/logs", corsMiddleware(handleLogs))
@@ -225,15 +286,11 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/ollama/pull", corsMiddleware(handleOllamaPull))
 	mux.HandleFunc("/api/ollama/modelfile", corsMiddleware(handleOllamaModelfile))
 
-	// WebSocket endpoint (新しい統合エンドポイント)
-	RegisterWebSocketRoute(mux)
+		// WebSocket endpoint (新しい統合エンドポイント)
+		RegisterWebSocketRoute(mux)
 
-	// リモートコントロールUI
-	mux.HandleFunc("/remote", handleRemoteControl)
-	mux.HandleFunc("/remote/", handleRemoteControl)
-
-	// Fax image endpoint
-	mux.HandleFunc("/fax/", handleFaxImage)
+		// Fax image endpoint
+		mux.HandleFunc("/fax/", handleFaxImage)
 
 	// Status endpoint
 	mux.HandleFunc("/status", handleStatus)
@@ -283,9 +340,9 @@ func StartWebServer(port int) error {
 		}
 	}))
 
-	// Reward Counts API endpoints
-	mux.HandleFunc("/api/twitch/reward-counts", corsMiddleware(handleGetAllRewardCounts))
-	mux.HandleFunc("/api/twitch/reward-counts/reset", corsMiddleware(handleResetAllRewardCounts))
+		// Reward Counts API endpoints
+		mux.HandleFunc("/api/twitch/reward-counts", corsMiddleware(handleGetAllRewardCounts))
+		mux.HandleFunc("/api/twitch/reward-counts/reset", corsMiddleware(handleResetAllRewardCounts))
 	mux.HandleFunc("/api/twitch/reward-counts/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		logger.Info("reward-counts handler called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
 
@@ -305,8 +362,8 @@ func StartWebServer(port int) error {
 		// リクエストパスが不正な場合
 		logger.Warn("No handler matched for path", zap.String("path", r.URL.Path), zap.String("method", r.Method))
 		http.Error(w, "Not found", http.StatusNotFound)
-	}))
-	mux.HandleFunc("/api/twitch/rewards/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		}))
+		mux.HandleFunc("/api/twitch/rewards/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		// Handle display name updates
 		if strings.HasSuffix(r.URL.Path, "/display-name") {
 			handleSetRewardDisplayName(w, r)
@@ -314,47 +371,110 @@ func StartWebServer(port int) error {
 		}
 		// リクエストパスが不正な場合
 		http.Error(w, "Not found", http.StatusNotFound)
-	}))
+		}))
 
-	// Handle all other routes (SPA fallback) - 最後に登録
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if useEmbedded {
-			// Using embedded assets
-			// Check if the path exists in embedded assets
-			path := strings.TrimPrefix(r.URL.Path, "/")
-			if path == "" {
-				path = "index.html"
-			}
+			// Legacy routes: redirect old overlay paths to /overlay/*
+			mux.HandleFunc("/overlay", func(w http.ResponseWriter, r *http.Request) {
+				target := "/overlay/"
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			})
+			mux.HandleFunc("/present", func(w http.ResponseWriter, r *http.Request) {
+				target := "/overlay/present"
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			})
+			mux.HandleFunc("/present/", func(w http.ResponseWriter, r *http.Request) {
+				target := "/overlay/present"
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			})
 
-			// Try to open the file from embedded assets
-			webFS, _ := fs.Sub(webAssets, "web/dist")
-			if file, err := webFS.Open(path); err == nil {
-				file.Close()
-				// File exists, serve it
-				fileServer.ServeHTTP(w, r)
-			} else {
-				// File doesn't exist, serve index.html for SPA routing
+			// Overlay UI (SPA) - /overlay/*
+			mux.HandleFunc("/overlay/", func(w http.ResponseWriter, r *http.Request) {
+				// StripPrefix("/overlay") so FileServer sees "/assets/..." etc.
+				strippedHandler := http.StripPrefix("/overlay", overlayServer)
+
+			if overlayEmbedded {
+				rel := strings.TrimPrefix(r.URL.Path, "/overlay")
+				rel = strings.TrimPrefix(rel, "/")
+				if rel == "" {
+					rel = "index.html"
+				}
+
+				if file, err := overlayFS.Open(rel); err == nil {
+					file.Close()
+					strippedHandler.ServeHTTP(w, r)
+					return
+				}
+
+				// SPA fallback
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				if indexFile, err := webFS.Open("index.html"); err == nil {
+				if indexFile, err := overlayFS.Open("index.html"); err == nil {
 					defer indexFile.Close()
 					if data, err := io.ReadAll(indexFile); err == nil {
 						w.Write(data)
 					}
 				}
-			}
-		} else {
-			// Using file system
-			filePath := filepath.Join("./web/dist", r.URL.Path)
-			if _, err := os.Stat(filePath); err == nil && !strings.HasSuffix(r.URL.Path, "/") {
-				// File exists, serve it
-				fileServer.ServeHTTP(w, r)
 				return
 			}
 
-			// For all other routes, serve index.html (SPA fallback)
-			http.ServeFile(w, r, filepath.Join("./web/dist", "index.html"))
-		}
-	})
+			// File system mode
+			rel := strings.TrimPrefix(r.URL.Path, "/overlay/")
+			rel = strings.TrimPrefix(rel, "/")
+			if rel != "" && !strings.HasSuffix(r.URL.Path, "/") {
+				filePath := filepath.Join(overlayDir, rel)
+				if stat, err := os.Stat(filePath); err == nil && !stat.IsDir() {
+					strippedHandler.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			http.ServeFile(w, r, filepath.Join(overlayDir, "index.html"))
+		})
+
+		// WebUI (SPA) - / (最後に登録)
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if settingsEmbedded {
+				rel := strings.TrimPrefix(r.URL.Path, "/")
+				if rel == "" {
+					rel = "index.html"
+				}
+
+				if file, err := settingsFS.Open(rel); err == nil {
+					file.Close()
+					settingsServer.ServeHTTP(w, r)
+					return
+				}
+
+				// SPA fallback
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				if indexFile, err := settingsFS.Open("index.html"); err == nil {
+					defer indexFile.Close()
+					if data, err := io.ReadAll(indexFile); err == nil {
+						w.Write(data)
+					}
+				}
+				return
+			}
+
+			rel := strings.TrimPrefix(r.URL.Path, "/")
+			if rel != "" && !strings.HasSuffix(r.URL.Path, "/") {
+				filePath := filepath.Join(settingsDir, rel)
+				if stat, err := os.Stat(filePath); err == nil && !stat.IsDir() {
+					settingsServer.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			http.ServeFile(w, r, filepath.Join(settingsDir, "index.html"))
+		})
 
 	addr := fmt.Sprintf(":%d", port)
 
@@ -362,14 +482,13 @@ func StartWebServer(port int) error {
 	fmt.Println("")
 	fmt.Println("====================================================")
 	fmt.Printf("🚀 Webサーバーが起動しました\n")
-	fmt.Printf("📡 アクセスURL:\n")
-	fmt.Printf("   オーバーレイ: http://localhost:%d\n", port)
-	fmt.Printf("\n")
-	fmt.Printf("⚙️  設定画面:     http://localhost:%d/settings\n", port)
-	fmt.Printf("\n")
-	fmt.Printf("🔧 環境変数 SERVER_PORT で変更可能\n")
-	fmt.Println("====================================================")
-	fmt.Println("")
+		fmt.Printf("📡 アクセスURL:\n")
+		fmt.Printf("   WebUI:      http://localhost:%d/\n", port)
+		fmt.Printf("   オーバーレイ: http://localhost:%d/overlay/\n", port)
+		fmt.Printf("\n")
+		fmt.Printf("🔧 環境変数 SERVER_PORT で変更可能\n")
+		fmt.Println("====================================================")
+		fmt.Println("")
 
 	logger.Info("Starting web server", zap.String("address", addr))
 
@@ -1274,6 +1393,18 @@ func handleFontUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Persist FONT_FILENAME to settings DB (keeps WebUI consistent with legacy Wails UI)
+		if db := localdb.GetDB(); db != nil {
+			settingsManager := settings.NewSettingsManager(db)
+			if err := settingsManager.SetSetting("FONT_FILENAME", header.Filename); err != nil {
+				logger.Warn("Failed to save FONT_FILENAME setting", zap.Error(err))
+			} else if err := env.ReloadFromDatabase(); err != nil {
+				logger.Warn("Failed to reload env values from database after font upload", zap.Error(err))
+			}
+		} else {
+			logger.Warn("Database not initialized, FONT_FILENAME setting not saved")
+		}
+
 		// Return success with updated font info
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1291,6 +1422,18 @@ func handleFontUpload(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Failed to delete font", http.StatusInternalServerError)
 			}
 			return
+		}
+
+		// Persist FONT_FILENAME clearing to settings DB
+		if db := localdb.GetDB(); db != nil {
+			settingsManager := settings.NewSettingsManager(db)
+			if err := settingsManager.SetSetting("FONT_FILENAME", ""); err != nil {
+				logger.Warn("Failed to clear FONT_FILENAME setting", zap.Error(err))
+			} else if err := env.ReloadFromDatabase(); err != nil {
+				logger.Warn("Failed to reload env values from database after font delete", zap.Error(err))
+			}
+		} else {
+			logger.Warn("Database not initialized, FONT_FILENAME setting not cleared")
 		}
 
 		// Return success

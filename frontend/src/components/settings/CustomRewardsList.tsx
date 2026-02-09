@@ -3,7 +3,7 @@ import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2, Edit
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { GetServerPort, ToggleCustomReward } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 import { RewardGroupBadge } from './RewardGroupBadge';
 import { AddToGroupDropdown } from './AddToGroupDropdown';
 import { CreateRewardDialog } from './CreateRewardDialog';
@@ -67,8 +67,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/custom-rewards`);
+      const response = await fetch(buildApiUrl('/api/twitch/custom-rewards'));
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -90,8 +89,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   const fetchAllGroups = async () => {
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`);
+      const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
 
       if (response.ok) {
         const data = await response.json();
@@ -103,13 +101,12 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
   };
 
   const fetchRewardGroups = async (rewardsList: CustomReward[]) => {
-    const port = await GetServerPort();
     const groupsMap = new Map<string, RewardGroup[]>();
 
     for (const reward of rewardsList) {
       try {
         const response = await fetch(
-          `http://localhost:${port}/api/twitch/reward-groups/by-reward?reward_id=${reward.id}`
+          buildApiUrl(`/api/twitch/reward-groups/by-reward?reward_id=${encodeURIComponent(reward.id)}`)
         );
 
         if (response.ok) {
@@ -126,9 +123,8 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   const handleRemoveFromGroup = async (rewardId: string, groupId: number) => {
     try {
-      const port = await GetServerPort();
       const response = await fetch(
-        `http://localhost:${port}/api/twitch/reward-groups/${groupId}/rewards/${rewardId}`,
+        buildApiUrl(`/api/twitch/reward-groups/${groupId}/rewards/${rewardId}`),
         { method: 'DELETE' }
       );
 
@@ -147,8 +143,15 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   const handleToggleReward = async (rewardId: string, currentEnabled: boolean) => {
     try {
-      // Use Wails binding instead of HTTP API to avoid CORS issues
-      await ToggleCustomReward(rewardId, !currentEnabled);
+      const response = await fetch(buildApiUrl(`/api/twitch/custom-rewards/${rewardId}/toggle`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_enabled: !currentEnabled }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      }
 
       // Update local state
       setRewards((prev) =>
@@ -181,8 +184,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
     console.log('handleDeleteReward called', { rewardId });
 
     try {
-      const port = await GetServerPort();
-      const url = `http://localhost:${port}/api/twitch/custom-rewards/${rewardId}`;
+      const url = buildApiUrl(`/api/twitch/custom-rewards/${rewardId}`);
 
       const response = await fetch(url, {
         method: 'DELETE',
@@ -221,9 +223,8 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   const handleSaveDisplayName = async (rewardId: string, displayName: string) => {
     try {
-      const port = await GetServerPort();
       const response = await fetch(
-        `http://localhost:${port}/api/twitch/rewards/${rewardId}/display-name`,
+        buildApiUrl(`/api/twitch/rewards/${rewardId}/display-name`),
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

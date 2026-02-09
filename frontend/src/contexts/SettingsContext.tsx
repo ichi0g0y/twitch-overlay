@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface OverlaySettings {
   // 音楽プレイヤー設定
@@ -93,8 +92,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 設定を取得する関数（再利用可能）
   const fetchSettings = useCallback(async () => {
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/overlay`);
+      const response = await fetch(buildApiUrl('/api/settings/overlay'));
       if (response.ok) {
         const data = await response.json();
         setSettings(data);
@@ -138,8 +136,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!settings) return;
 
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/overlay`, {
+      const response = await fetch(buildApiUrl('/api/settings/overlay'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +147,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (response.ok) {
         // サーバーが成功したら、SSE経由で更新が来るのを待つ
         // 楽観的更新を行う
-        setSettings(prev => ({ ...prev, ...updates }));
+        const cleanUpdates = Object.fromEntries(
+          Object.entries(updates).filter(([, value]) => value !== undefined),
+        ) as Partial<OverlaySettings>;
+        setSettings(prev => (prev ? { ...prev, ...cleanUpdates } : prev));
       } else {
         throw new Error('Failed to update settings');
       }

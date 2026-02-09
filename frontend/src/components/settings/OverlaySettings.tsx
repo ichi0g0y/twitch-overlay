@@ -1,8 +1,7 @@
 import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
-import { buildApiUrlAsync } from '../../utils/api';
+import { buildApiUrl } from '../../utils/api';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
@@ -23,8 +22,10 @@ const DEFAULT_CARDS_LAYOUT: CardsLayout = {
 const isCardKey = (value: string): value is CardKey => CARD_KEYS.includes(value as CardKey);
 
 const normalizeCardsLayout = (layout?: Partial<CardsLayout> | null): CardsLayout => {
-  const rawLeft = Array.isArray(layout?.left) ? layout?.left : [];
-  const rawRight = Array.isArray(layout?.right) ? layout?.right : [];
+  const leftCandidate = layout?.left;
+  const rightCandidate = layout?.right;
+  const rawLeft = Array.isArray(leftCandidate) ? leftCandidate : [];
+  const rawRight = Array.isArray(rightCandidate) ? rightCandidate : [];
   const used = new Set<CardKey>();
   const pick = (items: unknown[]) => {
     const result: CardKey[] = [];
@@ -222,7 +223,11 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
-        const data = await GetMusicPlaylists();
+        const response = await fetch(buildApiUrl('/api/music/playlists'));
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
         context.setPlaylists?.(data.playlists || []);
       } catch (error) {
         console.error('Failed to fetch playlists:', error);
@@ -235,8 +240,7 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchRewardGroups = async () => {
       try {
-        const url = await buildApiUrlAsync('/api/twitch/reward-groups');
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
         if (response.ok) {
           const result = await response.json();
           // APIレスポンスは { data: [...] } の形式
@@ -253,8 +257,7 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchCustomRewards = async () => {
       try {
-        const url = await buildApiUrlAsync('/api/twitch/custom-rewards');
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl('/api/twitch/custom-rewards'));
         if (response.ok) {
           const data = await response.json();
           setCustomRewards(data.data || []);
@@ -273,8 +276,7 @@ export const OverlaySettings: React.FC = () => {
   // グループに属するリワードIDを取得
   const fetchGroupMembership = async (groupId: number) => {
     try {
-      const url = await buildApiUrlAsync(`/api/twitch/reward-groups/${groupId}`);
-      const response = await fetch(url);
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}`));
       if (response.ok) {
         const data = await response.json();
         // data.reward_ids: string[]
@@ -308,8 +310,7 @@ export const OverlaySettings: React.FC = () => {
       const endpoint = groupId
         ? `/api/twitch/reward-groups/${groupId}/counts`
         : '/api/twitch/reward-counts';
-      const url = await buildApiUrlAsync(endpoint);
-      const response = await fetch(url);
+      const response = await fetch(buildApiUrl(endpoint));
       if (response.ok) {
         const counts = await response.json();
         // カウントが0より大きいものだけフィルタ
@@ -350,8 +351,7 @@ export const OverlaySettings: React.FC = () => {
         const endpoint = groupId
           ? `/api/twitch/reward-groups/${groupId}/counts`
           : '/api/twitch/reward-counts';
-        const url = await buildApiUrlAsync(endpoint);
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl(endpoint));
         if (response.ok) {
           const counts = await response.json();
           setRewardCounts((counts || []).filter((c: any) => c.count > 0));
@@ -447,9 +447,8 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchMusicStatus = async () => {
       try {
-        const port = await GetServerPort();
         // オーバーレイ未接続時でも永続化された状態を取得するため /api/music/state を使用
-        const response = await fetch(`http://localhost:${port}/api/music/state`);
+        const response = await fetch(buildApiUrl('/api/music/state'));
         if (response.ok) {
           const state = await response.json();
           // PlaybackState形式をMusicStatusUpdate形式に変換
@@ -512,8 +511,7 @@ export const OverlaySettings: React.FC = () => {
     const updateArtworkUrl = async () => {
       if (musicStatus.current_track?.has_artwork && musicStatus.current_track?.id) {
         try {
-          const url = await buildApiUrlAsync(`/api/music/track/${musicStatus.current_track.id}/artwork`);
-          setArtworkUrl(url);
+          setArtworkUrl(buildApiUrl(`/api/music/track/${musicStatus.current_track.id}/artwork`));
         } catch (error) {
           console.error('Failed to build artwork URL:', error);
           setArtworkUrl(null);
@@ -797,8 +795,7 @@ export const OverlaySettings: React.FC = () => {
 
               // プレイリスト選択を永続化
               try {
-                const url = await buildApiUrlAsync('/api/music/state/update');
-                await fetch(url, {
+                await fetch(buildApiUrl('/api/music/state/update'), {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -1379,7 +1376,7 @@ export const OverlaySettings: React.FC = () => {
                           // 設定画面のカウントデータを再取得
                           await fetchRewardCounts();
                           // オーバーレイに設定を再送信（強制リフレッシュ）
-                          const url = await buildApiUrlAsync('/api/overlay/refresh');
+                          const url = buildApiUrl('/api/overlay/refresh');
                           await fetch(url, { method: 'POST' });
                         } catch (error) {
                           console.error('Failed to refresh:', error);
@@ -1404,7 +1401,7 @@ export const OverlaySettings: React.FC = () => {
                       // 2回目のクリック: 実際にリセット
                       console.log('🔥 Executing reset all');
                       try {
-                        const url = await buildApiUrlAsync('/api/twitch/reward-counts/reset');
+                        const url = buildApiUrl('/api/twitch/reward-counts/reset');
                         console.log('🔄 Resetting all reward counts:', url);
                         const response = await fetch(url, { method: 'POST' });
                         console.log('✅ Reset all response:', response.status, response.statusText);
@@ -1476,7 +1473,7 @@ export const OverlaySettings: React.FC = () => {
 
                                         // 2回目のクリック: 実際に削除
                                         try {
-                                          const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/users/${index}`);
+                                          const url = buildApiUrl(`/api/twitch/reward-counts/${reward.reward_id}/users/${index}`);
                                           const response = await fetch(url, { method: 'DELETE' });
 
                                           if (!response.ok) {
@@ -1668,9 +1665,11 @@ export const OverlaySettings: React.FC = () => {
                     <Label htmlFor="ticker-notice-align">配置</Label>
                     <Select
                       value={overlaySettings?.ticker_notice_align || 'center'}
-                      onValueChange={(value) =>
-                        updateOverlaySettings({ ticker_notice_align: value })
-                      }
+                      onValueChange={(value) => {
+                        if (value === 'left' || value === 'center' || value === 'right') {
+                          updateOverlaySettings({ ticker_notice_align: value });
+                        }
+                      }}
                     >
                       <SelectTrigger id="ticker-notice-align">
                         <SelectValue />
