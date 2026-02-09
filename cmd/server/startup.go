@@ -10,7 +10,6 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/settings"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"github.com/ichi0g0y/twitch-overlay/internal/status"
-	"github.com/ichi0g0y/twitch-overlay/internal/translation"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
@@ -27,47 +26,104 @@ func migrateLegacyTranslationSettings() {
 			return
 		}
 		normalized := strings.TrimSpace(strings.ToLower(value))
-		if normalized == "nllb" || normalized == "local" {
-			_ = manager.SetSetting(key, "ollama")
+		switch normalized {
+		case "", "off":
+			return
+		case "chrome":
+			return
+		case "ollama", "nllb", "local":
+			_ = manager.SetSetting(key, "chrome")
+		default:
+			// Unknown legacy backend -> prefer Chrome translation for browser-only flow.
+			_ = manager.SetSetting(key, "chrome")
 		}
 	}
 	migrateValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+
+	normalizeChromeLanguageCode := func(value string) string {
+		raw := strings.TrimSpace(value)
+		if raw == "" {
+			return ""
+		}
+		normalized := strings.ToLower(raw)
+
+		normalized = strings.ReplaceAll(normalized, "_", "-")
+		if strings.Contains(normalized, "-") {
+			parts := strings.Split(normalized, "-")
+			if len(parts) >= 2 && parts[0] == "zh" {
+				if parts[1] == "tw" || parts[1] == "hk" || parts[1] == "hant" {
+					return "zh-Hant"
+				}
+			}
+			if len(parts) >= 1 {
+				normalized = parts[0]
+			}
+		}
+
+		switch normalized {
+		case "eng", "en":
+			return "en"
+		case "jpn", "ja":
+			return "ja"
+		case "zho", "cmn", "zh":
+			return "zh"
+		case "kor", "ko":
+			return "ko"
+		case "fra", "fr":
+			return "fr"
+		case "deu", "de":
+			return "de"
+		case "spa", "es":
+			return "es"
+		case "por", "pt":
+			return "pt"
+		case "rus", "ru":
+			return "ru"
+		case "ita", "it":
+			return "it"
+		case "ind", "id":
+			return "id"
+		case "tha", "th":
+			return "th"
+		case "vie", "vi":
+			return "vi"
+		case "nld", "nl":
+			return "nl"
+		case "pol", "pl":
+			return "pl"
+		case "tur", "tr":
+			return "tr"
+		case "ukr", "uk":
+			return "uk"
+		case "ell", "el":
+			return "el"
+		case "som", "so":
+			return "so"
+		}
+
+		if len(normalized) == 2 {
+			return normalized
+		}
+		if normalized == "zh-hant" {
+			return "zh-Hant"
+		}
+		if raw == "zh-Hant" {
+			return raw
+		}
+		return ""
+	}
 
 	migrateLang := func(key string) {
 		value, err := manager.GetRealValue(key)
 		if err != nil {
 			return
 		}
-		normalized := translation.NormalizeFromLangTag(value)
-		if normalized == "" {
-			normalized = translation.NormalizeLanguageCode(value)
-		}
-		if normalized != "" && normalized != value {
-			_ = manager.SetSetting(key, normalized)
+		next := normalizeChromeLanguageCode(value)
+		if next != "" && next != value {
+			_ = manager.SetSetting(key, next)
 		}
 	}
 	migrateLang("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE")
-
-	migrateOllamaModel := func() {
-		value, err := manager.GetRealValue("OLLAMA_MODEL")
-		if err != nil {
-			return
-		}
-		normalized := strings.TrimSpace(strings.ToLower(value))
-		var next string
-		switch normalized {
-		case "shisa-ai/shisa-v2.1-qwen3-8b", "shisa-v2.1-qwen3-8b":
-			next = "hf.co/XpressAI/shisa-v2.1-qwen3-8b-GGUF:Q4_K_M"
-		case "shisa-ai/shisa-v2.1-llama3.2-3b", "shisa-v2.1-llama3.2-3b":
-			next = "hf.co/XpressAI/shisa-v2.1-llama3.2-3b-GGUF:Q4_K_M"
-		case "shisa-ai/shisa-v2.1-unphi4-14b", "shisa-v2.1-unphi4-14b":
-			next = "hf.co/mradermacher/shisa-v2.1-unphi4-14b-GGUF:Q4_K_M"
-		}
-		if next != "" && value != next {
-			_ = manager.SetSetting("OLLAMA_MODEL", next)
-		}
-	}
-	migrateOllamaModel()
 }
 
 func checkInitialStreamStatus() {
@@ -136,4 +192,3 @@ func initializeBluetoothPrinter() error {
 	logger.Info("Printer connected successfully")
 	return nil
 }
-

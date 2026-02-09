@@ -54,7 +54,7 @@ cd web && bun install && cd ..
 task dev
 
 # プロダクションビルド
-task build:all
+task build
 ```
 
 ## 開発
@@ -63,7 +63,6 @@ task build:all
 - **`web/`** - オーバーレイ用フロントエンド（ビルド後Wailsに埋め込み）
 - **`frontend/`** - Wails Settings画面用フロントエンド
 - **`internal/`** - Goバックエンド（API、プリンター制御等）
-- **`mic-recog/`** - 音声認識（Whisper）サブプロジェクト
 
 ### 開発コマンド
 ```bash
@@ -77,22 +76,12 @@ cd web && bun run build
 task test
 ```
 
-### 音声認識（mic-recog）
-- `task build` で PyInstaller ビルド後、`.app` の `Resources/mic-recog` に同梱されます  
-- 開発中は `mic-recog/.venv` を作るか、`MIC_RECOG_DIR` でパスを指定してください  
-- macOS は `--device auto` で MPS（GPU）を自動選択します（未対応ならCPU）
-- 初回起動時に Whisper のモデルをダウンロードします
-
-### ローカル翻訳（Ollama）
-ローカル翻訳は Ollama を使います。Settings画面のAIタブで翻訳バックエンドを `Ollama` に切り替え、モデルとサーバURLを設定してください。言語コードは `jpn_Jpan` 形式（例: `jpn_Jpan`, `eng_Latn`, `rus_Cyrl`）を使用します。
-
-```bash
-# 例: サーバ起動（localhostのときはアプリが自動起動を試みます）
-ollama serve
-
-# 例: モデル取得（UIの「モデルを取得」でもOK）
-ollama pull translategemma:12b
-```
+### 音声認識/翻訳（ブラウザ）
+- **音声認識**: Chromeの Web Speech API（`webkitSpeechRecognition`）
+- **翻訳**: Chromeの Translator API（ブラウザ内蔵。外部API/GASは使用しません）
+- **送信ページ**: `http://localhost:[動的ポート]/overlay/mic`
+- **表示ページ**: `http://localhost:[動的ポート]/overlay/`（原文/翻訳を表示）
+- 設定はSQLite（Settings画面）に保存されます（翻訳言語コードは `en`, `zh`, `zh-Hant` などChrome向け）
 
 ### オーバーレイの開発フロー
 1. `web/`ディレクトリで変更を行う
@@ -142,10 +131,10 @@ sudo usermod -a -G bluetooth $USER
 ## タスク管理（Taskfile）
 
 主要なタスクコマンド:
-- `task dev` - 開発モード起動
-- `task build:all` - プロダクションビルド
+- `task dev:wails` - 開発モード起動（Wails/デスクトップ）
+- `task dev:webui` - WebUI起動（ヘッドレス）
+- `task build` - プロダクションビルド
 - `task test` - テスト実行
-- `task lint` - リント実行
 
 ## ライセンス
 

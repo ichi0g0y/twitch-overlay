@@ -13,9 +13,7 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
-	"github.com/ichi0g0y/twitch-overlay/internal/micrecog"
 	"github.com/ichi0g0y/twitch-overlay/internal/music"
-	"github.com/ichi0g0y/twitch-overlay/internal/ollama"
 	"github.com/ichi0g0y/twitch-overlay/internal/output"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
@@ -76,12 +74,6 @@ func main() {
 
 	output.InitializePrinter()
 
-	// Managers for optional subsystems.
-	micMgr := micrecog.NewManager()
-	ollamaMgr := ollama.NewManager()
-	webserver.SetMicRecogManager(micMgr)
-	webserver.SetOllamaManager(ollamaMgr)
-
 	port := 8080
 	if env.Value.ServerPort != 0 {
 		port = env.Value.ServerPort
@@ -118,16 +110,6 @@ func main() {
 			logger.Info("Bluetooth permission preflight completed")
 		}()
 	}
-
-	if err := micMgr.Start(port); err != nil {
-		logger.Warn("Failed to start mic-recog", zap.Error(err))
-	}
-
-	go func() {
-		if err := ollamaMgr.Start(); err != nil {
-			logger.Warn("Failed to start ollama", zap.Error(err))
-		}
-	}()
 
 	tokenRefreshDone := make(chan struct{})
 	startTwitchBackground(tokenRefreshDone)
@@ -171,9 +153,6 @@ func main() {
 	close(tokenRefreshDone)
 	twitcheventsub.Stop()
 	webserver.Shutdown()
-
-	micMgr.Stop()
-	ollamaMgr.Stop()
 	output.StopBluetoothClient()
 
 	logger.Info("Shutdown complete")

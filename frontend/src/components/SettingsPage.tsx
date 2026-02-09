@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Monitor, Music, Settings2, Sparkles, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Monitor, Music, Settings2, Wifi } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 // Import tab components
 import { GeneralSettings } from './settings/GeneralSettings';
-import { AISettings } from './settings/AISettings';
 import { MusicSettings } from './settings/MusicSettings';
 import { LogsTab } from './settings/LogsTab';
 import { TwitchSettings } from './settings/TwitchSettings';
@@ -16,7 +15,6 @@ import { PrinterSettings } from './settings/PrinterSettings';
 import { OverlaySettings } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
-import { MicrophoneSettings } from './settings/MicrophoneSettings';
 import { ChatSidebar } from './ChatSidebar';
 
 const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
@@ -86,34 +84,6 @@ export const SettingsPage: React.FC = () => {
     handleOpenOverlayDebug,
     handleOpenPresent,
     handleOpenPresentDebug,
-    ollamaModels,
-    ollamaModelsLoading,
-    ollamaModelsError,
-    ollamaModelsFetchedAt,
-    pullingOllamaModel,
-    ollamaStatus,
-    creatingOllamaModelfile,
-    ollamaModelfilePreview,
-    ollamaModelfileError,
-    handleCreateOllamaModelfile,
-    fetchOllamaModels,
-    pullOllamaModel,
-    translationTestText,
-    setTranslationTestText,
-    translationTestSourceLang,
-    setTranslationTestSourceLang,
-    translationTestTargetLang,
-    setTranslationTestTargetLang,
-    translationTestResult,
-    translationTestTookMs,
-    translationTesting,
-    handleTestTranslation,
-    chatTestText,
-    setChatTestText,
-    chatTestResult,
-    chatTestTookMs,
-    chatTesting,
-    handleTestChat,
   } = contextValue;
 
   const handleChatSidebarSideChange = (side: 'left' | 'right') => {
@@ -227,12 +197,10 @@ export const SettingsPage: React.FC = () => {
             />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-10 mb-6">
+              <TabsList className="grid w-full grid-cols-8 mb-6">
                 <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
-                <TabsTrigger value="ai"><Sparkles className="w-4 h-4 mr-1" />AI</TabsTrigger>
                 <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
                 <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
-                <TabsTrigger value="mic"><Mic className="w-4 h-4 mr-1" />マイク</TabsTrigger>
                 <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
                 <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
                 <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
@@ -260,40 +228,6 @@ export const SettingsPage: React.FC = () => {
                   testingNotification={testingNotification}
                 />
               </TabsContent>
-              <TabsContent value="ai">
-                <AISettings
-                  getSettingValue={getSettingValue}
-                  handleSettingChange={handleSettingChange}
-                  ollamaModels={ollamaModels}
-                  ollamaModelsLoading={ollamaModelsLoading}
-                  ollamaModelsError={ollamaModelsError}
-                  ollamaModelsFetchedAt={ollamaModelsFetchedAt}
-                  pullingOllamaModel={pullingOllamaModel}
-                  creatingOllamaModelfile={creatingOllamaModelfile}
-                  ollamaModelfilePreview={ollamaModelfilePreview}
-                  ollamaModelfileError={ollamaModelfileError}
-                  handleCreateOllamaModelfile={handleCreateOllamaModelfile}
-                  fetchOllamaModels={fetchOllamaModels}
-                  pullOllamaModel={pullOllamaModel}
-                  ollamaStatus={ollamaStatus}
-                  translationTestText={translationTestText}
-                  setTranslationTestText={setTranslationTestText}
-                  translationTestSourceLang={translationTestSourceLang}
-                  setTranslationTestSourceLang={setTranslationTestSourceLang}
-                  translationTestTargetLang={translationTestTargetLang}
-                  setTranslationTestTargetLang={setTranslationTestTargetLang}
-                  translationTestResult={translationTestResult}
-                  translationTestTookMs={translationTestTookMs}
-                  translationTesting={translationTesting}
-                  handleTestTranslation={handleTestTranslation}
-                  chatTestText={chatTestText}
-                  setChatTestText={setChatTestText}
-                  chatTestResult={chatTestResult}
-                  chatTestTookMs={chatTestTookMs}
-                  chatTesting={chatTesting}
-                  handleTestChat={handleTestChat}
-                />
-              </TabsContent>
               <TabsContent value="twitch">
                 <SettingsPageContext.Provider value={contextValue}>
                   <TwitchSettings />
@@ -302,11 +236,6 @@ export const SettingsPage: React.FC = () => {
               <TabsContent value="printer">
                 <SettingsPageContext.Provider value={contextValue}>
                   <PrinterSettings />
-                </SettingsPageContext.Provider>
-              </TabsContent>
-              <TabsContent value="mic">
-                <SettingsPageContext.Provider value={contextValue}>
-                  <MicrophoneSettings />
                 </SettingsPageContext.Provider>
               </TabsContent>
               <TabsContent value="music"><MusicSettings /></TabsContent>

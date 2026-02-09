@@ -5,16 +5,15 @@ import {
   AuthStatus,
   BluetoothDevice,
   FeatureStatus, PrinterStatusInfo,
-  MicDevice,
   StreamStatus,
   SystemPrinter,
-  TestResponse,
   TwitchUserInfo, UpdateSettingsRequest
 } from '../types';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 
 const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
+const ALLOWED_TABS = new Set(['general', 'twitch', 'printer', 'music', 'overlay', 'logs', 'cache', 'api']);
 
 export const SettingsPageContext = createContext<ReturnType<typeof useSettingsPage> | null>(null);
 
@@ -39,14 +38,16 @@ const readErrorMessage = async (response: Response): Promise<string> => {
 };
 
 export const useSettingsPage = () => {
-  type OllamaModelItem = { id: string; size_bytes?: number | null; modified_at?: string };
-  type OllamaStatus = { running: boolean; healthy: boolean; version?: string; model?: string; error?: string };
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      return localStorage.getItem(SETTINGS_TAB_KEY) || 'general';
+      const stored = localStorage.getItem(SETTINGS_TAB_KEY);
+      if (stored && ALLOWED_TABS.has(stored)) {
+        return stored;
+      }
     } catch {
-      return 'general';
+      // ignore storage errors
     }
+    return 'general';
   });
 
   // Core state
@@ -84,54 +85,6 @@ export const useSettingsPage = () => {
   // System printer related (USB)
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinter[]>([]);
   const [loadingSystemPrinters, setLoadingSystemPrinters] = useState(false);
-
-  // Mic devices
-  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
-  const [loadingMicDevices, setLoadingMicDevices] = useState(false);
-  const [restartingMicRecog, setRestartingMicRecog] = useState(false);
-  const [ollamaModels, setOllamaModels] = useState<OllamaModelItem[]>([]);
-  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
-  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
-  const [ollamaModelsFetchedAt, setOllamaModelsFetchedAt] = useState<number | null>(null);
-  const [pullingOllamaModel, setPullingOllamaModel] = useState(false);
-  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
-  const [creatingOllamaModelfile, setCreatingOllamaModelfile] = useState(false);
-  const [ollamaModelfilePreview, setOllamaModelfilePreview] = useState('');
-  const [ollamaModelfileError, setOllamaModelfileError] = useState<string | null>(null);
-  const chatTestStorageKeys = {
-    text: 'settings.chatTest.text',
-  };
-  const translationTestStorageKeys = {
-    text: 'settings.translationTest.text',
-    source: 'settings.translationTest.source',
-    target: 'settings.translationTest.target',
-  };
-  const readStoredValue = (key: string, fallback: string) => {
-    try {
-      const value = localStorage.getItem(key);
-      return value ?? fallback;
-    } catch {
-      return fallback;
-    }
-  };
-  const [translationTestText, setTranslationTestText] = useState(() =>
-    readStoredValue(translationTestStorageKeys.text, 'こんにちは'),
-  );
-  const [translationTestSourceLang, setTranslationTestSourceLang] = useState(() =>
-    readStoredValue(translationTestStorageKeys.source, ''),
-  );
-  const [translationTestTargetLang, setTranslationTestTargetLang] = useState(() =>
-    readStoredValue(translationTestStorageKeys.target, 'eng'),
-  );
-  const [translationTestResult, setTranslationTestResult] = useState<string>('');
-  const [translationTestTookMs, setTranslationTestTookMs] = useState<number | null>(null);
-  const [translationTesting, setTranslationTesting] = useState(false);
-  const [chatTestText, setChatTestText] = useState(() =>
-    readStoredValue(chatTestStorageKeys.text, 'こんにちは'),
-  );
-  const [chatTestResult, setChatTestResult] = useState<string>('');
-  const [chatTestTookMs, setChatTestTookMs] = useState<number | null>(null);
-  const [chatTesting, setChatTesting] = useState(false);
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -354,348 +307,6 @@ export const useSettingsPage = () => {
       return updated;
     });
   };
-
-  const fetchOllamaStatus = useCallback(async (silent?: boolean): Promise<OllamaStatus | null> => {
-    try {
-      const response = await fetch(buildApiUrl('/api/ollama/status'));
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      const status = {
-        running: Boolean(data?.running),
-        healthy: Boolean(data?.healthy),
-        version: data?.version,
-        model: data?.model,
-        error: data?.error,
-      };
-      setOllamaStatus(status);
-      return status;
-    } catch (err: any) {
-      const status = {
-        running: false,
-        healthy: false,
-        error: err?.message || 'ollama status failed',
-      };
-      setOllamaStatus(status);
-      if (!silent) {
-        toast.error(`Ollama状態の取得に失敗しました: ${status.error}`);
-      }
-      return status;
-    }
-  }, []);
-
-  const fetchOllamaModels = useCallback(async (options?: { silent?: boolean }) => {
-    setOllamaModelsLoading(true);
-    setOllamaModelsError(null);
-    try {
-      const status = await fetchOllamaStatus(true);
-      if (!status?.healthy) {
-        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
-        throw new Error(message);
-      }
-
-      const response = await fetch(buildApiUrl('/api/ollama/models'));
-      if (!response.ok) {
-        const message = await readErrorMessage(response);
-        throw new Error(message);
-      }
-      const data = await response.json();
-      const models: OllamaModelItem[] = Array.isArray(data?.models)
-        ? data.models
-            .map((item: any) => {
-              if (!item) return null;
-              const id = item.id || item.name;
-              if (!id) return null;
-              const size = item.size_bytes ?? item.size ?? null;
-              return {
-                id,
-                size_bytes: typeof size === 'number' ? size : null,
-                modified_at: item.modified_at,
-              };
-            })
-            .filter((item: any) => item)
-        : [];
-      setOllamaModels(models);
-      if (data?.cached_at) {
-        setOllamaModelsFetchedAt(Number(data.cached_at));
-      }
-    } catch (err: any) {
-      console.error('[fetchOllamaModels] Failed to fetch ollama models:', err);
-      const message = err?.message || 'Failed to fetch models';
-      setOllamaModelsError(message);
-      if (!options?.silent) {
-        toast.error(`モデル一覧の取得に失敗しました: ${message}`);
-      }
-    } finally {
-      setOllamaModelsLoading(false);
-    }
-  }, [fetchOllamaStatus]);
-
-  const pullOllamaModel = useCallback(async (modelId: string) => {
-    const trimmed = modelId.trim();
-    if (!trimmed) return;
-    setPullingOllamaModel(true);
-    try {
-      const status = await fetchOllamaStatus(true);
-      if (!status?.healthy) {
-        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
-        throw new Error(message);
-      }
-      const response = await fetch(buildApiUrl('/api/ollama/pull'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: trimmed }),
-      });
-      if (!response.ok) {
-        const message = await readErrorMessage(response);
-        throw new Error(message);
-      }
-      toast.success(`モデルを取得しました: ${trimmed}`);
-      await fetchOllamaModels({ silent: true });
-    } catch (err: any) {
-      console.error('[pullOllamaModel] Failed to pull model:', err);
-      toast.error(`モデル取得に失敗しました: ${err?.message || 'unknown error'}`);
-    } finally {
-      setPullingOllamaModel(false);
-    }
-  }, [fetchOllamaStatus, fetchOllamaModels]);
-
-  const handleTestTranslation = useCallback(async () => {
-    const text = translationTestText.trim();
-    if (!text) {
-      toast.error('テスト文を入力してください');
-      return;
-    }
-    setTranslationTesting(true);
-    try {
-      const translationSettingsPayload = {
-        OLLAMA_BASE_URL: getSettingValue('OLLAMA_BASE_URL'),
-        OLLAMA_MODEL: getSettingValue('OLLAMA_MODEL'),
-        OLLAMA_NUM_PREDICT: getSettingValue('OLLAMA_NUM_PREDICT'),
-        OLLAMA_TEMPERATURE: getSettingValue('OLLAMA_TEMPERATURE'),
-        OLLAMA_TOP_P: getSettingValue('OLLAMA_TOP_P'),
-        OLLAMA_NUM_CTX: getSettingValue('OLLAMA_NUM_CTX'),
-        OLLAMA_STOP: getSettingValue('OLLAMA_STOP'),
-        OLLAMA_SYSTEM_PROMPT: getSettingValue('OLLAMA_SYSTEM_PROMPT'),
-      };
-      const responseSettings = await fetch(buildApiUrl('/api/settings/v2'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(translationSettingsPayload),
-      });
-      if (!responseSettings.ok) {
-        throw new Error(await readErrorMessage(responseSettings));
-      }
-      applySavedSettings(translationSettingsPayload);
-      const status = await fetchOllamaStatus(true);
-      if (!status?.healthy) {
-        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
-        throw new Error(message);
-      }
-      const response = await fetch(buildApiUrl('/api/translation/test'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          src_lang: translationTestSourceLang || undefined,
-          tgt_lang: translationTestTargetLang || undefined,
-          backend: 'ollama',
-        }),
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || `HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setTranslationTestResult(data?.text || '');
-      setTranslationTestTookMs(typeof data?.took_ms === 'number' ? data.took_ms : null);
-    } catch (err: any) {
-      console.error('[handleTestTranslation] Failed to translate:', err);
-      toast.error(`翻訳テストに失敗しました: ${err?.message || 'unknown error'}`);
-      setTranslationTestTookMs(null);
-    } finally {
-      setTranslationTesting(false);
-    }
-  }, [
-    applySavedSettings,
-    fetchOllamaStatus,
-    getSettingValue,
-    translationTestSourceLang,
-    translationTestTargetLang,
-    translationTestText,
-  ]);
-
-  const handleTestChat = useCallback(async () => {
-    const text = chatTestText.trim();
-    if (!text) {
-      toast.error('テスト文を入力してください');
-      return;
-    }
-    setChatTesting(true);
-    try {
-      const chatSettingsPayload = {
-        OLLAMA_BASE_URL: getSettingValue('OLLAMA_BASE_URL'),
-        OLLAMA_CHAT_MODEL: getSettingValue('OLLAMA_CHAT_MODEL'),
-        OLLAMA_CHAT_NUM_PREDICT: getSettingValue('OLLAMA_CHAT_NUM_PREDICT'),
-        OLLAMA_CHAT_TEMPERATURE: getSettingValue('OLLAMA_CHAT_TEMPERATURE'),
-        OLLAMA_CHAT_TOP_P: getSettingValue('OLLAMA_CHAT_TOP_P'),
-        OLLAMA_CHAT_NUM_CTX: getSettingValue('OLLAMA_CHAT_NUM_CTX'),
-        OLLAMA_CHAT_STOP: getSettingValue('OLLAMA_CHAT_STOP'),
-        OLLAMA_CHAT_SYSTEM_PROMPT: getSettingValue('OLLAMA_CHAT_SYSTEM_PROMPT'),
-      };
-      const responseSettings = await fetch(buildApiUrl('/api/settings/v2'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(chatSettingsPayload),
-      });
-      if (!responseSettings.ok) {
-        throw new Error(await readErrorMessage(responseSettings));
-      }
-      applySavedSettings(chatSettingsPayload);
-      const status = await fetchOllamaStatus(true);
-      if (!status?.healthy) {
-        const message = status?.error ? `Ollama未接続: ${status.error}` : 'Ollama未接続';
-        throw new Error(message);
-      }
-      const response = await fetch(buildApiUrl('/api/chat/test'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || `HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setChatTestResult(data?.text || '');
-      setChatTestTookMs(typeof data?.took_ms === 'number' ? data.took_ms : null);
-    } catch (err: any) {
-      console.error('[handleTestChat] Failed to chat:', err);
-      toast.error(`会話テストに失敗しました: ${err?.message || 'unknown error'}`);
-      setChatTestTookMs(null);
-    } finally {
-      setChatTesting(false);
-    }
-  }, [applySavedSettings, chatTestText, fetchOllamaStatus, getSettingValue]);
-
-  const handleCreateOllamaModelfile = useCallback(async (apply: boolean) => {
-    setCreatingOllamaModelfile(true);
-    setOllamaModelfileError(null);
-    try {
-      const name = (getSettingValue('OLLAMA_CUSTOM_MODEL_NAME') || '').trim();
-      if (!name) {
-        throw new Error('モデル名を入力してください');
-      }
-      const settingsPayload: UpdateSettingsRequest = {
-        OLLAMA_CUSTOM_MODEL_NAME: name,
-        OLLAMA_MODEL: getSettingValue('OLLAMA_MODEL'),
-        OLLAMA_BASE_MODEL: getSettingValue('OLLAMA_BASE_MODEL') || getSettingValue('OLLAMA_MODEL'),
-        OLLAMA_NUM_PREDICT: getSettingValue('OLLAMA_NUM_PREDICT'),
-        OLLAMA_TEMPERATURE: getSettingValue('OLLAMA_TEMPERATURE'),
-        OLLAMA_TOP_P: getSettingValue('OLLAMA_TOP_P'),
-        OLLAMA_NUM_CTX: getSettingValue('OLLAMA_NUM_CTX'),
-        OLLAMA_STOP: getSettingValue('OLLAMA_STOP'),
-        OLLAMA_SYSTEM_PROMPT: getSettingValue('OLLAMA_SYSTEM_PROMPT'),
-      };
-      const responseSettings = await fetch(buildApiUrl('/api/settings/v2'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settingsPayload),
-      });
-      if (!responseSettings.ok) {
-        throw new Error(await readErrorMessage(responseSettings));
-      }
-      applySavedSettings(settingsPayload);
-      const response = await fetch(buildApiUrl('/api/ollama/modelfile'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          create: true,
-          apply,
-          base_model: settingsPayload.OLLAMA_BASE_MODEL,
-        }),
-      });
-      if (!response.ok) {
-        const message = await readErrorMessage(response);
-        throw new Error(message);
-      }
-      const data = await response.json();
-      if (typeof data?.modelfile === 'string') {
-        setOllamaModelfilePreview(data.modelfile);
-      }
-      if (data?.applied && data?.name) {
-        applySavedSettings({ OLLAMA_MODEL: data.name });
-      }
-      toast.success(`Modelfileを生成しました: ${name}`);
-      await fetchOllamaModels({ silent: true });
-    } catch (err: any) {
-      console.error('[handleCreateOllamaModelfile] Failed to create modelfile:', err);
-      const message = err?.message || 'unknown error';
-      setOllamaModelfileError(message);
-      toast.error(`Modelfile生成に失敗しました: ${message}`);
-    } finally {
-      setCreatingOllamaModelfile(false);
-    }
-  }, [fetchOllamaModels, getSettingValue, applySavedSettings]);
-
-  React.useEffect(() => {
-    let mounted = true;
-    const tick = async () => {
-      if (!mounted) return;
-      await fetchOllamaStatus(true);
-    };
-    tick();
-    const interval = window.setInterval(tick, 5000);
-    return () => {
-      mounted = false;
-      window.clearInterval(interval);
-    };
-  }, [fetchOllamaStatus]);
-
-  const prevOllamaHealthyRef = useRef(false);
-  React.useEffect(() => {
-    const wasHealthy = prevOllamaHealthyRef.current;
-    const isHealthy = ollamaStatus?.healthy ?? false;
-    if (!wasHealthy && isHealthy) {
-      setOllamaModelsError(null);
-      fetchOllamaModels({ silent: true });
-    }
-    prevOllamaHealthyRef.current = isHealthy;
-  }, [ollamaStatus, fetchOllamaModels]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(translationTestStorageKeys.text, translationTestText);
-    } catch {
-      // ignore storage errors
-    }
-  }, [translationTestText, translationTestStorageKeys.text]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(chatTestStorageKeys.text, chatTestText);
-    } catch {
-      // ignore storage errors
-    }
-  }, [chatTestText, chatTestStorageKeys.text]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(translationTestStorageKeys.source, translationTestSourceLang);
-    } catch {
-      // ignore storage errors
-    }
-  }, [translationTestSourceLang, translationTestStorageKeys.source]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(translationTestStorageKeys.target, translationTestTargetLang);
-    } catch {
-      // ignore storage errors
-    }
-  }, [translationTestTargetLang, translationTestStorageKeys.target]);
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';
 
@@ -971,59 +582,6 @@ export const useSettingsPage = () => {
     }
   };
 
-  const handleRefreshMicDevices = useCallback(async () => {
-    setLoadingMicDevices(true);
-    try {
-      const response = await fetch(buildApiUrl('/api/mic/devices'));
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMessage = text;
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed && typeof parsed.error === 'string') {
-            errorMessage = parsed.error;
-          }
-        } catch {
-          // keep raw text
-        }
-        throw new Error(errorMessage || `HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setMicDevices(Array.isArray(data.devices) ? data.devices : []);
-    } catch (error: any) {
-      console.error('Failed to get mic devices:', error);
-      toast.error('マイクデバイスの取得に失敗しました: ' + (error?.message || 'unknown error'));
-      setMicDevices([]);
-    } finally {
-      setLoadingMicDevices(false);
-    }
-  }, []);
-
-  const handleRestartMicRecog = useCallback(async () => {
-    setRestartingMicRecog(true);
-    try {
-      const response = await fetch(buildApiUrl('/api/mic/restart'), { method: 'POST' });
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const data = await response.json();
-          if (data && typeof data.error === 'string') {
-            errorMessage = data.error;
-          }
-        } catch {
-          // ignore parse error
-        }
-        throw new Error(errorMessage);
-      }
-      toast.success('マイク音声認識を再起動しました');
-    } catch (error: any) {
-      console.error('Failed to restart mic-recog:', error);
-      toast.error('マイク音声認識の再起動に失敗しました: ' + (error?.message || 'unknown error'));
-    } finally {
-      setRestartingMicRecog(false);
-    }
-  }, []);
-
   const handleTokenRefresh = async () => {
     try {
       const response = await fetch(buildApiUrl('/api/twitch/refresh-token'), {
@@ -1211,41 +769,6 @@ export const useSettingsPage = () => {
     systemPrinters,
     loadingSystemPrinters,
     handleRefreshSystemPrinters,
-
-    // Mic devices
-    micDevices,
-    loadingMicDevices,
-    handleRefreshMicDevices,
-    restartingMicRecog,
-    handleRestartMicRecog,
-    ollamaModels,
-    ollamaModelsLoading,
-    ollamaModelsError,
-    ollamaModelsFetchedAt,
-    pullingOllamaModel,
-    ollamaStatus,
-    creatingOllamaModelfile,
-    ollamaModelfilePreview,
-    ollamaModelfileError,
-    handleCreateOllamaModelfile,
-    fetchOllamaModels,
-    pullOllamaModel,
-    translationTestText,
-    setTranslationTestText,
-    translationTestSourceLang,
-    setTranslationTestSourceLang,
-    translationTestTargetLang,
-    setTranslationTestTargetLang,
-    translationTestResult,
-    translationTestTookMs,
-    translationTesting,
-    handleTestTranslation,
-    chatTestText,
-    setChatTestText,
-    chatTestResult,
-    chatTestTookMs,
-    chatTesting,
-    handleTestChat,
 
     // Show/hide secrets
     showSecrets,

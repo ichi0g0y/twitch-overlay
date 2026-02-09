@@ -38,9 +38,17 @@ interface OverlaySettings {
   mic_transcript_position?: string;
   mic_transcript_font_size?: number;
   mic_transcript_max_lines?: number;
+  mic_transcript_max_width_px?: number;
+  mic_transcript_speech_language?: string;
+  mic_transcript_speech_short_pause_ms?: number;
+  mic_transcript_speech_interim_throttle_ms?: number;
+  mic_transcript_speech_dual_instance_enabled?: boolean;
+  mic_transcript_speech_restart_delay_ms?: number;
   mic_transcript_translation_enabled?: boolean;
   mic_transcript_translation_mode?: string;
   mic_transcript_translation_language?: string;
+  mic_transcript_translation_position?: string;
+  mic_transcript_translation_max_width_px?: number;
   mic_transcript_translation_font_size?: number;
   mic_transcript_line_ttl_seconds?: number;
   mic_transcript_last_ttl_seconds?: number;

@@ -53,10 +53,14 @@ export const MicTranscriptOverlay: React.FC = () => {
   const position = settings?.mic_transcript_position || 'bottom-left';
   const fontSize = settings?.mic_transcript_font_size ?? 20;
   const translationFontSize = settings?.mic_transcript_translation_font_size ?? Math.max(fontSize - 6, 12);
+  const maxWidthPx = settings?.mic_transcript_max_width_px ?? 0;
+  const translationPosition = settings?.mic_transcript_translation_position || position;
+  const translationMaxWidthPx = settings?.mic_transcript_translation_max_width_px ?? 0;
   const lineTtlMs = Math.max(1, settings?.mic_transcript_line_ttl_seconds ?? DEFAULT_LINE_TTL_MS / 1000) * 1000;
   const lastTtlSeconds = settings?.mic_transcript_last_ttl_seconds ?? DEFAULT_LAST_TTL_MS / 1000;
   const lastTtlMs = lastTtlSeconds <= 0 ? INFINITE_EXPIRY : Math.max(1, lastTtlSeconds) * 1000;
   const positionClass = POSITION_CLASS[position] || POSITION_CLASS['bottom-left'];
+  const translationPositionClass = POSITION_CLASS[translationPosition] || POSITION_CLASS['bottom-left'];
 
   const applyExpiryRules = useCallback((nextLines: TranscriptLine[]) => {
     if (nextLines.length === 0) return [];
@@ -164,8 +168,8 @@ export const MicTranscriptOverlay: React.FC = () => {
         return {
           ...line,
           translation,
-          targetLanguage: payload?.target_language,
-          sourceLanguage: payload?.source_language,
+          ...(payload.target_language ? { targetLanguage: payload.target_language } : {}),
+          ...(payload.source_language ? { sourceLanguage: payload.source_language } : {}),
         };
       })
     );
@@ -246,35 +250,57 @@ export const MicTranscriptOverlay: React.FC = () => {
     return [...trimmed, { ...interimLine, text: `〜${interimLine.text}〜`, isInterim: true }];
   }, [lines, interimLine, maxLines]);
 
+  const visibleTranslationLines = useMemo(() => {
+    if (!translationEnabled) return [];
+    return visibleLines.filter((line) => {
+      if (line.isInterim) return false;
+      const translation = (line.translation || '').trim();
+      if (!translation) return false;
+      if (translation === line.text) return false;
+      return true;
+    });
+  }, [translationEnabled, visibleLines]);
+
   if (!enabled || visibleLines.length === 0) {
     return null;
   }
 
   return (
-    <div
-      className={`fixed z-[20] flex flex-col gap-2 pointer-events-none font-readable ${positionClass}`}
-      style={{ fontSize: `${fontSize}px` }}
-    >
-      {visibleLines.map((line) => (
+    <>
+      <div
+        className={`fixed z-[20] flex flex-col gap-2 pointer-events-none font-readable ${positionClass}`}
+        style={{
+          fontSize: `${fontSize}px`,
+          maxWidth: maxWidthPx > 0 ? `${maxWidthPx}px` : undefined,
+        }}
+      >
+        {visibleLines.map((line) => (
+          <div
+            key={line.id}
+            className={`px-3 py-2 rounded bg-black/60 text-white text-outline ${
+              line.isInterim ? 'opacity-80' : ''
+            }`}
+          >
+            <div className="leading-snug">{line.text}</div>
+          </div>
+        ))}
+      </div>
+
+      {translationEnabled && visibleTranslationLines.length > 0 ? (
         <div
-          key={line.id}
-          className={`px-3 py-2 rounded bg-black/60 text-white text-outline ${
-            line.isInterim ? 'opacity-80' : ''
-          }`}
+          className={`fixed z-[19] flex flex-col gap-2 pointer-events-none font-readable ${translationPositionClass}`}
+          style={{
+            fontSize: `${translationFontSize}px`,
+            maxWidth: translationMaxWidthPx > 0 ? `${translationMaxWidthPx}px` : undefined,
+          }}
         >
-          <div className="leading-snug">{line.text}</div>
-          {translationEnabled &&
-            line.translation &&
-            line.translation !== line.text && (
-              <div
-                className="mt-1 opacity-90 leading-snug"
-                style={{ fontSize: `${translationFontSize}px` }}
-              >
-                {line.translation}
-              </div>
-            )}
+          {visibleTranslationLines.map((line) => (
+            <div key={`${line.id}-translation`} className="px-3 py-2 rounded bg-black/45 text-white text-outline">
+              <div className="leading-snug opacity-95">{line.translation}</div>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      ) : null}
+    </>
   );
 };

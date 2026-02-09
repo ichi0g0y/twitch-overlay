@@ -142,8 +142,6 @@ tasks:
       - cd web && bun run build
       - echo "フロントエンド依存関係をインストール中..."
       - cd frontend && bun install
-      - echo "mic-recogをビルド中..."
-      - task: mic-recog:build
       - echo "バインディング生成中..."
       - wails3 generate bindings -clean=true
       - echo "フロントエンドをビルド中..."
@@ -155,8 +153,6 @@ tasks:
       - go build -tags production -ldflags "-w -s" -o build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay
       - echo "Info.plistをコピー中..."
       - cp build/darwin/Info.plist build/bin/twitch-overlay.app/Contents/
-      - echo "mic-recogを同梱中..."
-      - task: mic-recog:bundle
       - echo "署名処理中（エンタイトルメント適用）..."
       - codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay.app
       - echo "ビルド完了 → build/bin/twitch-overlay.app"
@@ -240,8 +236,6 @@ tasks:
       - cd frontend && bun install
       - echo "Webオーバーレイの依存関係をインストール中..."
       - cd web && bun install
-      - echo "mic-recog の Python venv を準備中..."
-      - task: venv:all
       - echo "依存関係のインストール完了"
 
   # 短縮コマンド
@@ -299,35 +293,3 @@ tasks:
         else
           echo "バージョン: 開発版"
         fi
-
-  mic-recog:build:
-    desc: mic-recog をPyInstallerでビルド
-    dir: mic-recog
-    cmds:
-      - ./build.sh mic_stream
-
-  mic-recog:venv:
-    desc: mic-recog のvenv作成と依存インストール
-    cmds:
-      - |
-        if command -v python3 >/dev/null 2>&1; then
-          PYTHON_BIN=python3
-        elif command -v python >/dev/null 2>&1; then
-          PYTHON_BIN=python
-        else
-          echo "Pythonが見つかりません"
-          exit 1
-        fi
-        "$PYTHON_BIN" -m venv mic-recog/.venv
-        mic-recog/.venv/bin/python -m pip install -r mic-recog/requirements.txt
-
-  venv:all:
-    desc: mic-recog のvenv作成
-    deps:
-      - mic-recog:venv
-
-  mic-recog:bundle:
-    desc: mic-recog を .app に同梱
-    cmds:
-      - mkdir -p build/bin/twitch-overlay.app/Contents/Resources/mic-recog
-      - rsync -av --delete --exclude '__pycache__' --exclude '.venv' --exclude 'build' --exclude '*.spec' mic-recog/ build/bin/twitch-overlay.app/Contents/Resources/mic-recog/

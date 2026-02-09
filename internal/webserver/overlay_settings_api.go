@@ -61,16 +61,24 @@ type OverlaySettings struct {
 	TickerNoticeAlign    string `json:"ticker_notice_align"`     // 配置（left/center/right）
 
 	// マイク文字起こし表示設定
-	MicTranscriptEnabled             bool   `json:"mic_transcript_enabled"`
-	MicTranscriptPosition            string `json:"mic_transcript_position"`
-	MicTranscriptFontSize            int    `json:"mic_transcript_font_size"`
-	MicTranscriptMaxLines            int    `json:"mic_transcript_max_lines"`
-	MicTranscriptTranslationEnabled  bool   `json:"mic_transcript_translation_enabled"`
-	MicTranscriptTranslationMode     string `json:"mic_transcript_translation_mode"`
-	MicTranscriptTranslationLanguage string `json:"mic_transcript_translation_language"`
-	MicTranscriptTranslationFontSize int    `json:"mic_transcript_translation_font_size"`
-	MicTranscriptLineTtlSeconds      int    `json:"mic_transcript_line_ttl_seconds"`
-	MicTranscriptLastTtlSeconds      int    `json:"mic_transcript_last_ttl_seconds"`
+	MicTranscriptEnabled                   bool   `json:"mic_transcript_enabled"`
+	MicTranscriptPosition                  string `json:"mic_transcript_position"`
+	MicTranscriptFontSize                  int    `json:"mic_transcript_font_size"`
+	MicTranscriptMaxLines                  int    `json:"mic_transcript_max_lines"`
+	MicTranscriptMaxWidthPx                int    `json:"mic_transcript_max_width_px"`
+	MicTranscriptSpeechLanguage            string `json:"mic_transcript_speech_language"`
+	MicTranscriptSpeechShortPauseMs        int    `json:"mic_transcript_speech_short_pause_ms"`
+	MicTranscriptSpeechInterimThrottleMs   int    `json:"mic_transcript_speech_interim_throttle_ms"`
+	MicTranscriptSpeechDualInstanceEnabled bool   `json:"mic_transcript_speech_dual_instance_enabled"`
+	MicTranscriptSpeechRestartDelayMs      int    `json:"mic_transcript_speech_restart_delay_ms"`
+	MicTranscriptTranslationEnabled        bool   `json:"mic_transcript_translation_enabled"`
+	MicTranscriptTranslationMode           string `json:"mic_transcript_translation_mode"`
+	MicTranscriptTranslationLanguage       string `json:"mic_transcript_translation_language"`
+	MicTranscriptTranslationPosition       string `json:"mic_transcript_translation_position"`
+	MicTranscriptTranslationMaxWidthPx     int    `json:"mic_transcript_translation_max_width_px"`
+	MicTranscriptTranslationFontSize       int    `json:"mic_transcript_translation_font_size"`
+	MicTranscriptLineTtlSeconds            int    `json:"mic_transcript_line_ttl_seconds"`
+	MicTranscriptLastTtlSeconds            int    `json:"mic_transcript_last_ttl_seconds"`
 
 	// UI状態設定
 	OverlayCardsExpanded string `json:"overlay_cards_expanded"` // カードの折りたたみ状態（JSON文字列）
@@ -130,45 +138,53 @@ func loadOverlaySettingsFromDB() {
 
 	// データベースから設定を読み込んでOverlaySettings構造体に変換
 	overlaySettings := &OverlaySettings{
-		MusicEnabled:                     getBoolSetting(allSettings, "MUSIC_ENABLED", true),
-		MusicPlaylist:                    getStringSetting(allSettings, "MUSIC_PLAYLIST"),
-		MusicVolume:                      getIntSetting(allSettings, "MUSIC_VOLUME", 70),
-		MusicAutoPlay:                    getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
-		FaxEnabled:                       getBoolSetting(allSettings, "FAX_ENABLED", true),
-		FaxAnimationSpeed:                getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
-		FaxImageType:                     getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
-		ClockEnabled:                     getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
-		ClockFormat:                      getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
-		ClockShowIcons:                   getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
-		LocationEnabled:                  getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
-		DateEnabled:                      getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
-		TimeEnabled:                      getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
-		RewardCountEnabled:               getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
-		RewardCountGroupID:               getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
-		RewardCountPosition:              getStringSettingWithDefault(allSettings, "REWARD_COUNT_POSITION", "left"),
-		LotteryEnabled:                   getBoolSetting(allSettings, "LOTTERY_ENABLED", false),
-		LotteryRewardID:                  getStringSetting(allSettings, "LOTTERY_REWARD_ID"),
-		LotteryDisplayDuration:           getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
-		LotteryAnimationSpeed:            getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
-		LotteryTickerEnabled:             getBoolSetting(allSettings, "LOTTERY_TICKER_ENABLED", false),
-		TickerNoticeEnabled:              getBoolSetting(allSettings, "TICKER_NOTICE_ENABLED", false),
-		TickerNoticeText:                 getStringSettingWithDefault(allSettings, "TICKER_NOTICE_TEXT", ""),
-		TickerNoticeFontSize:             getIntSetting(allSettings, "TICKER_NOTICE_FONT_SIZE", 16),
-		TickerNoticeAlign:                getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
-		MicTranscriptEnabled:             getBoolSetting(allSettings, "MIC_TRANSCRIPT_ENABLED", false),
-		MicTranscriptPosition:            getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_POSITION", "bottom-left"),
-		MicTranscriptFontSize:            getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_SIZE", 20),
-		MicTranscriptMaxLines:            getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_LINES", 3),
-		MicTranscriptTranslationEnabled:  getBoolSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_ENABLED", false),
-		MicTranscriptTranslationMode:     getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MODE", ""),
-		MicTranscriptTranslationLanguage: getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "eng"),
-		MicTranscriptTranslationFontSize: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
-		MicTranscriptLineTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_TTL_SECONDS", 8),
-		MicTranscriptLastTtlSeconds:      getIntSetting(allSettings, "MIC_TRANSCRIPT_LAST_TTL_SECONDS", 8),
-		OverlayCardsExpanded:             getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
-		OverlayCardsLayout:               getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`),
-		ShowDebugInfo:                    false, // 廃止予定
-		DebugEnabled:                     getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
+		MusicEnabled:                           getBoolSetting(allSettings, "MUSIC_ENABLED", true),
+		MusicPlaylist:                          getStringSetting(allSettings, "MUSIC_PLAYLIST"),
+		MusicVolume:                            getIntSetting(allSettings, "MUSIC_VOLUME", 70),
+		MusicAutoPlay:                          getBoolSetting(allSettings, "MUSIC_AUTO_PLAY", false),
+		FaxEnabled:                             getBoolSetting(allSettings, "FAX_ENABLED", true),
+		FaxAnimationSpeed:                      getFloatSetting(allSettings, "FAX_ANIMATION_SPEED", 1.0),
+		FaxImageType:                           getStringSettingWithDefault(allSettings, "FAX_IMAGE_TYPE", "color"),
+		ClockEnabled:                           getBoolSetting(allSettings, "OVERLAY_CLOCK_ENABLED", true),
+		ClockFormat:                            getStringSettingWithDefault(allSettings, "OVERLAY_CLOCK_FORMAT", "24h"),
+		ClockShowIcons:                         getBoolSetting(allSettings, "CLOCK_SHOW_ICONS", true),
+		LocationEnabled:                        getBoolSetting(allSettings, "OVERLAY_LOCATION_ENABLED", true),
+		DateEnabled:                            getBoolSetting(allSettings, "OVERLAY_DATE_ENABLED", true),
+		TimeEnabled:                            getBoolSetting(allSettings, "OVERLAY_TIME_ENABLED", true),
+		RewardCountEnabled:                     getBoolSetting(allSettings, "REWARD_COUNT_ENABLED", false),
+		RewardCountGroupID:                     getIntPointerSetting(allSettings, "REWARD_COUNT_GROUP_ID"),
+		RewardCountPosition:                    getStringSettingWithDefault(allSettings, "REWARD_COUNT_POSITION", "left"),
+		LotteryEnabled:                         getBoolSetting(allSettings, "LOTTERY_ENABLED", false),
+		LotteryRewardID:                        getStringSetting(allSettings, "LOTTERY_REWARD_ID"),
+		LotteryDisplayDuration:                 getIntSetting(allSettings, "LOTTERY_DISPLAY_DURATION", 5),
+		LotteryAnimationSpeed:                  getFloatSetting(allSettings, "LOTTERY_ANIMATION_SPEED", 1.0),
+		LotteryTickerEnabled:                   getBoolSetting(allSettings, "LOTTERY_TICKER_ENABLED", false),
+		TickerNoticeEnabled:                    getBoolSetting(allSettings, "TICKER_NOTICE_ENABLED", false),
+		TickerNoticeText:                       getStringSettingWithDefault(allSettings, "TICKER_NOTICE_TEXT", ""),
+		TickerNoticeFontSize:                   getIntSetting(allSettings, "TICKER_NOTICE_FONT_SIZE", 16),
+		TickerNoticeAlign:                      getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
+		MicTranscriptEnabled:                   getBoolSetting(allSettings, "MIC_TRANSCRIPT_ENABLED", false),
+		MicTranscriptPosition:                  getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_POSITION", "bottom-left"),
+		MicTranscriptFontSize:                  getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_SIZE", 20),
+		MicTranscriptMaxLines:                  getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_LINES", 3),
+		MicTranscriptMaxWidthPx:                getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_WIDTH_PX", 0),
+		MicTranscriptSpeechLanguage:            getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_SPEECH_LANGUAGE", "ja"),
+		MicTranscriptSpeechShortPauseMs:        getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", 800),
+		MicTranscriptSpeechInterimThrottleMs:   getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS", 200),
+		MicTranscriptSpeechDualInstanceEnabled: getBoolSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", true),
+		MicTranscriptSpeechRestartDelayMs:      getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", 100),
+		MicTranscriptTranslationEnabled:        getBoolSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_ENABLED", false),
+		MicTranscriptTranslationMode:           getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MODE", ""),
+		MicTranscriptTranslationLanguage:       getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "en"),
+		MicTranscriptTranslationPosition:       getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_POSITION", "bottom-left"),
+		MicTranscriptTranslationMaxWidthPx:     getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX", 0),
+		MicTranscriptTranslationFontSize:       getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
+		MicTranscriptLineTtlSeconds:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_TTL_SECONDS", 8),
+		MicTranscriptLastTtlSeconds:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LAST_TTL_SECONDS", 8),
+		OverlayCardsExpanded:                   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
+		OverlayCardsLayout:                     getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_LAYOUT", `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`),
+		ShowDebugInfo:                          false, // 廃止予定
+		DebugEnabled:                           getBoolSetting(allSettings, "OVERLAY_DEBUG_ENABLED", false),
 
 		// プリンター設定
 		BestQuality: getBoolPointerSetting(allSettings, "BEST_QUALITY"),
@@ -180,14 +196,10 @@ func loadOverlaySettingsFromDB() {
 		UpdatedAt: time.Now(),
 	}
 
-	if strings.TrimSpace(overlaySettings.MicTranscriptTranslationMode) == "" {
-		if overlaySettings.MicTranscriptTranslationEnabled {
-			overlaySettings.MicTranscriptTranslationMode = "ollama"
-		} else {
-			overlaySettings.MicTranscriptTranslationMode = "off"
-		}
-	}
-	overlaySettings.MicTranscriptTranslationEnabled = overlaySettings.MicTranscriptTranslationMode != "off"
+	overlaySettings.MicTranscriptTranslationMode, overlaySettings.MicTranscriptTranslationEnabled = normalizeMicTranscriptTranslationMode(
+		overlaySettings.MicTranscriptTranslationMode,
+		overlaySettings.MicTranscriptTranslationEnabled,
+	)
 
 	overlaySettingsMutex.Lock()
 	currentOverlaySettings = overlaySettings
@@ -239,6 +251,31 @@ func getStringSettingWithDefault(settings map[string]settings.Setting, key strin
 	return defaultValue
 }
 
+func normalizeMicTranscriptTranslationMode(mode string, enabled bool) (string, bool) {
+	rawMode := strings.TrimSpace(mode)
+	if rawMode == "" {
+		if enabled {
+			return "chrome", true
+		}
+		return "off", false
+	}
+
+	normalized := strings.ToLower(rawMode)
+	if !enabled {
+		return "off", false
+	}
+
+	switch normalized {
+	case "off":
+		return "off", false
+	case "chrome":
+		return "chrome", true
+	default:
+		// Legacy/unknown backend values are migrated to chrome to keep browser-only flow.
+		return "chrome", true
+	}
+}
+
 func getIntPointerSetting(settings map[string]settings.Setting, key string) *int {
 	if setting, ok := settings[key]; ok && setting.Value != "" {
 		if val, err := strconv.Atoi(setting.Value); err == nil {
@@ -268,35 +305,43 @@ func getBoolPointerSetting(settings map[string]settings.Setting, key string) *bo
 
 func useDefaultSettings() {
 	defaultSettings := &OverlaySettings{
-		MusicEnabled:                     true,
-		MusicPlaylist:                    nil,
-		MusicVolume:                      70,
-		MusicAutoPlay:                    false,
-		FaxEnabled:                       true,
-		FaxAnimationSpeed:                1.0,
-		FaxImageType:                     "color",
-		ClockEnabled:                     true,
-		ClockFormat:                      "24h",
-		ClockShowIcons:                   true,
-		LocationEnabled:                  true,
-		DateEnabled:                      true,
-		TimeEnabled:                      true,
-		LotteryTickerEnabled:             false,
-		MicTranscriptEnabled:             false,
-		MicTranscriptPosition:            "bottom-left",
-		MicTranscriptFontSize:            20,
-		MicTranscriptMaxLines:            3,
-		MicTranscriptTranslationEnabled:  false,
-		MicTranscriptTranslationMode:     "off",
-		MicTranscriptTranslationLanguage: "eng",
-		MicTranscriptTranslationFontSize: 16,
-		MicTranscriptLineTtlSeconds:      8,
-		MicTranscriptLastTtlSeconds:      8,
-		OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
-		OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
-		ShowDebugInfo:                    false,
-		DebugEnabled:                     false,
-		UpdatedAt:                        time.Now(),
+		MusicEnabled:                           true,
+		MusicPlaylist:                          nil,
+		MusicVolume:                            70,
+		MusicAutoPlay:                          false,
+		FaxEnabled:                             true,
+		FaxAnimationSpeed:                      1.0,
+		FaxImageType:                           "color",
+		ClockEnabled:                           true,
+		ClockFormat:                            "24h",
+		ClockShowIcons:                         true,
+		LocationEnabled:                        true,
+		DateEnabled:                            true,
+		TimeEnabled:                            true,
+		LotteryTickerEnabled:                   false,
+		MicTranscriptEnabled:                   false,
+		MicTranscriptPosition:                  "bottom-left",
+		MicTranscriptFontSize:                  20,
+		MicTranscriptMaxLines:                  3,
+		MicTranscriptMaxWidthPx:                0,
+		MicTranscriptSpeechLanguage:            "ja",
+		MicTranscriptSpeechShortPauseMs:        800,
+		MicTranscriptSpeechInterimThrottleMs:   200,
+		MicTranscriptSpeechDualInstanceEnabled: true,
+		MicTranscriptSpeechRestartDelayMs:      100,
+		MicTranscriptTranslationEnabled:        false,
+		MicTranscriptTranslationMode:           "off",
+		MicTranscriptTranslationLanguage:       "en",
+		MicTranscriptTranslationPosition:       "bottom-left",
+		MicTranscriptTranslationMaxWidthPx:     0,
+		MicTranscriptTranslationFontSize:       16,
+		MicTranscriptLineTtlSeconds:            8,
+		MicTranscriptLastTtlSeconds:            8,
+		OverlayCardsExpanded:                   `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+		OverlayCardsLayout:                     `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
+		ShowDebugInfo:                          false,
+		DebugEnabled:                           false,
+		UpdatedAt:                              time.Now(),
 	}
 
 	overlaySettingsMutex.Lock()
@@ -361,41 +406,49 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 
 	// 各設定を保存
 	settingsToSave := map[string]string{
-		"MUSIC_ENABLED":                        strconv.FormatBool(overlaySettings.MusicEnabled),
-		"MUSIC_VOLUME":                         strconv.Itoa(overlaySettings.MusicVolume),
-		"MUSIC_AUTO_PLAY":                      strconv.FormatBool(overlaySettings.MusicAutoPlay),
-		"FAX_ENABLED":                          strconv.FormatBool(overlaySettings.FaxEnabled),
-		"FAX_ANIMATION_SPEED":                  fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
-		"FAX_IMAGE_TYPE":                       overlaySettings.FaxImageType,
-		"OVERLAY_CLOCK_ENABLED":                strconv.FormatBool(overlaySettings.ClockEnabled),
-		"OVERLAY_CLOCK_FORMAT":                 overlaySettings.ClockFormat,
-		"CLOCK_SHOW_ICONS":                     strconv.FormatBool(overlaySettings.ClockShowIcons),
-		"OVERLAY_LOCATION_ENABLED":             strconv.FormatBool(overlaySettings.LocationEnabled),
-		"OVERLAY_DATE_ENABLED":                 strconv.FormatBool(overlaySettings.DateEnabled),
-		"OVERLAY_TIME_ENABLED":                 strconv.FormatBool(overlaySettings.TimeEnabled),
-		"REWARD_COUNT_ENABLED":                 strconv.FormatBool(overlaySettings.RewardCountEnabled),
-		"REWARD_COUNT_POSITION":                overlaySettings.RewardCountPosition,
-		"LOTTERY_ENABLED":                      strconv.FormatBool(overlaySettings.LotteryEnabled),
-		"LOTTERY_DISPLAY_DURATION":             strconv.Itoa(overlaySettings.LotteryDisplayDuration),
-		"LOTTERY_ANIMATION_SPEED":              fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
-		"LOTTERY_TICKER_ENABLED":               strconv.FormatBool(overlaySettings.LotteryTickerEnabled),
-		"TICKER_NOTICE_ENABLED":                strconv.FormatBool(overlaySettings.TickerNoticeEnabled),
-		"TICKER_NOTICE_TEXT":                   overlaySettings.TickerNoticeText,
-		"TICKER_NOTICE_FONT_SIZE":              strconv.Itoa(overlaySettings.TickerNoticeFontSize),
-		"TICKER_NOTICE_ALIGN":                  overlaySettings.TickerNoticeAlign,
-		"MIC_TRANSCRIPT_ENABLED":               strconv.FormatBool(overlaySettings.MicTranscriptEnabled),
-		"MIC_TRANSCRIPT_POSITION":              overlaySettings.MicTranscriptPosition,
-		"MIC_TRANSCRIPT_FONT_SIZE":             strconv.Itoa(overlaySettings.MicTranscriptFontSize),
-		"MIC_TRANSCRIPT_MAX_LINES":             strconv.Itoa(overlaySettings.MicTranscriptMaxLines),
-		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":   strconv.FormatBool(translationEnabled),
-		"MIC_TRANSCRIPT_TRANSLATION_MODE":      overlaySettings.MicTranscriptTranslationMode,
-		"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE":  overlaySettings.MicTranscriptTranslationLanguage,
-		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
-		"MIC_TRANSCRIPT_LINE_TTL_SECONDS":      strconv.Itoa(overlaySettings.MicTranscriptLineTtlSeconds),
-		"MIC_TRANSCRIPT_LAST_TTL_SECONDS":      strconv.Itoa(overlaySettings.MicTranscriptLastTtlSeconds),
-		"OVERLAY_CARDS_EXPANDED":               overlaySettings.OverlayCardsExpanded,
-		"OVERLAY_CARDS_LAYOUT":                 overlaySettings.OverlayCardsLayout,
-		"OVERLAY_DEBUG_ENABLED":                strconv.FormatBool(overlaySettings.DebugEnabled),
+		"MUSIC_ENABLED":                               strconv.FormatBool(overlaySettings.MusicEnabled),
+		"MUSIC_VOLUME":                                strconv.Itoa(overlaySettings.MusicVolume),
+		"MUSIC_AUTO_PLAY":                             strconv.FormatBool(overlaySettings.MusicAutoPlay),
+		"FAX_ENABLED":                                 strconv.FormatBool(overlaySettings.FaxEnabled),
+		"FAX_ANIMATION_SPEED":                         fmt.Sprintf("%.2f", overlaySettings.FaxAnimationSpeed),
+		"FAX_IMAGE_TYPE":                              overlaySettings.FaxImageType,
+		"OVERLAY_CLOCK_ENABLED":                       strconv.FormatBool(overlaySettings.ClockEnabled),
+		"OVERLAY_CLOCK_FORMAT":                        overlaySettings.ClockFormat,
+		"CLOCK_SHOW_ICONS":                            strconv.FormatBool(overlaySettings.ClockShowIcons),
+		"OVERLAY_LOCATION_ENABLED":                    strconv.FormatBool(overlaySettings.LocationEnabled),
+		"OVERLAY_DATE_ENABLED":                        strconv.FormatBool(overlaySettings.DateEnabled),
+		"OVERLAY_TIME_ENABLED":                        strconv.FormatBool(overlaySettings.TimeEnabled),
+		"REWARD_COUNT_ENABLED":                        strconv.FormatBool(overlaySettings.RewardCountEnabled),
+		"REWARD_COUNT_POSITION":                       overlaySettings.RewardCountPosition,
+		"LOTTERY_ENABLED":                             strconv.FormatBool(overlaySettings.LotteryEnabled),
+		"LOTTERY_DISPLAY_DURATION":                    strconv.Itoa(overlaySettings.LotteryDisplayDuration),
+		"LOTTERY_ANIMATION_SPEED":                     fmt.Sprintf("%.2f", overlaySettings.LotteryAnimationSpeed),
+		"LOTTERY_TICKER_ENABLED":                      strconv.FormatBool(overlaySettings.LotteryTickerEnabled),
+		"TICKER_NOTICE_ENABLED":                       strconv.FormatBool(overlaySettings.TickerNoticeEnabled),
+		"TICKER_NOTICE_TEXT":                          overlaySettings.TickerNoticeText,
+		"TICKER_NOTICE_FONT_SIZE":                     strconv.Itoa(overlaySettings.TickerNoticeFontSize),
+		"TICKER_NOTICE_ALIGN":                         overlaySettings.TickerNoticeAlign,
+		"MIC_TRANSCRIPT_ENABLED":                      strconv.FormatBool(overlaySettings.MicTranscriptEnabled),
+		"MIC_TRANSCRIPT_POSITION":                     overlaySettings.MicTranscriptPosition,
+		"MIC_TRANSCRIPT_FONT_SIZE":                    strconv.Itoa(overlaySettings.MicTranscriptFontSize),
+		"MIC_TRANSCRIPT_MAX_LINES":                    strconv.Itoa(overlaySettings.MicTranscriptMaxLines),
+		"MIC_TRANSCRIPT_MAX_WIDTH_PX":                 strconv.Itoa(overlaySettings.MicTranscriptMaxWidthPx),
+		"MIC_TRANSCRIPT_SPEECH_LANGUAGE":              overlaySettings.MicTranscriptSpeechLanguage,
+		"MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS":        strconv.Itoa(overlaySettings.MicTranscriptSpeechShortPauseMs),
+		"MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS":   strconv.Itoa(overlaySettings.MicTranscriptSpeechInterimThrottleMs),
+		"MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED": strconv.FormatBool(overlaySettings.MicTranscriptSpeechDualInstanceEnabled),
+		"MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS":      strconv.Itoa(overlaySettings.MicTranscriptSpeechRestartDelayMs),
+		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":          strconv.FormatBool(translationEnabled),
+		"MIC_TRANSCRIPT_TRANSLATION_MODE":             overlaySettings.MicTranscriptTranslationMode,
+		"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE":         overlaySettings.MicTranscriptTranslationLanguage,
+		"MIC_TRANSCRIPT_TRANSLATION_POSITION":         overlaySettings.MicTranscriptTranslationPosition,
+		"MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX":     strconv.Itoa(overlaySettings.MicTranscriptTranslationMaxWidthPx),
+		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE":        strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
+		"MIC_TRANSCRIPT_LINE_TTL_SECONDS":             strconv.Itoa(overlaySettings.MicTranscriptLineTtlSeconds),
+		"MIC_TRANSCRIPT_LAST_TTL_SECONDS":             strconv.Itoa(overlaySettings.MicTranscriptLastTtlSeconds),
+		"OVERLAY_CARDS_EXPANDED":                      overlaySettings.OverlayCardsExpanded,
+		"OVERLAY_CARDS_LAYOUT":                        overlaySettings.OverlayCardsLayout,
+		"OVERLAY_DEBUG_ENABLED":                       strconv.FormatBool(overlaySettings.DebugEnabled),
 	}
 
 	// RewardCountGroupIDはnilの場合は空文字列として保存
@@ -499,21 +552,27 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	// Initialize if nil
 	if currentOverlaySettings == nil {
 		currentOverlaySettings = &OverlaySettings{
-			MusicEnabled:                     true,
-			MusicVolume:                      70,
-			FaxEnabled:                       true,
-			FaxAnimationSpeed:                1.0,
-			ClockEnabled:                     true,
-			ClockFormat:                      "24h",
-			LocationEnabled:                  true,
-			DateEnabled:                      true,
-			TimeEnabled:                      true,
-			LotteryTickerEnabled:             false,
-			OverlayCardsExpanded:             `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
-			OverlayCardsLayout:               `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
-			MicTranscriptTranslationEnabled:  false,
-			MicTranscriptTranslationLanguage: "eng",
-			MicTranscriptTranslationFontSize: 16,
+			MusicEnabled:                           true,
+			MusicVolume:                            70,
+			FaxEnabled:                             true,
+			FaxAnimationSpeed:                      1.0,
+			ClockEnabled:                           true,
+			ClockFormat:                            "24h",
+			LocationEnabled:                        true,
+			DateEnabled:                            true,
+			TimeEnabled:                            true,
+			LotteryTickerEnabled:                   false,
+			OverlayCardsExpanded:                   `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
+			OverlayCardsLayout:                     `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
+			MicTranscriptTranslationEnabled:        false,
+			MicTranscriptTranslationLanguage:       "en",
+			MicTranscriptTranslationPosition:       "bottom-left",
+			MicTranscriptTranslationFontSize:       16,
+			MicTranscriptSpeechLanguage:            "ja",
+			MicTranscriptSpeechShortPauseMs:        800,
+			MicTranscriptSpeechInterimThrottleMs:   200,
+			MicTranscriptSpeechDualInstanceEnabled: true,
+			MicTranscriptSpeechRestartDelayMs:      100,
 		}
 	}
 
@@ -552,14 +611,10 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(mergedSettings.MicTranscriptTranslationMode) == "" {
-		if mergedSettings.MicTranscriptTranslationEnabled {
-			mergedSettings.MicTranscriptTranslationMode = "ollama"
-		} else {
-			mergedSettings.MicTranscriptTranslationMode = "off"
-		}
-	}
-	mergedSettings.MicTranscriptTranslationEnabled = mergedSettings.MicTranscriptTranslationMode != "off"
+	mergedSettings.MicTranscriptTranslationMode, mergedSettings.MicTranscriptTranslationEnabled = normalizeMicTranscriptTranslationMode(
+		mergedSettings.MicTranscriptTranslationMode,
+		mergedSettings.MicTranscriptTranslationEnabled,
+	)
 
 	currentOverlaySettings = &mergedSettings
 	overlaySettingsMutex.Unlock()

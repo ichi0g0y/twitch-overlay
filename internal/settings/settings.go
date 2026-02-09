@@ -56,78 +56,6 @@ var DefaultSettings = map[string]Setting{
 		Key: "TRIGGER_CUSTOM_REWORD_ID", Value: "", Type: SettingTypeSecret, Required: true,
 		Description: "Custom Reward ID for triggering FAX",
 	},
-	"OLLAMA_BASE_URL": {
-		Key: "OLLAMA_BASE_URL", Value: "http://127.0.0.1:11434", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama base URL (shared)",
-	},
-	"OLLAMA_MODEL": {
-		Key: "OLLAMA_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama model name for translation",
-	},
-	"OLLAMA_BASE_MODEL": {
-		Key: "OLLAMA_BASE_MODEL", Value: "translategemma:12b", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama base model for translation modelfile",
-	},
-	"OLLAMA_CUSTOM_MODEL_NAME": {
-		Key: "OLLAMA_CUSTOM_MODEL_NAME", Value: "translator-custom", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation modelfile output model name",
-	},
-	"OLLAMA_NUM_PREDICT": {
-		Key: "OLLAMA_NUM_PREDICT", Value: "128", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation num_predict per request",
-	},
-	"OLLAMA_TEMPERATURE": {
-		Key: "OLLAMA_TEMPERATURE", Value: "0.1", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation temperature (0.0 - 2.0)",
-	},
-	"OLLAMA_TOP_P": {
-		Key: "OLLAMA_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation top_p (0.0 - 1.0)",
-	},
-	"OLLAMA_NUM_CTX": {
-		Key: "OLLAMA_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation num_ctx (optional)",
-	},
-	"OLLAMA_STOP": {
-		Key: "OLLAMA_STOP", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation stop sequences (comma or newline separated)",
-	},
-	"OLLAMA_SYSTEM_PROMPT": {
-		Key: "OLLAMA_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama translation system prompt (optional)",
-	},
-	"OLLAMA_CHAT_MODEL": {
-		Key: "OLLAMA_CHAT_MODEL", Value: "llama3.1:8b", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama model name for general use",
-	},
-	"OLLAMA_CHAT_NUM_PREDICT": {
-		Key: "OLLAMA_CHAT_NUM_PREDICT", Value: "256", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general num_predict per request",
-	},
-	"OLLAMA_CHAT_TEMPERATURE": {
-		Key: "OLLAMA_CHAT_TEMPERATURE", Value: "0.7", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general temperature (0.0 - 2.0)",
-	},
-	"OLLAMA_CHAT_TOP_P": {
-		Key: "OLLAMA_CHAT_TOP_P", Value: "0.9", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general top_p (0.0 - 1.0)",
-	},
-	"OLLAMA_CHAT_NUM_CTX": {
-		Key: "OLLAMA_CHAT_NUM_CTX", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general num_ctx (optional)",
-	},
-	"OLLAMA_CHAT_STOP": {
-		Key: "OLLAMA_CHAT_STOP", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general stop sequences (comma or newline separated)",
-	},
-	"OLLAMA_CHAT_SYSTEM_PROMPT": {
-		Key: "OLLAMA_CHAT_SYSTEM_PROMPT", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Ollama general system prompt (optional)",
-	},
-	"CHAT_TRANSLATION_ENABLED": {
-		Key: "CHAT_TRANSLATION_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Enable chat translation",
-	},
 
 	// プリンター設定
 	"PRINTER_TYPE": {
@@ -201,116 +129,6 @@ var DefaultSettings = map[string]Setting{
 	"SERVER_PORT": {
 		Key: "SERVER_PORT", Value: "8080", Type: SettingTypeNormal, Required: false,
 		Description: "Web server port for OBS overlay",
-	},
-
-	// 音声認識設定（mic-recog）
-	"MIC_RECOG_ENABLED": {
-		Key: "MIC_RECOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Enable mic-recog transcription",
-	},
-	"MIC_RECOG_BACKEND": {
-		Key: "MIC_RECOG_BACKEND", Value: "whisper", Type: SettingTypeNormal, Required: false,
-		Description: "Mic-recog backend (whisper/whispercpp)",
-	},
-	"MIC_RECOG_DEVICE": {
-		Key: "MIC_RECOG_DEVICE", Value: "auto", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper device (auto/cpu/mps/cuda)",
-	},
-	"MIC_RECOG_MIC_INDEX": {
-		Key: "MIC_RECOG_MIC_INDEX", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Microphone device index (empty for default)",
-	},
-	"MIC_RECOG_MODEL": {
-		Key: "MIC_RECOG_MODEL", Value: "large-v3", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper model size",
-	},
-	"MIC_RECOG_WHISPERCPP_BIN": {
-		Key: "MIC_RECOG_WHISPERCPP_BIN", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Path to whisper.cpp binary",
-	},
-	"MIC_RECOG_WHISPERCPP_MODEL": {
-		Key: "MIC_RECOG_WHISPERCPP_MODEL", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Path to whisper.cpp GGUF model",
-	},
-	"MIC_RECOG_WHISPERCPP_THREADS": {
-		Key: "MIC_RECOG_WHISPERCPP_THREADS", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper.cpp threads (empty = default)",
-	},
-	"MIC_RECOG_WHISPERCPP_EXTRA_ARGS": {
-		Key: "MIC_RECOG_WHISPERCPP_EXTRA_ARGS", Value: "", Type: SettingTypeNormal, Required: false,
-		Description: "Extra args for whisper.cpp",
-	},
-	"MIC_RECOG_LANGUAGE": {
-		Key: "MIC_RECOG_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper language code (empty for auto)",
-	},
-	"MIC_RECOG_VAD": {
-		Key: "MIC_RECOG_VAD", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Enable VAD segmentation",
-	},
-	"MIC_RECOG_VAD_THRESHOLD": {
-		Key: "MIC_RECOG_VAD_THRESHOLD", Value: "0.7", Type: SettingTypeNormal, Required: false,
-		Description: "VAD speech probability threshold",
-	},
-	"MIC_RECOG_VAD_END_MS": {
-		Key: "MIC_RECOG_VAD_END_MS", Value: "600", Type: SettingTypeNormal, Required: false,
-		Description: "Silence duration (ms) to end a segment",
-	},
-	"MIC_RECOG_VAD_PRE_ROLL_MS": {
-		Key: "MIC_RECOG_VAD_PRE_ROLL_MS", Value: "150", Type: SettingTypeNormal, Required: false,
-		Description: "Audio kept before speech start (ms)",
-	},
-	"MIC_RECOG_NO_SPEECH_THRESHOLD": {
-		Key: "MIC_RECOG_NO_SPEECH_THRESHOLD", Value: "0.85", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper no_speech_threshold",
-	},
-	"MIC_RECOG_LOGPROB_THRESHOLD": {
-		Key: "MIC_RECOG_LOGPROB_THRESHOLD", Value: "-0.3", Type: SettingTypeNormal, Required: false,
-		Description: "Whisper logprob_threshold",
-	},
-	"MIC_RECOG_EXCLUDE": {
-		Key: "MIC_RECOG_EXCLUDE", Value: "ご視聴ありがとうございました", Type: SettingTypeNormal, Required: false,
-		Description: "Exclude phrases (comma or newline separated)",
-	},
-	"MIC_RECOG_INTERIM": {
-		Key: "MIC_RECOG_INTERIM", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Enable interim (real-time) transcription updates",
-	},
-	"MIC_RECOG_INTERIM_SECONDS": {
-		Key: "MIC_RECOG_INTERIM_SECONDS", Value: "0.5", Type: SettingTypeNormal, Required: false,
-		Description: "Interval between interim updates (seconds)",
-	},
-	"MIC_RECOG_INTERIM_WINDOW_SECONDS": {
-		Key: "MIC_RECOG_INTERIM_WINDOW_SECONDS", Value: "3", Type: SettingTypeNormal, Required: false,
-		Description: "Window size for interim transcription (seconds)",
-	},
-	"MIC_RECOG_INTERIM_MIN_SECONDS": {
-		Key: "MIC_RECOG_INTERIM_MIN_SECONDS", Value: "1", Type: SettingTypeNormal, Required: false,
-		Description: "Minimum audio length for interim transcription (seconds)",
-	},
-	"MIC_RECOG_WS_PING_SECONDS": {
-		Key: "MIC_RECOG_WS_PING_SECONDS", Value: "20", Type: SettingTypeNormal, Required: false,
-		Description: "WebSocket ping interval for mic-recog (seconds, 0 to disable)",
-	},
-	"MIC_RECOG_WATCHDOG_ENABLED": {
-		Key: "MIC_RECOG_WATCHDOG_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
-		Description: "Enable mic-recog watchdog",
-	},
-	"MIC_RECOG_WATCHDOG_IDLE_SECONDS": {
-		Key: "MIC_RECOG_WATCHDOG_IDLE_SECONDS", Value: "90", Type: SettingTypeNormal, Required: false,
-		Description: "Restart mic-recog if no messages within this time (seconds)",
-	},
-	"MIC_RECOG_WATCHDOG_GRACE_SECONDS": {
-		Key: "MIC_RECOG_WATCHDOG_GRACE_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
-		Description: "Grace period after start before watchdog kicks in (seconds)",
-	},
-	"MIC_RECOG_WATCHDOG_CHECK_SECONDS": {
-		Key: "MIC_RECOG_WATCHDOG_CHECK_SECONDS", Value: "10", Type: SettingTypeNormal, Required: false,
-		Description: "Watchdog check interval (seconds)",
-	},
-	"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": {
-		Key: "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS", Value: "30", Type: SettingTypeNormal, Required: false,
-		Description: "Cooldown between watchdog restarts (seconds)",
 	},
 
 	// フォント設定
@@ -446,17 +264,49 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_MAX_LINES", Value: "3", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript max lines",
 	},
+	"MIC_TRANSCRIPT_MAX_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_MAX_WIDTH_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Max width (px) for mic transcript overlay (0 = unlimited)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_SPEECH_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
+		Description: "Web Speech API language code for mic transcript sender (e.g. ja/en/ko)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", Value: "800", Type: SettingTypeNormal, Required: false,
+		Description: "Web Speech API short pause (ms) to force stop and flush final result (0 = disabled)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS", Value: "200", Type: SettingTypeNormal, Required: false,
+		Description: "Throttle interval (ms) for interim transcript sending (0 = no throttle)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED": {
+		Key: "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Use dual SpeechRecognition instances to reduce gaps",
+	},
+	"MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", Value: "100", Type: SettingTypeNormal, Required: false,
+		Description: "Restart delay (ms) for Web Speech API recognition",
+	},
 	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Enable translation for mic transcript overlay",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_MODE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_MODE", Value: "off", Type: SettingTypeNormal, Required: false,
-		Description: "Mic transcript translation mode (off/ollama)",
+		Description: "Mic transcript translation mode (off/chrome)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
-		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "eng", Type: SettingTypeNormal, Required: false,
-		Description: "Target language for mic transcript translation (e.g. jpn/eng)",
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation (Chrome language code, e.g. en/zh/ko)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_POSITION": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript translation position (top-left/right/center, bottom-left/right/center)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Max width (px) for mic transcript translation overlay (0 = unlimited)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
@@ -808,39 +658,24 @@ func ValidateSetting(key, value string) error {
 			return fmt.Errorf("must be float between 0.5 and 2.0")
 		}
 	case "MIC_TRANSCRIPT_TRANSLATION_MODE":
-		if value != "off" && value != "ollama" {
-			return fmt.Errorf("must be 'off' or 'ollama'")
+		if value != "off" && value != "chrome" {
+			return fmt.Errorf("must be 'off' or 'chrome'")
 		}
-	case "OLLAMA_NUM_PREDICT", "OLLAMA_CHAT_NUM_PREDICT":
-		if value != "" {
-			if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 4096 {
-				return fmt.Errorf("must be integer between 1 and 4096")
-			}
+	case "MIC_TRANSCRIPT_MAX_WIDTH_PX", "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 4096 {
+			return fmt.Errorf("must be integer between 0 and 4096")
 		}
-	case "OLLAMA_TEMPERATURE", "OLLAMA_CHAT_TEMPERATURE":
-		if value != "" {
-			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 2.0 {
-				return fmt.Errorf("must be float between 0.0 and 2.0")
-			}
+	case "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 5000 {
+			return fmt.Errorf("must be integer between 0 and 5000 ms")
 		}
-	case "OLLAMA_TOP_P", "OLLAMA_CHAT_TOP_P":
-		if value != "" {
-			if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 1.0 {
-				return fmt.Errorf("must be float between 0.0 and 1.0")
-			}
+	case "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 2000 {
+			return fmt.Errorf("must be integer between 0 and 2000 ms")
 		}
-	case "OLLAMA_NUM_CTX", "OLLAMA_CHAT_NUM_CTX":
-		if value != "" {
-			if val, err := strconv.Atoi(value); err != nil || val < 128 || val > 131072 {
-				return fmt.Errorf("must be integer between 128 and 131072")
-			}
-		}
-	case "OLLAMA_CUSTOM_MODEL_NAME":
-		if value != "" {
-			matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`, value)
-			if !matched {
-				return fmt.Errorf("must be 1-128 chars (alnum, . _ : -)")
-			}
+	case "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 2000 {
+			return fmt.Errorf("must be integer between 0 and 2000 ms")
 		}
 	case "TICKER_NOTICE_FONT_SIZE":
 		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 48 {
@@ -862,27 +697,7 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
 			return fmt.Errorf("must be integer between 0 and 300 seconds")
 		}
-	case "MIC_RECOG_WS_PING_SECONDS":
-		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0 || val > 120 {
-			return fmt.Errorf("must be float between 0 and 120 seconds")
-		}
-	case "MIC_RECOG_WATCHDOG_IDLE_SECONDS":
-		if val, err := strconv.Atoi(value); err != nil || val < 30 || val > 900 {
-			return fmt.Errorf("must be integer between 30 and 900 seconds")
-		}
-	case "MIC_RECOG_WATCHDOG_GRACE_SECONDS":
-		if val, err := strconv.Atoi(value); err != nil || val < 5 || val > 300 {
-			return fmt.Errorf("must be integer between 5 and 300 seconds")
-		}
-	case "MIC_RECOG_WATCHDOG_CHECK_SECONDS":
-		if val, err := strconv.Atoi(value); err != nil || val < 3 || val > 120 {
-			return fmt.Errorf("must be integer between 3 and 120 seconds")
-		}
-	case "MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS":
-		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 900 {
-			return fmt.Errorf("must be integer between 10 and 900 seconds")
-		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "CHAT_TRANSLATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_RECOG_WATCHDOG_ENABLED":
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")
