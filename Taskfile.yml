@@ -3,9 +3,9 @@ version: "3"
 tasks:
   # 開発モード
   dev:
-    desc: WebUI（ヘッドレス）でサーバーを起動（Wailsなし）
+    desc: 開発モードでアプリを起動（Wails）
     cmds:
-      - task: dev:webui
+      - task: dev:wails
 
   dev:quick:
     desc: クイック開発モード（Goのみ、distビルド済み前提）
@@ -15,7 +15,27 @@ tasks:
         go run ./cmd/server
 
   dev:wails:
-    desc: 開発モードでアプリを起動（Wails/デスクトップ、OBS用オーバーレイも同時ビルド）
+    desc: 開発モードでアプリを起動（wails3 dev、.app生成なし）
+    cmds:
+      - |
+        echo "📦 OBS用オーバーレイをビルド中..."
+        (cd web && bun run build)
+
+        echo "📦 WebUI(dist)をビルド中..."
+        (cd frontend && bun run build)
+
+        echo "🚀 wails3 dev を起動中..."
+        wails3 dev
+
+  dev:wails:quick:
+    desc: クイック開発モード（wails3 dev、オーバーレイ/WebUIは事前ビルド前提）
+    cmds:
+      - |
+        echo "🚀 wails3 dev を起動中..."
+        wails3 dev
+
+  dev:wails:app:
+    desc: 開発用.appを作成して起動（macOS向けフォールバック）
     cmds:
       - |
         echo "📦 OBS用オーバーレイをビルド中..."
@@ -29,35 +49,8 @@ tasks:
 
         echo "🚀 アプリケーションを起動中..."
         echo "💡 フロントエンド変更時: 再起動が必要"
-        echo "💡 より早い開発: 'task dev:wails:quick'（Goビルドのみ）"
         if [ "$(uname)" = "Darwin" ]; then
           echo "📦 macOS: dev用.appを作成中..."
-          APP_DIR="build/bin/twitch-overlay.dev.app"
-          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-          cp build/bin/twitch-overlay "$APP_DIR/Contents/MacOS/twitch-overlay"
-          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
-          # LaunchServices経由で起動しないとmacOSでSIGABRTすることがあるためopenを使用する
-          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
-          open -n "$APP_DIR"
-          echo "✅ 起動しました: $APP_DIR"
-          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay.dev.app/Contents/MacOS/twitch-overlay'"
-        else
-          ./build/bin/twitch-overlay
-        fi
-
-  dev:wails:quick:
-    desc: クイック開発モード（Wails/デスクトップ、Go再ビルドのみ、フロントエンドビルド済み前提）
-    cmds:
-      - |
-        echo "🔨 Goバイナリをビルド中..."
-        go build -o build/bin/twitch-overlay
-
-        echo "🚀 アプリケーションを起動中..."
-        if [ "$(uname)" = "Darwin" ]; then
           APP_DIR="build/bin/twitch-overlay.dev.app"
           mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
           cp build/bin/twitch-overlay "$APP_DIR/Contents/MacOS/twitch-overlay"

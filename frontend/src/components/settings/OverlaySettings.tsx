@@ -8,6 +8,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
+import { MicCaptionSender } from '../mic/MicCaptionSender';
 
 type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
@@ -1083,7 +1084,7 @@ export const OverlaySettings: React.FC = () => {
                 マイク文字起こし
               </CardTitle>
               <CardDescription className="text-left">
-                ブラウザ字幕送信（/overlay/mic）の文字起こしをオーバーレイに表示します
+                ダッシュボード（/）から送信した文字起こしをオーバーレイに表示します
               </CardDescription>
             </div>
             <div className="flex-shrink-0 pt-1">
@@ -1311,11 +1312,14 @@ export const OverlaySettings: React.FC = () => {
 
             <div className="border-t border-gray-200/60 dark:border-gray-700/60 pt-4 space-y-4">
               <div className="space-y-1">
-                <Label>字幕送信（/overlay/mic）</Label>
+                <Label>字幕送信（ダッシュボード /）</Label>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Chromeで <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">/overlay/mic</code> を開いて送信します（OBSのブラウザソースはマイク権限が不安定なため）
+                  このWebUI（<code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">/</code>）でマイク入力と翻訳を実行し、
+                  <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">/overlay/</code> に送信します（OBSのブラウザソースはマイク権限が不安定なため、Chrome推奨）
                 </p>
               </div>
+
+              <MicCaptionSender overlaySettings={overlaySettings ?? null} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">

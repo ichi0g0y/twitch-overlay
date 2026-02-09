@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSettings } from '../contexts/SettingsContext';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { ChromeTranslatorClient, type ChromeTranslationDownloadStatus } from '../utils/chromeTranslator';
+import type { OverlaySettings } from '../../contexts/SettingsContext';
+import { ChromeTranslatorClient, type ChromeTranslationDownloadStatus } from '../../utils/chromeTranslator';
+import { getWebSocketClient } from '../../utils/websocket';
+import { Button } from '../ui/button';
 
 type RecState = 'stopped' | 'starting' | 'running';
 
@@ -12,32 +13,30 @@ function nowID(prefix: string): string {
 function normalizeLang(code: string | undefined | null, fallback: string): string {
   const raw = (code || '').trim();
   if (!raw) return fallback;
-  // keep zh-Hant as-is; otherwise lower-case and take primary subtag.
   if (raw === 'zh-Hant') return raw;
   const lower = raw.toLowerCase();
   return lower.split(/[-_]/)[0] || fallback;
 }
 
-export const MicSenderPage: React.FC = () => {
-  const { settings } = useSettings();
-  const { isConnected, send } = useWebSocket();
-
+export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | null }> = ({ overlaySettings }) => {
   const speechLang = useMemo(
-    () => normalizeLang(settings?.mic_transcript_speech_language, 'ja'),
-    [settings?.mic_transcript_speech_language]
+    () => normalizeLang(overlaySettings?.mic_transcript_speech_language, 'ja'),
+    [overlaySettings?.mic_transcript_speech_language],
   );
-  const shortPauseMs = settings?.mic_transcript_speech_short_pause_ms ?? 800;
-  const interimThrottleMs = settings?.mic_transcript_speech_interim_throttle_ms ?? 200;
-  const dualInstanceEnabled = settings?.mic_transcript_speech_dual_instance_enabled ?? true;
-  const restartDelayMs = settings?.mic_transcript_speech_restart_delay_ms ?? 100;
+  const shortPauseMs = overlaySettings?.mic_transcript_speech_short_pause_ms ?? 800;
+  const interimThrottleMs = overlaySettings?.mic_transcript_speech_interim_throttle_ms ?? 200;
+  const dualInstanceEnabled = overlaySettings?.mic_transcript_speech_dual_instance_enabled ?? true;
+  const restartDelayMs = overlaySettings?.mic_transcript_speech_restart_delay_ms ?? 100;
 
-  const translationMode = settings?.mic_transcript_translation_mode ?? 'off';
+  const translationMode = overlaySettings?.mic_transcript_translation_mode
+    ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
   const translationEnabled = translationMode !== 'off';
   const translationTargetLang = useMemo(
-    () => (settings?.mic_transcript_translation_language || 'en').trim() || 'en',
-    [settings?.mic_transcript_translation_language]
+    () => (overlaySettings?.mic_transcript_translation_language || 'en').trim() || 'en',
+    [overlaySettings?.mic_transcript_translation_language],
   );
 
+  const [wsConnected, setWsConnected] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [recState, setRecState] = useState<RecState>('stopped');
   const [lastInterim, setLastInterim] = useState('');
@@ -65,16 +64,23 @@ export const MicSenderPage: React.FC = () => {
     }
   }, []);
 
-  const getActiveRecognition = useCallback(() => {
-    return recognitionsRef.current[activeIndexRef.current];
+  const ensureMicrophonePermission = useCallback(async () => {
+    if (!window.isSecureContext) {
+      throw new Error('マイク権限はHTTPSまたはlocalhostのみ利用できます。localhostで開いてください');
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
   }, []);
+
+  const getActiveRecognition = useCallback(() => recognitionsRef.current[activeIndexRef.current], []);
 
   const switchToNextInstance = useCallback(() => {
     clearShortPauseTimer();
-    const prev = activeIndexRef.current;
     activeIndexRef.current = (activeIndexRef.current + 1) % 2;
     nextInstanceStartedRef.current = false;
-    recognitionStatesRef.current[prev] = recognitionStatesRef.current[prev] || 'stopped';
   }, [clearShortPauseTimer]);
 
   const scheduleRestart = useCallback(
@@ -97,7 +103,7 @@ export const MicSenderPage: React.FC = () => {
         }
       }, Math.max(0, restartDelayMs));
     },
-    [getActiveRecognition, restartDelayMs]
+    [getActiveRecognition, restartDelayMs],
   );
 
   const preStartNextInstance = useCallback(
@@ -136,7 +142,7 @@ export const MicSenderPage: React.FC = () => {
         }, 100);
       }
     },
-    [clearShortPauseTimer, dualInstanceEnabled]
+    [clearShortPauseTimer, dualInstanceEnabled],
   );
 
   const sendInterim = useCallback(
@@ -148,7 +154,9 @@ export const MicSenderPage: React.FC = () => {
         return;
       }
       lastInterimSentAtRef.current = now;
-      send('mic_transcript', {
+
+      const ws = getWebSocketClient();
+      ws.send('mic_transcript', {
         id: 'interim',
         text,
         is_interim: true,
@@ -157,7 +165,7 @@ export const MicSenderPage: React.FC = () => {
         language: speechLang,
       });
     },
-    [interimThrottleMs, send, speechLang]
+    [interimThrottleMs, speechLang],
   );
 
   const sendFinal = useCallback(
@@ -169,8 +177,9 @@ export const MicSenderPage: React.FC = () => {
 
       const id = nowID('mic');
       const ts = Date.now();
+      const ws = getWebSocketClient();
 
-      send('mic_transcript', {
+      ws.send('mic_transcript', {
         id,
         text: trimmed,
         is_interim: false,
@@ -180,13 +189,14 @@ export const MicSenderPage: React.FC = () => {
       });
 
       if (!translationEnabled) return;
+      if (!translatorSupported) return;
       const translator = translatorRef.current;
       if (!translator) return;
       try {
         const res = await translator.translate(trimmed, speechLang, translationTargetLang);
         const translated = (res.translatedText || '').trim();
         if (!translated) return;
-        send('mic_transcript_translation', {
+        ws.send('mic_transcript_translation', {
           id,
           translation: translated,
           source_language: res.sourceLanguage || speechLang,
@@ -197,7 +207,7 @@ export const MicSenderPage: React.FC = () => {
         setError(e?.message || '翻訳に失敗しました');
       }
     },
-    [send, speechLang, translationEnabled, translationTargetLang]
+    [speechLang, translationEnabled, translationTargetLang, translatorSupported],
   );
 
   const createOnResultHandler = useCallback(
@@ -255,7 +265,7 @@ export const MicSenderPage: React.FC = () => {
       sendFinal,
       sendInterim,
       shortPauseMs,
-    ]
+    ],
   );
 
   const setupRecognitionInstance = useCallback(
@@ -284,7 +294,6 @@ export const MicSenderPage: React.FC = () => {
           return;
         }
 
-        // If the active instance ended and the next one is already running/starting, switch.
         if (dualInstanceEnabled && index === activeIndexRef.current) {
           const nextIndex = (activeIndexRef.current + 1) % 2;
           const nextState = recognitionStatesRef.current[nextIndex];
@@ -295,7 +304,6 @@ export const MicSenderPage: React.FC = () => {
           }
         }
 
-        // Otherwise restart the active one.
         if (index === activeIndexRef.current) {
           scheduleRestart('end');
         }
@@ -303,10 +311,10 @@ export const MicSenderPage: React.FC = () => {
 
       rec.onresult = createOnResultHandler(index);
     },
-    [createOnResultHandler, dualInstanceEnabled, scheduleRestart, speechLang, switchToNextInstance]
+    [createOnResultHandler, dualInstanceEnabled, scheduleRestart, speechLang, switchToNextInstance],
   );
 
-  const startCapture = useCallback(() => {
+  const startCapture = useCallback(async () => {
     setError(null);
     clearShortPauseTimer();
     lastFinalSentRef.current = '';
@@ -315,10 +323,34 @@ export const MicSenderPage: React.FC = () => {
     setLastFinal('');
     setLastTranslation('');
 
-    const SpeechRecognitionCtor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const ws = getWebSocketClient();
+    if (!ws.isConnected) {
+      try {
+        await ws.connect();
+      } catch {
+        // ignore
+      }
+    }
+
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
       setError('SpeechRecognition が利用できません（Chrome推奨）');
+      return;
+    }
+
+    try {
+      await ensureMicrophonePermission();
+    } catch (e: any) {
+      const name = e?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('マイク権限が拒否されています。Chromeのサイト設定/ macOSのマイク権限を確認してください');
+      } else if (name === 'NotFoundError') {
+        setError('マイクデバイスが見つかりません。接続/入力デバイス設定を確認してください');
+      } else if (name === 'NotReadableError') {
+        setError('マイクが他のアプリで使用中の可能性があります。使用中アプリを閉じて再試行してください');
+      } else {
+        setError(e?.message || 'マイク権限の取得に失敗しました');
+      }
       return;
     }
 
@@ -342,7 +374,7 @@ export const MicSenderPage: React.FC = () => {
       setCapturing(false);
       setRecState('stopped');
     }
-  }, [clearShortPauseTimer, dualInstanceEnabled, setupRecognitionInstance]);
+  }, [clearShortPauseTimer, dualInstanceEnabled, ensureMicrophonePermission, setupRecognitionInstance]);
 
   const stopCapture = useCallback(() => {
     shouldRunRef.current = false;
@@ -360,6 +392,30 @@ export const MicSenderPage: React.FC = () => {
     }
   }, [clearShortPauseTimer]);
 
+  const handlePreloadModel = useCallback(async () => {
+    if (!translatorRef.current) return;
+    setError(null);
+    try {
+      await translatorRef.current.preload(speechLang, translationTargetLang);
+    } catch (e: any) {
+      setError(e?.message || '翻訳モデルの準備に失敗しました');
+    }
+  }, [speechLang, translationTargetLang]);
+
+  useEffect(() => {
+    const ws = getWebSocketClient();
+    ws.connect().catch(() => {
+      // ignore
+    });
+    setWsConnected(ws.isConnected);
+    const unsubConnect = ws.onConnect(() => setWsConnected(true));
+    const unsubDisconnect = ws.onDisconnect(() => setWsConnected(false));
+    return () => {
+      unsubConnect();
+      unsubDisconnect();
+    };
+  }, []);
+
   useEffect(() => {
     const client = new ChromeTranslatorClient({
       onDownloadStatusChange: (status) => setDownloadStatus(status),
@@ -372,7 +428,6 @@ export const MicSenderPage: React.FC = () => {
     };
   }, []);
 
-  // Apply language changes to running instances.
   useEffect(() => {
     recognitionsRef.current.forEach((rec) => {
       try {
@@ -383,138 +438,88 @@ export const MicSenderPage: React.FC = () => {
     });
   }, [speechLang]);
 
-  const overlayUrls = useMemo(() => {
-    const base = `${window.location.protocol}//${window.location.host}${import.meta.env.BASE_URL.replace(/\/$/, '')}`;
-    return {
-      sender: `${base}/mic`,
-      overlay: `${base}/`,
-    };
-  }, []);
-
-  const handlePreloadModel = useCallback(async () => {
-    if (!translatorRef.current) return;
-    setError(null);
-    try {
-      await translatorRef.current.preload(speechLang, translationTargetLang);
-    } catch (e: any) {
-      setError(e?.message || '翻訳モデルの準備に失敗しました');
-    }
-  }, [speechLang, translationTargetLang]);
+  useEffect(() => stopCapture, [stopCapture]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-bold">字幕送信（Web Speech + Chrome翻訳）</h1>
-          <p className="text-sm text-zinc-300">
-            このページはマイクを使って音声認識し、必要なら翻訳して <code className="px-1 py-0.5 rounded bg-white/10">/overlay</code> に送信します。
-          </p>
-        </header>
-
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
-            <div className="text-sm text-zinc-300">WebSocket</div>
-            <div className="flex items-center justify-between">
-              <div className={`text-lg font-semibold ${isConnected ? 'text-emerald-300' : 'text-amber-300'}`}>
-                {isConnected ? '接続中' : '未接続'}
-              </div>
-              <div className="text-xs text-zinc-400">{overlayUrls.sender}</div>
-            </div>
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-800/30 p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
+          <div className="mt-1 font-semibold">
+            {wsConnected ? <span className="text-emerald-600 dark:text-emerald-400">接続中</span> : <span className="text-amber-600 dark:text-amber-400">未接続</span>}
           </div>
-
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
-            <div className="text-sm text-zinc-300">音声認識</div>
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">
-                {recState === 'running' ? '実行中' : recState === 'starting' ? '起動中' : '停止'}
-              </div>
-              <div className="text-xs text-zinc-400">
-                lang=<span className="font-mono">{speechLang}</span>{' '}
-                {dualInstanceEnabled ? '(dual)' : '(single)'}
-              </div>
-            </div>
+        </div>
+        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-800/30 p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400">音声認識</div>
+          <div className="mt-1 font-semibold">
+            {recState === 'running' ? '実行中' : recState === 'starting' ? '起動中' : '停止'}
+            <span className="ml-2 text-xs font-mono text-gray-500 dark:text-gray-400">
+              lang={speechLang} {dualInstanceEnabled ? 'dual' : 'single'}
+            </span>
           </div>
-        </section>
+        </div>
+      </div>
 
-        <section className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              className={`px-4 py-2 rounded font-semibold ${
-                capturing ? 'bg-zinc-700 text-zinc-200' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-              }`}
-              onClick={capturing ? stopCapture : startCapture}
-            >
-              {capturing ? '停止' : '開始'}
-            </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant={capturing ? 'secondary' : 'default'}
+          onClick={capturing ? stopCapture : () => void startCapture()}
+        >
+          {capturing ? '停止' : '開始'}
+        </Button>
 
-            <div className="text-sm text-zinc-300">
-              翻訳: <span className="font-mono">{translationEnabled ? `on (${translationTargetLang})` : 'off'}</span>
-              {!translatorSupported && translationEnabled ? (
-                <span className="ml-2 text-amber-300">Translator API非対応（Chrome 138+）</span>
-              ) : null}
-            </div>
+        <div className="text-sm text-gray-600 dark:text-gray-300">
+          翻訳: <span className="font-mono">{translationEnabled ? `on (${translationTargetLang})` : 'off'}</span>
+          {!translatorSupported && translationEnabled ? (
+            <span className="ml-2 text-amber-600 dark:text-amber-400">Translator API非対応（Chrome 138+）</span>
+          ) : null}
+        </div>
 
-            {translationEnabled && translatorSupported ? (
-              <button
-                className="px-3 py-2 rounded bg-white/10 hover:bg-white/15 text-sm"
-                onClick={handlePreloadModel}
-              >
-                翻訳モデル準備
-              </button>
-            ) : null}
+        {translationEnabled && translatorSupported ? (
+          <Button type="button" variant="outline" onClick={() => void handlePreloadModel()}>
+            翻訳モデル準備
+          </Button>
+        ) : null}
+      </div>
+
+      {downloadStatus ? (
+        <div className="text-sm text-gray-600 dark:text-gray-300">
+          <div>
+            {downloadStatus.message || `download: ${downloadStatus.status} (${downloadStatus.sourceLang}→${downloadStatus.targetLang})`}
           </div>
-
-          {downloadStatus ? (
-            <div className="text-sm text-zinc-300">
-              <div>
-                {downloadStatus.message || `download: ${downloadStatus.status} (${downloadStatus.sourceLang}→${downloadStatus.targetLang})`}
-              </div>
-              {typeof downloadStatus.progress === 'number' ? (
-                <div className="mt-2 h-2 rounded bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-sky-500"
-                    style={{ width: `${Math.min(100, Math.max(0, downloadStatus.progress))}%` }}
-                  />
-                </div>
-              ) : null}
+          {typeof downloadStatus.progress === 'number' ? (
+            <div className="mt-2 h-2 rounded bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden">
+              <div
+                className="h-full bg-sky-500"
+                style={{ width: `${Math.min(100, Math.max(0, downloadStatus.progress))}%` }}
+              />
             </div>
           ) : null}
+        </div>
+      ) : null}
 
-          {error ? (
-            <div className="rounded bg-red-500/20 border border-red-400/30 px-3 py-2 text-sm text-red-100">
-              {error}
-            </div>
-          ) : null}
-        </section>
+      {error ? (
+        <div className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">
+          {error}
+        </div>
+      ) : null}
 
-        <section className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="text-sm text-zinc-300">プレビュー（このページ用）</div>
-          <div className="space-y-2">
-            <div className="rounded bg-black/30 border border-white/10 px-3 py-2">
-              <div className="text-xs text-zinc-400 mb-1">interim</div>
-              <div className="text-base">{lastInterim || <span className="text-zinc-500">（なし）</span>}</div>
-            </div>
-            <div className="rounded bg-black/30 border border-white/10 px-3 py-2">
-              <div className="text-xs text-zinc-400 mb-1">final</div>
-              <div className="text-base">{lastFinal || <span className="text-zinc-500">（なし）</span>}</div>
-            </div>
-            <div className="rounded bg-black/30 border border-white/10 px-3 py-2">
-              <div className="text-xs text-zinc-400 mb-1">translation</div>
-              <div className="text-base">{lastTranslation || <span className="text-zinc-500">（なし）</span>}</div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2 text-sm text-zinc-300">
-          <div className="font-semibold">URL</div>
-          <div className="font-mono break-all">
-            送信: {overlayUrls.sender}
-          </div>
-          <div className="font-mono break-all">
-            表示: {overlayUrls.overlay}
-          </div>
-        </section>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">interim</div>
+          <div className="break-words">{lastInterim || <span className="text-gray-400">（なし）</span>}</div>
+        </div>
+        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">final</div>
+          <div className="break-words">{lastFinal || <span className="text-gray-400">（なし）</span>}</div>
+        </div>
+        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">translation</div>
+          <div className="break-words">{lastTranslation || <span className="text-gray-400">（なし）</span>}</div>
+        </div>
       </div>
     </div>
   );
 };
+

@@ -3,7 +3,6 @@ import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { PresentPage } from './pages/present/PresentPage';
 import { MainOverlay } from './pages/MainOverlay';
-import { MicSenderPage } from './pages/MicSenderPage';
 
 function App() {
   // Vite の base 設定（production では /overlay/）に追従
@@ -21,9 +20,6 @@ function App() {
 
           {/* プレゼントルーレットページ */}
           <Route path="/present" element={<PresentPage />} />
-
-          {/* マイク字幕送信ページ（Web Speech API） */}
-          <Route path="/mic" element={<MicSenderPage />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 
-interface OverlaySettings {
+export interface OverlaySettings {
   // 音楽プレイヤー設定
   music_playlist: string | null;
   music_volume: number;

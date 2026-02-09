@@ -79,7 +79,7 @@ task test
 ### 音声認識/翻訳（ブラウザ）
 - **音声認識**: Chromeの Web Speech API（`webkitSpeechRecognition`）
 - **翻訳**: Chromeの Translator API（ブラウザ内蔵。外部API/GASは使用しません）
-- **送信ページ**: `http://localhost:[動的ポート]/overlay/mic`
+- **送信/操作ページ**: `http://localhost:[動的ポート]/`（ダッシュボードでマイク入力と翻訳を実行）
 - **表示ページ**: `http://localhost:[動的ポート]/overlay/`（原文/翻訳を表示）
 - 設定はSQLite（Settings画面）に保存されます（翻訳言語コードは `en`, `zh`, `zh-Hant` などChrome向け）
 
@@ -87,7 +87,7 @@ task test
 1. `web/`ディレクトリで変更を行う
 2. `cd web && bun run build`でビルド
 3. `task dev`でWailsアプリとして動作確認
-4. オーバーレイは`http://localhost:[動的ポート]/`でアクセス可能
+4. オーバーレイは`http://localhost:[動的ポート]/overlay/`でアクセス可能
 
 ## 設定管理
 

@@ -55,7 +55,6 @@ export class ChromeTranslatorClient {
     this.cleanupIntervalMs = options?.cleanupIntervalMs ?? 30 * 60 * 1000;
     this.onDownloadStatusChange = options?.onDownloadStatusChange;
 
-    // Periodic cleanup like jimakuChan (default: 30 minutes).
     this.cleanupTimer = window.setInterval(() => {
       void this.performCleanup();
     }, this.cleanupIntervalMs);
@@ -244,7 +243,7 @@ export class ChromeTranslatorClient {
     const toRemove: string[] = [];
     for (const key of this.translators.keys()) {
       const last = this.lastUsedAt.get(key) ?? 0;
-      if (now-last > this.unusedTtlMs) {
+      if (now - last > this.unusedTtlMs) {
         toRemove.push(key);
       }
     }
@@ -285,3 +284,4 @@ export class ChromeTranslatorClient {
     this.detector = null;
   }
 }
+

@@ -61,7 +61,7 @@ type Screen struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		// NOTE: 音声認識/翻訳はブラウザ（/overlay/mic）側で行う
+		// NOTE: 音声認識/翻訳はブラウザ（WebUI /）側で行う
 	}
 }
 
