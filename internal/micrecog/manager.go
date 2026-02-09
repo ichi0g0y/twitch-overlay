@@ -35,6 +35,12 @@ func (m *Manager) Start(port int) error {
 	}
 	m.mu.Unlock()
 
+	cfg := LoadConfig()
+	if !cfg.Enabled {
+		logger.Info("mic-recog is disabled by settings")
+		return nil
+	}
+
 	micDir, err := resolveMicRecogDir()
 	if err != nil {
 		return err
@@ -43,12 +49,6 @@ func (m *Manager) Start(port int) error {
 	exe, exeArgs, err := resolveExecutable(micDir)
 	if err != nil {
 		return err
-	}
-
-	cfg := LoadConfig()
-	if !cfg.Enabled {
-		logger.Info("mic-recog is disabled by settings")
-		return nil
 	}
 
 	wsURL := fmt.Sprintf("ws://localhost:%d/ws?clientId=mic-recog", port)
@@ -185,18 +185,35 @@ func resolveMicRecogDir() (string, error) {
 	}
 
 	candidates := []string{}
+	seen := map[string]struct{}{}
+	addCandidate := func(p string) {
+		p = filepath.Clean(p)
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		candidates = append(candidates, p)
+	}
+
 	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(cwd, "mic-recog"))
+		addCandidate(filepath.Join(cwd, "mic-recog"))
 	}
 
 	if execPath, err := os.Executable(); err == nil {
 		execDir := filepath.Dir(execPath)
-		candidates = append(candidates,
-			filepath.Join(execDir, "mic-recog"),
-			filepath.Join(execDir, "..", "Resources", "mic-recog"),
-			filepath.Join(execDir, "..", "..", "mic-recog"),
-			filepath.Join(execDir, "..", "..", "..", "mic-recog"),
-		)
+		// macOS .app: .../Contents/MacOS (execDir) and .../Contents/Resources
+		addCandidate(filepath.Join(execDir, "..", "Resources", "mic-recog"))
+
+		// Dev builds often live under build/bin/...; walk up to find repo-root mic-recog/.
+		dir := execDir
+		for i := 0; i < 10; i++ {
+			addCandidate(filepath.Join(dir, "mic-recog"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
 	}
 
 	for _, candidate := range candidates {
@@ -205,7 +222,7 @@ func resolveMicRecogDir() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("mic-recog directory not found")
+	return "", fmt.Errorf("mic-recog directory not found (tried: %s)", strings.Join(candidates, ", "))
 }
 
 func resolveExecutable(micDir string) (string, []string, error) {

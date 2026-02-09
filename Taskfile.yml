@@ -142,6 +142,8 @@ tasks:
       - cd frontend && bun install
       - echo "Webオーバーレイの依存関係をインストール中..."
       - cd web && bun install
+      - echo "mic-recog の Python venv を準備中..."
+      - task: venv:all
       - echo "依存関係のインストール完了"
 
   # 短縮コマンド
