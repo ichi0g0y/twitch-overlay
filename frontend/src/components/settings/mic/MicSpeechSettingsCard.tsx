@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
+import { WordFilterManager } from './WordFilterManager';
 
 export const MicSpeechSettingsCard: React.FC = () => {
   const context = useContext(SettingsPageContext);
@@ -75,27 +76,33 @@ export const MicSpeechSettingsCard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-800/60">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>不適切語フィルタ</Label>
-              <p className="text-xs text-gray-500 dark:text-gray-400">bad/good word listで置換するだす</p>
+        <div className="space-y-4 pt-2 border-t border-gray-800/60">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>不適切語フィルタ</Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">bad/good word listで置換するだす</p>
+              </div>
+              <Switch
+                checked={overlaySettings?.mic_transcript_anti_sexual_enabled ?? false}
+                onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_anti_sexual_enabled: checked })}
+              />
             </div>
-            <Switch
-              checked={overlaySettings?.mic_transcript_anti_sexual_enabled ?? false}
-              onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_anti_sexual_enabled: checked })}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>棒読みちゃん連携</Label>
-              <p className="text-xs text-gray-500 dark:text-gray-400">ws://localhost:50002/ws/ へ送信</p>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>棒読みちゃん連携</Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">ws://localhost:50002/ws/ へ送信</p>
+              </div>
+              <Switch
+                checked={overlaySettings?.mic_transcript_bouyomi_enabled ?? false}
+                onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_bouyomi_enabled: checked })}
+              />
             </div>
-            <Switch
-              checked={overlaySettings?.mic_transcript_bouyomi_enabled ?? false}
-              onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_bouyomi_enabled: checked })}
-            />
           </div>
+
+          {(overlaySettings?.mic_transcript_anti_sexual_enabled ?? false) && (
+            <WordFilterManager />
+          )}
         </div>
       </CardContent>
     </Card>

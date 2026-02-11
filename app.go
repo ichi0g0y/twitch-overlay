@@ -33,6 +33,7 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
 	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
+	"github.com/ichi0g0y/twitch-overlay/internal/wordfilter"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -98,6 +99,11 @@ func (a *App) Startup(ctx context.Context) {
 		logger.Error("Failed to setup database", zap.Error(err))
 	} else {
 		logger.Info("Database initialized", zap.String("path", paths.GetDBPath()))
+	}
+
+	// 不適切語フィルタのデフォルトワードリストを投入
+	if err := wordfilter.SeedDefaultWords(); err != nil {
+		logger.Warn("Failed to seed word filter defaults", zap.Error(err))
 	}
 
 	// 3を超えているentry_countを3に修正（既存データの修正）

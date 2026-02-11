@@ -360,6 +360,10 @@ func StartWebServer(port int) error {
 	mux.HandleFunc("/api/twitch/custom-rewards", corsMiddleware(handleTwitchCustomRewards))
 	mux.HandleFunc("/api/stream/status", corsMiddleware(handleStreamStatus))
 
+	// Word Filter API endpoints
+	mux.HandleFunc("/api/word-filter", corsMiddleware(handleWordFilter))
+	mux.HandleFunc("/api/word-filter/", corsMiddleware(handleWordFilterByPath))
+
 	// Reward Groups API endpoints
 	mux.HandleFunc("/api/twitch/reward-groups", corsMiddleware(handleRewardGroups))
 	mux.HandleFunc("/api/twitch/reward-groups/by-reward", corsMiddleware(handleGetRewardGroupsByRewardID))

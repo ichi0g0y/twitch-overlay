@@ -302,11 +302,11 @@ var DefaultSettings = map[string]Setting{
 	},
 	"MIC_TRANSCRIPT_BOUYOMI_ENABLED": {
 		Key: "MIC_TRANSCRIPT_BOUYOMI_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
-		Description: "Enable BouyomiChan integration (jimakuChan compatible)",
+		Description: "Enable BouyomiChan integration",
 	},
 	"MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED": {
 		Key: "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
-		Description: "Enable content filter (anti_sexual) for mic transcript / translations (jimakuChan compatible)",
+		Description: "Enable content filter (anti_sexual) for mic transcript / translations",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,

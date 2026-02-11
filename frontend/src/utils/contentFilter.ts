@@ -1,9 +1,9 @@
+import { buildApiUrl } from './api';
+
 export type WordLists = {
   bad: string[];
   good: string[];
 };
-
-const BASE_URL = 'https://raw.githubusercontent.com/sayonari/goodBadWordlist/main/';
 
 const resolved = new Map<string, WordLists>();
 const inflight = new Map<string, Promise<WordLists>>();
@@ -52,20 +52,22 @@ export function toFilterLangId(langCode: string | undefined | null): string {
   return base;
 }
 
-async function fetchListText(url: string): Promise<string> {
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
-  }
-  return await res.text();
-}
+type WordFilterAPIItem = {
+  id: number;
+  language: string;
+  word: string;
+  type: 'bad' | 'good';
+};
 
-async function fetchWordList(url: string): Promise<string[]> {
-  const text = await fetchListText(url);
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
+async function fetchWordListFromAPI(langId: string): Promise<WordLists> {
+  const res = await fetch(buildApiUrl(`/api/word-filter?lang=${encodeURIComponent(langId)}`));
+  if (!res.ok) return { bad: [], good: [] };
+  const json = (await res.json()) as { data?: WordFilterAPIItem[] };
+  const words = json.data || [];
+  return {
+    bad: words.filter((w) => w.type === 'bad').map((w) => w.word),
+    good: words.filter((w) => w.type === 'good').map((w) => w.word),
+  };
 }
 
 export async function loadWordLists(langCode: string | undefined | null): Promise<WordLists> {
@@ -78,18 +80,7 @@ export async function loadWordLists(langCode: string | undefined | null): Promis
   const existing = inflight.get(langId);
   if (existing) return existing;
 
-  const promise = (async (): Promise<WordLists> => {
-    try {
-      const base = `${BASE_URL}${encodeURIComponent(langId)}`;
-      const [bad, good] = await Promise.all([
-        fetchWordList(`${base}/BadList.txt`).catch(() => []),
-        fetchWordList(`${base}/GoodList.txt`).catch(() => []),
-      ]);
-      return { bad, good };
-    } catch {
-      return { bad: [], good: [] };
-    }
-  })();
+  const promise = fetchWordListFromAPI(langId).catch(() => ({ bad: [] as string[], good: [] as string[] }));
 
   inflight.set(langId, promise);
   const lists = await promise;
@@ -102,6 +93,20 @@ export function getCachedWordLists(langCode: string | undefined | null): WordLis
   const langId = toFilterLangId(langCode);
   if (!langId) return null;
   return resolved.get(langId) || null;
+}
+
+// キャッシュをクリア（ワード追加/削除後に再読み込みするため）
+export function clearWordListCache(langCode?: string | undefined | null): void {
+  if (langCode) {
+    const langId = toFilterLangId(langCode);
+    if (langId) {
+      resolved.delete(langId);
+      inflight.delete(langId);
+    }
+  } else {
+    resolved.clear();
+    inflight.clear();
+  }
 }
 
 export function preloadWordLists(langCodes: Array<string | undefined | null>): void {
