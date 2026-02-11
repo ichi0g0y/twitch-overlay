@@ -40,21 +40,31 @@ export class ChromeTranslatorClient {
   private detector: LanguageDetectorLike | null = null;
   private cleanupTimer: number | null = null;
   private supportedCache: boolean | null = null;
+  private translationCount = 0;
 
   private minIntervalMs: number;
   private unusedTtlMs: number;
   private cleanupIntervalMs: number;
+  private maxRetries: number;
+  private retryDelayMs: number;
+  private gcIntervalCount: number;
   private onDownloadStatusChange: ((status: ChromeTranslationDownloadStatus) => void) | undefined;
 
   constructor(options?: {
     minIntervalMs?: number;
     unusedTtlMs?: number;
     cleanupIntervalMs?: number;
+    maxRetries?: number;
+    retryDelayMs?: number;
+    gcIntervalCount?: number;
     onDownloadStatusChange?: (status: ChromeTranslationDownloadStatus) => void;
   }) {
     this.minIntervalMs = options?.minIntervalMs ?? 100;
     this.unusedTtlMs = options?.unusedTtlMs ?? 20 * 60 * 1000;
     this.cleanupIntervalMs = options?.cleanupIntervalMs ?? 30 * 60 * 1000;
+    this.maxRetries = options?.maxRetries ?? 3;
+    this.retryDelayMs = options?.retryDelayMs ?? 1000;
+    this.gcIntervalCount = options?.gcIntervalCount ?? 1000;
     this.onDownloadStatusChange = options?.onDownloadStatusChange;
 
     this.cleanupTimer = window.setInterval(() => {
@@ -106,6 +116,37 @@ export class ChromeTranslatorClient {
 
   private key(sourceLang: string, targetLang: string): string {
     return `${sourceLang}__${targetLang}`;
+  }
+
+  private isRetryableError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const name = err.name || '';
+    const msg = err.message || '';
+    return name === 'UnknownError' || msg.includes('network') || msg.includes('aborted');
+  }
+
+  private async translateWithRetry(
+    translator: TranslatorLike,
+    text: string,
+    attempt = 0,
+  ): Promise<string> {
+    try {
+      return await translator.translate(text);
+    } catch (err: unknown) {
+      if (!this.isRetryableError(err) || attempt >= this.maxRetries) throw err;
+      const delay = this.retryDelayMs * (attempt + 1);
+      await new Promise((r) => setTimeout(r, delay));
+      return this.translateWithRetry(translator, text, attempt + 1);
+    }
+  }
+
+  private maybeGc(): void {
+    if (this.translationCount > 0 && this.translationCount % this.gcIntervalCount === 0) {
+      const g = (window as any).gc;
+      if (typeof g === 'function') {
+        try { g(); } catch { /* ignore */ }
+      }
+    }
   }
 
   private async waitForRateLimit(key: string): Promise<void> {
@@ -236,7 +277,9 @@ export class ChromeTranslatorClient {
     await this.waitForRateLimit(pairKey);
     const translator = await this.getTranslator(src, tgt);
     this.lastUsedAt.set(pairKey, Date.now());
-    const translatedText = await translator.translate(trimmed);
+    const translatedText = await this.translateWithRetry(translator, trimmed);
+    this.translationCount++;
+    this.maybeGc();
     return { translatedText, sourceLanguage: src, targetLanguage: tgt };
   }
 

@@ -73,7 +73,7 @@ export const MicCaptionSender: React.FC<{
     () => normalizeSpeechLang(overlaySettings?.mic_transcript_speech_language, 'ja'),
     [overlaySettings?.mic_transcript_speech_language],
   );
-  const shortPauseMs = overlaySettings?.mic_transcript_speech_short_pause_ms ?? 750;
+  const shortPauseMs = overlaySettings?.mic_transcript_speech_short_pause_ms ?? 800;
   const interimThrottleMs = overlaySettings?.mic_transcript_speech_interim_throttle_ms ?? 200;
   const dualInstanceEnabled = overlaySettings?.mic_transcript_speech_dual_instance_enabled ?? true;
   const restartDelayMs = overlaySettings?.mic_transcript_speech_restart_delay_ms ?? 100;
@@ -258,6 +258,10 @@ export const MicCaptionSender: React.FC<{
       const displayText = antiSexualEnabled ? filterWithCachedLists(trimmed, speechLang) : trimmed;
       updateStatus({ lastFinalText: displayText, lastInterimText: '', lastUpdatedAtMs: ts });
 
+      const canTranslate = translationEnabled && translatorSupported
+        && translatorRef.current && translationTargets.length > 0;
+      const expectedTranslations = canTranslate ? translationTargets.length : 0;
+
       ws.send('mic_transcript', {
         id,
         text: displayText,
@@ -265,37 +269,36 @@ export const MicCaptionSender: React.FC<{
         timestamp_ms: ts,
         source: 'web_speech',
         language: speechLang,
+        expected_translations: expectedTranslations,
       });
 
       if (bouyomiEnabled) {
-        void talkBouyomiChan(displayText).catch(() => {
-          // Ignore failures by default; status panel will show other issues.
-        });
+        void talkBouyomiChan(displayText).catch(() => {});
       }
 
-      if (!translationEnabled) return;
-      if (!translatorSupported) return;
-      const translator = translatorRef.current;
-      if (!translator) return;
-      if (translationTargets.length === 0) return;
+      if (!canTranslate) return;
+      const translator = translatorRef.current!;
 
-      for (const target of translationTargets) {
-        try {
-          const res = await translator.translate(trimmed, speechLang, target);
-          const translated = (res.translatedText || '').trim();
-          if (!translated) continue;
-          if (translated === trimmed) continue;
-          const filteredTranslation = antiSexualEnabled ? filterWithCachedLists(translated, target) : translated;
-          ws.send('mic_transcript_translation', {
-            id,
-            translation: filteredTranslation,
-            source_language: res.sourceLanguage || speechLang,
-            target_language: res.targetLanguage,
-          });
-        } catch (e: any) {
-          setError(e?.message || '翻訳に失敗しました');
-        }
-      }
+      await Promise.allSettled(
+        translationTargets.map(async (target) => {
+          try {
+            const res = await translator.translate(trimmed, speechLang, target);
+            const translated = (res.translatedText || '').trim();
+            if (!translated || translated === trimmed) return;
+            const filteredTranslation = antiSexualEnabled
+              ? filterWithCachedLists(translated, target)
+              : translated;
+            ws.send('mic_transcript_translation', {
+              id,
+              translation: filteredTranslation,
+              source_language: res.sourceLanguage || speechLang,
+              target_language: res.targetLanguage,
+            });
+          } catch (e: any) {
+            setError(e?.message || '翻訳に失敗しました');
+          }
+        }),
+      );
     },
     [antiSexualEnabled, bouyomiEnabled, speechLang, translationEnabled, translationTargets, translatorSupported, updateStatus],
   );

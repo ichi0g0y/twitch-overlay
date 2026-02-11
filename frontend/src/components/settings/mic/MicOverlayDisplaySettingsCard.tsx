@@ -5,6 +5,7 @@ import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Switch } from '../../ui/switch';
+import { FontPicker } from './FontPicker';
 
 export const MicOverlayDisplaySettingsCard: React.FC = () => {
   const context = useContext(SettingsPageContext);
@@ -91,8 +92,8 @@ export const MicOverlayDisplaySettingsCard: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="mic-font-family">フォント</Label>
-              <Input id="mic-font-family" value={overlaySettings?.mic_transcript_font_family ?? 'Noto Sans JP'} onChange={(e) => updateOverlaySettings({ mic_transcript_font_family: e.target.value })} />
+              <Label>フォント</Label>
+              <FontPicker value={overlaySettings?.mic_transcript_font_family ?? 'Noto Sans JP'} onChange={(v) => updateOverlaySettings({ mic_transcript_font_family: v })} />
             </div>
           </div>
         </div>
@@ -186,15 +187,15 @@ export const MicOverlayDisplaySettingsCard: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="mic-spacing-1">行間(1)（px）</Label>
-                  <Input id="mic-spacing-1" type="number" min="0" max="60" value={overlaySettings?.mic_transcript_line_spacing_1_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_1_px: parseInt(e.target.value, 10) || 0 })} />
+                  <Input id="mic-spacing-1" type="number" min="-30" max="60" value={overlaySettings?.mic_transcript_line_spacing_1_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_1_px: parseInt(e.target.value, 10) || 0 })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="mic-spacing-2">行間(2)（px）</Label>
-                  <Input id="mic-spacing-2" type="number" min="0" max="60" value={overlaySettings?.mic_transcript_line_spacing_2_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_2_px: parseInt(e.target.value, 10) || 0 })} />
+                  <Input id="mic-spacing-2" type="number" min="-30" max="60" value={overlaySettings?.mic_transcript_line_spacing_2_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_2_px: parseInt(e.target.value, 10) || 0 })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="mic-spacing-3">行間(3)（px）</Label>
-                  <Input id="mic-spacing-3" type="number" min="0" max="60" value={overlaySettings?.mic_transcript_line_spacing_3_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_3_px: parseInt(e.target.value, 10) || 0 })} />
+                  <Input id="mic-spacing-3" type="number" min="-30" max="60" value={overlaySettings?.mic_transcript_line_spacing_3_px ?? 0} onChange={(e) => updateOverlaySettings({ mic_transcript_line_spacing_3_px: parseInt(e.target.value, 10) || 0 })} />
                 </div>
               </div>
             </div>
