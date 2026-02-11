@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
-import { Label } from '../../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import { buildApiUrl } from '../../../utils/api';
 import { clearWordListCache, preloadWordLists } from '../../../utils/contentFilter';
 
@@ -19,10 +19,9 @@ export const WordFilterManager: React.FC = () => {
   const [selectedLang, setSelectedLang] = useState('ja');
   const [words, setWords] = useState<WordItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newBadWord, setNewBadWord] = useState('');
-  const [newGoodWord, setNewGoodWord] = useState('');
-  const [addingBad, setAddingBad] = useState(false);
-  const [addingGood, setAddingGood] = useState(false);
+  const [newWord, setNewWord] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState<'bad' | 'good'>('bad');
 
   const fetchLanguages = useCallback(async () => {
     try {
@@ -53,19 +52,15 @@ export const WordFilterManager: React.FC = () => {
     preloadWordLists([lang]);
   }, []);
 
-  const handleAdd = useCallback(async (wordType: 'bad' | 'good', word: string) => {
-    const trimmed = word.trim();
+  const handleAdd = useCallback(async () => {
+    const trimmed = newWord.trim();
     if (!trimmed) return;
-
-    const setAdding = wordType === 'bad' ? setAddingBad : setAddingGood;
-    const setNewWord = wordType === 'bad' ? setNewBadWord : setNewGoodWord;
     setAdding(true);
-
     try {
       const res = await fetch(buildApiUrl('/api/word-filter'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: selectedLang, word: trimmed, type: wordType }),
+        body: JSON.stringify({ language: selectedLang, word: trimmed, type: activeTab }),
       });
       if (res.ok) {
         setNewWord('');
@@ -76,7 +71,7 @@ export const WordFilterManager: React.FC = () => {
     } finally {
       setAdding(false);
     }
-  }, [selectedLang, fetchWords, invalidateCache, fetchLanguages]);
+  }, [newWord, selectedLang, activeTab, fetchWords, invalidateCache, fetchLanguages]);
 
   const handleDelete = useCallback(async (id: number) => {
     try {
@@ -93,10 +88,9 @@ export const WordFilterManager: React.FC = () => {
 
   return (
     <div className="space-y-3 pt-2">
-      <div className="space-y-2">
-        <Label>言語</Label>
+      <div className="flex items-center gap-3">
         <Select value={selectedLang} onValueChange={setSelectedLang}>
-          <SelectTrigger className="w-32">
+          <SelectTrigger className="w-24 h-8 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -108,97 +102,112 @@ export const WordFilterManager: React.FC = () => {
             )}
           </SelectContent>
         </Select>
+        <span className="text-xs text-gray-500">
+          {words.length} 件登録済み
+        </span>
       </div>
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
-          <Loader2 className="h-4 w-4 animate-spin" /> 読み込み中...
-        </div>
-      ) : (
-        <>
-          <WordSection
-            title="Bad Words"
-            subtitle="フィルタ対象のワード"
-            words={badWords}
-            newWord={newBadWord}
-            setNewWord={setNewBadWord}
-            adding={addingBad}
-            onAdd={() => handleAdd('bad', newBadWord)}
-            onDelete={handleDelete}
-          />
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'bad' | 'good')}>
+        <TabsList className="w-full">
+          <TabsTrigger value="bad" className="flex-1 text-xs">
+            Bad Words
+            {badWords.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] leading-none">
+                {badWords.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="good" className="flex-1 text-xs">
+            Good Words
+            {goodWords.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] leading-none">
+                {goodWords.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-          <WordSection
-            title="Good Words"
-            subtitle="BadWordを含むが許可するワード"
-            words={goodWords}
-            newWord={newGoodWord}
-            setNewWord={setNewGoodWord}
-            adding={addingGood}
-            onAdd={() => handleAdd('good', newGoodWord)}
-            onDelete={handleDelete}
-          />
-        </>
-      )}
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-400 py-6">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        ) : (
+          <>
+            <TabsContent value="bad">
+              <WordChips words={badWords} onDelete={handleDelete} variant="bad" />
+            </TabsContent>
+            <TabsContent value="good">
+              <WordChips words={goodWords} onDelete={handleDelete} variant="good" />
+            </TabsContent>
+          </>
+        )}
+      </Tabs>
+
+      <div className="flex gap-2">
+        <Input
+          className="flex-1 h-8 text-sm"
+          placeholder={activeTab === 'bad' ? 'フィルタするワード...' : '許可するワード...'}
+          value={newWord}
+          onChange={(e) => setNewWord(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 px-3"
+          disabled={adding || !newWord.trim()}
+          onClick={handleAdd}
+        >
+          {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
     </div>
   );
 };
 
-type WordSectionProps = {
-  title: string;
-  subtitle: string;
+type WordChipsProps = {
   words: WordItem[];
-  newWord: string;
-  setNewWord: (v: string) => void;
-  adding: boolean;
-  onAdd: () => void;
   onDelete: (id: number) => void;
+  variant: 'bad' | 'good';
 };
 
-const WordSection: React.FC<WordSectionProps> = ({
-  title, subtitle, words, newWord, setNewWord, adding, onAdd, onDelete,
-}) => (
-  <div className="space-y-2">
-    <div>
-      <Label className="text-xs font-semibold">{title}</Label>
-      <p className="text-xs text-gray-500">{subtitle}</p>
-    </div>
+const WordChips: React.FC<WordChipsProps> = ({ words, onDelete, variant }) => {
+  if (words.length === 0) {
+    return (
+      <p className="text-xs text-gray-500 py-4 text-center">
+        {variant === 'bad' ? 'フィルタ対象のワードがありません' : '許可ワードがありません'}
+      </p>
+    );
+  }
 
-    {words.length > 0 && (
-      <div className="max-h-40 overflow-y-auto border border-gray-800/60 rounded-md p-2 space-y-1">
+  const chipColor = variant === 'bad'
+    ? 'bg-red-500/10 border-red-500/20 text-red-300 hover:bg-red-500/20'
+    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20';
+
+  const btnColor = variant === 'bad'
+    ? 'hover:bg-red-500/30 hover:text-red-200'
+    : 'hover:bg-emerald-500/30 hover:text-emerald-200';
+
+  return (
+    <div className="max-h-48 overflow-y-auto rounded-md p-2">
+      <div className="flex flex-wrap gap-1.5">
         {words.map((w) => (
-          <div key={w.id} className="flex items-center justify-between group text-sm py-0.5 px-1 rounded hover:bg-gray-800/40">
-            <span className="text-gray-300 truncate">{w.word}</span>
+          <span
+            key={w.id}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs transition-colors ${chipColor}`}
+          >
+            {w.word}
             <button
               type="button"
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 cursor-pointer"
+              className={`rounded-full p-0.5 transition-colors cursor-pointer ${btnColor}`}
               onClick={() => onDelete(w.id)}
-              title="削除"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <X className="h-2.5 w-2.5" />
             </button>
-          </div>
+          </span>
         ))}
       </div>
-    )}
-
-    <div className="flex gap-2">
-      <Input
-        className="flex-1 h-8 text-sm"
-        placeholder="ワードを入力..."
-        value={newWord}
-        onChange={(e) => setNewWord(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}
-      />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-8"
-        disabled={adding || !newWord.trim()}
-        onClick={onAdd}
-      >
-        {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-      </Button>
     </div>
-  </div>
-);
+  );
+};

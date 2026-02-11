@@ -11,28 +11,61 @@ import (
 	"go.uber.org/zap"
 )
 
+// SeedVersion is bumped when default word lists are updated.
+// Changing this triggers a full reseed on next startup.
+const SeedVersion = "v2"
+
 // SeedDefaultWords seeds the database with default word lists from embedded files.
-// This is called once on first startup.
+// If the seed version matches, no action is taken.
+// If the version differs (or not yet seeded), all words are cleared and re-seeded.
 func SeedDefaultWords() error {
-	seeded, err := localdb.IsWordFilterSeeded()
+	currentVersion, err := localdb.GetWordFilterSeedVersion()
 	if err != nil {
-		logger.Error("Failed to check word filter seeded status", zap.Error(err))
+		logger.Error("Failed to check word filter seed version", zap.Error(err))
 		return err
 	}
-	if seeded {
+	if currentVersion == SeedVersion {
 		return nil
 	}
 
-	logger.Info("Seeding default word filter lists...")
+	if currentVersion != "" {
+		logger.Info("Word filter defaults updated, reseeding...",
+			zap.String("old_version", currentVersion),
+			zap.String("new_version", SeedVersion))
+		if err := localdb.ClearAllWordFilterWords(); err != nil {
+			return fmt.Errorf("failed to clear old words: %w", err)
+		}
+	} else {
+		logger.Info("Seeding default word filter lists...")
+	}
 
+	words, err := loadEmbeddedWords()
+	if err != nil {
+		return err
+	}
+
+	if len(words) > 0 {
+		if err := localdb.BulkInsertWordFilterWords(words); err != nil {
+			return fmt.Errorf("failed to bulk insert words: %w", err)
+		}
+		logger.Info("Seeded word filter", zap.Int("count", len(words)))
+	}
+
+	if err := localdb.SetWordFilterSeedVersion(SeedVersion); err != nil {
+		return fmt.Errorf("failed to set seed version: %w", err)
+	}
+
+	return nil
+}
+
+func loadEmbeddedWords() ([]localdb.WordFilterWord, error) {
 	var words []localdb.WordFilterWord
 
-	err = fs.WalkDir(defaultWordLists, "defaults", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(defaultWordLists, "defaults", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 
-		// path is like "defaults/ja/BadList.txt"
 		dir := filepath.Dir(path)
 		lang := filepath.Base(dir)
 		filename := d.Name()
@@ -50,7 +83,7 @@ func SeedDefaultWords() error {
 		data, err := defaultWordLists.ReadFile(path)
 		if err != nil {
 			logger.Error("Failed to read embedded word list", zap.Error(err), zap.String("path", path))
-			return nil // continue with other files
+			return nil
 		}
 
 		lines := strings.Split(string(data), "\n")
@@ -69,19 +102,8 @@ func SeedDefaultWords() error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to walk embedded word lists: %w", err)
+		return nil, fmt.Errorf("failed to walk embedded word lists: %w", err)
 	}
 
-	if len(words) > 0 {
-		if err := localdb.BulkInsertWordFilterWords(words); err != nil {
-			return fmt.Errorf("failed to bulk insert words: %w", err)
-		}
-		logger.Info("Seeded word filter", zap.Int("count", len(words)))
-	}
-
-	if err := localdb.MarkWordFilterSeeded(); err != nil {
-		return fmt.Errorf("failed to mark word filter as seeded: %w", err)
-	}
-
-	return nil
+	return words, nil
 }

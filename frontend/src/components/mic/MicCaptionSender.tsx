@@ -79,6 +79,7 @@ export const MicCaptionSender: React.FC<{
   const restartDelayMs = overlaySettings?.mic_transcript_speech_restart_delay_ms ?? 100;
   const antiSexualEnabled = overlaySettings?.mic_transcript_anti_sexual_enabled ?? false;
   const bouyomiEnabled = overlaySettings?.mic_transcript_bouyomi_enabled ?? false;
+  const bouyomiUrl = (overlaySettings?.mic_transcript_bouyomi_url || '').trim();
 
   const translationMode = overlaySettings?.mic_transcript_translation_mode
     ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
@@ -273,7 +274,7 @@ export const MicCaptionSender: React.FC<{
       });
 
       if (bouyomiEnabled) {
-        void talkBouyomiChan(displayText).catch(() => {});
+        void talkBouyomiChan(displayText, bouyomiUrl ? { url: bouyomiUrl } : {}).catch(() => {});
       }
 
       if (!canTranslate) return;
@@ -300,7 +301,7 @@ export const MicCaptionSender: React.FC<{
         }),
       );
     },
-    [antiSexualEnabled, bouyomiEnabled, speechLang, translationEnabled, translationTargets, translatorSupported, updateStatus],
+    [antiSexualEnabled, bouyomiEnabled, bouyomiUrl, speechLang, translationEnabled, translationTargets, translatorSupported, updateStatus],
   );
 
   const createOnResultHandler = useCallback(

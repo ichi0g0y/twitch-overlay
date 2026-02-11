@@ -1,4 +1,5 @@
 export type BouyomiChanTalkOptions = {
+  url?: string;
   host?: string;
   port?: number;
   path?: string;
@@ -41,10 +42,8 @@ export async function talkBouyomiChan(text: string, opts: BouyomiChanTalkOptions
   const trimmed = (text || '').trim();
   if (!trimmed) return;
 
-  const host = opts.host || DEFAULT_HOST;
-  const port = opts.port ?? DEFAULT_PORT;
-  const path = opts.path || DEFAULT_PATH;
-  const url = `ws://${host}:${port}${path}`;
+  const url = opts.url
+    || `ws://${opts.host || DEFAULT_HOST}:${opts.port ?? DEFAULT_PORT}${opts.path || DEFAULT_PATH}`;
   const payload = makeBouyomiPacketUtf8(trimmed);
 
   await new Promise<void>((resolve, reject) => {

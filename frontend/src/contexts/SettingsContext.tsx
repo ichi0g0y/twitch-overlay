@@ -67,6 +67,7 @@ export interface OverlaySettings {
   mic_transcript_speech_dual_instance_enabled?: boolean;
   mic_transcript_speech_restart_delay_ms?: number;
   mic_transcript_bouyomi_enabled?: boolean;
+  mic_transcript_bouyomi_url?: string;
   mic_transcript_anti_sexual_enabled?: boolean;
   mic_transcript_translation_enabled?: boolean;
   mic_transcript_translation_mode?: string;

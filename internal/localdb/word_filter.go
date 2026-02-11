@@ -123,6 +123,21 @@ func BulkInsertWordFilterWords(words []WordFilterWord) error {
 	return nil
 }
 
+// ClearAllWordFilterWords deletes all words from the word filter table
+func ClearAllWordFilterWords() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	_, err := db.Exec(`DELETE FROM word_filter_words`)
+	if err != nil {
+		logger.Error("Failed to clear word filter words", zap.Error(err))
+		return fmt.Errorf("failed to clear word filter words: %w", err)
+	}
+	return nil
+}
+
 // GetWordFilterLanguages returns all languages that have word filter entries
 func GetWordFilterLanguages() ([]string, error) {
 	db := GetDB()
@@ -148,30 +163,47 @@ func GetWordFilterLanguages() ([]string, error) {
 	return languages, nil
 }
 
-// IsWordFilterSeeded checks if the word filter has been seeded with defaults
-func IsWordFilterSeeded() (bool, error) {
+// GetWordFilterSeedVersion returns the current seed version stored in DB
+func GetWordFilterSeedVersion() (string, error) {
 	db := GetDB()
 	if db == nil {
-		return false, fmt.Errorf("database not initialized")
+		return "", fmt.Errorf("database not initialized")
 	}
 
-	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'word_filter_seeded'`).Scan(&count)
+	var value string
+	err := db.QueryRow(`SELECT value FROM settings WHERE key = 'word_filter_seed_version'`).Scan(&value)
 	if err != nil {
-		return false, err
+		return "", nil // not seeded yet
 	}
-	return count > 0, nil
+	return value, nil
 }
 
-// MarkWordFilterSeeded marks the word filter as seeded
-func MarkWordFilterSeeded() error {
+// SetWordFilterSeedVersion stores the seed version in DB
+func SetWordFilterSeedVersion(version string) error {
 	db := GetDB()
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
 	_, err := db.Exec(
-		`INSERT OR REPLACE INTO settings (key, value, setting_type) VALUES ('word_filter_seeded', 'true', 'system')`,
+		`INSERT OR REPLACE INTO settings (key, value, setting_type) VALUES ('word_filter_seed_version', ?, 'system')`,
+		version,
 	)
 	return err
+}
+
+// IsWordFilterSeeded checks if the word filter has been seeded with defaults
+// Kept for backward compatibility
+func IsWordFilterSeeded() (bool, error) {
+	v, err := GetWordFilterSeedVersion()
+	if err != nil {
+		return false, err
+	}
+	return v != "", nil
+}
+
+// MarkWordFilterSeeded marks the word filter as seeded
+// Kept for backward compatibility
+func MarkWordFilterSeeded() error {
+	return SetWordFilterSeedVersion("v1")
 }

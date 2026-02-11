@@ -1,15 +1,12 @@
 culture
-culture
 sculpture
 vulture
-culture
 discussion
 culotte
 cul-de-sac
-culpabilite
-culmine
+culpabilité
+culminer
 culte
-culture
 recul
 reculer
 accumuler
@@ -27,7 +24,7 @@ bassesse
 bassin
 bassiste
 bassine
-baton
+bâton
 cas
 casque
 casquette
@@ -48,3 +45,5 @@ passeport
 passion
 passive
 passoire
+assassinat
+baiser la main
