@@ -32,16 +32,19 @@ dev_mode:
       - "*.go"
     git_ignore: true
   executes:
-    - cmd: cd frontend && bun install
+    - cmd: wails3 task -dir build install:frontend:deps
       type: once
-    - cmd: cd web && bun run build
+    - cmd: wails3 task -dir build build:web:overlay
       type: blocking
     - cmd: go mod tidy
       type: blocking
     - cmd: wails3 generate bindings -clean=true
       type: blocking
-    - cmd: cd frontend && bun run dev -- --port ${VITE_PORT:-9245} --strictPort
+    - cmd: wails3 task -dir build dev:frontend
       type: background
+    # Viteの起動待ち（起動直後にWails側の接続チェックで落ちるのを防ぐ）
+    - cmd: python3 build/wait_vite.py
+      type: blocking
     - cmd: go build -o build/bin/twitch-overlay
       type: blocking
     - cmd: ./build/bin/twitch-overlay

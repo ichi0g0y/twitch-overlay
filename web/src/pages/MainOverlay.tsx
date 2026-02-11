@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CustomFontLoader } from '../components/CustomFontLoader';
 import FaxReceiver from '../components/FaxReceiver';
 import { MicTranscriptOverlay } from '../components/MicTranscriptOverlay';
 import { Toaster } from 'sonner';
@@ -84,6 +85,7 @@ export const MainOverlay: React.FC = () => {
 
   return (
     <>
+      <CustomFontLoader />
       <FaxReceiver />
       <MicTranscriptOverlay />
       <Toaster position="top-right" richColors expand={true} duration={3000} />

@@ -13,7 +13,7 @@ import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 
 const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
-const ALLOWED_TABS = new Set(['general', 'twitch', 'printer', 'music', 'overlay', 'logs', 'cache', 'api']);
+const ALLOWED_TABS = new Set(['general', 'mic', 'twitch', 'printer', 'music', 'overlay', 'logs', 'cache', 'api']);
 
 export const SettingsPageContext = createContext<ReturnType<typeof useSettingsPage> | null>(null);
 
@@ -462,20 +462,42 @@ export const useSettingsPage = () => {
     }
   };
 
+  // Wailsの埋め込みWebView(独自scheme)でも、実サーバーURLを開けるようにする
+  const resolveExternalBaseUrl = useCallback((): string => {
+    if (typeof window === 'undefined') {
+      return `http://localhost:${webServerPort}`;
+    }
+    const proto = window.location.protocol;
+    if (proto === 'http:' || proto === 'https:') {
+      return window.location.origin;
+    }
+    return `http://localhost:${webServerPort}`;
+  }, [webServerPort]);
+
+	  const openExternal = useCallback((path: string) => {
+	    try {
+	      const base = resolveExternalBaseUrl();
+	      const url = new URL(path, base).toString();
+	      window.open(url, '_blank', 'noopener,noreferrer');
+	    } catch (error) {
+	      console.error('[openExternal] Failed:', error);
+	    }
+	  }, [resolveExternalBaseUrl]);
+
+	  const handleOpenPresent = async () => {
+	    openExternal('/overlay/present');
+	  };
+
+  const handleOpenPresentDebug = async () => {
+    openExternal('/overlay/present?debug=true');
+  };
+
   const handleOpenOverlay = async () => {
-    window.open('/overlay/', '_blank', 'noopener,noreferrer');
+    openExternal('/overlay/');
   };
 
   const handleOpenOverlayDebug = async () => {
-    window.open('/overlay/?debug=true', '_blank', 'noopener,noreferrer');
-  };
-
-  const handleOpenPresent = async () => {
-    window.open('/overlay/present', '_blank', 'noopener,noreferrer');
-  };
-
-  const handleOpenPresentDebug = async () => {
-    window.open('/overlay/present?debug=true', '_blank', 'noopener,noreferrer');
+    openExternal('/overlay/?debug=true');
   };
 
   // Bluetooth device functions
@@ -749,14 +771,14 @@ export const useSettingsPage = () => {
     handlePrinterReconnect,
     handleTestPrint,
     handleTestNotification,
-    handleFontUpload,
-    handleDeleteFont,
-    handleFontPreview,
-    handleOpenOverlay,
-    handleOpenOverlayDebug,
-    handleOpenPresent,
-    handleOpenPresentDebug,
-    handleTokenRefresh,
+	    handleFontUpload,
+	    handleDeleteFont,
+      handleFontPreview,
+      handleOpenPresent,
+      handleOpenPresentDebug,
+      handleOpenOverlay,
+      handleOpenOverlayDebug,
+      handleTokenRefresh,
 
     // Bluetooth related
     bluetoothDevices,

@@ -25,7 +25,15 @@ tasks:
     summary: Build web overlay (OBS用オーバーレイ)
     dir: ../web
     sources:
-      - "**/*"
+      - "src/**/*"
+      - "public/**/*"
+      - "index.html"
+      - "package.json"
+      - "bun.lockb"
+      - "tsconfig*.json"
+      - "vite.config.*"
+      - exclude: "dist/**/*"
+      - exclude: "node_modules/**/*"
     generates:
       - dist/**/*
     cmds:
@@ -84,8 +92,50 @@ tasks:
     dir: ../frontend
     deps:
       - task: install:frontend:deps
+    vars:
+      # Backend port for Vite proxy.
+      # Prefer explicit env VITE_BACKEND_PORT, then SERVER_PORT, then read from local.db (SERVER_PORT), else 8080.
+      BACKEND_PORT:
+        sh: |
+          if [ -n "${VITE_BACKEND_PORT:-}" ]; then
+            echo "${VITE_BACKEND_PORT}"
+            exit 0
+          fi
+          if [ -n "${SERVER_PORT:-}" ]; then
+            echo "${SERVER_PORT}"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import os, sqlite3, pathlib
+          base = os.path.expanduser(os.getenv("TWITCH_OVERLAY_DATA_DIR", "~/.twitch-overlay"))
+          db = str(pathlib.Path(base) / "local.db")
+          port = "8080"
+          try:
+            con = sqlite3.connect(db)
+            cur = con.cursor()
+            cur.execute("select value from settings where key='SERVER_PORT'")
+            row = cur.fetchone()
+            if row and row[0] and str(row[0]).strip():
+              port = str(row[0]).strip()
+          except Exception:
+            pass
+          print(port)
+          PY
+      # Wails dev sets FRONTEND_DEVSERVER_URL (e.g. http://localhost:9245).
+      # Prefer explicit env VITE_PORT, otherwise derive from FRONTEND_DEVSERVER_URL, otherwise default.
+      VITE_PORT:
+        sh: |
+          if [ -n "${VITE_PORT:-}" ]; then
+            echo "${VITE_PORT}"
+            exit 0
+          fi
+          if [ -n "${FRONTEND_DEVSERVER_URL:-}" ]; then
+            echo "${FRONTEND_DEVSERVER_URL}" | sed -E 's#^https?://[^:]+:([0-9]+).*$#\\1#'
+            exit 0
+          fi
+          echo 9245
     cmds:
-      - bun run dev -- --port {{.VITE_PORT}} --strictPort
+      - VITE_BACKEND_PORT={{.BACKEND_PORT}} bun run dev -- --port {{.VITE_PORT}} --strictPort
 
   update:build-assets:
     summary: Updates the build assets

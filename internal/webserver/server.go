@@ -8,6 +8,8 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,20 +137,34 @@ func StartWebServer(port int) error {
 	var settingsFS fs.FS
 	var overlayDir string
 	var settingsDir string
+	var settingsDevProxy *httputil.ReverseProxy
+	var settingsDevProxyURL string
 
 	if webAssets != nil {
-		// Use embedded assets if available (Wails build)
-		logger.Info("Using embedded web assets")
+		// Use embedded assets if available (Wails build).
+		//
+		// NOTE: In wails3 dev, overlay changes (web/dist) will NOT be reflected unless the Go binary is recompiled,
+		// because //go:embed snapshots files at build time. For a smoother workflow, prefer serving overlay from
+		// the filesystem when a frontend dev server is present (or explicitly requested).
+		devPreferFSOverlay := strings.EqualFold(strings.TrimSpace(os.Getenv("DEV_USE_FS_OVERLAY")), "true") ||
+			strings.TrimSpace(os.Getenv("FRONTEND_DEVSERVER_URL")) != "" ||
+			strings.TrimSpace(os.Getenv("VITE_PORT")) != ""
 
-		// Overlay assets (required)
-		oFS, err := fs.Sub(webAssets, "web/dist")
-		if err != nil {
-			logger.Error("Failed to get embedded overlay filesystem", zap.Error(err))
-			return fmt.Errorf("failed to get embedded overlay filesystem: %w", err)
+		logger.Info("Using embedded web assets", zap.Bool("dev_prefer_fs_overlay", devPreferFSOverlay))
+
+		if !devPreferFSOverlay {
+			// Overlay assets (required)
+			oFS, err := fs.Sub(webAssets, "web/dist")
+			if err != nil {
+				logger.Error("Failed to get embedded overlay filesystem", zap.Error(err))
+				return fmt.Errorf("failed to get embedded overlay filesystem: %w", err)
+			}
+			overlayFS = oFS
+			overlayServer = http.FileServer(http.FS(oFS))
+			overlayEmbedded = true
+		} else {
+			logger.Info("Dev mode: serving overlay from filesystem (./web/dist) instead of embedded assets")
 		}
-		overlayFS = oFS
-		overlayServer = http.FileServer(http.FS(oFS))
-		overlayEmbedded = true
 
 		// Settings assets (optional until embed includes it)
 		sFS, err := fs.Sub(webAssets, "frontend/dist")
@@ -227,6 +243,44 @@ func StartWebServer(port int) error {
 		settingsServer = http.FileServer(http.Dir(settingsDir))
 	}
 
+	// Dev: proxy WebUI (/) to Vite so Chrome can see live changes without rebuilding dist.
+	// Wails dev usually provides FRONTEND_DEVSERVER_URL like http://localhost:9245.
+	{
+		settingsDevProxyURL = strings.TrimSpace(os.Getenv("FRONTEND_DEVSERVER_URL"))
+		if settingsDevProxyURL == "" {
+			if vitePort := strings.TrimSpace(os.Getenv("VITE_PORT")); vitePort != "" {
+				settingsDevProxyURL = fmt.Sprintf("http://127.0.0.1:%s", vitePort)
+			}
+		}
+
+		if settingsDevProxyURL != "" {
+			u, err := url.Parse(settingsDevProxyURL)
+			if err != nil || u.Scheme == "" || u.Host == "" {
+				logger.Warn("Invalid FRONTEND_DEVSERVER_URL, ignoring", zap.String("url", settingsDevProxyURL), zap.Error(err))
+				settingsDevProxyURL = ""
+			} else {
+				// Quick reachability check to avoid masking the static UI when Vite is down.
+				client := &http.Client{Timeout: 300 * time.Millisecond}
+				req, _ := http.NewRequest(http.MethodGet, strings.TrimRight(settingsDevProxyURL, "/")+"/@vite/client", nil)
+				resp, err := client.Do(req)
+				if err != nil {
+					logger.Warn("Frontend dev server not reachable, falling back to static dist", zap.String("url", settingsDevProxyURL), zap.Error(err))
+					settingsDevProxyURL = ""
+				} else {
+					_ = resp.Body.Close()
+					settingsDevProxy = httputil.NewSingleHostReverseProxy(u)
+					origDirector := settingsDevProxy.Director
+					settingsDevProxy.Director = func(r *http.Request) {
+						origDirector(r)
+						// Ensure Host matches upstream for websockets/HMR.
+						r.Host = u.Host
+					}
+					logger.Info("Proxying WebUI to frontend dev server", zap.String("url", settingsDevProxyURL))
+				}
+			}
+		}
+	}
+
 	// Create a new ServeMux for better routing control
 	mux := http.NewServeMux()
 
@@ -241,12 +295,13 @@ func StartWebServer(port int) error {
 
 	// Settings API endpoints - 最初に登録してAPIが優先されるようにする
 	mux.HandleFunc("/api/settings/v2", corsMiddleware(handleSettingsV2))
-	mux.HandleFunc("/api/settings/status", corsMiddleware(handleSettingsStatus))
-	mux.HandleFunc("/api/settings/bulk", corsMiddleware(handleBulkSettings))
-	mux.HandleFunc("/api/settings/font/preview", corsMiddleware(handleFontPreview))
-	mux.HandleFunc("/api/settings/font", handleFontUpload) // handleFontUploadは独自のCORS処理を持つ
-	mux.HandleFunc("/api/settings/auth/status", corsMiddleware(handleAuthStatus))
-	mux.HandleFunc("/api/settings", corsMiddleware(handleSettings))
+		mux.HandleFunc("/api/settings/status", corsMiddleware(handleSettingsStatus))
+		mux.HandleFunc("/api/settings/bulk", corsMiddleware(handleBulkSettings))
+		mux.HandleFunc("/api/settings/font/preview", corsMiddleware(handleFontPreview))
+		mux.HandleFunc("/api/settings/font/file", corsMiddleware(handleFontFile))
+		mux.HandleFunc("/api/settings/font", handleFontUpload) // handleFontUploadは独自のCORS処理を持つ
+		mux.HandleFunc("/api/settings/auth/status", corsMiddleware(handleAuthStatus))
+		mux.HandleFunc("/api/settings", corsMiddleware(handleSettings))
 
 	// Printer API endpoints
 	mux.HandleFunc("/api/printer/scan", corsMiddleware(handlePrinterScan))
@@ -425,6 +480,11 @@ func StartWebServer(port int) error {
 
 	// WebUI (SPA) - / (最後に登録)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if settingsDevProxy != nil {
+			settingsDevProxy.ServeHTTP(w, r)
+			return
+		}
+
 		if settingsEmbedded {
 			rel := strings.TrimPrefix(r.URL.Path, "/")
 			if rel == "" {
@@ -1390,6 +1450,9 @@ func handleFontUpload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Return success with updated font info
+		// Notify connected clients (overlay/webui) to refresh font-face if needed.
+		BroadcastWSMessage("font_updated", fontmanager.GetCurrentFontInfo())
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
@@ -1421,6 +1484,9 @@ func handleFontUpload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Return success
+		// Notify connected clients (overlay/webui) to refresh font-face if needed.
+		BroadcastWSMessage("font_updated", fontmanager.GetCurrentFontInfo())
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,

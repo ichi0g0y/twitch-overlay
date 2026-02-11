@@ -1,3 +1,5 @@
+import { MIN_CHROME_VERSION } from '@/utils/browserInfo';
+
 export type ChromeTranslationDownloadStatus = {
   status: 'downloading' | 'completed' | 'error';
   sourceLang: string;
@@ -120,7 +122,7 @@ export class ChromeTranslatorClient {
   async getTranslator(sourceLang: string, targetLang: string): Promise<TranslatorLike> {
     const api = this.translatorApi;
     if (!api) {
-      throw new Error('Chrome Translator API is not available (Chrome 138+ required)');
+      throw new Error(`Chrome Translator API is not available (Chrome ${MIN_CHROME_VERSION.translatorApi}+ required)`);
     }
 
     const k = this.key(sourceLang, targetLang);
@@ -198,7 +200,7 @@ export class ChromeTranslatorClient {
     targetLanguage: string;
   }> {
     if (!this.isSupported()) {
-      throw new Error('Chrome Translator API is not available (Chrome 138+ required)');
+      throw new Error(`Chrome Translator API is not available (Chrome ${MIN_CHROME_VERSION.translatorApi}+ required)`);
     }
 
     const trimmed = text.trim();
@@ -284,4 +286,3 @@ export class ChromeTranslatorClient {
     this.detector = null;
   }
 }
-

@@ -323,7 +323,7 @@ func migrateLegacyTranslationSettings() {
 			}
 		}
 
-		// Legacy iso639-3 and NLLB-like codes -> Chrome language codes.
+		// Legacy iso639-3 and common aliases -> Chrome language codes.
 		switch normalized {
 		case "jpn", "ja":
 			return "ja"
@@ -378,25 +378,21 @@ func migrateLegacyTranslationSettings() {
 		return ""
 	}
 
-	migrateValue := func(key string) {
+	migrateMode := func(key string) {
 		value, err := manager.GetRealValue(key)
 		if err != nil {
 			return
 		}
 		normalized := strings.TrimSpace(strings.ToLower(value))
 		switch normalized {
-		case "", "off":
+		case "", "off", "chrome":
 			return
-		case "chrome":
-			return
-		case "ollama", "nllb", "local":
-			_ = manager.SetSetting(key, "chrome")
 		default:
-			// Unknown legacy backend -> prefer Chrome translation for browser-only flow.
+			// Unknown legacy mode -> prefer Chrome translation for browser-only flow.
 			_ = manager.SetSetting(key, "chrome")
 		}
 	}
-	migrateValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+	migrateMode("MIC_TRANSCRIPT_TRANSLATION_MODE")
 
 	migrateLang := func(key string) {
 		value, err := manager.GetRealValue(key)
@@ -409,6 +405,8 @@ func migrateLegacyTranslationSettings() {
 		}
 	}
 	migrateLang("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE")
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE")
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE")
 }
 
 // restoreRelativePosition restores window using relative position (fallback method)

@@ -371,6 +371,15 @@ export function RunCacheCleanup() {
 }
 
 /**
+ * SaveWindowFullscreenState saves fullscreen state to database
+ * @param {boolean} fullscreen
+ * @returns {$CancellablePromise<void>}
+ */
+export function SaveWindowFullscreenState(fullscreen) {
+    return $Call.ByID(242975254, fullscreen);
+}
+
+/**
  * SaveWindowPosition saves the window position and size to database
  * @param {number} x
  * @param {number} y

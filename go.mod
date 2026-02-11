@@ -4,7 +4,6 @@ go 1.24.8
 
 require (
 	git.massivebox.net/massivebox/go-catprinter v0.0.0-20240910204530-46926935fbe2
-	github.com/abadojack/whatlanggo v1.0.1
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/gorilla/websocket v1.5.3
 	github.com/joeyak/go-twitch-eventsub/v3 v3.0.0

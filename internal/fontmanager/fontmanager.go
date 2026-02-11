@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
@@ -233,6 +234,24 @@ func GetCurrentFontInfo() map[string]interface{} {
 	}
 	
 	return info
+}
+
+// GetCustomFontFile returns the currently configured custom font file contents.
+// This is useful for serving the font to browser clients (e.g. overlay @font-face).
+func GetCustomFontFile() (filename string, data []byte, err error) {
+	mu.RLock()
+	path := customFontPath
+	mu.RUnlock()
+
+	if strings.TrimSpace(path) == "" {
+		return "", nil, ErrNoCustomFont
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read custom font file: %w", err)
+	}
+	return filepath.Base(path), b, nil
 }
 
 // loadCustomFontPath はフォントディレクトリから既存のフォントを探します

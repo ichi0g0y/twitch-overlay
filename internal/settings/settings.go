@@ -256,6 +256,14 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript position (top-left/right/center, bottom-left/right/center)",
 	},
+	"MIC_TRANSCRIPT_V_ALIGN": {
+		Key: "MIC_TRANSCRIPT_V_ALIGN", Value: "bottom", Type: SettingTypeNormal, Required: false,
+		Description: "Vertical alignment within the transcript frame (top/bottom)",
+	},
+	"MIC_TRANSCRIPT_FRAME_HEIGHT_PX": {
+		Key: "MIC_TRANSCRIPT_FRAME_HEIGHT_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Fixed frame height (px) for mic transcript overlay (0 = auto)",
+	},
 	"MIC_TRANSCRIPT_FONT_SIZE": {
 		Key: "MIC_TRANSCRIPT_FONT_SIZE", Value: "20", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript font size",
@@ -272,8 +280,12 @@ var DefaultSettings = map[string]Setting{
 		Key: "MIC_TRANSCRIPT_SPEECH_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
 		Description: "Web Speech API language code for mic transcript sender (e.g. ja/en/ko)",
 	},
+	"MIC_TRANSCRIPT_SPEECH_ENABLED": {
+		Key: "MIC_TRANSCRIPT_SPEECH_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic capture in WebUI (persisted; auto-start on reload when possible)",
+	},
 	"MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS": {
-		Key: "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", Value: "800", Type: SettingTypeNormal, Required: false,
+		Key: "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", Value: "750", Type: SettingTypeNormal, Required: false,
 		Description: "Web Speech API short pause (ms) to force stop and flush final result (0 = disabled)",
 	},
 	"MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS": {
@@ -287,6 +299,14 @@ var DefaultSettings = map[string]Setting{
 	"MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS": {
 		Key: "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", Value: "100", Type: SettingTypeNormal, Required: false,
 		Description: "Restart delay (ms) for Web Speech API recognition",
+	},
+	"MIC_TRANSCRIPT_BOUYOMI_ENABLED": {
+		Key: "MIC_TRANSCRIPT_BOUYOMI_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable BouyomiChan integration (jimakuChan compatible)",
+	},
+	"MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED": {
+		Key: "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable content filter (anti_sexual) for mic transcript / translations (jimakuChan compatible)",
 	},
 	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
 		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
@@ -319,6 +339,138 @@ var DefaultSettings = map[string]Setting{
 	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
 		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
 		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
+	},
+	"MIC_TRANSCRIPT_TEXT_ALIGN": {
+		Key: "MIC_TRANSCRIPT_TEXT_ALIGN", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Text alignment for mic transcript overlay (left/center/right, empty = auto)",
+	},
+	"MIC_TRANSCRIPT_WHITE_SPACE": {
+		Key: "MIC_TRANSCRIPT_WHITE_SPACE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "CSS white-space for mic transcript overlay (e.g. '', nowrap, pre-line, pre-wrap)",
+	},
+	"MIC_TRANSCRIPT_BACKGROUND_COLOR": {
+		Key: "MIC_TRANSCRIPT_BACKGROUND_COLOR", Value: "transparent", Type: SettingTypeNormal, Required: false,
+		Description: "Background color for overlay (transparent or hex like #00ff00)",
+	},
+	"MIC_TRANSCRIPT_TIMER_MS": {
+		Key: "MIC_TRANSCRIPT_TIMER_MS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Clear mic transcript text after inactivity (ms, 0 = disabled)",
+	},
+	"MIC_TRANSCRIPT_INTERIM_MARKER_LEFT": {
+		Key: "MIC_TRANSCRIPT_INTERIM_MARKER_LEFT", Value: " << ", Type: SettingTypeNormal, Required: false,
+		Description: "Left marker for interim (not-final) transcript",
+	},
+	"MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT": {
+		Key: "MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT", Value: " >>", Type: SettingTypeNormal, Required: false,
+		Description: "Right marker for interim (not-final) transcript",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_1_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_1_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between transcript and translation1 (px)",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_2_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_2_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between translation1 and translation2 (px)",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_3_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_3_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between translation2 and translation3 (px)",
+	},
+	"MIC_TRANSCRIPT_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript text color (hex)",
+	},
+	"MIC_TRANSCRIPT_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for translation2 (empty = disabled)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for translation3 (empty = disabled)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for translation2",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for translation3",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 font-family",
 	},
 
 	// プレゼントルーレット設定
@@ -661,6 +813,14 @@ func ValidateSetting(key, value string) error {
 		if value != "off" && value != "chrome" {
 			return fmt.Errorf("must be 'off' or 'chrome'")
 		}
+	case "MIC_TRANSCRIPT_V_ALIGN":
+		if value != "" && value != "top" && value != "bottom" {
+			return fmt.Errorf("must be 'top' or 'bottom'")
+		}
+	case "MIC_TRANSCRIPT_FRAME_HEIGHT_PX":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 4096 {
+			return fmt.Errorf("must be integer between 0 and 4096")
+		}
 	case "MIC_TRANSCRIPT_MAX_WIDTH_PX", "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX":
 		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 4096 {
 			return fmt.Errorf("must be integer between 0 and 4096")
@@ -697,7 +857,7 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
 			return fmt.Errorf("must be integer between 0 and 300 seconds")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED":
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_TRANSCRIPT_SPEECH_ENABLED", "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", "MIC_TRANSCRIPT_BOUYOMI_ENABLED", "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

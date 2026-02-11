@@ -1,4 +1,4 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Monitor, Music, Settings2, Wifi } from 'lucide-react';
+import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Music, Settings2, Wifi } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
@@ -15,7 +15,9 @@ import { PrinterSettings } from './settings/PrinterSettings';
 import { OverlaySettings } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
+import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
 import { ChatSidebar } from './ChatSidebar';
+import { MicStatusCard } from './MicStatusCard';
 
 const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'chat_sidebar_width';
@@ -78,13 +80,15 @@ export const SettingsPage: React.FC = () => {
     handleTestPrint,
     handleTestNotification,
     handleFontUpload,
-    handleDeleteFont,
-    handleFontPreview,
-    handleOpenOverlay,
-    handleOpenOverlayDebug,
+		handleDeleteFont,
+		handleFontPreview,
     handleOpenPresent,
     handleOpenPresentDebug,
-  } = contextValue;
+    handleOpenOverlay,
+    handleOpenOverlayDebug,
+    overlaySettings,
+    updateOverlaySettings,
+	  } = contextValue;
 
   const handleChatSidebarSideChange = (side: 'left' | 'right') => {
     setChatSidebarSide(side);
@@ -149,24 +153,24 @@ export const SettingsPage: React.FC = () => {
                   クイック操作
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline"
-                    onClick={handleOpenOverlay}
-                    className="flex items-center space-x-1">
-                    <Monitor className="w-3 h-3" />
-                    <span>オーバーレイ表示</span>
-                  </Button>
-                  <Button size="sm" variant="outline"
-                    onClick={handleOpenOverlayDebug}
-                    className="flex items-center space-x-1">
-                    <Bug className="w-3 h-3" />
-                    <span>オーバーレイ表示(デバッグ)</span>
-                  </Button>
-                  <Button size="sm" variant="outline"
-                    onClick={handleOpenPresent}
-                    className="flex items-center space-x-1">
-                    <Gift className="w-3 h-3" />
+			  <CardContent>
+				<div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline"
+            onClick={handleOpenOverlay}
+            className="flex items-center space-x-1">
+            <Layers className="w-3 h-3" />
+            <span>オーバーレイ表示</span>
+          </Button>
+          <Button size="sm" variant="outline"
+            onClick={handleOpenOverlayDebug}
+            className="flex items-center space-x-1">
+            <Layers className="w-3 h-3" />
+            <span>オーバーレイ表示(デバッグ)</span>
+          </Button>
+				  <Button size="sm" variant="outline"
+					onClick={handleOpenPresent}
+					className="flex items-center space-x-1">
+					<Gift className="w-3 h-3" />
                     <span>プレゼントルーレット</span>
                   </Button>
                   <Button size="sm" variant="outline"
@@ -195,10 +199,16 @@ export const SettingsPage: React.FC = () => {
               onPrinterReconnect={handlePrinterReconnect}
               onTestPrint={handleTestPrint}
             />
+            <MicStatusCard
+              overlaySettings={overlaySettings ?? null}
+              updateOverlaySettings={updateOverlaySettings}
+              webServerPort={webServerPort}
+            />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-8 mb-6">
+              <TabsList className="grid w-full grid-cols-9 mb-6">
                 <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
+                <TabsTrigger value="mic"><Mic className="w-4 h-4 mr-1" />マイク</TabsTrigger>
                 <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
                 <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
                 <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
@@ -227,6 +237,11 @@ export const SettingsPage: React.FC = () => {
                   handleTestNotification={handleTestNotification}
                   testingNotification={testingNotification}
                 />
+              </TabsContent>
+              <TabsContent value="mic">
+                <SettingsPageContext.Provider value={contextValue}>
+                  <MicTranscriptionSettings />
+                </SettingsPageContext.Provider>
               </TabsContent>
               <TabsContent value="twitch">
                 <SettingsPageContext.Provider value={contextValue}>

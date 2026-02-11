@@ -18,21 +18,55 @@ tasks:
     desc: 開発モードでアプリを起動（wails3 dev、.app生成なし）
     cmds:
       - |
-        echo "📦 OBS用オーバーレイをビルド中..."
-        (cd web && bun run build)
+        # wails3 dev のフロントエンド(Vite)ポートが衝突すると起動できないため、
+        # 空いているポートを自動選択して -port / VITE_PORT を揃える
+        PORT="${VITE_PORT:-9245}"
+        is_listening() {
+          if command -v lsof >/dev/null 2>&1; then
+            lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+            return $?
+          fi
+          python3 -c 'import socket,sys; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(0.2); r=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); sys.exit(0 if r==0 else 1)' "$1"
+        }
 
-        echo "📦 WebUI(dist)をビルド中..."
-        (cd frontend && bun run build)
+        if is_listening "$PORT"; then
+          echo "⚠️ Viteポート ${PORT} が使用中だす。空きポートへ切り替えるだす..."
+          for p in $(seq 9245 9299); do
+            if ! is_listening "$p"; then
+              PORT="$p"
+              break
+            fi
+          done
+        fi
 
-        echo "🚀 wails3 dev を起動中..."
-        wails3 dev
+        echo "🚀 wails3 dev を起動中... (vite port: ${PORT})"
+        DEV_USE_FS_OVERLAY=true VITE_PORT="$PORT" wails3 dev -port "$PORT"
 
   dev:wails:quick:
     desc: クイック開発モード（wails3 dev、オーバーレイ/WebUIは事前ビルド前提）
     cmds:
       - |
-        echo "🚀 wails3 dev を起動中..."
-        wails3 dev
+        PORT="${VITE_PORT:-9245}"
+        is_listening() {
+          if command -v lsof >/dev/null 2>&1; then
+            lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+            return $?
+          fi
+          python3 -c 'import socket,sys; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(0.2); r=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); sys.exit(0 if r==0 else 1)' "$1"
+        }
+
+        if is_listening "$PORT"; then
+          echo "⚠️ Viteポート ${PORT} が使用中だす。空きポートへ切り替えるだす..."
+          for p in $(seq 9245 9299); do
+            if ! is_listening "$p"; then
+              PORT="$p"
+              break
+            fi
+          done
+        fi
+
+        echo "🚀 wails3 dev を起動中... (vite port: ${PORT})"
+        DEV_USE_FS_OVERLAY=true VITE_PORT="$PORT" wails3 dev -port "$PORT"
 
   dev:wails:app:
     desc: 開発用.appを作成して起動（macOS向けフォールバック）
@@ -269,12 +303,6 @@ tasks:
       - echo ""
       - echo "=== Web Dependencies ==="
       - cd web && bun pm ls
-
-  # Claude起動
-  claude:
-    desc: Claude起動
-    cmds:
-      - claude --dangerously-skip-permissions
 
   # バージョン情報表示
   version:

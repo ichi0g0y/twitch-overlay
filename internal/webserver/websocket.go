@@ -32,18 +32,6 @@ type wsOutboundMessage struct {
 	data        []byte
 }
 
-type micTranscriptPayload struct {
-	Type       string `json:"type"`
-	ID         string `json:"id"`
-	Text       string `json:"text"`
-	IsInterim  bool   `json:"is_interim"`
-	Timestamp  int64  `json:"timestamp_ms"`
-	Source     string `json:"source"`
-	Language   string `json:"language"`
-	Model      string `json:"model"`
-	SampleRate int    `json:"sample_rate"`
-}
-
 // WSHub はすべてのWebSocket接続を管理
 type WSHub struct {
 	clients    map[*WSClient]bool
@@ -337,18 +325,10 @@ func (c *WSClient) readPump() {
 					}
 				}
 				continue
-			case "mic_transcript", "mic_transcript_translation":
-				// overlay(web) 側で生成した字幕・翻訳を、そのまま全クライアントへ転送する
-				BroadcastWSMessage(msg.Type, msg.Data)
-				continue
-			}
-		}
 
-		// 互換: 旧transcript形式（payload直投げ）を受けた場合
-		var transcript micTranscriptPayload
-		if err := json.Unmarshal(message, &transcript); err == nil {
-			if transcript.Type == "transcript" {
-				BroadcastWSMessage("mic_transcript", json.RawMessage(message))
+			case "mic_transcript", "mic_transcript_translation":
+				// ダッシュボード（ブラウザ）側で生成した字幕・翻訳を、そのまま全クライアントへ転送する
+				BroadcastWSMessage(msg.Type, msg.Data)
 				continue
 			}
 		}

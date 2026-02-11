@@ -63,20 +63,58 @@ type OverlaySettings struct {
 	// マイク文字起こし表示設定
 	MicTranscriptEnabled                   bool   `json:"mic_transcript_enabled"`
 	MicTranscriptPosition                  string `json:"mic_transcript_position"`
+	MicTranscriptVAlign                    string `json:"mic_transcript_v_align"`
+	MicTranscriptFrameHeightPx             int    `json:"mic_transcript_frame_height_px"`
 	MicTranscriptFontSize                  int    `json:"mic_transcript_font_size"`
 	MicTranscriptMaxLines                  int    `json:"mic_transcript_max_lines"`
 	MicTranscriptMaxWidthPx                int    `json:"mic_transcript_max_width_px"`
+	MicTranscriptTextAlign                 string `json:"mic_transcript_text_align"`
+	MicTranscriptWhiteSpace                string `json:"mic_transcript_white_space"`
+	MicTranscriptBackgroundColor           string `json:"mic_transcript_background_color"`
+	MicTranscriptTimerMs                   int    `json:"mic_transcript_timer_ms"`
+	MicTranscriptInterimMarkerLeft         string `json:"mic_transcript_interim_marker_left"`
+	MicTranscriptInterimMarkerRight        string `json:"mic_transcript_interim_marker_right"`
+	MicTranscriptLineSpacing1Px            int    `json:"mic_transcript_line_spacing_1_px"`
+	MicTranscriptLineSpacing2Px            int    `json:"mic_transcript_line_spacing_2_px"`
+	MicTranscriptLineSpacing3Px            int    `json:"mic_transcript_line_spacing_3_px"`
+	MicTranscriptTextColor                 string `json:"mic_transcript_text_color"`
+	MicTranscriptStrokeColor               string `json:"mic_transcript_stroke_color"`
+	MicTranscriptStrokeWidthPx             int    `json:"mic_transcript_stroke_width_px"`
+	MicTranscriptFontWeight                int    `json:"mic_transcript_font_weight"`
+	MicTranscriptFontFamily                string `json:"mic_transcript_font_family"`
+	MicTranscriptSpeechEnabled             bool   `json:"mic_transcript_speech_enabled"`
 	MicTranscriptSpeechLanguage            string `json:"mic_transcript_speech_language"`
 	MicTranscriptSpeechShortPauseMs        int    `json:"mic_transcript_speech_short_pause_ms"`
 	MicTranscriptSpeechInterimThrottleMs   int    `json:"mic_transcript_speech_interim_throttle_ms"`
 	MicTranscriptSpeechDualInstanceEnabled bool   `json:"mic_transcript_speech_dual_instance_enabled"`
 	MicTranscriptSpeechRestartDelayMs      int    `json:"mic_transcript_speech_restart_delay_ms"`
+	MicTranscriptBouyomiEnabled            bool   `json:"mic_transcript_bouyomi_enabled"`
+	MicTranscriptAntiSexualEnabled         bool   `json:"mic_transcript_anti_sexual_enabled"`
 	MicTranscriptTranslationEnabled        bool   `json:"mic_transcript_translation_enabled"`
 	MicTranscriptTranslationMode           string `json:"mic_transcript_translation_mode"`
 	MicTranscriptTranslationLanguage       string `json:"mic_transcript_translation_language"`
+	MicTranscriptTranslation2Language      string `json:"mic_transcript_translation2_language"`
+	MicTranscriptTranslation3Language      string `json:"mic_transcript_translation3_language"`
 	MicTranscriptTranslationPosition       string `json:"mic_transcript_translation_position"`
 	MicTranscriptTranslationMaxWidthPx     int    `json:"mic_transcript_translation_max_width_px"`
 	MicTranscriptTranslationFontSize       int    `json:"mic_transcript_translation_font_size"`
+	MicTranscriptTranslationFontWeight     int    `json:"mic_transcript_translation_font_weight"`
+	MicTranscriptTranslationTextColor      string `json:"mic_transcript_translation_text_color"`
+	MicTranscriptTranslationStrokeColor    string `json:"mic_transcript_translation_stroke_color"`
+	MicTranscriptTranslationStrokeWidthPx  int    `json:"mic_transcript_translation_stroke_width_px"`
+	MicTranscriptTranslationFontFamily     string `json:"mic_transcript_translation_font_family"`
+	MicTranscriptTranslation2FontSize      int    `json:"mic_transcript_translation2_font_size"`
+	MicTranscriptTranslation2FontWeight    int    `json:"mic_transcript_translation2_font_weight"`
+	MicTranscriptTranslation2TextColor     string `json:"mic_transcript_translation2_text_color"`
+	MicTranscriptTranslation2StrokeColor   string `json:"mic_transcript_translation2_stroke_color"`
+	MicTranscriptTranslation2StrokeWidthPx int    `json:"mic_transcript_translation2_stroke_width_px"`
+	MicTranscriptTranslation2FontFamily    string `json:"mic_transcript_translation2_font_family"`
+	MicTranscriptTranslation3FontSize      int    `json:"mic_transcript_translation3_font_size"`
+	MicTranscriptTranslation3FontWeight    int    `json:"mic_transcript_translation3_font_weight"`
+	MicTranscriptTranslation3TextColor     string `json:"mic_transcript_translation3_text_color"`
+	MicTranscriptTranslation3StrokeColor   string `json:"mic_transcript_translation3_stroke_color"`
+	MicTranscriptTranslation3StrokeWidthPx int    `json:"mic_transcript_translation3_stroke_width_px"`
+	MicTranscriptTranslation3FontFamily    string `json:"mic_transcript_translation3_font_family"`
 	MicTranscriptLineTtlSeconds            int    `json:"mic_transcript_line_ttl_seconds"`
 	MicTranscriptLastTtlSeconds            int    `json:"mic_transcript_last_ttl_seconds"`
 
@@ -165,20 +203,58 @@ func loadOverlaySettingsFromDB() {
 		TickerNoticeAlign:                      getStringSettingWithDefault(allSettings, "TICKER_NOTICE_ALIGN", "center"),
 		MicTranscriptEnabled:                   getBoolSetting(allSettings, "MIC_TRANSCRIPT_ENABLED", false),
 		MicTranscriptPosition:                  getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_POSITION", "bottom-left"),
+		MicTranscriptVAlign:                    getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_V_ALIGN", "bottom"),
+		MicTranscriptFrameHeightPx:             getIntSetting(allSettings, "MIC_TRANSCRIPT_FRAME_HEIGHT_PX", 0),
 		MicTranscriptFontSize:                  getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_SIZE", 20),
 		MicTranscriptMaxLines:                  getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_LINES", 3),
 		MicTranscriptMaxWidthPx:                getIntSetting(allSettings, "MIC_TRANSCRIPT_MAX_WIDTH_PX", 0),
+		MicTranscriptTextAlign:                 getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TEXT_ALIGN", ""),
+		MicTranscriptWhiteSpace:                getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_WHITE_SPACE", ""),
+		MicTranscriptBackgroundColor:           getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_BACKGROUND_COLOR", "transparent"),
+		MicTranscriptTimerMs:                   getIntSetting(allSettings, "MIC_TRANSCRIPT_TIMER_MS", 0),
+		MicTranscriptInterimMarkerLeft:         getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_INTERIM_MARKER_LEFT", " << "),
+		MicTranscriptInterimMarkerRight:        getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT", " >>"),
+		MicTranscriptLineSpacing1Px:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_SPACING_1_PX", 0),
+		MicTranscriptLineSpacing2Px:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_SPACING_2_PX", 0),
+		MicTranscriptLineSpacing3Px:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_SPACING_3_PX", 0),
+		MicTranscriptTextColor:                 getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TEXT_COLOR", "#ffffff"),
+		MicTranscriptStrokeColor:               getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_STROKE_COLOR", "#000000"),
+		MicTranscriptStrokeWidthPx:             getIntSetting(allSettings, "MIC_TRANSCRIPT_STROKE_WIDTH_PX", 6),
+		MicTranscriptFontWeight:                getIntSetting(allSettings, "MIC_TRANSCRIPT_FONT_WEIGHT", 900),
+		MicTranscriptFontFamily:                getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_FONT_FAMILY", "Noto Sans JP"),
+		MicTranscriptSpeechEnabled:             getBoolSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_ENABLED", false),
 		MicTranscriptSpeechLanguage:            getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_SPEECH_LANGUAGE", "ja"),
-		MicTranscriptSpeechShortPauseMs:        getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", 800),
+		MicTranscriptSpeechShortPauseMs:        getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", 750),
 		MicTranscriptSpeechInterimThrottleMs:   getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS", 200),
 		MicTranscriptSpeechDualInstanceEnabled: getBoolSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", true),
 		MicTranscriptSpeechRestartDelayMs:      getIntSetting(allSettings, "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", 100),
+		MicTranscriptBouyomiEnabled:            getBoolSetting(allSettings, "MIC_TRANSCRIPT_BOUYOMI_ENABLED", false),
+		MicTranscriptAntiSexualEnabled:         getBoolSetting(allSettings, "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED", false),
 		MicTranscriptTranslationEnabled:        getBoolSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_ENABLED", false),
 		MicTranscriptTranslationMode:           getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MODE", ""),
 		MicTranscriptTranslationLanguage:       getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "en"),
+		MicTranscriptTranslation2Language:      getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE", ""),
+		MicTranscriptTranslation3Language:      getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE", ""),
 		MicTranscriptTranslationPosition:       getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_POSITION", "bottom-left"),
 		MicTranscriptTranslationMaxWidthPx:     getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX", 0),
 		MicTranscriptTranslationFontSize:       getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", 16),
+		MicTranscriptTranslationFontWeight:     getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT", 900),
+		MicTranscriptTranslationTextColor:      getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR", "#ffffff"),
+		MicTranscriptTranslationStrokeColor:    getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR", "#000000"),
+		MicTranscriptTranslationStrokeWidthPx:  getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX", 6),
+		MicTranscriptTranslationFontFamily:     getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY", "Noto Sans JP"),
+		MicTranscriptTranslation2FontSize:      getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE", 16),
+		MicTranscriptTranslation2FontWeight:    getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT", 900),
+		MicTranscriptTranslation2TextColor:     getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR", "#ffffff"),
+		MicTranscriptTranslation2StrokeColor:   getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR", "#000000"),
+		MicTranscriptTranslation2StrokeWidthPx: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX", 6),
+		MicTranscriptTranslation2FontFamily:    getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY", "Noto Sans JP"),
+		MicTranscriptTranslation3FontSize:      getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE", 16),
+		MicTranscriptTranslation3FontWeight:    getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT", 900),
+		MicTranscriptTranslation3TextColor:     getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR", "#ffffff"),
+		MicTranscriptTranslation3StrokeColor:   getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR", "#000000"),
+		MicTranscriptTranslation3StrokeWidthPx: getIntSetting(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX", 6),
+		MicTranscriptTranslation3FontFamily:    getStringSettingWithDefault(allSettings, "MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY", "Noto Sans JP"),
 		MicTranscriptLineTtlSeconds:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LINE_TTL_SECONDS", 8),
 		MicTranscriptLastTtlSeconds:            getIntSetting(allSettings, "MIC_TRANSCRIPT_LAST_TTL_SECONDS", 8),
 		OverlayCardsExpanded:                   getStringSettingWithDefault(allSettings, "OVERLAY_CARDS_EXPANDED", `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`),
@@ -321,20 +397,57 @@ func useDefaultSettings() {
 		LotteryTickerEnabled:                   false,
 		MicTranscriptEnabled:                   false,
 		MicTranscriptPosition:                  "bottom-left",
+		MicTranscriptVAlign:                    "bottom",
+		MicTranscriptFrameHeightPx:             0,
 		MicTranscriptFontSize:                  20,
 		MicTranscriptMaxLines:                  3,
 		MicTranscriptMaxWidthPx:                0,
+		MicTranscriptTextAlign:                 "",
+		MicTranscriptWhiteSpace:                "",
+		MicTranscriptBackgroundColor:           "transparent",
+		MicTranscriptTimerMs:                   0,
+		MicTranscriptInterimMarkerLeft:         " << ",
+		MicTranscriptInterimMarkerRight:        " >>",
+		MicTranscriptLineSpacing1Px:            0,
+		MicTranscriptLineSpacing2Px:            0,
+		MicTranscriptLineSpacing3Px:            0,
+		MicTranscriptTextColor:                 "#ffffff",
+		MicTranscriptStrokeColor:               "#000000",
+		MicTranscriptStrokeWidthPx:             6,
+		MicTranscriptFontWeight:                900,
+		MicTranscriptFontFamily:                "Noto Sans JP",
 		MicTranscriptSpeechLanguage:            "ja",
 		MicTranscriptSpeechShortPauseMs:        800,
 		MicTranscriptSpeechInterimThrottleMs:   200,
 		MicTranscriptSpeechDualInstanceEnabled: true,
 		MicTranscriptSpeechRestartDelayMs:      100,
+		MicTranscriptBouyomiEnabled:            false,
+		MicTranscriptAntiSexualEnabled:         false,
 		MicTranscriptTranslationEnabled:        false,
 		MicTranscriptTranslationMode:           "off",
 		MicTranscriptTranslationLanguage:       "en",
+		MicTranscriptTranslation2Language:      "",
+		MicTranscriptTranslation3Language:      "",
 		MicTranscriptTranslationPosition:       "bottom-left",
 		MicTranscriptTranslationMaxWidthPx:     0,
 		MicTranscriptTranslationFontSize:       16,
+		MicTranscriptTranslationFontWeight:     900,
+		MicTranscriptTranslationTextColor:      "#ffffff",
+		MicTranscriptTranslationStrokeColor:    "#000000",
+		MicTranscriptTranslationStrokeWidthPx:  6,
+		MicTranscriptTranslationFontFamily:     "Noto Sans JP",
+		MicTranscriptTranslation2FontSize:      16,
+		MicTranscriptTranslation2FontWeight:    900,
+		MicTranscriptTranslation2TextColor:     "#ffffff",
+		MicTranscriptTranslation2StrokeColor:   "#000000",
+		MicTranscriptTranslation2StrokeWidthPx: 6,
+		MicTranscriptTranslation2FontFamily:    "Noto Sans JP",
+		MicTranscriptTranslation3FontSize:      16,
+		MicTranscriptTranslation3FontWeight:    900,
+		MicTranscriptTranslation3TextColor:     "#ffffff",
+		MicTranscriptTranslation3StrokeColor:   "#000000",
+		MicTranscriptTranslation3StrokeWidthPx: 6,
+		MicTranscriptTranslation3FontFamily:    "Noto Sans JP",
 		MicTranscriptLineTtlSeconds:            8,
 		MicTranscriptLastTtlSeconds:            8,
 		OverlayCardsExpanded:                   `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
@@ -430,20 +543,58 @@ func saveOverlaySettingsToDB(overlaySettings *OverlaySettings) error {
 		"TICKER_NOTICE_ALIGN":                         overlaySettings.TickerNoticeAlign,
 		"MIC_TRANSCRIPT_ENABLED":                      strconv.FormatBool(overlaySettings.MicTranscriptEnabled),
 		"MIC_TRANSCRIPT_POSITION":                     overlaySettings.MicTranscriptPosition,
+		"MIC_TRANSCRIPT_V_ALIGN":                      overlaySettings.MicTranscriptVAlign,
+		"MIC_TRANSCRIPT_FRAME_HEIGHT_PX":              strconv.Itoa(overlaySettings.MicTranscriptFrameHeightPx),
 		"MIC_TRANSCRIPT_FONT_SIZE":                    strconv.Itoa(overlaySettings.MicTranscriptFontSize),
 		"MIC_TRANSCRIPT_MAX_LINES":                    strconv.Itoa(overlaySettings.MicTranscriptMaxLines),
 		"MIC_TRANSCRIPT_MAX_WIDTH_PX":                 strconv.Itoa(overlaySettings.MicTranscriptMaxWidthPx),
+		"MIC_TRANSCRIPT_TEXT_ALIGN":                   overlaySettings.MicTranscriptTextAlign,
+		"MIC_TRANSCRIPT_WHITE_SPACE":                  overlaySettings.MicTranscriptWhiteSpace,
+		"MIC_TRANSCRIPT_BACKGROUND_COLOR":             overlaySettings.MicTranscriptBackgroundColor,
+		"MIC_TRANSCRIPT_TIMER_MS":                     strconv.Itoa(overlaySettings.MicTranscriptTimerMs),
+		"MIC_TRANSCRIPT_INTERIM_MARKER_LEFT":          overlaySettings.MicTranscriptInterimMarkerLeft,
+		"MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT":         overlaySettings.MicTranscriptInterimMarkerRight,
+		"MIC_TRANSCRIPT_LINE_SPACING_1_PX":            strconv.Itoa(overlaySettings.MicTranscriptLineSpacing1Px),
+		"MIC_TRANSCRIPT_LINE_SPACING_2_PX":            strconv.Itoa(overlaySettings.MicTranscriptLineSpacing2Px),
+		"MIC_TRANSCRIPT_LINE_SPACING_3_PX":            strconv.Itoa(overlaySettings.MicTranscriptLineSpacing3Px),
+		"MIC_TRANSCRIPT_TEXT_COLOR":                   overlaySettings.MicTranscriptTextColor,
+		"MIC_TRANSCRIPT_STROKE_COLOR":                 overlaySettings.MicTranscriptStrokeColor,
+		"MIC_TRANSCRIPT_STROKE_WIDTH_PX":              strconv.Itoa(overlaySettings.MicTranscriptStrokeWidthPx),
+		"MIC_TRANSCRIPT_FONT_WEIGHT":                  strconv.Itoa(overlaySettings.MicTranscriptFontWeight),
+		"MIC_TRANSCRIPT_FONT_FAMILY":                  overlaySettings.MicTranscriptFontFamily,
+		"MIC_TRANSCRIPT_SPEECH_ENABLED":               strconv.FormatBool(overlaySettings.MicTranscriptSpeechEnabled),
 		"MIC_TRANSCRIPT_SPEECH_LANGUAGE":              overlaySettings.MicTranscriptSpeechLanguage,
 		"MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS":        strconv.Itoa(overlaySettings.MicTranscriptSpeechShortPauseMs),
 		"MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS":   strconv.Itoa(overlaySettings.MicTranscriptSpeechInterimThrottleMs),
 		"MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED": strconv.FormatBool(overlaySettings.MicTranscriptSpeechDualInstanceEnabled),
 		"MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS":      strconv.Itoa(overlaySettings.MicTranscriptSpeechRestartDelayMs),
+		"MIC_TRANSCRIPT_BOUYOMI_ENABLED":              strconv.FormatBool(overlaySettings.MicTranscriptBouyomiEnabled),
+		"MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED":          strconv.FormatBool(overlaySettings.MicTranscriptAntiSexualEnabled),
 		"MIC_TRANSCRIPT_TRANSLATION_ENABLED":          strconv.FormatBool(translationEnabled),
 		"MIC_TRANSCRIPT_TRANSLATION_MODE":             overlaySettings.MicTranscriptTranslationMode,
 		"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE":         overlaySettings.MicTranscriptTranslationLanguage,
+		"MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE":        overlaySettings.MicTranscriptTranslation2Language,
+		"MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE":        overlaySettings.MicTranscriptTranslation3Language,
 		"MIC_TRANSCRIPT_TRANSLATION_POSITION":         overlaySettings.MicTranscriptTranslationPosition,
 		"MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX":     strconv.Itoa(overlaySettings.MicTranscriptTranslationMaxWidthPx),
 		"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE":        strconv.Itoa(overlaySettings.MicTranscriptTranslationFontSize),
+		"MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT":      strconv.Itoa(overlaySettings.MicTranscriptTranslationFontWeight),
+		"MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR":       overlaySettings.MicTranscriptTranslationTextColor,
+		"MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR":     overlaySettings.MicTranscriptTranslationStrokeColor,
+		"MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX":  strconv.Itoa(overlaySettings.MicTranscriptTranslationStrokeWidthPx),
+		"MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY":      overlaySettings.MicTranscriptTranslationFontFamily,
+		"MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE":       strconv.Itoa(overlaySettings.MicTranscriptTranslation2FontSize),
+		"MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT":     strconv.Itoa(overlaySettings.MicTranscriptTranslation2FontWeight),
+		"MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR":      overlaySettings.MicTranscriptTranslation2TextColor,
+		"MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR":    overlaySettings.MicTranscriptTranslation2StrokeColor,
+		"MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX": strconv.Itoa(overlaySettings.MicTranscriptTranslation2StrokeWidthPx),
+		"MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY":     overlaySettings.MicTranscriptTranslation2FontFamily,
+		"MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE":       strconv.Itoa(overlaySettings.MicTranscriptTranslation3FontSize),
+		"MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT":     strconv.Itoa(overlaySettings.MicTranscriptTranslation3FontWeight),
+		"MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR":      overlaySettings.MicTranscriptTranslation3TextColor,
+		"MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR":    overlaySettings.MicTranscriptTranslation3StrokeColor,
+		"MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX": strconv.Itoa(overlaySettings.MicTranscriptTranslation3StrokeWidthPx),
+		"MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY":     overlaySettings.MicTranscriptTranslation3FontFamily,
 		"MIC_TRANSCRIPT_LINE_TTL_SECONDS":             strconv.Itoa(overlaySettings.MicTranscriptLineTtlSeconds),
 		"MIC_TRANSCRIPT_LAST_TTL_SECONDS":             strconv.Itoa(overlaySettings.MicTranscriptLastTtlSeconds),
 		"OVERLAY_CARDS_EXPANDED":                      overlaySettings.OverlayCardsExpanded,
@@ -564,15 +715,61 @@ func handleOverlaySettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			LotteryTickerEnabled:                   false,
 			OverlayCardsExpanded:                   `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`,
 			OverlayCardsLayout:                     `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`,
+			MicTranscriptEnabled:                   false,
+			MicTranscriptPosition:                  "bottom-left",
+			MicTranscriptVAlign:                    "bottom",
+			MicTranscriptFrameHeightPx:             0,
+			MicTranscriptFontSize:                  20,
+			MicTranscriptMaxLines:                  3,
+			MicTranscriptMaxWidthPx:                0,
+			MicTranscriptTextAlign:                 "",
+			MicTranscriptWhiteSpace:                "",
+			MicTranscriptBackgroundColor:           "transparent",
+			MicTranscriptTimerMs:                   0,
+			MicTranscriptInterimMarkerLeft:         " << ",
+			MicTranscriptInterimMarkerRight:        " >>",
+			MicTranscriptLineSpacing1Px:            0,
+			MicTranscriptLineSpacing2Px:            0,
+			MicTranscriptLineSpacing3Px:            0,
+			MicTranscriptTextColor:                 "#ffffff",
+			MicTranscriptStrokeColor:               "#000000",
+			MicTranscriptStrokeWidthPx:             6,
+			MicTranscriptFontWeight:                900,
+			MicTranscriptFontFamily:                "Noto Sans JP",
 			MicTranscriptTranslationEnabled:        false,
+			MicTranscriptTranslationMode:           "off",
 			MicTranscriptTranslationLanguage:       "en",
+			MicTranscriptTranslation2Language:      "",
+			MicTranscriptTranslation3Language:      "",
 			MicTranscriptTranslationPosition:       "bottom-left",
 			MicTranscriptTranslationFontSize:       16,
+			MicTranscriptTranslationFontWeight:     900,
+			MicTranscriptTranslationTextColor:      "#ffffff",
+			MicTranscriptTranslationStrokeColor:    "#000000",
+			MicTranscriptTranslationStrokeWidthPx:  6,
+			MicTranscriptTranslationFontFamily:     "Noto Sans JP",
+			MicTranscriptTranslation2FontSize:      16,
+			MicTranscriptTranslation2FontWeight:    900,
+			MicTranscriptTranslation2TextColor:     "#ffffff",
+			MicTranscriptTranslation2StrokeColor:   "#000000",
+			MicTranscriptTranslation2StrokeWidthPx: 6,
+			MicTranscriptTranslation2FontFamily:    "Noto Sans JP",
+			MicTranscriptTranslation3FontSize:      16,
+			MicTranscriptTranslation3FontWeight:    900,
+			MicTranscriptTranslation3TextColor:     "#ffffff",
+			MicTranscriptTranslation3StrokeColor:   "#000000",
+			MicTranscriptTranslation3StrokeWidthPx: 6,
+			MicTranscriptTranslation3FontFamily:    "Noto Sans JP",
+			MicTranscriptLineTtlSeconds:            8,
+			MicTranscriptLastTtlSeconds:            8,
+			MicTranscriptSpeechEnabled:             false,
 			MicTranscriptSpeechLanguage:            "ja",
 			MicTranscriptSpeechShortPauseMs:        800,
 			MicTranscriptSpeechInterimThrottleMs:   200,
 			MicTranscriptSpeechDualInstanceEnabled: true,
 			MicTranscriptSpeechRestartDelayMs:      100,
+			MicTranscriptBouyomiEnabled:            false,
+			MicTranscriptAntiSexualEnabled:         false,
 		}
 	}
 
@@ -681,6 +878,7 @@ func handleOverlaySettingsGet(w http.ResponseWriter, r *http.Request) {
 			DateEnabled:          true,
 			TimeEnabled:          true,
 			LotteryTickerEnabled: false,
+			MicTranscriptSpeechEnabled: false,
 			OverlayCardsExpanded: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`,
 			OverlayCardsLayout:   `{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}`,
 		}

@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OverlaySettings } from '../../contexts/SettingsContext';
+import { useMicCaptionStatus } from '../../contexts/MicCaptionStatusContext';
+import { talkBouyomiChan } from '../../utils/bouyomiChan';
 import { ChromeTranslatorClient, type ChromeTranslationDownloadStatus } from '../../utils/chromeTranslator';
+import { filterWithCachedLists, preloadWordLists } from '../../utils/contentFilter';
 import { getWebSocketClient } from '../../utils/websocket';
-import { Button } from '../ui/button';
+import { Switch } from '../ui/switch';
 
 type RecState = 'stopped' | 'starting' | 'running';
 
@@ -10,38 +13,104 @@ function nowID(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function normalizeLang(code: string | undefined | null, fallback: string): string {
-  const raw = (code || '').trim();
-  if (!raw) return fallback;
-  if (raw === 'zh-Hant') return raw;
-  const lower = raw.toLowerCase();
-  return lower.split(/[-_]/)[0] || fallback;
+function speechRecognitionErrorToMessage(code: string): string {
+  switch ((code || '').trim()) {
+    case 'aborted':
+      return '音声認識が中断されました（再起動中）';
+    case 'no-speech':
+      return '音声が検出されませんでした';
+    case 'audio-capture':
+      return 'マイク入力を取得できませんでした（デバイス/権限を確認してください）';
+    case 'network':
+      return '音声認識のネットワークエラーが発生しました';
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'マイク権限が拒否されています。ブラウザ/OSの権限設定を確認してください';
+    case 'language-not-supported':
+      return '指定した言語が音声認識でサポートされていません';
+    case 'bad-grammar':
+      return '音声認識の文法設定が不正です';
+    default:
+      return code || '音声認識エラー';
+  }
 }
 
-export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | null }> = ({ overlaySettings }) => {
+function normalizeSpeechLang(code: string | undefined | null, fallback: string): string {
+  const raw = (code || '').trim();
+  if (!raw) return fallback;
+  // Web Speech API accepts BCP-47 tags (e.g. zh-CN / zh-TW). Keep as-is.
+  return raw.replace(/_/g, '-');
+}
+
+function normalizeTranslationLang(code: string | undefined | null, fallback: string): string {
+  const raw = (code || '').trim();
+  if (!raw) return fallback;
+
+  // Chrome Translator API prefers simplified language codes.
+  if (raw === 'zh-Hant') return raw;
+
+  const normalized = raw.replace(/_/g, '-');
+  const lower = normalized.toLowerCase();
+
+  // Common aliases.
+  if (lower === 'zh-tw') return 'zh-Hant';
+  if (lower === 'zh-cn') return 'zh';
+  if (lower.startsWith('zh-') && lower.includes('hant')) return 'zh-Hant';
+
+  // Default: base language.
+  return lower.split('-')[0] || fallback;
+}
+
+export const MicCaptionSender: React.FC<{
+  overlaySettings: OverlaySettings | null;
+  webServerPort?: number | null;
+  onEnabledChange?: (enabled: boolean) => void;
+  variant?: 'full' | 'switch_only';
+}> = ({ overlaySettings, webServerPort, onEnabledChange, variant = 'full' }) => {
+  const { updateStatus } = useMicCaptionStatus();
+
   const speechLang = useMemo(
-    () => normalizeLang(overlaySettings?.mic_transcript_speech_language, 'ja'),
+    () => normalizeSpeechLang(overlaySettings?.mic_transcript_speech_language, 'ja'),
     [overlaySettings?.mic_transcript_speech_language],
   );
-  const shortPauseMs = overlaySettings?.mic_transcript_speech_short_pause_ms ?? 800;
+  const shortPauseMs = overlaySettings?.mic_transcript_speech_short_pause_ms ?? 750;
   const interimThrottleMs = overlaySettings?.mic_transcript_speech_interim_throttle_ms ?? 200;
   const dualInstanceEnabled = overlaySettings?.mic_transcript_speech_dual_instance_enabled ?? true;
   const restartDelayMs = overlaySettings?.mic_transcript_speech_restart_delay_ms ?? 100;
+  const antiSexualEnabled = overlaySettings?.mic_transcript_anti_sexual_enabled ?? false;
+  const bouyomiEnabled = overlaySettings?.mic_transcript_bouyomi_enabled ?? false;
 
   const translationMode = overlaySettings?.mic_transcript_translation_mode
     ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
   const translationEnabled = translationMode !== 'off';
-  const translationTargetLang = useMemo(
-    () => (overlaySettings?.mic_transcript_translation_language || 'en').trim() || 'en',
-    [overlaySettings?.mic_transcript_translation_language],
-  );
+  const translationTargets = useMemo(() => {
+    if (!translationEnabled) return [];
+    const raw1 = (overlaySettings?.mic_transcript_translation_language || '').trim();
+    const raw2 = (overlaySettings?.mic_transcript_translation2_language || '').trim();
+    const raw3 = (overlaySettings?.mic_transcript_translation3_language || '').trim();
+    const candidates = [
+      normalizeTranslationLang(raw1 || 'en', ''),
+      normalizeTranslationLang(raw2, ''),
+      normalizeTranslationLang(raw3, ''),
+    ].filter(Boolean);
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const lang of candidates) {
+      if (seen.has(lang)) continue;
+      seen.add(lang);
+      out.push(lang);
+    }
+    return out;
+  }, [
+    overlaySettings?.mic_transcript_translation2_language,
+    overlaySettings?.mic_transcript_translation3_language,
+    overlaySettings?.mic_transcript_translation_language,
+    translationEnabled,
+  ]);
 
-  const [wsConnected, setWsConnected] = useState(false);
+  const enabledSetting = overlaySettings?.mic_transcript_speech_enabled ?? false;
   const [capturing, setCapturing] = useState(false);
   const [recState, setRecState] = useState<RecState>('stopped');
-  const [lastInterim, setLastInterim] = useState('');
-  const [lastFinal, setLastFinal] = useState('');
-  const [lastTranslation, setLastTranslation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<ChromeTranslationDownloadStatus | null>(null);
   const [translatorSupported, setTranslatorSupported] = useState(false);
@@ -56,6 +125,12 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
   const lastInterimSentAtRef = useRef(0);
   const lastFinalSentRef = useRef<string>('');
   const shouldRunRef = useRef(false);
+
+  const speechSupported = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    return Boolean(SpeechRecognitionCtor);
+  }, []);
 
   const clearShortPauseTimer = useCallback(() => {
     if (shortPauseTimerRef.current !== null) {
@@ -155,17 +230,19 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
       }
       lastInterimSentAtRef.current = now;
 
+      const displayText = antiSexualEnabled ? filterWithCachedLists(text, speechLang) : text;
+      updateStatus({ lastInterimText: displayText, lastUpdatedAtMs: now });
       const ws = getWebSocketClient();
       ws.send('mic_transcript', {
         id: 'interim',
-        text,
+        text: displayText,
         is_interim: true,
         timestamp_ms: now,
         source: 'web_speech',
         language: speechLang,
       });
     },
-    [interimThrottleMs, speechLang],
+    [antiSexualEnabled, interimThrottleMs, speechLang, updateStatus],
   );
 
   const sendFinal = useCallback(
@@ -178,36 +255,49 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
       const id = nowID('mic');
       const ts = Date.now();
       const ws = getWebSocketClient();
+      const displayText = antiSexualEnabled ? filterWithCachedLists(trimmed, speechLang) : trimmed;
+      updateStatus({ lastFinalText: displayText, lastInterimText: '', lastUpdatedAtMs: ts });
 
       ws.send('mic_transcript', {
         id,
-        text: trimmed,
+        text: displayText,
         is_interim: false,
         timestamp_ms: ts,
         source: 'web_speech',
         language: speechLang,
       });
 
+      if (bouyomiEnabled) {
+        void talkBouyomiChan(displayText).catch(() => {
+          // Ignore failures by default; status panel will show other issues.
+        });
+      }
+
       if (!translationEnabled) return;
       if (!translatorSupported) return;
       const translator = translatorRef.current;
       if (!translator) return;
-      try {
-        const res = await translator.translate(trimmed, speechLang, translationTargetLang);
-        const translated = (res.translatedText || '').trim();
-        if (!translated) return;
-        ws.send('mic_transcript_translation', {
-          id,
-          translation: translated,
-          source_language: res.sourceLanguage || speechLang,
-          target_language: res.targetLanguage,
-        });
-        setLastTranslation(translated);
-      } catch (e: any) {
-        setError(e?.message || '翻訳に失敗しました');
+      if (translationTargets.length === 0) return;
+
+      for (const target of translationTargets) {
+        try {
+          const res = await translator.translate(trimmed, speechLang, target);
+          const translated = (res.translatedText || '').trim();
+          if (!translated) continue;
+          if (translated === trimmed) continue;
+          const filteredTranslation = antiSexualEnabled ? filterWithCachedLists(translated, target) : translated;
+          ws.send('mic_transcript_translation', {
+            id,
+            translation: filteredTranslation,
+            source_language: res.sourceLanguage || speechLang,
+            target_language: res.targetLanguage,
+          });
+        } catch (e: any) {
+          setError(e?.message || '翻訳に失敗しました');
+        }
       }
     },
-    [speechLang, translationEnabled, translationTargetLang, translatorSupported],
+    [antiSexualEnabled, bouyomiEnabled, speechLang, translationEnabled, translationTargets, translatorSupported, updateStatus],
   );
 
   const createOnResultHandler = useCallback(
@@ -233,7 +323,6 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
         const combined = `${finalText}${finalText && interimText ? ' ' : ''}${interimText}`.trim();
 
         if (interimText) {
-          setLastInterim(combined);
           sendInterim(combined);
           if (shortPauseMs > 0) {
             clearShortPauseTimer();
@@ -250,8 +339,6 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
 
         if (finalText) {
           clearShortPauseTimer();
-          setLastInterim('');
-          setLastFinal(finalText);
           void sendFinal(finalText);
           preStartNextInstance('final');
         }
@@ -283,8 +370,20 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
       rec.onerror = (event: any) => {
         recognitionStatesRef.current[index] = 'stopped';
         if (!shouldRunRef.current) return;
-        setError(event?.error || event?.message || '音声認識エラー');
-        scheduleRestart('error');
+        const code = String(event?.error || event?.message || '').trim();
+
+        // 'aborted' is very common when dual-instance handover happens; don't surface it as an error.
+        if (code === 'aborted') {
+          if (dualInstanceEnabled && index !== activeIndexRef.current) {
+            return;
+          }
+          // For active instance, just restart silently.
+          scheduleRestart('aborted');
+          return;
+        }
+
+        setError(speechRecognitionErrorToMessage(code));
+        scheduleRestart(code || 'error');
       };
 
       rec.onend = () => {
@@ -319,9 +418,6 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
     clearShortPauseTimer();
     lastFinalSentRef.current = '';
     lastInterimSentAtRef.current = 0;
-    setLastInterim('');
-    setLastFinal('');
-    setLastTranslation('');
 
     const ws = getWebSocketClient();
     if (!ws.isConnected) {
@@ -332,11 +428,17 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
       }
     }
 
+    if (antiSexualEnabled) {
+      preloadWordLists([speechLang, ...translationTargets]);
+    }
+
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
       setError('SpeechRecognition が利用できません（Chrome推奨）');
+      updateStatus({ speechSupported: false });
       return;
     }
+    updateStatus({ speechSupported: true });
 
     try {
       await ensureMicrophonePermission();
@@ -368,13 +470,36 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
       recognitionsRef.current[0].start();
       setCapturing(true);
       setRecState('starting');
+
+      // Preload translation models in the background (if enabled) so first translation is smoother.
+      if (translationEnabled && translatorSupported && translatorRef.current && translationTargets.length > 0) {
+        void (async () => {
+          for (const target of translationTargets) {
+            try {
+              await translatorRef.current?.preload(speechLang, target);
+            } catch {
+              // ignore preload failures; translate() will still try later.
+            }
+          }
+        })();
+      }
     } catch (e: any) {
       setError(e?.message || '音声認識の開始に失敗しました');
       shouldRunRef.current = false;
       setCapturing(false);
       setRecState('stopped');
     }
-  }, [clearShortPauseTimer, dualInstanceEnabled, ensureMicrophonePermission, setupRecognitionInstance]);
+  }, [
+    clearShortPauseTimer,
+    dualInstanceEnabled,
+    ensureMicrophonePermission,
+    setupRecognitionInstance,
+    speechLang,
+    translationEnabled,
+    translationTargets,
+    translatorSupported,
+    updateStatus,
+  ]);
 
   const stopCapture = useCallback(() => {
     shouldRunRef.current = false;
@@ -392,29 +517,32 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
     }
   }, [clearShortPauseTimer]);
 
-  const handlePreloadModel = useCallback(async () => {
-    if (!translatorRef.current) return;
-    setError(null);
-    try {
-      await translatorRef.current.preload(speechLang, translationTargetLang);
-    } catch (e: any) {
-      setError(e?.message || '翻訳モデルの準備に失敗しました');
+  // Persisted ON/OFF state should restore across reload.
+  // Note: Some browsers may require user gesture to start; in that case the setting remains ON and user can toggle off/on.
+  useEffect(() => {
+    if (!speechSupported) return;
+    if (enabledSetting && !capturing && recState === 'stopped') {
+      void startCapture();
+      return;
     }
-  }, [speechLang, translationTargetLang]);
+    if (!enabledSetting && capturing) {
+      stopCapture();
+    }
+  }, [capturing, enabledSetting, recState, speechSupported, startCapture, stopCapture]);
 
   useEffect(() => {
     const ws = getWebSocketClient();
     ws.connect().catch(() => {
       // ignore
     });
-    setWsConnected(ws.isConnected);
-    const unsubConnect = ws.onConnect(() => setWsConnected(true));
-    const unsubDisconnect = ws.onDisconnect(() => setWsConnected(false));
+    updateStatus({ wsConnected: ws.isConnected });
+    const unsubConnect = ws.onConnect(() => updateStatus({ wsConnected: true }));
+    const unsubDisconnect = ws.onDisconnect(() => updateStatus({ wsConnected: false }));
     return () => {
       unsubConnect();
       unsubDisconnect();
     };
-  }, []);
+  }, [updateStatus]);
 
   useEffect(() => {
     const client = new ChromeTranslatorClient({
@@ -440,86 +568,87 @@ export const MicCaptionSender: React.FC<{ overlaySettings: OverlaySettings | nul
 
   useEffect(() => stopCapture, [stopCapture]);
 
+  useEffect(() => {
+    updateStatus({
+      capturing,
+      recState,
+      speechSupported,
+      speechLang,
+      dualInstanceEnabled,
+      translationEnabled,
+      translationTargets,
+      translatorSupported,
+      downloadStatus,
+      antiSexualEnabled,
+      bouyomiEnabled,
+      error,
+    });
+  }, [
+    antiSexualEnabled,
+    bouyomiEnabled,
+    capturing,
+    downloadStatus,
+    dualInstanceEnabled,
+    error,
+    recState,
+    speechLang,
+    speechSupported,
+    translationEnabled,
+    translationTargets,
+    translatorSupported,
+    updateStatus,
+  ]);
+
+  if (variant === 'switch_only') {
+    return (
+      <Switch
+        aria-label="マイク"
+        checked={enabledSetting}
+        disabled={!speechSupported && !enabledSetting}
+        onCheckedChange={(checked) => {
+          onEnabledChange?.(checked);
+          // Keep local behavior responsive even before settings round-trip completes.
+          if (checked) {
+            if (recState === 'stopped' && !capturing) void startCapture();
+          } else {
+            stopCapture();
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-800/30 p-3">
-          <div className="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
-          <div className="mt-1 font-semibold">
-            {wsConnected ? <span className="text-emerald-600 dark:text-emerald-400">接続中</span> : <span className="text-amber-600 dark:text-amber-400">未接続</span>}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <div className="text-sm font-medium">マイク</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {capturing ? '送信中' : (enabledSetting ? '起動待ち' : '停止中')}
           </div>
         </div>
-        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-800/30 p-3">
-          <div className="text-xs text-gray-500 dark:text-gray-400">音声認識</div>
-          <div className="mt-1 font-semibold">
-            {recState === 'running' ? '実行中' : recState === 'starting' ? '起動中' : '停止'}
-            <span className="ml-2 text-xs font-mono text-gray-500 dark:text-gray-400">
-              lang={speechLang} {dualInstanceEnabled ? 'dual' : 'single'}
-            </span>
-          </div>
-        </div>
+        <Switch
+          checked={enabledSetting}
+          disabled={!speechSupported && !enabledSetting}
+          onCheckedChange={(checked) => {
+            onEnabledChange?.(checked);
+            // Parent should persist this into SQLite (overlay settings).
+            // We also start/stop locally to make UI responsive even before settings round-trip completes.
+            if (checked) {
+              if (recState === 'stopped' && !capturing) void startCapture();
+            } else {
+              stopCapture();
+            }
+          }}
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant={capturing ? 'secondary' : 'default'}
-          onClick={capturing ? stopCapture : () => void startCapture()}
-        >
-          {capturing ? '停止' : '開始'}
-        </Button>
-
-        <div className="text-sm text-gray-600 dark:text-gray-300">
-          翻訳: <span className="font-mono">{translationEnabled ? `on (${translationTargetLang})` : 'off'}</span>
-          {!translatorSupported && translationEnabled ? (
-            <span className="ml-2 text-amber-600 dark:text-amber-400">Translator API非対応（Chrome 138+）</span>
-          ) : null}
-        </div>
-
-        {translationEnabled && translatorSupported ? (
-          <Button type="button" variant="outline" onClick={() => void handlePreloadModel()}>
-            翻訳モデル準備
-          </Button>
-        ) : null}
-      </div>
-
-      {downloadStatus ? (
-        <div className="text-sm text-gray-600 dark:text-gray-300">
-          <div>
-            {downloadStatus.message || `download: ${downloadStatus.status} (${downloadStatus.sourceLang}→${downloadStatus.targetLang})`}
-          </div>
-          {typeof downloadStatus.progress === 'number' ? (
-            <div className="mt-2 h-2 rounded bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden">
-              <div
-                className="h-full bg-sky-500"
-                style={{ width: `${Math.min(100, Math.max(0, downloadStatus.progress))}%` }}
-              />
-            </div>
-          ) : null}
+      {!capturing && !speechSupported ? (
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          この環境では SpeechRecognition が見つからないだす。Chromeで{' '}
+          <span className="font-mono">http://localhost:{webServerPort || 'PORT'}/</span> を開いて操作してくださいだす。
         </div>
       ) : null}
-
-      {error ? (
-        <div className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">interim</div>
-          <div className="break-words">{lastInterim || <span className="text-gray-400">（なし）</span>}</div>
-        </div>
-        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">final</div>
-          <div className="break-words">{lastFinal || <span className="text-gray-400">（なし）</span>}</div>
-        </div>
-        <div className="rounded border border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/20 p-3">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">translation</div>
-          <div className="break-words">{lastTranslation || <span className="text-gray-400">（なし）</span>}</div>
-        </div>
-      </div>
     </div>
   );
 };
-

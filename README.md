@@ -26,7 +26,7 @@ Go言語とReact/TypeScriptを使用したデスクトップアプリケーシ�
 
 - Go 1.21以上
 - Node.js 20以上 / Bun
-- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- Wails v3 CLI (`go install github.com/wailsapp/wails/v3/cmd/wails3@latest`)
 - Bluetooth対応サーマルプリンター（Cat Printer）
 - macOS / Linux / Windows
 
@@ -41,7 +41,7 @@ cd twitch-overlay
 ### 2. 依存関係をインストール
 ```bash
 # Wails CLIのインストール（未インストールの場合）
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
 # フロントエンド依存関係
 cd frontend && bun install && cd ..

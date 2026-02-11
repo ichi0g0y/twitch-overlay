@@ -8,7 +8,6 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
-import { MicCaptionSender } from '../mic/MicCaptionSender';
 
 type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
@@ -1062,14 +1061,17 @@ export const OverlaySettings: React.FC = () => {
     const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.micTranscript : expandedCards.micTranscript;
     const isDraggingSelf = draggingCard === 'micTranscript';
     const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+	    const headerClassName = isPreview
+	      ? 'cursor-default'
+	      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
 
-    const positionValue = overlaySettings?.mic_transcript_position || 'bottom-left';
+	    const translationModeValue =
+	      overlaySettings?.mic_transcript_translation_mode
+	      ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
+	    const translationEnabled = translationModeValue !== 'off';
 
-    return (
-      <Card className={cardClassName}>
+	    return (
+	      <Card className={cardClassName}>
         <CardHeader
           className={headerClassName}
           onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, micTranscript: !prev.micTranscript }))}
@@ -1081,10 +1083,10 @@ export const OverlaySettings: React.FC = () => {
             <div className="flex-1">
               <CardTitle className="flex items-center gap-2">
                 <Mic className="w-4 h-4" />
-                マイク文字起こし
+                マイク
               </CardTitle>
               <CardDescription className="text-left">
-                ダッシュボード（/）から送信した文字起こしをオーバーレイに表示します
+                ダッシュボード（/）から送信した字幕をオーバーレイに表示するだす
               </CardDescription>
             </div>
             <div className="flex-shrink-0 pt-1">
@@ -1095,15 +1097,13 @@ export const OverlaySettings: React.FC = () => {
               )}
             </div>
           </div>
-        </CardHeader>
-        {isExpanded && (
-          <CardContent className="space-y-4 text-left">
+	        </CardHeader>
+	        {isExpanded && (
+	          <CardContent className="space-y-4 text-left">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>表示を有効化</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  受信した文字起こしをオーバーレイに表示します
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">文字起こしを/overlayに表示するだす</p>
               </div>
               <Switch
                 checked={overlaySettings?.mic_transcript_enabled ?? false}
@@ -1111,282 +1111,25 @@ export const OverlaySettings: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>表示位置</Label>
-                <Select
-                  value={positionValue}
-                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_position: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="表示位置を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bottom-left">左下</SelectItem>
-                    <SelectItem value="bottom-center">中央下</SelectItem>
-                    <SelectItem value="bottom-right">右下</SelectItem>
-                    <SelectItem value="top-left">左上</SelectItem>
-                    <SelectItem value="top-center">中央上</SelectItem>
-                    <SelectItem value="top-right">右上</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>翻訳を有効化</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Translator API で翻訳して表示するだす</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-font-size">文字サイズ</Label>
-                <Input
-                  id="mic-font-size"
-                  type="number"
-                  min="10"
-                  max="80"
-                  value={overlaySettings?.mic_transcript_font_size ?? 20}
-                  onChange={(e) => updateOverlaySettings({ mic_transcript_font_size: parseInt(e.target.value, 10) || 0 })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mic-max-lines">最大行数</Label>
-                <Input
-                  id="mic-max-lines"
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={overlaySettings?.mic_transcript_max_lines ?? 3}
-                  onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-max-width">最大幅（px, 0で無制限）</Label>
-                <Input
-                  id="mic-max-width"
-                  type="number"
-                  min="0"
-                  max="4096"
-                  value={overlaySettings?.mic_transcript_max_width_px ?? 0}
-                  onChange={(e) => updateOverlaySettings({ mic_transcript_max_width_px: parseInt(e.target.value, 10) || 0 })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mic-line-ttl">通常行の表示秒数</Label>
-                <Input
-                  id="mic-line-ttl"
-                  type="number"
-                  min="1"
-                  max="300"
-                  value={overlaySettings?.mic_transcript_line_ttl_seconds ?? 8}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_line_ttl_seconds: parseInt(e.target.value, 10) || 1 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-last-ttl">最後の行の表示秒数（0で無限）</Label>
-                <Input
-                  id="mic-last-ttl"
-                  type="number"
-                  min="0"
-                  max="300"
-                  value={overlaySettings?.mic_transcript_last_ttl_seconds ?? 8}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_last_ttl_seconds: parseInt(e.target.value, 10) || 0 })}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  0を指定すると次の発言が来るまで残ります
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>翻訳モード</Label>
-              <Select
-                value={
-                  overlaySettings?.mic_transcript_translation_mode
-                  ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off')
-                }
-                onValueChange={(value) =>
+              <Switch
+                checked={translationEnabled}
+                onCheckedChange={(checked) =>
                   updateOverlaySettings({
-                    mic_transcript_translation_mode: value,
-                    mic_transcript_translation_enabled: value !== 'off',
+                    mic_transcript_translation_mode: checked ? 'chrome' : 'off',
+                    mic_transcript_translation_enabled: checked,
                   })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="翻訳モードを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="off">オフ</SelectItem>
-                  <SelectItem value="chrome">Chrome内蔵翻訳（Translator API）</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                確定文をChrome内蔵翻訳で指定言語へ翻訳して表示します（Chrome 138+）
-              </p>
+              />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>翻訳先言語</Label>
-                <Select
-                  value={overlaySettings?.mic_transcript_translation_language ?? 'en'}
-                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_translation_language: value })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="言語を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">英語（en）</SelectItem>
-                    <SelectItem value="zh">中国語（zh）</SelectItem>
-                    <SelectItem value="zh-Hant">中国語(繁)（zh-Hant）</SelectItem>
-                    <SelectItem value="ko">韓国語（ko）</SelectItem>
-                    <SelectItem value="fr">フランス語（fr）</SelectItem>
-                    <SelectItem value="de">ドイツ語（de）</SelectItem>
-                    <SelectItem value="es">スペイン語（es）</SelectItem>
-                    <SelectItem value="pt">ポルトガル語（pt）</SelectItem>
-                    <SelectItem value="ru">ロシア語（ru）</SelectItem>
-                    <SelectItem value="it">イタリア語（it）</SelectItem>
-                    <SelectItem value="id">インドネシア語（id）</SelectItem>
-                    <SelectItem value="th">タイ語（th）</SelectItem>
-                    <SelectItem value="vi">ベトナム語（vi）</SelectItem>
-                    <SelectItem value="nl">オランダ語（nl）</SelectItem>
-                    <SelectItem value="pl">ポーランド語（pl）</SelectItem>
-                    <SelectItem value="tr">トルコ語（tr）</SelectItem>
-                    <SelectItem value="uk">ウクライナ語（uk）</SelectItem>
-                    <SelectItem value="el">ギリシャ語（el）</SelectItem>
-                    <SelectItem value="so">ソマリ語（so）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-translation-font">翻訳文字サイズ</Label>
-                <Input
-                  id="mic-translation-font"
-                  type="number"
-                  min="10"
-                  max="80"
-                  value={overlaySettings?.mic_transcript_translation_font_size ?? 16}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_translation_font_size: parseInt(e.target.value, 10) || 0 })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>翻訳表示位置</Label>
-                <Select
-                  value={overlaySettings?.mic_transcript_translation_position ?? positionValue}
-                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_translation_position: value })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="表示位置を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bottom-left">左下</SelectItem>
-                    <SelectItem value="bottom-center">中央下</SelectItem>
-                    <SelectItem value="bottom-right">右下</SelectItem>
-                    <SelectItem value="top-left">左上</SelectItem>
-                    <SelectItem value="top-center">中央上</SelectItem>
-                    <SelectItem value="top-right">右上</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-translation-max-width">翻訳最大幅（px, 0で無制限）</Label>
-                <Input
-                  id="mic-translation-max-width"
-                  type="number"
-                  min="0"
-                  max="4096"
-                  value={overlaySettings?.mic_transcript_translation_max_width_px ?? 0}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_translation_max_width_px: parseInt(e.target.value, 10) || 0 })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200/60 dark:border-gray-700/60 pt-4 space-y-4">
-              <div className="space-y-1">
-                <Label>字幕送信（ダッシュボード /）</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  このWebUI（<code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">/</code>）でマイク入力と翻訳を実行し、
-                  <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">/overlay/</code> に送信します（OBSのブラウザソースはマイク権限が不安定なため、Chrome推奨）
-                </p>
-              </div>
-
-              <MicCaptionSender overlaySettings={overlaySettings ?? null} />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="mic-speech-lang">認識言語（Web Speech）</Label>
-                  <Input
-                    id="mic-speech-lang"
-                    placeholder="ja / en / ko ..."
-                    value={overlaySettings?.mic_transcript_speech_language ?? 'ja'}
-                    onChange={(e) => updateOverlaySettings({ mic_transcript_speech_language: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="mic-short-pause">ショートポーズ停止（ms, 0で無効）</Label>
-                  <Input
-                    id="mic-short-pause"
-                    type="number"
-                    min="0"
-                    max="5000"
-                    value={overlaySettings?.mic_transcript_speech_short_pause_ms ?? 800}
-                    onChange={(e) =>
-                      updateOverlaySettings({ mic_transcript_speech_short_pause_ms: parseInt(e.target.value, 10) || 0 })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="mic-interim-throttle">interim送信間隔（ms, 0で無効）</Label>
-                  <Input
-                    id="mic-interim-throttle"
-                    type="number"
-                    min="0"
-                    max="2000"
-                    value={overlaySettings?.mic_transcript_speech_interim_throttle_ms ?? 200}
-                    onChange={(e) =>
-                      updateOverlaySettings({ mic_transcript_speech_interim_throttle_ms: parseInt(e.target.value, 10) || 0 })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="mic-restart-delay">再起動遅延（ms）</Label>
-                  <Input
-                    id="mic-restart-delay"
-                    type="number"
-                    min="0"
-                    max="2000"
-                    value={overlaySettings?.mic_transcript_speech_restart_delay_ms ?? 100}
-                    onChange={(e) =>
-                      updateOverlaySettings({ mic_transcript_speech_restart_delay_ms: parseInt(e.target.value, 10) || 0 })}
-                  />
-                </div>
-                <div className="flex items-center justify-between md:justify-start md:gap-4 pt-7">
-                  <div className="space-y-0.5">
-                    <Label>デュアルインスタンス</Label>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      途切れを減らす
-                    </p>
-                  </div>
-                  <Switch
-                    checked={overlaySettings?.mic_transcript_speech_dual_instance_enabled ?? true}
-                    onCheckedChange={(checked) => updateOverlaySettings({ mic_transcript_speech_dual_instance_enabled: checked })}
-                  />
-                </div>
-              </div>
-            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">詳細設定は「マイク」タブで調整するだす</div>
           </CardContent>
-        )}
-      </Card>
+	        )}
+	      </Card>
     );
   };
 

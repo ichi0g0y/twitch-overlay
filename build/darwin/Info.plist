@@ -27,6 +27,8 @@
         <string>This app needs to send events to other applications.</string>
         <key>NSInputMonitoringUsageDescription</key>
         <string>This app needs permission to listen to input events for overlay control.</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>This app needs microphone access for speech recognition.</string>
         <key>NSPrincipalClass</key>
         <string>NSApplication</string>
         <key>NSSupportsAutomaticGraphicsSwitching</key>

@@ -3,6 +3,7 @@ import { SettingsPage } from './components/SettingsPage';
 import { NotificationWindow } from './components/notification/NotificationWindow';
 import { Toaster } from 'sonner';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { MicCaptionStatusProvider } from './contexts/MicCaptionStatusContext';
 
 function App() {
   return (
@@ -12,10 +13,12 @@ function App() {
         path="/"
         element={
           <SettingsProvider>
-            <div className="min-h-screen bg-gray-900">
-              <SettingsPage />
-              <Toaster position="top-right" richColors expand={true} duration={3000} />
-            </div>
+            <MicCaptionStatusProvider>
+              <div className="min-h-screen bg-gray-900">
+                <SettingsPage />
+                <Toaster position="top-right" richColors expand={true} duration={3000} />
+              </div>
+            </MicCaptionStatusProvider>
           </SettingsProvider>
         }
       />
