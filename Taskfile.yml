@@ -1,107 +1,56 @@
 version: "3"
 
 tasks:
-  # 開発モード
+  # 開発モード（BEサーバー起動、Dashboardはブラウザからアクセス）
   dev:
-    desc: 開発モードでアプリを起動（OBS用オーバーレイも同時ビルド）
+    desc: 開発モードでサーバーを起動
     cmds:
       - |
         echo "📦 OBS用オーバーレイをビルド中..."
         (cd web && bun run build)
-
-        echo "📦 リモートコントロールUIをビルド中..."
-        (cd web/remote && bun install && bun run build)
-
-        echo "📦 フロントエンドをビルド中..."
+        echo "📦 フロントエンド(Dashboard)をビルド中..."
         (cd frontend && bun run build)
+        echo "🚀 サーバーを起動中..."
+        cargo run -p cairo-overlay
 
-        echo "🔨 Goバイナリをビルド中..."
-        go build -o build/bin/twitch-overlay
-
-        echo "🚀 アプリケーションを起動中..."
-        echo "💡 フロントエンド変更時: Ctrl+C で停止 → 'task dev' で再起動"
-        echo "💡 より早い開発: 'task dev:quick' を使用（Goビルドのみ）"
-        ./build/bin/twitch-overlay
-
-  # クイック開発モード（フロントエンドは既にビルド済みと仮定）
   dev:quick:
-    desc: クイック開発モード（Go再ビルドのみ、フロントエンドビルド済み前提）
+    desc: クイック開発モード（フロントエンドは事前ビルド前提）
+    cmds:
+      - cargo run -p cairo-overlay
+
+  # Tauriアプリとして起動（ウインドウ付き）
+  dev:tauri:
+    desc: Tauriデスクトップアプリとして起動
     cmds:
       - |
-        echo "🔨 Goバイナリをビルド中..."
-        go build -o build/bin/twitch-overlay
-
-        echo "🚀 アプリケーションを起動中..."
-        ./build/bin/twitch-overlay
+        echo "📦 OBS用オーバーレイをビルド中..."
+        (cd web && bun run build)
+        echo "📦 フロントエンドをビルド中..."
+        (cd frontend && bun run build)
+        echo "🚀 cargo tauri dev を起動中..."
+        cargo tauri dev
 
   # プロダクションビルド
   build:
     desc: プロダクションビルドを実行
     cmds:
-      - echo "OBS用オーバーレイをビルド中..."
+      - echo "📦 OBS用オーバーレイをビルド中..."
       - cd web && bun run build
-      - echo "リモートコントロールUIをビルド中..."
-      - cd web/remote && bun install && bun run build
-      - echo "フロントエンド依存関係をインストール中..."
-      - cd frontend && bun install
-      - echo "mic-recogをビルド中..."
-      - task: mic-recog:build
-      - echo "バインディング生成中..."
-      - wails3 generate bindings -clean=true
-      - echo "フロントエンドをビルド中..."
+      - echo "📦 フロントエンドをビルド中..."
       - cd frontend && bun run build
-      - echo ".appバンドルを作成中..."
-      - mkdir -p build/bin/twitch-overlay.app/Contents/MacOS
-      - mkdir -p build/bin/twitch-overlay.app/Contents/Resources
-      - echo "Goバイナリをビルド中..."
-      - go build -tags production -ldflags "-w -s" -o build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay
-      - echo "Info.plistをコピー中..."
-      - cp build/darwin/Info.plist build/bin/twitch-overlay.app/Contents/
-      - echo "mic-recogを同梱中..."
-      - task: mic-recog:bundle
-      - echo "署名処理中（エンタイトルメント適用）..."
-      - codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay.app
-      - echo "ビルド完了 → build/bin/twitch-overlay.app"
-
-  # デバッグビルド
-  build:debug:
-    desc: デバッグビルドを実行
-    cmds:
-      - echo "OBS用オーバーレイをビルド中..."
-      - cd web && bun run build
-      - echo "フロントエンド依存関係をインストール中..."
-      - cd frontend && bun install
-      - echo "バインディング生成中..."
-      - wails3 generate bindings -clean=true
-      - echo "フロントエンドをビルド中（デバッグモード）..."
-      - cd frontend && bun run build:dev
-      - echo "Goバイナリをビルド中（デバッグモード）..."
-      - go build -tags debug -o build/bin/twitch-overlay
-      - echo "署名処理中（エンタイトルメント適用）..."
-      - codesign --force --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay
-      - echo "デバッグビルド完了 → build/bin/"
+      - echo "🔨 Tauriアプリをビルド中..."
+      - cargo tauri build
+      - echo "✅ ビルド完了"
 
   # クリーンアップ
   clean:
     desc: ビルドファイルをクリーンアップ
     cmds:
       - echo "ビルドファイルをクリーンアップ中..."
-      - rm -rf build/bin
+      - rm -rf src-tauri/target
       - rm -rf frontend/dist
+      - rm -rf web/dist
       - echo "クリーンアップ完了"
-
-  # ビルド済みアプリケーションを実行
-  run:
-    desc: ビルド済みのアプリを実行
-    cmds:
-      - |
-        if [ -f build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay ]; then
-          open build/bin/twitch-overlay.app
-        else
-          echo "エラー: ビルド済みアプリが見つかりません"
-          echo "先に 'task build' でビルドしてください"
-          exit 1
-        fi
 
   # テスト実行
   test:
@@ -110,31 +59,9 @@ tasks:
       DRY_RUN_MODE: "true"
     cmds:
       - echo "テストを実行中..."
-      - go test ./...
-
-  # 配布用パッケージ作成（macOS）
-  pkg:
-    desc: 配布用パッケージを作成
-    deps: [build]
-    cmds:
-      - echo "配布用パッケージを作成中..."
-      - |
-        if [ "$(uname)" = "Darwin" ]; then
-          echo "macOS用のDMGを作成中..."
-          # DMG作成コマンド（要追加）
-          echo "TODO: DMG作成実装"
-        else
-          echo "現在のプラットフォームではパッケージ作成未対応"
-        fi
+      - cargo test
 
   # フロントエンド依存関係インストール
-  frontend:install:
-    desc: フロントエンドの依存関係をインストール
-    dir: frontend
-    cmds:
-      - bun install
-
-  # 依存関係の一括インストール
   install:
     desc: 全ての依存関係をインストール
     cmds:
@@ -144,7 +71,6 @@ tasks:
       - cd web && bun install
       - echo "依存関係のインストール完了"
 
-  # 短縮コマンド
   i:
     desc: 全ての依存関係をインストール（短縮版）
     cmds:
@@ -156,7 +82,6 @@ tasks:
     cmds:
       - echo "既存のnode_modulesを削除中..."
       - rm -rf frontend/node_modules web/node_modules
-      - echo "bun.lockbを削除中..."
       - rm -f frontend/bun.lockb web/bun.lockb
       - echo "クリーンインストール実行中..."
       - cd frontend && bun install
@@ -171,63 +96,6 @@ tasks:
       - cd frontend && bun update
       - echo "Webオーバーレイの依存関係を更新中..."
       - cd web && bun update
+      - echo "Rust依存関係を更新中..."
+      - cargo update
       - echo "依存関係の更新完了"
-
-  # 依存関係の確認
-  deps:
-    desc: インストール済みの依存関係を確認
-    cmds:
-      - echo "=== Frontend Dependencies ==="
-      - cd frontend && bun pm ls
-      - echo ""
-      - echo "=== Web Dependencies ==="
-      - cd web && bun pm ls
-
-  # Claude起動
-  claude:
-    desc: Claude起動
-    cmds:
-      - claude --dangerously-skip-permissions
-
-  # バージョン情報表示
-  version:
-    desc: アプリケーションのバージョン情報を表示
-    cmds:
-      - |
-        if [ -f build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay ]; then
-          ./build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay --version
-        else
-          echo "バージョン: 開発版"
-        fi
-
-  mic-recog:build:
-    desc: mic-recog をPyInstallerでビルド
-    dir: mic-recog
-    cmds:
-      - ./build.sh mic_stream
-
-  mic-recog:venv:
-    desc: mic-recog のvenv作成と依存インストール
-    cmds:
-      - |
-        if command -v python3 >/dev/null 2>&1; then
-          PYTHON_BIN=python3
-        elif command -v python >/dev/null 2>&1; then
-          PYTHON_BIN=python
-        else
-          echo "Pythonが見つかりません"
-          exit 1
-        fi
-        "$PYTHON_BIN" -m venv mic-recog/.venv
-        mic-recog/.venv/bin/python -m pip install -r mic-recog/requirements.txt
-
-  venv:all:
-    desc: mic-recog のvenv作成
-    deps:
-      - mic-recog:venv
-
-  mic-recog:bundle:
-    desc: mic-recog を .app に同梱
-    cmds:
-      - mkdir -p build/bin/twitch-overlay.app/Contents/Resources/mic-recog
-      - rsync -av --delete --exclude '__pycache__' --exclude '.venv' --exclude 'build' --exclude '*.spec' mic-recog/ build/bin/twitch-overlay.app/Contents/Resources/mic-recog/

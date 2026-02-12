@@ -7,7 +7,9 @@ const BACKEND_PORT = process.env.VITE_BACKEND_PORT || '8080';
 const FRONTEND_PORT = process.env.VITE_FRONTEND_PORT ? parseInt(process.env.VITE_FRONTEND_PORT) : 5174;
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // 本番は /overlay/ 配下で配信する
+  base: mode === 'production' ? '/overlay/' : '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -46,4 +48,4 @@ export default defineConfig({
       },
     }
   }
-});
+}));

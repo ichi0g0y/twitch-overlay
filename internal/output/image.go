@@ -129,7 +129,7 @@ func getSystemDefaultFont() ([]byte, error) {
 		zap.String("os", runtime.GOOS),
 		zap.String("solution", "Please upload a custom font via the settings page or install system fonts"))
 
-	return nil, fmt.Errorf("no suitable font found on system. Please either: 1) Upload a custom font via the settings page (/settings), or 2) Install system fonts (e.g., 'sudo apt-get install fonts-liberation fonts-dejavu' on Ubuntu/Debian)")
+	return nil, fmt.Errorf("no suitable font found on system. Please either: 1) Upload a custom font via the settings page (/), or 2) Install system fonts (e.g., 'sudo apt-get install fonts-liberation fonts-dejavu' on Ubuntu/Debian)")
 }
 
 const PaperWidth = 384
@@ -416,7 +416,7 @@ func MessageToImage(userName string, msg []twitch.ChatMessageFragment, avatarURL
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
 		logger.Error("Failed to get font", zap.Error(err))
-		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/settings)からフォントファイル(TTF/OTF)をアップロードしてください")
+		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/)からフォントファイル(TTF/OTF)をアップロードしてください")
 	}
 
 	// 新しいフォントを作成（拡大文字）
@@ -888,7 +888,7 @@ func GenerateTimeImageWithStatsOptions(timeStr string, forceEmptyLeaderboard boo
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
 		logger.Error("Failed to get font", zap.Error(err))
-		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/settings)からフォントファイル(TTF/OTF)をアップロードしてください")
+		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/)からフォントファイル(TTF/OTF)をアップロードしてください")
 	}
 
 	// Load font
@@ -1189,7 +1189,7 @@ func GenerateTimeImageSimple(timeStr string) (image.Image, error) {
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
 		logger.Error("Failed to get font", zap.Error(err))
-		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/settings)からフォントファイル(TTF/OTF)をアップロードしてください")
+		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/)からフォントファイル(TTF/OTF)をアップロードしてください")
 	}
 
 	// Load font
@@ -1266,7 +1266,7 @@ func GenerateTimeImageWithStatsColorOptions(timeStr string, forceEmptyLeaderboar
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
 		logger.Error("Failed to get font", zap.Error(err))
-		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/settings)からフォントファイル(TTF/OTF)をアップロードしてください")
+		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/)からフォントファイル(TTF/OTF)をアップロードしてください")
 	}
 
 	// Load font
@@ -1617,7 +1617,7 @@ func MessageToImageWithTitle(title, userName, extra, details string, avatarURL s
 	fontData, err := fontmanager.GetFont(nil)
 	if err != nil {
 		logger.Error("Failed to get font", zap.Error(err))
-		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/settings)からフォントファイル(TTF/OTF)をアップロードしてください")
+		return nil, fmt.Errorf("フォントがアップロードされていません。設定ページ(/)からフォントファイル(TTF/OTF)をアップロードしてください")
 	}
 
 	// フォントを作成

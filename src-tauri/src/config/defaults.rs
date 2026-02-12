@@ -1,0 +1,178 @@
+//! All setting definitions with their default values.
+
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+/// A single setting definition.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct SettingDef {
+    pub key: &'static str,
+    pub default: &'static str,
+    pub secret: bool,
+    pub required: bool,
+    pub description: &'static str,
+}
+
+/// Compile-time setting definitions: (key, default, secret, required, description).
+const DEFS: &[(&str, &str, bool, bool, &str)] = &[
+    // --- Twitch secrets ---
+    ("CLIENT_ID", "", true, true, "Twitch API Client ID"),
+    ("CLIENT_SECRET", "", true, true, "Twitch API Client Secret"),
+    ("TWITCH_USER_ID", "", true, true, "Twitch User ID for monitoring"),
+    ("TRIGGER_CUSTOM_REWORD_ID", "", true, true, "Custom Reward ID for triggering FAX"),
+    // --- Printer ---
+    ("PRINTER_TYPE", "bluetooth", false, false, "Printer type (bluetooth or usb)"),
+    ("PRINTER_ADDRESS", "", false, true, "Bluetooth MAC address of the printer"),
+    ("USB_PRINTER_NAME", "", false, false, "System printer name for USB printing"),
+    ("DRY_RUN_MODE", "true", false, false, "Enable dry run mode (no actual printing)"),
+    ("BEST_QUALITY", "true", false, false, "Enable best quality printing"),
+    ("DITHER", "true", false, false, "Enable dithering"),
+    ("BLACK_POINT", "0.5", false, false, "Black point threshold (0.0-1.0)"),
+    ("AUTO_ROTATE", "false", false, false, "Auto rotate images"),
+    ("ROTATE_PRINT", "true", false, false, "Rotate print output 180 degrees"),
+    // --- Operation ---
+    ("KEEP_ALIVE_INTERVAL", "60", false, false, "Keep alive interval in seconds"),
+    ("KEEP_ALIVE_ENABLED", "false", false, false, "Enable keep alive functionality"),
+    ("CLOCK_ENABLED", "false", false, false, "Enable clock printing"),
+    ("CLOCK_SHOW_ICONS", "true", false, false, "Show icons in clock display"),
+    ("DEBUG_OUTPUT", "false", false, false, "Enable debug output"),
+    ("TIMEZONE", "Asia/Tokyo", false, false, "Timezone for clock display"),
+    ("AUTO_DRY_RUN_WHEN_OFFLINE", "false", false, false, "Auto dry-run when stream offline"),
+    // --- Server ---
+    ("SERVER_PORT", "8080", false, false, "Web server port for OBS overlay"),
+    // --- Font ---
+    ("FONT_FILENAME", "", false, false, "Uploaded font file name"),
+    // --- Window ---
+    ("WINDOW_X", "", false, false, "Window X position"),
+    ("WINDOW_Y", "", false, false, "Window Y position"),
+    ("WINDOW_WIDTH", "1024", false, false, "Window width"),
+    ("WINDOW_HEIGHT", "768", false, false, "Window height"),
+    ("WINDOW_FULLSCREEN", "false", false, false, "Window fullscreen state"),
+    ("WINDOW_SCREEN_HASH", "", false, false, "Screen configuration hash"),
+    ("WINDOW_ABSOLUTE_X", "", false, false, "Window absolute X position"),
+    ("WINDOW_ABSOLUTE_Y", "", false, false, "Window absolute Y position"),
+    ("WINDOW_SCREEN_INDEX", "0", false, false, "Screen index where window is located"),
+    // --- Music ---
+    ("MUSIC_ENABLED", "true", false, false, "Enable music player in overlay"),
+    ("MUSIC_VOLUME", "70", false, false, "Music volume (0-100)"),
+    ("MUSIC_PLAYLIST", "", false, false, "Selected music playlist"),
+    ("MUSIC_AUTO_PLAY", "false", false, false, "Auto play music on startup"),
+    // --- FAX ---
+    ("FAX_ENABLED", "true", false, false, "Enable FAX animation in overlay"),
+    ("FAX_ANIMATION_SPEED", "1.0", false, false, "FAX animation speed multiplier"),
+    ("FAX_IMAGE_TYPE", "color", false, false, "FAX image type (mono or color)"),
+    // --- Overlay display ---
+    ("OVERLAY_CLOCK_ENABLED", "true", false, false, "Enable clock display in overlay"),
+    ("OVERLAY_CLOCK_FORMAT", "24h", false, false, "Clock format (12h or 24h)"),
+    ("OVERLAY_LOCATION_ENABLED", "true", false, false, "Show location in overlay"),
+    ("OVERLAY_DATE_ENABLED", "true", false, false, "Show date in overlay"),
+    ("OVERLAY_TIME_ENABLED", "true", false, false, "Show time in overlay"),
+    ("OVERLAY_DEBUG_ENABLED", "false", false, false, "Enable debug panel in overlay"),
+    ("OVERLAY_CARDS_EXPANDED", r#"{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}"#, false, false, "Overlay setting cards state"),
+    ("OVERLAY_CARDS_LAYOUT", r#"{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}"#, false, false, "Overlay setting cards layout"),
+    // --- Reward count ---
+    ("REWARD_COUNT_ENABLED", "false", false, false, "Enable reward count display"),
+    ("REWARD_COUNT_GROUP_ID", "", false, false, "Reward group ID to display"),
+    ("REWARD_COUNT_POSITION", "left", false, false, "Reward count position (left/right)"),
+    // --- Mic transcript ---
+    ("MIC_TRANSCRIPT_ENABLED", "false", false, false, "Enable mic transcript overlay"),
+    ("MIC_TRANSCRIPT_POSITION", "bottom-left", false, false, "Mic transcript position"),
+    ("MIC_TRANSCRIPT_V_ALIGN", "bottom", false, false, "Vertical alignment (top/bottom)"),
+    ("MIC_TRANSCRIPT_FRAME_HEIGHT_PX", "0", false, false, "Fixed frame height (0=auto)"),
+    ("MIC_TRANSCRIPT_FONT_SIZE", "20", false, false, "Mic transcript font size"),
+    ("MIC_TRANSCRIPT_MAX_LINES", "3", false, false, "Mic transcript max lines"),
+    ("MIC_TRANSCRIPT_MAX_WIDTH_PX", "0", false, false, "Max width px (0=unlimited)"),
+    ("MIC_TRANSCRIPT_SPEECH_LANGUAGE", "ja", false, false, "Speech API language code"),
+    ("MIC_TRANSCRIPT_SPEECH_ENABLED", "false", false, false, "Enable mic capture in WebUI"),
+    ("MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", "750", false, false, "Short pause ms to flush"),
+    ("MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS", "200", false, false, "Interim throttle ms"),
+    ("MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", "true", false, false, "Dual SpeechRecognition"),
+    ("MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", "100", false, false, "Restart delay ms"),
+    ("MIC_TRANSCRIPT_BOUYOMI_ENABLED", "false", false, false, "Enable BouyomiChan"),
+    ("MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED", "false", false, false, "Enable content filter"),
+    ("MIC_TRANSCRIPT_TRANSLATION_ENABLED", "false", false, false, "Enable translation"),
+    ("MIC_TRANSCRIPT_TRANSLATION_MODE", "off", false, false, "Translation mode (off/chrome)"),
+    ("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", "en", false, false, "Target translation language"),
+    ("MIC_TRANSCRIPT_TRANSLATION_POSITION", "bottom-left", false, false, "Translation position"),
+    ("MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX", "0", false, false, "Translation max width px"),
+    ("MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", "16", false, false, "Translation font size"),
+    ("MIC_TRANSCRIPT_LINE_TTL_SECONDS", "8", false, false, "Line display duration (s)"),
+    ("MIC_TRANSCRIPT_LAST_TTL_SECONDS", "8", false, false, "Last line duration (0=inf)"),
+    ("MIC_TRANSCRIPT_TEXT_ALIGN", "", false, false, "Text alignment (empty=auto)"),
+    ("MIC_TRANSCRIPT_WHITE_SPACE", "", false, false, "CSS white-space"),
+    ("MIC_TRANSCRIPT_BACKGROUND_COLOR", "transparent", false, false, "Background color"),
+    ("MIC_TRANSCRIPT_TIMER_MS", "0", false, false, "Clear after inactivity (0=off)"),
+    ("MIC_TRANSCRIPT_INTERIM_MARKER_LEFT", " << ", false, false, "Interim left marker"),
+    ("MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT", " >>", false, false, "Interim right marker"),
+    ("MIC_TRANSCRIPT_LINE_SPACING_1_PX", "0", false, false, "Spacing transcript-trans1"),
+    ("MIC_TRANSCRIPT_LINE_SPACING_2_PX", "0", false, false, "Spacing trans1-trans2"),
+    ("MIC_TRANSCRIPT_LINE_SPACING_3_PX", "0", false, false, "Spacing trans2-trans3"),
+    ("MIC_TRANSCRIPT_TEXT_COLOR", "#ffffff", false, false, "Transcript text color"),
+    ("MIC_TRANSCRIPT_STROKE_COLOR", "#000000", false, false, "Transcript stroke color"),
+    ("MIC_TRANSCRIPT_STROKE_WIDTH_PX", "6", false, false, "Transcript stroke width"),
+    ("MIC_TRANSCRIPT_FONT_WEIGHT", "900", false, false, "Transcript font weight"),
+    ("MIC_TRANSCRIPT_FONT_FAMILY", "Noto Sans JP", false, false, "Transcript font-family"),
+    ("MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR", "#ffffff", false, false, "Trans1 text color"),
+    ("MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR", "#000000", false, false, "Trans1 stroke color"),
+    ("MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX", "6", false, false, "Trans1 stroke width"),
+    ("MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT", "900", false, false, "Trans1 font weight"),
+    ("MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY", "Noto Sans JP", false, false, "Trans1 font-family"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE", "", false, false, "Translation2 language"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE", "", false, false, "Translation3 language"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE", "16", false, false, "Translation2 font size"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE", "16", false, false, "Translation3 font size"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR", "#ffffff", false, false, "Trans2 text color"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR", "#000000", false, false, "Trans2 stroke color"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX", "6", false, false, "Trans2 stroke width"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT", "900", false, false, "Trans2 font weight"),
+    ("MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY", "Noto Sans JP", false, false, "Trans2 font-family"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR", "#ffffff", false, false, "Trans3 text color"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR", "#000000", false, false, "Trans3 stroke color"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX", "6", false, false, "Trans3 stroke width"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT", "900", false, false, "Trans3 font weight"),
+    ("MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY", "Noto Sans JP", false, false, "Trans3 font-family"),
+    // --- Lottery ---
+    ("LOTTERY_ENABLED", "false", false, false, "Enable lottery/roulette feature"),
+    ("LOTTERY_REWARD_ID", "", false, false, "Target reward ID for lottery"),
+    ("LOTTERY_LOCKED", "false", false, false, "Whether lottery is locked"),
+    ("LOTTERY_DISPLAY_DURATION", "5", false, false, "Lottery display duration (s)"),
+    ("LOTTERY_ANIMATION_SPEED", "1.0", false, false, "Lottery animation speed"),
+    ("LOTTERY_TICKER_ENABLED", "false", false, false, "Enable lottery participant ticker"),
+    // --- Ticker notice ---
+    ("TICKER_NOTICE_ENABLED", "false", false, false, "Enable ticker notice display"),
+    ("TICKER_NOTICE_TEXT", "", false, false, "Ticker notice text content"),
+    ("TICKER_NOTICE_FONT_SIZE", "16", false, false, "Ticker notice font size"),
+    ("TICKER_NOTICE_ALIGN", "center", false, false, "Ticker notice alignment"),
+    // --- Notification ---
+    ("NOTIFICATION_ENABLED", "true", false, false, "Enable chat notification window"),
+    ("NOTIFICATION_WINDOW_X", "", false, false, "Notification window X"),
+    ("NOTIFICATION_WINDOW_Y", "", false, false, "Notification window Y"),
+    ("NOTIFICATION_WINDOW_WIDTH", "400", false, false, "Notification window width"),
+    ("NOTIFICATION_WINDOW_HEIGHT", "150", false, false, "Notification window height"),
+    ("NOTIFICATION_WINDOW_ABSOLUTE_X", "", false, false, "Notification absolute X"),
+    ("NOTIFICATION_WINDOW_ABSOLUTE_Y", "", false, false, "Notification absolute Y"),
+    ("NOTIFICATION_WINDOW_SCREEN_INDEX", "0", false, false, "Notification screen index"),
+    ("NOTIFICATION_WINDOW_SCREEN_HASH", "", false, false, "Notification screen hash"),
+    ("NOTIFICATION_DISPLAY_DURATION", "5", false, false, "Notification duration (s)"),
+    ("NOTIFICATION_DISPLAY_MODE", "queue", false, false, "Notification mode (queue/overwrite)"),
+    ("NOTIFICATION_FONT_SIZE", "14", false, false, "Notification font size"),
+];
+
+/// Global setting definitions indexed by key.
+pub static DEFAULT_SETTINGS: LazyLock<HashMap<&'static str, SettingDef>> = LazyLock::new(|| {
+    DEFS.iter()
+        .map(|&(key, default, secret, required, description)| {
+            (
+                key,
+                SettingDef { key, default, secret, required, description },
+            )
+        })
+        .collect()
+});
+
+/// Get the default value for a setting key, or `None` if not defined.
+#[allow(dead_code)]
+pub fn get_default(key: &str) -> Option<&'static str> {
+    DEFAULT_SETTINGS.get(key).map(|d| d.default)
+}

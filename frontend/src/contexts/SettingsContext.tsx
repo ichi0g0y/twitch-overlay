@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
-interface OverlaySettings {
+export interface OverlaySettings {
   // 音楽プレイヤー設定
   music_playlist: string | null;
   music_volume: number;
@@ -42,12 +41,59 @@ interface OverlaySettings {
   // マイク文字起こし表示設定
   mic_transcript_enabled?: boolean;
   mic_transcript_position?: string;
+  mic_transcript_v_align?: string;
+  mic_transcript_frame_height_px?: number;
   mic_transcript_font_size?: number;
   mic_transcript_max_lines?: number;
+  mic_transcript_max_width_px?: number;
+  mic_transcript_text_align?: string;
+  mic_transcript_white_space?: string;
+  mic_transcript_background_color?: string;
+  mic_transcript_timer_ms?: number;
+  mic_transcript_interim_marker_left?: string;
+  mic_transcript_interim_marker_right?: string;
+  mic_transcript_line_spacing_1_px?: number;
+  mic_transcript_line_spacing_2_px?: number;
+  mic_transcript_line_spacing_3_px?: number;
+  mic_transcript_text_color?: string;
+  mic_transcript_stroke_color?: string;
+  mic_transcript_stroke_width_px?: number;
+  mic_transcript_font_weight?: number;
+  mic_transcript_font_family?: string;
+  mic_transcript_speech_enabled?: boolean;
+  mic_transcript_speech_language?: string;
+  mic_transcript_speech_short_pause_ms?: number;
+  mic_transcript_speech_interim_throttle_ms?: number;
+  mic_transcript_speech_dual_instance_enabled?: boolean;
+  mic_transcript_speech_restart_delay_ms?: number;
+  mic_transcript_bouyomi_enabled?: boolean;
+  mic_transcript_bouyomi_url?: string;
+  mic_transcript_anti_sexual_enabled?: boolean;
   mic_transcript_translation_enabled?: boolean;
   mic_transcript_translation_mode?: string;
   mic_transcript_translation_language?: string;
+  mic_transcript_translation2_language?: string;
+  mic_transcript_translation3_language?: string;
+  mic_transcript_translation_position?: string;
+  mic_transcript_translation_max_width_px?: number;
   mic_transcript_translation_font_size?: number;
+  mic_transcript_translation_font_weight?: number;
+  mic_transcript_translation_text_color?: string;
+  mic_transcript_translation_stroke_color?: string;
+  mic_transcript_translation_stroke_width_px?: number;
+  mic_transcript_translation_font_family?: string;
+  mic_transcript_translation2_font_size?: number;
+  mic_transcript_translation2_font_weight?: number;
+  mic_transcript_translation2_text_color?: string;
+  mic_transcript_translation2_stroke_color?: string;
+  mic_transcript_translation2_stroke_width_px?: number;
+  mic_transcript_translation2_font_family?: string;
+  mic_transcript_translation3_font_size?: number;
+  mic_transcript_translation3_font_weight?: number;
+  mic_transcript_translation3_text_color?: string;
+  mic_transcript_translation3_stroke_color?: string;
+  mic_transcript_translation3_stroke_width_px?: number;
+  mic_transcript_translation3_font_family?: string;
   mic_transcript_line_ttl_seconds?: number;
   mic_transcript_last_ttl_seconds?: number;
 
@@ -93,8 +139,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 設定を取得する関数（再利用可能）
   const fetchSettings = useCallback(async () => {
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/overlay`);
+      const response = await fetch(buildApiUrl('/api/settings/overlay'));
       if (response.ok) {
         const data = await response.json();
         setSettings(data);
@@ -138,8 +183,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!settings) return;
 
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/overlay`, {
+      const response = await fetch(buildApiUrl('/api/settings/overlay'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +194,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (response.ok) {
         // サーバーが成功したら、SSE経由で更新が来るのを待つ
         // 楽観的更新を行う
-        setSettings(prev => ({ ...prev, ...updates }));
+        const cleanUpdates = Object.fromEntries(
+          Object.entries(updates).filter(([, value]) => value !== undefined),
+        ) as Partial<OverlaySettings>;
+        setSettings(prev => (prev ? { ...prev, ...cleanUpdates } : prev));
       } else {
         throw new Error('Failed to update settings');
       }

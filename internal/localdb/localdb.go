@@ -228,6 +228,19 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// word_filter_wordsテーブルを追加（不適切語フィルタ）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS word_filter_words (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		language TEXT NOT NULL,
+		word TEXT NOT NULL,
+		type TEXT NOT NULL CHECK(type IN ('bad', 'good')),
+		UNIQUE(language, word, type)
+	)`)
+	if err != nil {
+		logger.Error("Failed to create word_filter_words table", zap.Error(err))
+		return nil, fmt.Errorf("failed to create word_filter_words table: %w", err)
+	}
+
 	return db, nil
 }
 

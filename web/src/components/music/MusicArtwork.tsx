@@ -18,6 +18,12 @@ const MusicArtwork = ({ track, isPlaying, onPlayPause, audioElement, rotation = 
     setImageError(false);
   }, [track.id]);
 
+  // Viteのbaseが /overlay/ になるため、public配下の参照は BASE_URL を使って組み立てる
+  // ("/dot_record_mask.svg" だと /overlay/ 配信時に404になり、マスクが効かずサムネが見えないことがある)
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  const recordMaskUrl = `${baseUrl}dot_record_mask.svg`;
+  const recordInnerUrl = `${baseUrl}dot_record_inner.svg`;
+
   const containerStyle: CSSProperties = {
     position: 'relative',
     bottom: '20px',
@@ -41,11 +47,11 @@ const MusicArtwork = ({ track, isPlaying, onPlayPause, audioElement, rotation = 
     height: '100%',
     overflow: 'hidden',
     backgroundColor: '#282828',
-    maskImage: 'url(/dot_record_mask.svg)',
+    maskImage: `url(${recordMaskUrl})`,
     maskSize: '100% 100%',
     maskRepeat: 'no-repeat',
     maskPosition: 'center',
-    WebkitMaskImage: 'url(/dot_record_mask.svg)',
+    WebkitMaskImage: `url(${recordMaskUrl})`,
     WebkitMaskSize: '100% 100%',
     WebkitMaskRepeat: 'no-repeat',
     WebkitMaskPosition: 'center',
@@ -110,7 +116,7 @@ const MusicArtwork = ({ track, isPlaying, onPlayPause, audioElement, rotation = 
         
         {/* ドット絵レコード内側装飾（最上層） */}
         <img
-          src="/dot_record_inner.svg"
+          src={recordInnerUrl}
           alt="Record inner frame"
           style={innerFrameStyle}
         />

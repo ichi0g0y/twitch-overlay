@@ -22,20 +22,18 @@ import (
 	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
-	"github.com/ichi0g0y/twitch-overlay/internal/micrecog"
 	"github.com/ichi0g0y/twitch-overlay/internal/music"
 	"github.com/ichi0g0y/twitch-overlay/internal/notification"
-	"github.com/ichi0g0y/twitch-overlay/internal/ollama"
 	"github.com/ichi0g0y/twitch-overlay/internal/output"
 	"github.com/ichi0g0y/twitch-overlay/internal/settings"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
 	"github.com/ichi0g0y/twitch-overlay/internal/status"
-	"github.com/ichi0g0y/twitch-overlay/internal/translation"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
 	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
+	"github.com/ichi0g0y/twitch-overlay/internal/wordfilter"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -50,8 +48,6 @@ type App struct {
 	streamStatus     status.StreamStatus
 	webAssets        *embed.FS
 	tokenRefreshDone chan struct{}
-	micRecog         *micrecog.Manager
-	ollama           *ollama.Manager
 }
 
 // TODO(v3): Temporary stub for runtime.Screen - replace with proper v3 screen API
@@ -66,8 +62,7 @@ type Screen struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		micRecog: micrecog.NewManager(),
-		ollama:   ollama.NewManager(),
+		// NOTE: 音声認識/翻訳はブラウザ（WebUI /）側で行う
 	}
 }
 
@@ -104,6 +99,11 @@ func (a *App) Startup(ctx context.Context) {
 		logger.Error("Failed to setup database", zap.Error(err))
 	} else {
 		logger.Info("Database initialized", zap.String("path", paths.GetDBPath()))
+	}
+
+	// 不適切語フィルタのデフォルトワードリストを投入
+	if err := wordfilter.SeedDefaultWords(); err != nil {
+		logger.Warn("Failed to seed word filter defaults", zap.Error(err))
 	}
 
 	// 3を超えているentry_countを3に修正（既存データの修正）
@@ -276,8 +276,6 @@ func (a *App) Startup(ctx context.Context) {
 
 		// 埋め込みアセットをWebサーバーに設定
 		webserver.SetWebAssets(a.webAssets)
-		webserver.SetMicRecogManager(a.micRecog)
-		webserver.SetOllamaManager(a.ollama)
 		if err := webserver.StartWebServer(port); err != nil {
 			logger.Error("Failed to start web server", zap.Error(err))
 			// Notify frontend about the error
@@ -295,25 +293,11 @@ func (a *App) Startup(ctx context.Context) {
 				})
 			}
 
-			if a.micRecog != nil {
-				if err := a.micRecog.Start(port); err != nil {
-					logger.Warn("Failed to start mic-recog", zap.Error(err))
-				}
-			}
-
 			// WebSocketクライアントを起動してバックエンドメッセージをフロントエンドに転送
 			// NOTE: Settings画面が直接WebSocketに接続するようになったため、このブリッジは不要
 			// go a.connectToWebSocketServer(port)
 		}
 	}()
-
-	if a.ollama != nil {
-		go func() {
-			if err := a.ollama.Start(); err != nil {
-				logger.Warn("Failed to start ollama", zap.Error(err))
-			}
-		}()
-	}
 
 	// Note: Window restoration is now handled by WindowRuntimeReady event in main.go
 }
@@ -324,53 +308,111 @@ func migrateLegacyTranslationSettings() {
 		return
 	}
 	manager := settings.NewSettingsManager(db)
-	migrateValue := func(key string) {
+
+	normalizeChromeLanguageCode := func(value string) string {
+		raw := strings.TrimSpace(value)
+		if raw == "" {
+			return ""
+		}
+		normalized := strings.ToLower(raw)
+
+		// Normalize common separators and tags.
+		normalized = strings.ReplaceAll(normalized, "_", "-")
+		if strings.Contains(normalized, "-") {
+			parts := strings.Split(normalized, "-")
+			if len(parts) >= 2 {
+				// Special-case: zh-Hant variants.
+				if parts[0] == "zh" && (parts[1] == "tw" || parts[1] == "hk" || parts[1] == "hant") {
+					return "zh-Hant"
+				}
+				normalized = parts[0]
+			}
+		}
+
+		// Legacy iso639-3 and common aliases -> Chrome language codes.
+		switch normalized {
+		case "jpn", "ja":
+			return "ja"
+		case "eng", "en":
+			return "en"
+		case "zho", "cmn", "zh":
+			return "zh"
+		case "kor", "ko":
+			return "ko"
+		case "fra", "fr":
+			return "fr"
+		case "deu", "de":
+			return "de"
+		case "spa", "es":
+			return "es"
+		case "por", "pt":
+			return "pt"
+		case "rus", "ru":
+			return "ru"
+		case "ita", "it":
+			return "it"
+		case "ind", "id":
+			return "id"
+		case "tha", "th":
+			return "th"
+		case "vie", "vi":
+			return "vi"
+		case "nld", "nl":
+			return "nl"
+		case "pol", "pl":
+			return "pl"
+		case "tur", "tr":
+			return "tr"
+		case "ukr", "uk":
+			return "uk"
+		case "ell", "el":
+			return "el"
+		case "som", "so":
+			return "so"
+		}
+
+		// Keep existing value if it looks like a Chrome-friendly code.
+		if len(normalized) == 2 {
+			return normalized
+		}
+		if normalized == "zh-hant" {
+			return "zh-Hant"
+		}
+		if raw == "zh-Hant" {
+			return raw
+		}
+		return ""
+	}
+
+	migrateMode := func(key string) {
 		value, err := manager.GetRealValue(key)
 		if err != nil {
 			return
 		}
 		normalized := strings.TrimSpace(strings.ToLower(value))
-		if normalized == "nllb" || normalized == "local" {
-			_ = manager.SetSetting(key, "ollama")
+		switch normalized {
+		case "", "off", "chrome":
+			return
+		default:
+			// Unknown legacy mode -> prefer Chrome translation for browser-only flow.
+			_ = manager.SetSetting(key, "chrome")
 		}
 	}
-	migrateValue("MIC_TRANSCRIPT_TRANSLATION_MODE")
+	migrateMode("MIC_TRANSCRIPT_TRANSLATION_MODE")
 
 	migrateLang := func(key string) {
 		value, err := manager.GetRealValue(key)
 		if err != nil {
 			return
 		}
-		normalized := translation.NormalizeFromLangTag(value)
-		if normalized == "" {
-			normalized = translation.NormalizeLanguageCode(value)
-		}
-		if normalized != "" && normalized != value {
-			_ = manager.SetSetting(key, normalized)
+		next := normalizeChromeLanguageCode(value)
+		if next != "" && next != value {
+			_ = manager.SetSetting(key, next)
 		}
 	}
 	migrateLang("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE")
-
-	migrateOllamaModel := func() {
-		value, err := manager.GetRealValue("OLLAMA_MODEL")
-		if err != nil {
-			return
-		}
-		normalized := strings.TrimSpace(strings.ToLower(value))
-		var next string
-		switch normalized {
-		case "shisa-ai/shisa-v2.1-qwen3-8b", "shisa-v2.1-qwen3-8b":
-			next = "hf.co/XpressAI/shisa-v2.1-qwen3-8b-GGUF:Q4_K_M"
-		case "shisa-ai/shisa-v2.1-llama3.2-3b", "shisa-v2.1-llama3.2-3b":
-			next = "hf.co/XpressAI/shisa-v2.1-llama3.2-3b-GGUF:Q4_K_M"
-		case "shisa-ai/shisa-v2.1-unphi4-14b", "shisa-v2.1-unphi4-14b":
-			next = "hf.co/mradermacher/shisa-v2.1-unphi4-14b-GGUF:Q4_K_M"
-		}
-		if next != "" && value != next {
-			_ = manager.SetSetting("OLLAMA_MODEL", next)
-		}
-	}
-	migrateOllamaModel()
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE")
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE")
 }
 
 // restoreRelativePosition restores window using relative position (fallback method)
@@ -608,18 +650,6 @@ func (a *App) Shutdown(ctx context.Context) {
 	// トークンリフレッシュgoroutineを停止
 	if a.tokenRefreshDone != nil {
 		close(a.tokenRefreshDone)
-	}
-
-	if a.micRecog != nil {
-		if stopped := a.micRecog.Stop(); !stopped {
-			logger.Warn("mic-recog did not stop cleanly during shutdown")
-		}
-	}
-
-	if a.ollama != nil {
-		if stopped := a.ollama.Stop(); !stopped {
-			logger.Warn("ollama did not stop cleanly during shutdown")
-		}
 	}
 
 	// プリンターを停止（Bluetoothのみ）
@@ -1405,7 +1435,6 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 	}
 
 	settingsManager := settings.NewSettingsManager(db)
-	ollamaStartRequested := false
 
 	// 各設定項目をデータベースに保存
 	for key, value := range newSettings {
@@ -1435,24 +1464,6 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"CLIENT_ID":                           true,
 			"CLIENT_SECRET":                       true,
 			"TRIGGER_CUSTOM_REWORD_ID":            true,
-			"CHAT_TRANSLATION_ENABLED":            true,
-			"OLLAMA_BASE_URL":                     true,
-			"OLLAMA_MODEL":                        true,
-			"OLLAMA_BASE_MODEL":                   true,
-			"OLLAMA_NUM_PREDICT":                  true,
-			"OLLAMA_TEMPERATURE":                  true,
-			"OLLAMA_TOP_P":                        true,
-			"OLLAMA_NUM_CTX":                      true,
-			"OLLAMA_STOP":                         true,
-			"OLLAMA_SYSTEM_PROMPT":                true,
-			"OLLAMA_CUSTOM_MODEL_NAME":            true,
-			"OLLAMA_CHAT_MODEL":                   true,
-			"OLLAMA_CHAT_NUM_PREDICT":             true,
-			"OLLAMA_CHAT_TEMPERATURE":             true,
-			"OLLAMA_CHAT_TOP_P":                   true,
-			"OLLAMA_CHAT_NUM_CTX":                 true,
-			"OLLAMA_CHAT_STOP":                    true,
-			"OLLAMA_CHAT_SYSTEM_PROMPT":           true,
 			"MIC_TRANSCRIPT_TRANSLATION_MODE":     true,
 			"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": true,
 			"SERVER_PORT":                         true,
@@ -1469,28 +1480,6 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 			"NOTIFICATION_DISPLAY_DURATION":       true,
 			"NOTIFICATION_DISPLAY_MODE":           true,
 			"NOTIFICATION_FONT_SIZE":              true,
-			"MIC_RECOG_ENABLED":                   true,
-			"MIC_RECOG_DEVICE":                    true,
-			"MIC_RECOG_MIC_INDEX":                 true,
-			"MIC_RECOG_MODEL":                     true,
-			"MIC_RECOG_LANGUAGE":                  true,
-			"MIC_RECOG_VAD":                       true,
-			"MIC_RECOG_VAD_THRESHOLD":             true,
-			"MIC_RECOG_VAD_END_MS":                true,
-			"MIC_RECOG_VAD_PRE_ROLL_MS":           true,
-			"MIC_RECOG_NO_SPEECH_THRESHOLD":       true,
-			"MIC_RECOG_LOGPROB_THRESHOLD":         true,
-			"MIC_RECOG_EXCLUDE":                   true,
-			"MIC_RECOG_INTERIM":                   true,
-			"MIC_RECOG_INTERIM_SECONDS":           true,
-			"MIC_RECOG_INTERIM_WINDOW_SECONDS":    true,
-			"MIC_RECOG_INTERIM_MIN_SECONDS":       true,
-			"MIC_RECOG_WS_PING_SECONDS":           true,
-			"MIC_RECOG_WATCHDOG_ENABLED":          true,
-			"MIC_RECOG_WATCHDOG_IDLE_SECONDS":     true,
-			"MIC_RECOG_WATCHDOG_GRACE_SECONDS":    true,
-			"MIC_RECOG_WATCHDOG_CHECK_SECONDS":    true,
-			"MIC_RECOG_WATCHDOG_COOLDOWN_SECONDS": true,
 		}
 
 		if !validKeys[dbKey] {
@@ -1530,25 +1519,12 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 		}
 
 		logger.Info("Setting saved", zap.String("key", dbKey), zap.String("value", strValue))
-
-		switch dbKey {
-		case "MIC_TRANSCRIPT_TRANSLATION_MODE", "OLLAMA_BASE_URL", "OLLAMA_MODEL", "OLLAMA_CHAT_MODEL":
-			ollamaStartRequested = true
-		}
 	}
 
 	// 環境変数を再読み込み
 	if err := env.ReloadFromDatabase(); err != nil {
 		logger.Error("Failed to reload environment from database", zap.Error(err))
 		return fmt.Errorf("failed to reload settings: %w", err)
-	}
-
-	if ollamaStartRequested && a.ollama != nil {
-		go func() {
-			if err := a.ollama.Start(); err != nil {
-				logger.Warn("Failed to start ollama after settings update", zap.Error(err))
-			}
-		}()
 	}
 
 	// Bluetooth設定時のみプリンターオプションを再設定

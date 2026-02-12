@@ -7,7 +7,7 @@ import { Button } from '../ui/button';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { CustomRewardsList } from './CustomRewardsList';
 import { RewardGroupsManager } from './RewardGroupsManager';
-import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 
 interface CustomReward {
   id: string;
@@ -44,8 +44,7 @@ export const TwitchSettings: React.FC = () => {
     const fetchRewards = async () => {
       setLoadingRewards(true);
       try {
-        const port = await GetServerPort();
-        const response = await fetch(`http://localhost:${port}/api/twitch/custom-rewards`);
+        const response = await fetch(buildApiUrl('/api/twitch/custom-rewards'));
 
         if (response.ok) {
           const data = await response.json();

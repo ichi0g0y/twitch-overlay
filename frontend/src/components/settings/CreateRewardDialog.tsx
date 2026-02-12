@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus } from 'lucide-react';
-import { GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 
 interface CreateRewardDialogProps {
   isOpen: boolean;
@@ -64,8 +64,7 @@ export const CreateRewardDialog: React.FC<CreateRewardDialogProps> = ({
     setCreating(true);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/custom-rewards/create`, {
+      const response = await fetch(buildApiUrl('/api/twitch/custom-rewards/create'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

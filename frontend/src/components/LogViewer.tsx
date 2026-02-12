@@ -5,7 +5,6 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { buildApiUrl } from '../utils/api';
-import * as App from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 interface LogEntry {
   timestamp: string;
@@ -46,8 +45,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
 
   const fetchLogs = async () => {
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/logs?limit=100`);
+      const response = await fetch(buildApiUrl(`/api/logs?limit=100`));
       if (!response.ok) throw new Error('Failed to fetch logs');
       
       const data = await response.json();
@@ -58,8 +56,12 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
   };
 
   const startStreaming = async () => {
-    const port = await App.GetServerPort();
-    const wsUrl = `ws://localhost:${port}/api/logs/stream`;
+    const httpUrl = buildApiUrl(`/api/logs/stream`);
+    const wsUrl = httpUrl.startsWith('http://')
+      ? httpUrl.replace(/^http:\/\//, 'ws://')
+      : httpUrl.startsWith('https://')
+        ? httpUrl.replace(/^https:\/\//, 'wss://')
+        : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${httpUrl}`;
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
@@ -97,8 +99,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
 
   const clearLogs = async () => {
     try {
-      const port = await App.GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/logs/clear`, {
+      const response = await fetch(buildApiUrl(`/api/logs/clear`), {
         method: 'POST',
       });
       if (response.ok) {
@@ -110,8 +111,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
   };
 
   const downloadLogs = async (format: 'json' | 'text') => {
-    const port = await App.GetServerPort();
-    const url = `http://localhost:${port}/api/logs/download?format=${format}`;
+    const url = buildApiUrl(`/api/logs/download?format=${format}`);
     window.open(url, '_blank');
   };
 

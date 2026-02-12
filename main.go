@@ -14,7 +14,7 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed all:web/dist
+//go:embed all:web/dist all:frontend/dist
 var webAssets embed.FS
 
 // spaHandler creates a custom HTTP handler that serves index.html for non-existent paths

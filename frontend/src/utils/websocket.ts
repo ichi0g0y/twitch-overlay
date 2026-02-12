@@ -1,5 +1,4 @@
 import { buildApiUrl } from './api';
-import { GetServerPort } from '../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 
 type MessageHandler = (data: any) => void;
 type ConnectionHandler = () => void;
@@ -54,9 +53,16 @@ class WebSocketClient {
     console.log(`Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}, clientId: ${this.clientId})`);
     
     try {
-      // 動的にポートを取得してURLを構築
-      const port = await GetServerPort();
-      this.url = `ws://localhost:${port}/ws?clientId=${this.clientId}`;
+      // 同一オリジン（本番）/ 明示ポート（開発）の両対応
+      const httpUrl = buildApiUrl(`/ws?clientId=${encodeURIComponent(this.clientId)}`);
+      if (httpUrl.startsWith('http://')) {
+        this.url = httpUrl.replace(/^http:\/\//, 'ws://');
+      } else if (httpUrl.startsWith('https://')) {
+        this.url = httpUrl.replace(/^https:\/\//, 'wss://');
+      } else {
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        this.url = `${proto}://${window.location.host}${httpUrl}`;
+      }
       
       this.ws = new WebSocket(this.url);
       this.setupEventHandlers();

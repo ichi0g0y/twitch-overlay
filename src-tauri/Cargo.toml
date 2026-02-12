@@ -1,0 +1,52 @@
+[package]
+name = "cairo-overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "cairo_overlay_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+# Config
+dotenvy = "0.15"
+regex = "1"
+dirs = "6"
+
+# HTTP server
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip"] }
+rust-embed = { version = "8", features = ["compression"] }
+mime_guess = "2"
+uuid = { version = "1", features = ["v4"] }
+futures = "0.3"
+
+# Services
+lofty = "0.22"
+nanoid = "0.4"
+sha2 = "0.10"
+sha1 = "0.10"
+hex = "0.4"
+chrono = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { version = "0.35", features = ["bundled"] }
+
+# Workspace crates
+overlay-db = { path = "../crates/overlay-db" }
+catprinter = { path = "../crates/catprinter" }
+twitch-client = { path = "../crates/twitch-client" }
+word-filter = { path = "../crates/word-filter" }
+image-processor = { path = "../crates/image-processor" }

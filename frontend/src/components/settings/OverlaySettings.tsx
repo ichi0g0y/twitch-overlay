@@ -1,8 +1,7 @@
 import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { GetMusicPlaylists, GetServerPort } from '../../../bindings/github.com/ichi0g0y/twitch-overlay/app.js';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
-import { buildApiUrlAsync } from '../../utils/api';
+import { buildApiUrl } from '../../utils/api';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
@@ -23,8 +22,10 @@ const DEFAULT_CARDS_LAYOUT: CardsLayout = {
 const isCardKey = (value: string): value is CardKey => CARD_KEYS.includes(value as CardKey);
 
 const normalizeCardsLayout = (layout?: Partial<CardsLayout> | null): CardsLayout => {
-  const rawLeft = Array.isArray(layout?.left) ? layout?.left : [];
-  const rawRight = Array.isArray(layout?.right) ? layout?.right : [];
+  const leftCandidate = layout?.left;
+  const rightCandidate = layout?.right;
+  const rawLeft = Array.isArray(leftCandidate) ? leftCandidate : [];
+  const rawRight = Array.isArray(rightCandidate) ? rightCandidate : [];
   const used = new Set<CardKey>();
   const pick = (items: unknown[]) => {
     const result: CardKey[] = [];
@@ -222,7 +223,11 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
-        const data = await GetMusicPlaylists();
+        const response = await fetch(buildApiUrl('/api/music/playlists'));
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
         context.setPlaylists?.(data.playlists || []);
       } catch (error) {
         console.error('Failed to fetch playlists:', error);
@@ -235,8 +240,7 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchRewardGroups = async () => {
       try {
-        const url = await buildApiUrlAsync('/api/twitch/reward-groups');
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
         if (response.ok) {
           const result = await response.json();
           // APIレスポンスは { data: [...] } の形式
@@ -253,8 +257,7 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchCustomRewards = async () => {
       try {
-        const url = await buildApiUrlAsync('/api/twitch/custom-rewards');
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl('/api/twitch/custom-rewards'));
         if (response.ok) {
           const data = await response.json();
           setCustomRewards(data.data || []);
@@ -273,8 +276,7 @@ export const OverlaySettings: React.FC = () => {
   // グループに属するリワードIDを取得
   const fetchGroupMembership = async (groupId: number) => {
     try {
-      const url = await buildApiUrlAsync(`/api/twitch/reward-groups/${groupId}`);
-      const response = await fetch(url);
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}`));
       if (response.ok) {
         const data = await response.json();
         // data.reward_ids: string[]
@@ -308,8 +310,7 @@ export const OverlaySettings: React.FC = () => {
       const endpoint = groupId
         ? `/api/twitch/reward-groups/${groupId}/counts`
         : '/api/twitch/reward-counts';
-      const url = await buildApiUrlAsync(endpoint);
-      const response = await fetch(url);
+      const response = await fetch(buildApiUrl(endpoint));
       if (response.ok) {
         const counts = await response.json();
         // カウントが0より大きいものだけフィルタ
@@ -350,8 +351,7 @@ export const OverlaySettings: React.FC = () => {
         const endpoint = groupId
           ? `/api/twitch/reward-groups/${groupId}/counts`
           : '/api/twitch/reward-counts';
-        const url = await buildApiUrlAsync(endpoint);
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl(endpoint));
         if (response.ok) {
           const counts = await response.json();
           setRewardCounts((counts || []).filter((c: any) => c.count > 0));
@@ -447,9 +447,8 @@ export const OverlaySettings: React.FC = () => {
   useEffect(() => {
     const fetchMusicStatus = async () => {
       try {
-        const port = await GetServerPort();
         // オーバーレイ未接続時でも永続化された状態を取得するため /api/music/state を使用
-        const response = await fetch(`http://localhost:${port}/api/music/state`);
+        const response = await fetch(buildApiUrl('/api/music/state'));
         if (response.ok) {
           const state = await response.json();
           // PlaybackState形式をMusicStatusUpdate形式に変換
@@ -512,8 +511,7 @@ export const OverlaySettings: React.FC = () => {
     const updateArtworkUrl = async () => {
       if (musicStatus.current_track?.has_artwork && musicStatus.current_track?.id) {
         try {
-          const url = await buildApiUrlAsync(`/api/music/track/${musicStatus.current_track.id}/artwork`);
-          setArtworkUrl(url);
+          setArtworkUrl(buildApiUrl(`/api/music/track/${musicStatus.current_track.id}/artwork`));
         } catch (error) {
           console.error('Failed to build artwork URL:', error);
           setArtworkUrl(null);
@@ -797,8 +795,7 @@ export const OverlaySettings: React.FC = () => {
 
               // プレイリスト選択を永続化
               try {
-                const url = await buildApiUrlAsync('/api/music/state/update');
-                await fetch(url, {
+                await fetch(buildApiUrl('/api/music/state/update'), {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -1064,14 +1061,17 @@ export const OverlaySettings: React.FC = () => {
     const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.micTranscript : expandedCards.micTranscript;
     const isDraggingSelf = draggingCard === 'micTranscript';
     const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+	    const headerClassName = isPreview
+	      ? 'cursor-default'
+	      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
 
-    const positionValue = overlaySettings?.mic_transcript_position || 'bottom-left';
+	    const translationModeValue =
+	      overlaySettings?.mic_transcript_translation_mode
+	      ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
+	    const translationEnabled = translationModeValue !== 'off';
 
-    return (
-      <Card className={cardClassName}>
+	    return (
+	      <Card className={cardClassName}>
         <CardHeader
           className={headerClassName}
           onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, micTranscript: !prev.micTranscript }))}
@@ -1083,10 +1083,10 @@ export const OverlaySettings: React.FC = () => {
             <div className="flex-1">
               <CardTitle className="flex items-center gap-2">
                 <Mic className="w-4 h-4" />
-                マイク文字起こし
+                マイク
               </CardTitle>
               <CardDescription className="text-left">
-                mic-recog の文字起こしをオーバーレイに表示します
+                ダッシュボード（/）から送信した字幕をオーバーレイに表示するだす
               </CardDescription>
             </div>
             <div className="flex-shrink-0 pt-1">
@@ -1097,15 +1097,13 @@ export const OverlaySettings: React.FC = () => {
               )}
             </div>
           </div>
-        </CardHeader>
-        {isExpanded && (
-          <CardContent className="space-y-4 text-left">
+	        </CardHeader>
+	        {isExpanded && (
+	          <CardContent className="space-y-4 text-left">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>表示を有効化</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  受信した文字起こしをオーバーレイに表示します
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">文字起こしを/overlayに表示するだす</p>
               </div>
               <Switch
                 checked={overlaySettings?.mic_transcript_enabled ?? false}
@@ -1113,153 +1111,25 @@ export const OverlaySettings: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>表示位置</Label>
-                <Select
-                  value={positionValue}
-                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_position: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="表示位置を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bottom-left">左下</SelectItem>
-                    <SelectItem value="bottom-center">中央下</SelectItem>
-                    <SelectItem value="bottom-right">右下</SelectItem>
-                    <SelectItem value="top-left">左上</SelectItem>
-                    <SelectItem value="top-center">中央上</SelectItem>
-                    <SelectItem value="top-right">右上</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>翻訳を有効化</Label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Translator API で翻訳して表示するだす</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-font-size">文字サイズ</Label>
-                <Input
-                  id="mic-font-size"
-                  type="number"
-                  min="10"
-                  max="80"
-                  value={overlaySettings?.mic_transcript_font_size ?? 20}
-                  onChange={(e) => updateOverlaySettings({ mic_transcript_font_size: parseInt(e.target.value, 10) || 0 })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mic-max-lines">最大行数</Label>
-                <Input
-                  id="mic-max-lines"
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={overlaySettings?.mic_transcript_max_lines ?? 3}
-                  onChange={(e) => updateOverlaySettings({ mic_transcript_max_lines: parseInt(e.target.value, 10) || 1 })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mic-line-ttl">通常行の表示秒数</Label>
-                <Input
-                  id="mic-line-ttl"
-                  type="number"
-                  min="1"
-                  max="300"
-                  value={overlaySettings?.mic_transcript_line_ttl_seconds ?? 8}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_line_ttl_seconds: parseInt(e.target.value, 10) || 1 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-last-ttl">最後の行の表示秒数（0で無限）</Label>
-                <Input
-                  id="mic-last-ttl"
-                  type="number"
-                  min="0"
-                  max="300"
-                  value={overlaySettings?.mic_transcript_last_ttl_seconds ?? 8}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_last_ttl_seconds: parseInt(e.target.value, 10) || 0 })}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  0を指定すると次の発言が来るまで残ります
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>翻訳モード</Label>
-              <Select
-                value={
-                  overlaySettings?.mic_transcript_translation_mode
-                  ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'ollama' : 'off')
-                }
-                onValueChange={(value) =>
+              <Switch
+                checked={translationEnabled}
+                onCheckedChange={(checked) =>
                   updateOverlaySettings({
-                    mic_transcript_translation_mode: value,
-                    mic_transcript_translation_enabled: value !== 'off',
+                    mic_transcript_translation_mode: checked ? 'chrome' : 'off',
+                    mic_transcript_translation_enabled: checked,
                   })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="翻訳モードを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="off">オフ</SelectItem>
-                  <SelectItem value="ollama">Ollama（ローカル）</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                確定文を指定言語へ翻訳して表示します
-              </p>
+              />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>翻訳先言語</Label>
-                <Select
-                  value={overlaySettings?.mic_transcript_translation_language ?? 'eng'}
-                  onValueChange={(value) => updateOverlaySettings({ mic_transcript_translation_language: value })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="言語を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="eng">英語（eng）</SelectItem>
-                    <SelectItem value="zho">中国語（zho）</SelectItem>
-                    <SelectItem value="kor">韓国語（kor）</SelectItem>
-                    <SelectItem value="fra">フランス語（fra）</SelectItem>
-                    <SelectItem value="deu">ドイツ語（deu）</SelectItem>
-                    <SelectItem value="spa">スペイン語（spa）</SelectItem>
-                    <SelectItem value="por">ポルトガル語（por）</SelectItem>
-                    <SelectItem value="rus">ロシア語（rus）</SelectItem>
-                    <SelectItem value="ita">イタリア語（ita）</SelectItem>
-                    <SelectItem value="ind">インドネシア語（ind）</SelectItem>
-                    <SelectItem value="tha">タイ語（tha）</SelectItem>
-                    <SelectItem value="vie">ベトナム語（vie）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mic-translation-font">翻訳文字サイズ</Label>
-                <Input
-                  id="mic-translation-font"
-                  type="number"
-                  min="10"
-                  max="80"
-                  value={overlaySettings?.mic_transcript_translation_font_size ?? 16}
-                  onChange={(e) =>
-                    updateOverlaySettings({ mic_transcript_translation_font_size: parseInt(e.target.value, 10) || 0 })}
-                  disabled={(overlaySettings?.mic_transcript_translation_mode ?? 'off') === 'off'}
-                />
-              </div>
-            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">詳細設定は「マイク」タブで調整するだす</div>
           </CardContent>
-        )}
-      </Card>
+	        )}
+	      </Card>
     );
   };
 
@@ -1379,7 +1249,7 @@ export const OverlaySettings: React.FC = () => {
                           // 設定画面のカウントデータを再取得
                           await fetchRewardCounts();
                           // オーバーレイに設定を再送信（強制リフレッシュ）
-                          const url = await buildApiUrlAsync('/api/overlay/refresh');
+                          const url = buildApiUrl('/api/overlay/refresh');
                           await fetch(url, { method: 'POST' });
                         } catch (error) {
                           console.error('Failed to refresh:', error);
@@ -1404,7 +1274,7 @@ export const OverlaySettings: React.FC = () => {
                       // 2回目のクリック: 実際にリセット
                       console.log('🔥 Executing reset all');
                       try {
-                        const url = await buildApiUrlAsync('/api/twitch/reward-counts/reset');
+                        const url = buildApiUrl('/api/twitch/reward-counts/reset');
                         console.log('🔄 Resetting all reward counts:', url);
                         const response = await fetch(url, { method: 'POST' });
                         console.log('✅ Reset all response:', response.status, response.statusText);
@@ -1476,7 +1346,7 @@ export const OverlaySettings: React.FC = () => {
 
                                         // 2回目のクリック: 実際に削除
                                         try {
-                                          const url = await buildApiUrlAsync(`/api/twitch/reward-counts/${reward.reward_id}/users/${index}`);
+                                          const url = buildApiUrl(`/api/twitch/reward-counts/${reward.reward_id}/users/${index}`);
                                           const response = await fetch(url, { method: 'DELETE' });
 
                                           if (!response.ok) {
@@ -1668,9 +1538,11 @@ export const OverlaySettings: React.FC = () => {
                     <Label htmlFor="ticker-notice-align">配置</Label>
                     <Select
                       value={overlaySettings?.ticker_notice_align || 'center'}
-                      onValueChange={(value) =>
-                        updateOverlaySettings({ ticker_notice_align: value })
-                      }
+                      onValueChange={(value) => {
+                        if (value === 'left' || value === 'center' || value === 'right') {
+                          updateOverlaySettings({ ticker_notice_align: value });
+                        }
+                      }}
                     >
                       <SelectTrigger id="ticker-notice-align">
                         <SelectValue />
