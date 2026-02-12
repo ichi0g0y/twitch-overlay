@@ -1,29 +1,47 @@
-//! Static file serving for the OBS overlay (web/dist).
+//! Static file serving for overlay (web/dist) and dashboard (frontend/dist).
 
-use axum::http::{header, StatusCode};
+use axum::http::{header, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use rust_embed::Embed;
+
+// --- Overlay (web/dist) ---
 
 #[derive(Embed)]
 #[folder = "../web/dist/"]
 struct OverlayAssets;
 
-/// Serve files from the embedded web/dist directory under `/overlay/`.
 pub async fn overlay_handler(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
-    serve_embedded(&path)
+    serve_embedded::<OverlayAssets>(&path)
 }
 
-/// Serve the overlay index for bare `/overlay/` requests.
 pub async fn overlay_index() -> Response {
-    serve_embedded("index.html")
+    serve_embedded::<OverlayAssets>("index.html")
 }
 
-fn serve_embedded(path: &str) -> Response {
-    // Try exact path first, then fall back to index.html (SPA)
-    let asset = OverlayAssets::get(path)
-        .or_else(|| OverlayAssets::get("index.html"));
+// --- Dashboard / Settings UI (frontend/dist) ---
+
+#[derive(Embed)]
+#[folder = "../frontend/dist/"]
+struct DashboardAssets;
+
+/// Serve dashboard index for bare `/` requests.
+pub async fn dashboard_index() -> Response {
+    serve_embedded::<DashboardAssets>("index.html")
+}
+
+/// Fallback handler: serve dashboard assets for unmatched paths (SPA support).
+/// Uses `Uri` instead of `Path` because fallback has no capture parameter.
+pub async fn dashboard_fallback(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    serve_embedded::<DashboardAssets>(path)
+}
+
+// --- Common ---
+
+fn serve_embedded<E: Embed>(path: &str) -> Response {
+    let asset = E::get(path).or_else(|| E::get("index.html"));
 
     match asset {
         Some(content) => {

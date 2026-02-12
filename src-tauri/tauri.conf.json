@@ -5,20 +5,10 @@
   "identifier": "com.cairo.overlay",
   "build": {
     "frontendDist": "../frontend/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "cd ../frontend && bun run build",
-    "beforeDevCommand": "cd ../frontend && bun run dev"
+    "beforeBuildCommand": "cd ../web && bun run build && cd ../frontend && bun run build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Cairo Overlay - Settings",
-        "width": 1200,
-        "height": 800,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

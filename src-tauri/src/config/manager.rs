@@ -167,6 +167,7 @@ impl SettingsManager {
         Ok(status)
     }
 
+    #[allow(dead_code)]
     pub fn db(&self) -> &Database {
         &self.db
     }

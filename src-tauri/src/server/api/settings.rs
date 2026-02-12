@@ -110,7 +110,7 @@ pub async fn reset_settings(
 ) -> Result<Json<Value>, (axum::http::StatusCode, Json<Value>)> {
     use crate::config::defaults::DEFAULT_SETTINGS;
 
-    let sm = SettingsManager::new(state.db().clone());
+    let _sm = SettingsManager::new(state.db().clone());
     let keys: Vec<String> = body
         .get("keys")
         .and_then(|v| serde_json::from_value(v.clone()).ok())

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 /// A single setting definition.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SettingDef {
     pub key: &'static str,
@@ -171,6 +172,7 @@ pub static DEFAULT_SETTINGS: LazyLock<HashMap<&'static str, SettingDef>> = LazyL
 });
 
 /// Get the default value for a setting key, or `None` if not defined.
+#[allow(dead_code)]
 pub fn get_default(key: &str) -> Option<&'static str> {
     DEFAULT_SETTINGS.get(key).map(|d| d.default)
 }

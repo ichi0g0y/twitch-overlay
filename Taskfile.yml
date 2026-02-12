@@ -1,20 +1,34 @@
 version: "3"
 
 tasks:
-  # 開発モード
+  # 開発モード（BEサーバー起動、Dashboardはブラウザからアクセス）
   dev:
-    desc: 開発モードでアプリを起動（Tauri）
+    desc: 開発モードでサーバーを起動
     cmds:
       - |
         echo "📦 OBS用オーバーレイをビルド中..."
         (cd web && bun run build)
-        echo "🚀 cargo tauri dev を起動中..."
-        cargo tauri dev
+        echo "📦 フロントエンド(Dashboard)をビルド中..."
+        (cd frontend && bun run build)
+        echo "🚀 サーバーを起動中..."
+        cargo run -p cairo-overlay
 
   dev:quick:
-    desc: クイック開発モード（オーバーレイは事前ビルド前提）
+    desc: クイック開発モード（フロントエンドは事前ビルド前提）
     cmds:
-      - cargo tauri dev
+      - cargo run -p cairo-overlay
+
+  # Tauriアプリとして起動（ウインドウ付き）
+  dev:tauri:
+    desc: Tauriデスクトップアプリとして起動
+    cmds:
+      - |
+        echo "📦 OBS用オーバーレイをビルド中..."
+        (cd web && bun run build)
+        echo "📦 フロントエンドをビルド中..."
+        (cd frontend && bun run build)
+        echo "🚀 cargo tauri dev を起動中..."
+        cargo tauri dev
 
   # プロダクションビルド
   build:
@@ -22,6 +36,8 @@ tasks:
     cmds:
       - echo "📦 OBS用オーバーレイをビルド中..."
       - cd web && bun run build
+      - echo "📦 フロントエンドをビルド中..."
+      - cd frontend && bun run build
       - echo "🔨 Tauriアプリをビルド中..."
       - cargo tauri build
       - echo "✅ ビルド完了"

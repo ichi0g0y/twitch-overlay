@@ -23,10 +23,14 @@ fn get_version() -> &'static str {
 }
 
 /// Determine the data directory for the application.
+/// Priority: TWITCH_OVERLAY_DATA_DIR env var > ~/.twitch-overlay
 fn data_dir() -> PathBuf {
-    dirs::data_local_dir()
+    if let Ok(dir) = std::env::var("TWITCH_OVERLAY_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
+    dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("cairo-overlay")
+        .join(".twitch-overlay")
 }
 
 /// Load .env from multiple candidate paths.
@@ -47,7 +51,7 @@ fn init_config() -> Result<(Database, AppConfig, PathBuf), anyhow::Error> {
 
     let dir = data_dir();
     std::fs::create_dir_all(&dir)?;
-    let db_path = dir.join("overlay.db");
+    let db_path = dir.join("local.db");
 
     tracing::info!("Opening database at {}", db_path.display());
     let db = Database::open(&db_path)?;

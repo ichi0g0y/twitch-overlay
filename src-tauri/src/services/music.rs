@@ -25,6 +25,7 @@ pub enum MusicError {
     Io(#[from] std::io::Error),
     #[error("Database error: {0}")]
     Db(#[from] overlay_db::DbError),
+    #[allow(dead_code)]
     #[error("Metadata error: {0}")]
     Metadata(String),
 }

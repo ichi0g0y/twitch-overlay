@@ -102,6 +102,9 @@ pub fn create_router(state: SharedState) -> Router {
         // --- Overlay static files ---
         .route("/overlay/", get(assets::overlay_index))
         .route("/overlay/{*path}", get(assets::overlay_handler))
+        // --- Dashboard (Settings UI) at / ---
+        .route("/", get(assets::dashboard_index))
+        .fallback(assets::dashboard_fallback)
         // --- Middleware ---
         .layer(CorsLayer::permissive())
         .with_state(state)

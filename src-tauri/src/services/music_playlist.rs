@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlaylistError {
+    #[allow(dead_code)]
     #[error("Playlist not found: {0}")]
     NotFound(String),
     #[error("Database error: {0}")]

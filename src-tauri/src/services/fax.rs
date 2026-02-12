@@ -1,4 +1,5 @@
 //! Fax (printed image) management with auto-deletion.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;

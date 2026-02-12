@@ -1,4 +1,5 @@
 //! Runtime application configuration loaded from DB + environment overrides.
+#![allow(dead_code)]
 
 use super::manager::SettingsManager;
 

@@ -6,7 +6,6 @@ pub mod manager;
 pub mod validation;
 
 pub use app_config::AppConfig;
-pub use defaults::SettingDef;
 pub use manager::SettingsManager;
 
 use serde::{Deserialize, Serialize};

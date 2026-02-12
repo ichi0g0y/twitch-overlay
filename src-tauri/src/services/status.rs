@@ -1,4 +1,5 @@
 //! Stream and printer status management with WebSocket broadcast.
+#![allow(dead_code)]
 
 use std::sync::Arc;
 

@@ -21,6 +21,7 @@ use axum::Json;
 use serde_json::{json, Value};
 
 /// Standard success response.
+#[allow(dead_code)]
 pub fn ok_json(data: Value) -> Json<Value> {
     Json(json!({ "status": "ok", "data": data }))
 }
