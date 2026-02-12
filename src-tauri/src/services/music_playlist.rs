@@ -1,7 +1,7 @@
 //! Playlist management service.
 
-use overlay_db::music::{Playlist, PlaylistTrack};
 use overlay_db::Database;
+use overlay_db::music::{Playlist, PlaylistTrack};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, thiserror::Error)]
@@ -33,7 +33,11 @@ impl PlaylistService {
         hex::encode(&hasher.finalize()[..8])
     }
 
-    pub fn create_playlist(&self, name: &str, description: &str) -> Result<Playlist, PlaylistError> {
+    pub fn create_playlist(
+        &self,
+        name: &str,
+        description: &str,
+    ) -> Result<Playlist, PlaylistError> {
         let id = Self::generate_id(name);
         self.db.create_playlist(&id, name, description)?;
         tracing::info!(id = %id, name = name, "Playlist created");
@@ -61,7 +65,12 @@ impl PlaylistService {
     }
 
     /// Add a track to a playlist. If position <= 0, append to end.
-    pub fn add_track(&self, playlist_id: &str, track_id: &str, position: i32) -> Result<(), PlaylistError> {
+    pub fn add_track(
+        &self,
+        playlist_id: &str,
+        track_id: &str,
+        position: i32,
+    ) -> Result<(), PlaylistError> {
         let pos = if position <= 0 {
             let tracks = self.db.get_playlist_tracks(playlist_id)?;
             tracks.iter().map(|t| t.position).max().unwrap_or(0) + 1
@@ -69,7 +78,12 @@ impl PlaylistService {
             position
         };
         self.db.add_track_to_playlist(playlist_id, track_id, pos)?;
-        tracing::info!(playlist = playlist_id, track = track_id, pos = pos, "Track added");
+        tracing::info!(
+            playlist = playlist_id,
+            track = track_id,
+            pos = pos,
+            "Track added"
+        );
         Ok(())
     }
 
@@ -129,7 +143,12 @@ impl PlaylistService {
             tx.commit()?;
             Ok(())
         })?;
-        tracing::info!(playlist = playlist_id, track = track_id, pos = new_position, "Order updated");
+        tracing::info!(
+            playlist = playlist_id,
+            track = track_id,
+            pos = new_position,
+            "Order updated"
+        );
         Ok(())
     }
 }

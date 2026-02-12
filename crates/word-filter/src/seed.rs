@@ -1,7 +1,7 @@
 //! Database seeding for default word lists with version tracking.
 
-use overlay_db::word_filter::WordFilterWord;
 use overlay_db::Database;
+use overlay_db::word_filter::WordFilterWord;
 
 use crate::defaults::WORD_LISTS;
 
@@ -11,9 +11,7 @@ const SEED_VERSION: &str = "v2";
 /// Seed the database with default word lists from embedded files.
 /// If the seed version matches, no action is taken.
 pub fn seed_default_words(db: &Database) -> Result<(), SeedError> {
-    let current = db
-        .get_word_filter_seed_version()
-        .map_err(SeedError::Db)?;
+    let current = db.get_word_filter_seed_version().map_err(SeedError::Db)?;
 
     if current.as_deref() == Some(SEED_VERSION) {
         return Ok(());
@@ -54,12 +52,7 @@ fn load_embedded_words() -> Vec<WordFilterWord> {
     words
 }
 
-fn parse_lines(
-    content: &str,
-    language: &str,
-    word_type: &str,
-    out: &mut Vec<WordFilterWord>,
-) {
+fn parse_lines(content: &str, language: &str, word_type: &str, out: &mut Vec<WordFilterWord>) {
     for line in content.lines() {
         let w = line.trim();
         if w.is_empty() {

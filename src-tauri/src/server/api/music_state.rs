@@ -1,8 +1,8 @@
 //! Music playback state and control API.
 
-use axum::extract::State;
 use axum::Json;
-use serde_json::{json, Value};
+use axum::extract::State;
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use overlay_db::music::PlaybackState;

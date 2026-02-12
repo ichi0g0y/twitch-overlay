@@ -2,8 +2,8 @@
 //!
 //! Provides aspect-ratio-preserving resize operations using Lanczos3 filtering.
 
-use image::imageops::FilterType;
 use image::DynamicImage;
+use image::imageops::FilterType;
 use tracing::debug;
 
 /// Resize an image to a target width while maintaining aspect ratio.

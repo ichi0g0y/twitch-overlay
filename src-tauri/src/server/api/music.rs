@@ -1,10 +1,10 @@
 //! Music track management API.
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, State};
-use axum::http::{header, StatusCode};
-use axum::Json;
-use serde_json::{json, Value};
+use axum::http::{StatusCode, header};
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::music::MusicService;
@@ -26,7 +26,10 @@ pub async fn upload_track(
         match name.as_str() {
             "file" => {
                 let filename = field.file_name().unwrap_or("unknown").to_string();
-                let data = field.bytes().await.map_err(|e| err_json(400, &e.to_string()))?;
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| err_json(400, &e.to_string()))?;
                 file_data = Some((filename, data.to_vec()));
             }
             "playlist_id" => {
@@ -40,7 +43,9 @@ pub async fn upload_track(
     }
 
     let (filename, data) = file_data.ok_or_else(|| err_json(400, "No file provided"))?;
-    let track = svc.save_track(&filename, &data).map_err(|e| err_json(500, &e.to_string()))?;
+    let track = svc
+        .save_track(&filename, &data)
+        .map_err(|e| err_json(500, &e.to_string()))?;
 
     // Add to playlist if specified
     if let Some(pid) = playlist_id {
@@ -60,7 +65,9 @@ pub async fn get_tracks(
     State(state): State<SharedState>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let svc = MusicService::new(state.db().clone(), state.data_dir().clone());
-    let tracks = svc.get_all_tracks().map_err(|e| err_json(500, &e.to_string()))?;
+    let tracks = svc
+        .get_all_tracks()
+        .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Json(json!({ "tracks": tracks, "count": tracks.len() })))
 }
 
@@ -70,7 +77,9 @@ pub async fn get_track(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let svc = MusicService::new(state.db().clone(), state.data_dir().clone());
-    let track = svc.get_track(&id).map_err(|e| err_json(404, &e.to_string()))?;
+    let track = svc
+        .get_track(&id)
+        .map_err(|e| err_json(404, &e.to_string()))?;
     Ok(Json(json!(track)))
 }
 
@@ -80,7 +89,9 @@ pub async fn stream_audio(
     Path(id): Path<String>,
 ) -> Result<axum::response::Response, (StatusCode, Json<Value>)> {
     let svc = MusicService::new(state.db().clone(), state.data_dir().clone());
-    let path = svc.get_track_path(&id).map_err(|e| err_json(404, &e.to_string()))?;
+    let path = svc
+        .get_track_path(&id)
+        .map_err(|e| err_json(404, &e.to_string()))?;
     let data = std::fs::read(&path).map_err(|e| err_json(500, &e.to_string()))?;
 
     let mime = mime_guess::from_path(&path).first_or_octet_stream();
@@ -116,7 +127,8 @@ pub async fn delete_track(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let svc = MusicService::new(state.db().clone(), state.data_dir().clone());
-    svc.delete_track(&id).map_err(|e| err_json(500, &e.to_string()))?;
+    svc.delete_track(&id)
+        .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Json(json!({ "status": "ok", "message": "Track deleted" })))
 }
 
@@ -125,6 +137,9 @@ pub async fn delete_all_tracks(
     State(state): State<SharedState>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let svc = MusicService::new(state.db().clone(), state.data_dir().clone());
-    svc.delete_all_tracks().map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "status": "ok", "message": "All tracks deleted" })))
+    svc.delete_all_tracks()
+        .map_err(|e| err_json(500, &e.to_string()))?;
+    Ok(Json(
+        json!({ "status": "ok", "message": "All tracks deleted" }),
+    ))
 }

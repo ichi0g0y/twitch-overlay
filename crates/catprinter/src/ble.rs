@@ -137,11 +137,7 @@ impl BleConnection {
     }
 
     /// Connect to a specific peripheral and discover the TX characteristic.
-    pub async fn connect(
-        &mut self,
-        device: &DiscoveredDevice,
-        tx_uuid: Uuid,
-    ) -> Result<()> {
+    pub async fn connect(&mut self, device: &DiscoveredDevice, tx_uuid: Uuid) -> Result<()> {
         tracing::info!(id = %device.id, name = %device.name, "Connecting to device");
 
         device

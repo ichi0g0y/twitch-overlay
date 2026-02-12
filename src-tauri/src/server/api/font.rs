@@ -1,23 +1,20 @@
 //! Font management API.
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, State};
-use axum::http::{header, StatusCode};
-use axum::Json;
-use serde_json::{json, Value};
+use axum::http::{StatusCode, header};
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::font::FontService;
 
-use super::err_json;
+use super::{err_json, not_implemented};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
 /// POST /api/settings/font – Upload custom font
-pub async fn upload_font(
-    State(state): State<SharedState>,
-    mut multipart: Multipart,
-) -> ApiResult {
+pub async fn upload_font(State(state): State<SharedState>, mut multipart: Multipart) -> ApiResult {
     let svc = FontService::new(state.data_dir().clone());
 
     while let Ok(Some(field)) = multipart.next_field().await {
@@ -76,4 +73,12 @@ pub async fn get_font_data(
         .body(Body::from(data))
         .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(resp)
+}
+
+/// POST /api/settings/font/preview
+pub async fn preview_font(
+    State(_state): State<SharedState>,
+    Json(_body): Json<Value>,
+) -> ApiResult {
+    Err(not_implemented("Font preview API"))
 }

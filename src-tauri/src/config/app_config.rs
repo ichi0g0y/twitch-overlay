@@ -104,7 +104,11 @@ impl AppConfig {
             server_port,
             timezone: {
                 let tz = g("TIMEZONE");
-                if tz.is_empty() { "Asia/Tokyo".into() } else { tz }
+                if tz.is_empty() {
+                    "Asia/Tokyo".into()
+                } else {
+                    tz
+                }
             },
             auto_dry_run_when_offline: g("AUTO_DRY_RUN_WHEN_OFFLINE") == "true",
         })

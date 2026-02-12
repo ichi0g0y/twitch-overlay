@@ -35,7 +35,8 @@ impl SettingsManager {
             .get(key)
             .ok_or_else(|| anyhow::anyhow!("unknown setting key: {key}"))?;
 
-        validate_setting(key, value).map_err(|e| anyhow::anyhow!("validation error for {key}: {e}"))?;
+        validate_setting(key, value)
+            .map_err(|e| anyhow::anyhow!("validation error for {key}: {e}"))?;
 
         let type_str = if def.secret { "secret" } else { "normal" };
         self.db.set_setting(key, value, type_str)?;
@@ -143,7 +144,12 @@ impl SettingsManager {
         };
 
         // Twitch settings check
-        for key in &["CLIENT_ID", "CLIENT_SECRET", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID"] {
+        for key in &[
+            "CLIENT_ID",
+            "CLIENT_SECRET",
+            "TWITCH_USER_ID",
+            "TRIGGER_CUSTOM_REWORD_ID",
+        ] {
             let val = self.get_setting(key).unwrap_or_default();
             if val.is_empty() {
                 status.missing_settings.push(key.to_string());
@@ -161,7 +167,9 @@ impl SettingsManager {
 
         // Warnings
         if self.get_setting("DRY_RUN_MODE").unwrap_or_default() == "true" {
-            status.warnings.push("DRY_RUN_MODE is enabled - no actual printing".into());
+            status
+                .warnings
+                .push("DRY_RUN_MODE is enabled - no actual printing".into());
         }
 
         Ok(status)
@@ -174,7 +182,12 @@ impl SettingsManager {
 }
 
 fn has_secret_in_env() -> bool {
-    ["CLIENT_SECRET", "CLIENT_ID", "TWITCH_USER_ID", "TRIGGER_CUSTOM_REWORD_ID"]
-        .iter()
-        .any(|k| std::env::var(k).is_ok_and(|v| !v.is_empty()))
+    [
+        "CLIENT_SECRET",
+        "CLIENT_ID",
+        "TWITCH_USER_ID",
+        "TRIGGER_CUSTOM_REWORD_ID",
+    ]
+    .iter()
+    .any(|k| std::env::var(k).is_ok_and(|v| !v.is_empty()))
 }

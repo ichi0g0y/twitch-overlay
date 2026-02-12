@@ -1,11 +1,17 @@
 //! Image processing utilities for thermal printer output.
 //!
-//! Provides dithering (Floyd-Steinberg), resizing (384px width),
-//! and rotation operations optimized for thermal printer output.
+//! Provides dithering, resizing, rotation, text rendering,
+//! QR code generation, image composition, and message-to-image
+//! conversion for thermal printer output.
 
+pub mod clock;
+pub mod compose;
 pub mod dither;
+pub mod message;
+pub mod qr;
 pub mod resize;
 pub mod rotate;
+pub mod text;
 
 // Re-exports for convenience
 pub use dither::{floyd_steinberg_dither, threshold_convert};

@@ -88,10 +88,7 @@ impl Database {
 
     pub fn delete_cache_entry(&self, url_hash: &str) -> Result<(), DbError> {
         self.with_conn(|conn| {
-            conn.execute(
-                "DELETE FROM cache_entries WHERE url_hash = ?1",
-                [url_hash],
-            )?;
+            conn.execute("DELETE FROM cache_entries WHERE url_hash = ?1", [url_hash])?;
             Ok(())
         })
     }
@@ -105,22 +102,17 @@ impl Database {
 
     pub fn get_cache_stats(&self) -> Result<CacheStats, DbError> {
         self.with_conn(|conn| {
-            let total_files: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM cache_entries",
-                [],
-                |row| row.get(0),
-            )?;
+            let total_files: i64 =
+                conn.query_row("SELECT COUNT(*) FROM cache_entries", [], |row| row.get(0))?;
             let total_size: i64 = conn.query_row(
                 "SELECT COALESCE(SUM(file_size), 0) FROM cache_entries",
                 [],
                 |row| row.get(0),
             )?;
             let oldest: Option<String> = conn
-                .query_row(
-                    "SELECT MIN(created_at) FROM cache_entries",
-                    [],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT MIN(created_at) FROM cache_entries", [], |row| {
+                    row.get(0)
+                })
                 .optional()?
                 .flatten();
 

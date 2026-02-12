@@ -57,14 +57,7 @@ pub fn floyd_steinberg_dither(img: &GrayImage) -> GrayImage {
 }
 
 /// Distribute quantization error to neighboring pixels.
-fn distribute_error(
-    buffer: &mut [Vec<i16>],
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-    error: i16,
-) {
+fn distribute_error(buffer: &mut [Vec<i16>], x: u32, y: u32, width: u32, height: u32, error: i16) {
     let xu = x as usize;
     let yu = y as usize;
 
@@ -171,11 +164,7 @@ mod tests {
     fn test_floyd_steinberg_known_3x3() {
         // 3x3 image with specific values to verify error diffusion
         let mut img = GrayImage::new(3, 3);
-        let pixels: [[u8; 3]; 3] = [
-            [100, 150, 200],
-            [50, 127, 250],
-            [0, 80, 160],
-        ];
+        let pixels: [[u8; 3]; 3] = [[100, 150, 200], [50, 127, 250], [0, 80, 160]];
         for (y, row) in pixels.iter().enumerate() {
             for (x, &val) in row.iter().enumerate() {
                 img.put_pixel(x as u32, y as u32, image::Luma([val]));

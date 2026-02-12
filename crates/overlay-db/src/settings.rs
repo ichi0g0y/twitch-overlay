@@ -41,7 +41,10 @@ impl Database {
         })
     }
 
-    pub fn get_settings_by_type(&self, setting_type: &str) -> Result<HashMap<String, String>, DbError> {
+    pub fn get_settings_by_type(
+        &self,
+        setting_type: &str,
+    ) -> Result<HashMap<String, String>, DbError> {
         self.with_conn(|conn| {
             let mut stmt =
                 conn.prepare("SELECT key, value FROM settings WHERE setting_type = ?1")?;

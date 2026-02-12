@@ -1,8 +1,8 @@
 //! Image cache management API.
 
-use axum::extract::State;
 use axum::Json;
-use serde_json::{json, Value};
+use axum::extract::State;
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::cache::{CacheService, CacheSettings};
@@ -39,8 +39,10 @@ pub async fn update_cache_settings(
 /// POST /api/cache/cleanup
 pub async fn cleanup_cache(State(state): State<SharedState>) -> ApiResult {
     let svc = CacheService::new(state.db().clone(), state.data_dir().clone());
-    svc.cleanup_expired().map_err(|e| err_json(500, &e.to_string()))?;
-    svc.cleanup_oversize().map_err(|e| err_json(500, &e.to_string()))?;
+    svc.cleanup_expired()
+        .map_err(|e| err_json(500, &e.to_string()))?;
+    svc.cleanup_oversize()
+        .map_err(|e| err_json(500, &e.to_string()))?;
     let stats = svc.get_stats().map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Json(json!({ "status": "ok", "stats": stats })))
 }

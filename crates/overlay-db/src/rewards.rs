@@ -194,9 +194,8 @@ impl Database {
 
     pub fn get_reward_enabled(&self, reward_id: &str) -> Result<Option<bool>, DbError> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT is_enabled FROM reward_redemption_counts WHERE reward_id = ?1",
-            )?;
+            let mut stmt = conn
+                .prepare("SELECT is_enabled FROM reward_redemption_counts WHERE reward_id = ?1")?;
             let enabled = stmt
                 .query_row([reward_id], |row| row.get::<_, Option<bool>>(0))
                 .optional()?
@@ -333,7 +332,10 @@ impl Database {
         })
     }
 
-    pub fn get_reward_groups_by_reward_id(&self, reward_id: &str) -> Result<Vec<RewardGroup>, DbError> {
+    pub fn get_reward_groups_by_reward_id(
+        &self,
+        reward_id: &str,
+    ) -> Result<Vec<RewardGroup>, DbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT rg.id, rg.name, rg.is_enabled, rg.created_at, rg.updated_at

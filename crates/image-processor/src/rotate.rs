@@ -25,7 +25,10 @@ pub fn auto_rotate_portrait(img: &DynamicImage) -> DynamicImage {
         debug!(w, h, "Landscape image detected, rotating to portrait");
         img.rotate90()
     } else {
-        debug!(w, h, "Image is already portrait or square, no rotation needed");
+        debug!(
+            w,
+            h, "Image is already portrait or square, no rotation needed"
+        );
         img.clone()
     }
 }
@@ -39,10 +42,10 @@ mod tests {
     /// Top-left=10, Top-right=20, Bottom-left=30, Bottom-right=40
     fn create_corner_image(width: u32, height: u32) -> DynamicImage {
         let mut img = GrayImage::from_pixel(width, height, Luma([128]));
-        img.put_pixel(0, 0, Luma([10]));                         // top-left
-        img.put_pixel(width - 1, 0, Luma([20]));                 // top-right
-        img.put_pixel(0, height - 1, Luma([30]));                // bottom-left
-        img.put_pixel(width - 1, height - 1, Luma([40]));        // bottom-right
+        img.put_pixel(0, 0, Luma([10])); // top-left
+        img.put_pixel(width - 1, 0, Luma([20])); // top-right
+        img.put_pixel(0, height - 1, Luma([30])); // bottom-left
+        img.put_pixel(width - 1, height - 1, Luma([40])); // bottom-right
         DynamicImage::ImageLuma8(img)
     }
 

@@ -1,8 +1,8 @@
 //! Music playlist management API.
 
-use axum::extract::{Path, State};
 use axum::Json;
-use serde_json::{json, Value};
+use axum::extract::{Path, State};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::app::SharedState;
@@ -15,7 +15,9 @@ type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 /// GET /api/music/playlists
 pub async fn get_playlists(State(state): State<SharedState>) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
-    let playlists = svc.get_all_playlists().map_err(|e| err_json(500, &e.to_string()))?;
+    let playlists = svc
+        .get_all_playlists()
+        .map_err(|e| err_json(500, &e.to_string()))?;
     let count = playlists.len();
     Ok(Json(json!({ "playlists": playlists, "count": count })))
 }
@@ -35,12 +37,11 @@ pub async fn create_playlist(
 }
 
 /// GET /api/music/playlist/:id
-pub async fn get_playlist(
-    State(state): State<SharedState>,
-    Path(id): Path<String>,
-) -> ApiResult {
+pub async fn get_playlist(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
-    let playlist = svc.get_playlist(&id).map_err(|e| err_json(404, &e.to_string()))?;
+    let playlist = svc
+        .get_playlist(&id)
+        .map_err(|e| err_json(404, &e.to_string()))?;
     Ok(Json(json!(playlist)))
 }
 
@@ -50,8 +51,12 @@ pub async fn get_playlist_tracks(
     Path(id): Path<String>,
 ) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
-    let playlist = svc.get_playlist(&id).map_err(|e| err_json(404, &e.to_string()))?;
-    let tracks = svc.get_tracks(&id).map_err(|e| err_json(500, &e.to_string()))?;
+    let playlist = svc
+        .get_playlist(&id)
+        .map_err(|e| err_json(404, &e.to_string()))?;
+    let tracks = svc
+        .get_tracks(&id)
+        .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Json(json!({ "playlist": playlist, "tracks": tracks })))
 }
 
@@ -62,10 +67,7 @@ pub async fn modify_playlist(
     Json(body): Json<HashMap<String, Value>>,
 ) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
-    let action = body
-        .get("action")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let action = body.get("action").and_then(|v| v.as_str()).unwrap_or("");
 
     match action {
         "add_track" => {
@@ -76,7 +78,8 @@ pub async fn modify_playlist(
         }
         "remove_track" => {
             let track_id = body.get("track_id").and_then(|v| v.as_str()).unwrap_or("");
-            svc.remove_track(&id, track_id).map_err(|e| err_json(400, &e.to_string()))?;
+            svc.remove_track(&id, track_id)
+                .map_err(|e| err_json(400, &e.to_string()))?;
         }
         "reorder_track" => {
             let track_id = body.get("track_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -87,7 +90,9 @@ pub async fn modify_playlist(
         _ => return Err(err_json(400, &format!("Unknown action: {action}"))),
     }
 
-    Ok(Json(json!({ "status": "ok", "message": "Playlist updated" })))
+    Ok(Json(
+        json!({ "status": "ok", "message": "Playlist updated" }),
+    ))
 }
 
 /// DELETE /api/music/playlist/:id
@@ -96,6 +101,9 @@ pub async fn delete_playlist(
     Path(id): Path<String>,
 ) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
-    svc.delete_playlist(&id).map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "status": "ok", "message": "Playlist deleted" })))
+    svc.delete_playlist(&id)
+        .map_err(|e| err_json(500, &e.to_string()))?;
+    Ok(Json(
+        json!({ "status": "ok", "message": "Playlist deleted" }),
+    ))
 }

@@ -90,9 +90,9 @@ impl KeepAliveManager {
         tracing::warn!("KeepAlive Level 2: full BLE reset");
         tokio::time::sleep(LEVEL2_RESET_DELAY).await;
 
-        BleConnection::new().await.map_err(|e| {
-            CatPrinterError::KeepAlive(format!("Level 2 reset failed: {e}"))
-        })
+        BleConnection::new()
+            .await
+            .map_err(|e| CatPrinterError::KeepAlive(format!("Level 2 reset failed: {e}")))
     }
 
     /// Determine whether an error requires a Level 2 (full reset).

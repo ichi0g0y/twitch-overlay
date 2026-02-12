@@ -1,9 +1,9 @@
 //! Word filter CRUD API.
 
-use axum::extract::{Path, Query, State};
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 
@@ -17,23 +17,19 @@ pub struct LangQuery {
 }
 
 /// GET /api/word-filter?lang=xx
-pub async fn get_words(
-    State(state): State<SharedState>,
-    Query(q): Query<LangQuery>,
-) -> ApiResult {
+pub async fn get_words(State(state): State<SharedState>, Query(q): Query<LangQuery>) -> ApiResult {
     let lang = q.lang.unwrap_or_else(|| "en".to_string());
     let words = state
         .db()
         .get_word_filter_words(&lang)
         .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "words": words, "language": lang, "count": words.len() })))
+    Ok(Json(
+        json!({ "words": words, "language": lang, "count": words.len() }),
+    ))
 }
 
 /// POST /api/word-filter
-pub async fn add_word(
-    State(state): State<SharedState>,
-    Json(body): Json<Value>,
-) -> ApiResult {
+pub async fn add_word(State(state): State<SharedState>, Json(body): Json<Value>) -> ApiResult {
     let language = body["language"].as_str().unwrap_or("en");
     let word = body["word"]
         .as_str()
@@ -52,10 +48,7 @@ pub async fn add_word(
 }
 
 /// DELETE /api/word-filter/:id
-pub async fn delete_word(
-    State(state): State<SharedState>,
-    Path(id): Path<i64>,
-) -> ApiResult {
+pub async fn delete_word(State(state): State<SharedState>, Path(id): Path<i64>) -> ApiResult {
     state
         .db()
         .delete_word_filter_word(id)

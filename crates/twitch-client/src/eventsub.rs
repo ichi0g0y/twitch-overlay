@@ -25,9 +25,11 @@ pub const EVENT_CHANNEL_CHEER: &str = "channel.cheer";
 pub const EVENT_CHANNEL_RAID: &str = "channel.raid";
 pub const EVENT_STREAM_ONLINE: &str = "stream.online";
 pub const EVENT_STREAM_OFFLINE: &str = "stream.offline";
-pub const EVENT_REWARD_REDEMPTION: &str =
-    "channel.channel_points_custom_reward_redemption.add";
+pub const EVENT_REWARD_REDEMPTION: &str = "channel.channel_points_custom_reward_redemption.add";
 pub const EVENT_CHAT_MESSAGE: &str = "channel.chat.message";
+pub const EVENT_SUBSCRIPTION_GIFT: &str = "channel.subscription.gift";
+pub const EVENT_SUBSCRIPTION_MESSAGE: &str = "channel.subscription.message";
+pub const EVENT_SHOUTOUT_RECEIVE: &str = "channel.shoutout.receive";
 
 #[derive(Debug, Deserialize)]
 struct WsMessage {
@@ -82,6 +84,34 @@ pub struct EventSubConfig {
     pub access_token: String,
     pub broadcaster_user_id: String,
     pub subscriptions: Vec<String>,
+}
+
+impl EventSubConfig {
+    /// Create a config with all 11 default event subscriptions.
+    pub fn with_all_events(
+        client_id: String,
+        access_token: String,
+        broadcaster_user_id: String,
+    ) -> Self {
+        Self {
+            client_id,
+            access_token,
+            broadcaster_user_id,
+            subscriptions: vec![
+                EVENT_CHANNEL_FOLLOW.into(),
+                EVENT_CHANNEL_SUBSCRIBE.into(),
+                EVENT_CHANNEL_CHEER.into(),
+                EVENT_CHANNEL_RAID.into(),
+                EVENT_STREAM_ONLINE.into(),
+                EVENT_STREAM_OFFLINE.into(),
+                EVENT_REWARD_REDEMPTION.into(),
+                EVENT_CHAT_MESSAGE.into(),
+                EVENT_SUBSCRIPTION_GIFT.into(),
+                EVENT_SUBSCRIPTION_MESSAGE.into(),
+                EVENT_SHOUTOUT_RECEIVE.into(),
+            ],
+        }
+    }
 }
 
 /// EventSub WebSocket client with auto-reconnect.
@@ -208,11 +238,15 @@ impl EventSubClient {
                 tracing::trace!("EventSub keepalive received");
             }
             "notification" => {
-                if let Some(sub_type) = ws_msg.payload.get("subscription")
+                if let Some(sub_type) = ws_msg
+                    .payload
+                    .get("subscription")
                     .and_then(|s| s.get("type"))
                     .and_then(|t| t.as_str())
                 {
-                    let payload = ws_msg.payload.get("event")
+                    let payload = ws_msg
+                        .payload
+                        .get("event")
                         .cloned()
                         .unwrap_or(serde_json::Value::Null);
                     let event = EventSubEvent {
@@ -224,7 +258,9 @@ impl EventSubClient {
                 }
             }
             "revocation" => {
-                let sub_type = ws_msg.payload.get("subscription")
+                let sub_type = ws_msg
+                    .payload
+                    .get("subscription")
                     .and_then(|s| s.get("type"))
                     .and_then(|t| t.as_str())
                     .unwrap_or("unknown");
@@ -287,6 +323,10 @@ impl EventSubClient {
             }),
             EVENT_CHANNEL_RAID => serde_json::json!({
                 "to_broadcaster_user_id": broadcaster_id,
+            }),
+            EVENT_SHOUTOUT_RECEIVE => serde_json::json!({
+                "broadcaster_user_id": broadcaster_id,
+                "moderator_user_id": broadcaster_id,
             }),
             _ => serde_json::json!({
                 "broadcaster_user_id": broadcaster_id,
