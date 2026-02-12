@@ -83,9 +83,8 @@ impl Database {
 
     pub fn get_word_filter_languages(&self) -> Result<Vec<String>, DbError> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT DISTINCT language FROM word_filter_words ORDER BY language",
-            )?;
+            let mut stmt =
+                conn.prepare("SELECT DISTINCT language FROM word_filter_words ORDER BY language")?;
             let langs = stmt
                 .query_map([], |row| row.get(0))?
                 .collect::<Result<Vec<String>, _>>()?;

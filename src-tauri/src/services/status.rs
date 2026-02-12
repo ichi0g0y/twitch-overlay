@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamStatus {
@@ -116,7 +116,11 @@ impl StatusManager {
         };
         if changed {
             self.notify_printer(connected).await;
-            let event = if connected { "printer_connected" } else { "printer_disconnected" };
+            let event = if connected {
+                "printer_connected"
+            } else {
+                "printer_disconnected"
+            };
             let msg = serde_json::json!({ "type": event, "data": { "connected": connected } });
             let inner = self.inner.read().await;
             let _ = inner.ws_tx.send(msg.to_string());

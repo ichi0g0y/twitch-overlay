@@ -140,7 +140,9 @@ pub struct GbProtocol {
 
 impl GbProtocol {
     pub fn new() -> Self {
-        Self { use_macos_uuid: cfg!(target_os = "macos") }
+        Self {
+            use_macos_uuid: cfg!(target_os = "macos"),
+        }
     }
 }
 
@@ -150,7 +152,11 @@ impl PrinterProtocol for GbProtocol {
     }
 
     fn service_uuid(&self) -> uuid::Uuid {
-        if self.use_macos_uuid { SERVICE_UUID_MACOS } else { SERVICE_UUID }
+        if self.use_macos_uuid {
+            SERVICE_UUID_MACOS
+        } else {
+            SERVICE_UUID
+        }
     }
 
     fn tx_characteristic(&self) -> uuid::Uuid {
@@ -158,14 +164,15 @@ impl PrinterProtocol for GbProtocol {
     }
 
     fn build_init_sequence(&self) -> Vec<Vec<u8>> {
-        let lattice_start_data: &[u8] =
-            &[0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c];
+        let lattice_start_data: &[u8] = &[
+            0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c,
+        ];
         vec![
             build_command(CMD_GET_DEV_STATE, &[0x00]),
-            build_command(CMD_GET_DEV_STATE, &[0x00]),  // start printing
-            build_command(CMD_SET_QUALITY, &[0x32]),     // 200 DPI
-            build_command(CMD_FEED_SPEED, &[0x24]),      // slow speed
-            build_command(CMD_SET_ENERGY, &[0xff, 0xdf]),// max energy
+            build_command(CMD_GET_DEV_STATE, &[0x00]), // start printing
+            build_command(CMD_SET_QUALITY, &[0x32]),   // 200 DPI
+            build_command(CMD_FEED_SPEED, &[0x24]),    // slow speed
+            build_command(CMD_SET_ENERGY, &[0xff, 0xdf]), // max energy
             build_command(CMD_APPLY_ENERGY, &[0x01]),
             build_command(CMD_UPDATE_DEVICE, &[0x00]),
             build_command(CMD_LATTICE, lattice_start_data),
@@ -183,12 +190,13 @@ impl PrinterProtocol for GbProtocol {
     }
 
     fn build_finish_sequence(&self) -> Vec<Vec<u8>> {
-        let lattice_end_data: &[u8] =
-            &[0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17];
+        let lattice_end_data: &[u8] = &[
+            0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17,
+        ];
         vec![
             build_command(CMD_LATTICE, lattice_end_data),
-            build_command(CMD_FEED_SPEED, &[0x08]),      // final speed
-            build_command(CMD_FEED_SPEED, &[0x05]),      // feed 5 lines
+            build_command(CMD_FEED_SPEED, &[0x08]), // final speed
+            build_command(CMD_FEED_SPEED, &[0x05]), // feed 5 lines
             build_command(CMD_SET_PAPER, &[0x30, 0x00]), // set paper x3
             build_command(CMD_SET_PAPER, &[0x30, 0x00]),
             build_command(CMD_SET_PAPER, &[0x30, 0x00]),

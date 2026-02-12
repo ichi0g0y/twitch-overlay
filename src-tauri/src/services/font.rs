@@ -104,7 +104,10 @@ impl FontService {
         match self.find_current_font() {
             Some(path) => {
                 let meta = std::fs::metadata(&path)?;
-                let filename = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string());
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string());
                 let updated_at = meta.modified().ok().map(|t| {
                     let dt: chrono::DateTime<chrono::Utc> = t.into();
                     dt.format("%Y-%m-%d %H:%M:%S").to_string()

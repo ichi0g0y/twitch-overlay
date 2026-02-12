@@ -83,10 +83,7 @@ impl EmoteCache {
     }
 
     /// Fetch global emotes from Twitch.
-    pub async fn get_global_emotes(
-        &self,
-        token: &Token,
-    ) -> Result<Vec<Emote>, TwitchError> {
+    pub async fn get_global_emotes(&self, token: &Token) -> Result<Vec<Emote>, TwitchError> {
         let url = format!("{HELIX_BASE}/chat/emotes/global");
         let body = self.fetch(&url, token).await?;
         let resp: EmoteResponse = serde_json::from_str(&body)?;

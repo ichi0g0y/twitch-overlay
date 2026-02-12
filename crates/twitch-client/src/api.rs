@@ -4,7 +4,7 @@
 //! with automatic Bearer token + Client-ID header injection and
 //! single-retry on 401 Unauthorized.
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use crate::{Token, TwitchError};
@@ -64,6 +64,40 @@ pub struct CustomReward {
     pub background_color: Option<String>,
 }
 
+/// Request body for creating a custom reward.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateRewardRequest {
+    pub title: String,
+    pub cost: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_user_input_required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub should_redemptions_skip_request_queue: Option<bool>,
+}
+
+/// Request body for updating a custom reward.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateRewardRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_paused: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
+}
+
 /// User subscription info from GET /helix/subscriptions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSubscription {
@@ -98,19 +132,12 @@ impl TwitchApiClient {
         let mut headers = HeaderMap::new();
         let bearer = format!("Bearer {}", token.access_token);
         headers.insert(AUTHORIZATION, HeaderValue::from_str(&bearer).unwrap());
-        headers.insert(
-            "Client-Id",
-            HeaderValue::from_str(&self.client_id).unwrap(),
-        );
+        headers.insert("Client-Id", HeaderValue::from_str(&self.client_id).unwrap());
         headers
     }
 
     /// Execute a GET request with auth headers. Retries once on 401.
-    async fn authenticated_get(
-        &self,
-        url: &str,
-        token: &Token,
-    ) -> Result<String, TwitchError> {
+    async fn authenticated_get(&self, url: &str, token: &Token) -> Result<String, TwitchError> {
         let headers = self.auth_headers(token);
         let resp = self.http.get(url).headers(headers).send().await?;
 
@@ -162,6 +189,52 @@ impl TwitchApiClient {
         }
 
         Ok(resp_body)
+    }
+
+    /// Execute a POST request with auth headers and JSON body.
+    async fn authenticated_post(
+        &self,
+        url: &str,
+        token: &Token,
+        body: &impl Serialize,
+    ) -> Result<String, TwitchError> {
+        let headers = self.auth_headers(token);
+        let resp = self
+            .http
+            .post(url)
+            .headers(headers)
+            .json(body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let resp_body = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(TwitchError::ApiError {
+                status: status.as_u16(),
+                message: resp_body,
+            });
+        }
+
+        Ok(resp_body)
+    }
+
+    /// Execute a DELETE request with auth headers.
+    async fn authenticated_delete(&self, url: &str, token: &Token) -> Result<(), TwitchError> {
+        let headers = self.auth_headers(token);
+        let resp = self.http.delete(url).headers(headers).send().await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await?;
+            return Err(TwitchError::ApiError {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -218,9 +291,8 @@ impl TwitchApiClient {
         token: &Token,
         broadcaster_id: &str,
     ) -> Result<Vec<CustomReward>, TwitchError> {
-        let url = format!(
-            "{HELIX_BASE}/channel_points/custom_rewards?broadcaster_id={broadcaster_id}"
-        );
+        let url =
+            format!("{HELIX_BASE}/channel_points/custom_rewards?broadcaster_id={broadcaster_id}");
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<CustomReward> = serde_json::from_str(&body)?;
         Ok(resp.data)
@@ -257,6 +329,61 @@ impl TwitchApiClient {
             })
     }
 
+    /// Create a custom channel point reward.
+    pub async fn create_custom_reward(
+        &self,
+        token: &Token,
+        broadcaster_id: &str,
+        reward: &CreateRewardRequest,
+    ) -> Result<CustomReward, TwitchError> {
+        let url =
+            format!("{HELIX_BASE}/channel_points/custom_rewards?broadcaster_id={broadcaster_id}");
+        let body = self.authenticated_post(&url, token, reward).await?;
+        let resp: HelixResponse<CustomReward> = serde_json::from_str(&body)?;
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "Reward not found in response".into(),
+            })
+    }
+
+    /// Update a custom channel point reward.
+    pub async fn update_custom_reward(
+        &self,
+        token: &Token,
+        broadcaster_id: &str,
+        reward_id: &str,
+        update: &UpdateRewardRequest,
+    ) -> Result<CustomReward, TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/channel_points/custom_rewards?broadcaster_id={broadcaster_id}&id={reward_id}"
+        );
+        let body = self.authenticated_patch(&url, token, update).await?;
+        let resp: HelixResponse<CustomReward> = serde_json::from_str(&body)?;
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "Reward not found in response".into(),
+            })
+    }
+
+    /// Delete a custom channel point reward.
+    pub async fn delete_custom_reward(
+        &self,
+        token: &Token,
+        broadcaster_id: &str,
+        reward_id: &str,
+    ) -> Result<(), TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/channel_points/custom_rewards?broadcaster_id={broadcaster_id}&id={reward_id}"
+        );
+        self.authenticated_delete(&url, token).await
+    }
+
     /// Check if a user is subscribed to a broadcaster.
     pub async fn get_user_subscription(
         &self,
@@ -264,9 +391,8 @@ impl TwitchApiClient {
         broadcaster_id: &str,
         user_id: &str,
     ) -> Result<Option<UserSubscription>, TwitchError> {
-        let url = format!(
-            "{HELIX_BASE}/subscriptions?broadcaster_id={broadcaster_id}&user_id={user_id}"
-        );
+        let url =
+            format!("{HELIX_BASE}/subscriptions?broadcaster_id={broadcaster_id}&user_id={user_id}");
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<UserSubscription> = serde_json::from_str(&body)?;
         Ok(resp.data.into_iter().next())

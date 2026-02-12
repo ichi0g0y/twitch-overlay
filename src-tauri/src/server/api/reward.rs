@@ -1,8 +1,9 @@
 //! Reward counts and reward groups API.
 
-use axum::extract::{Path, State};
 use axum::Json;
-use serde_json::{json, Value};
+use axum::extract::{Path, State};
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 
@@ -32,10 +33,7 @@ pub async fn reset_all_counts(State(state): State<SharedState>) -> ApiResult {
 }
 
 /// POST /api/twitch/reward-counts/:id/reset
-pub async fn reset_count(
-    State(state): State<SharedState>,
-    Path(id): Path<String>,
-) -> ApiResult {
+pub async fn reset_count(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
     state
         .db()
         .reset_reward_count(&id)
@@ -94,11 +92,25 @@ pub async fn get_groups(State(state): State<SharedState>) -> ApiResult {
     Ok(Json(json!({ "data": result })))
 }
 
+/// GET /api/twitch/reward-groups/:id
+pub async fn get_group(State(state): State<SharedState>, Path(id): Path<i64>) -> ApiResult {
+    let g = state
+        .db()
+        .get_reward_group(id)
+        .map_err(|e| err_json(404, &e.to_string()))?;
+    let ids = state.db().get_group_rewards(g.id).unwrap_or_default();
+    Ok(Json(json!({
+        "id": g.id,
+        "name": g.name,
+        "is_enabled": g.is_enabled,
+        "created_at": g.created_at,
+        "updated_at": g.updated_at,
+        "reward_ids": ids,
+    })))
+}
+
 /// POST /api/twitch/reward-groups
-pub async fn create_group(
-    State(state): State<SharedState>,
-    Json(body): Json<Value>,
-) -> ApiResult {
+pub async fn create_group(State(state): State<SharedState>, Json(body): Json<Value>) -> ApiResult {
     let name = body["name"]
         .as_str()
         .ok_or_else(|| err_json(400, "name required"))?;
@@ -110,10 +122,7 @@ pub async fn create_group(
 }
 
 /// DELETE /api/twitch/reward-groups/:id
-pub async fn delete_group(
-    State(state): State<SharedState>,
-    Path(id): Path<i64>,
-) -> ApiResult {
+pub async fn delete_group(State(state): State<SharedState>, Path(id): Path<i64>) -> ApiResult {
     state
         .db()
         .delete_reward_group(id)
@@ -122,10 +131,7 @@ pub async fn delete_group(
 }
 
 /// POST /api/twitch/reward-groups/:id/toggle
-pub async fn toggle_group(
-    State(state): State<SharedState>,
-    Path(id): Path<i64>,
-) -> ApiResult {
+pub async fn toggle_group(State(state): State<SharedState>, Path(id): Path<i64>) -> ApiResult {
     let g = state
         .db()
         .get_reward_group(id)
@@ -150,6 +156,24 @@ pub async fn add_reward_to_group(
     Ok(Json(json!({ "success": true })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AddRewardBody {
+    pub reward_id: String,
+}
+
+/// POST /api/twitch/reward-groups/:gid/rewards
+pub async fn add_reward_to_group_legacy(
+    State(state): State<SharedState>,
+    Path(gid): Path<i64>,
+    Json(body): Json<AddRewardBody>,
+) -> ApiResult {
+    state
+        .db()
+        .add_reward_to_group(gid, &body.reward_id)
+        .map_err(|e| err_json(500, &e.to_string()))?;
+    Ok(Json(json!({ "success": true })))
+}
+
 /// DELETE /api/twitch/reward-groups/:gid/rewards/:rid
 pub async fn remove_reward_from_group(
     State(state): State<SharedState>,
@@ -163,10 +187,7 @@ pub async fn remove_reward_from_group(
 }
 
 /// GET /api/twitch/reward-groups/:id/counts
-pub async fn get_group_counts(
-    State(state): State<SharedState>,
-    Path(id): Path<i64>,
-) -> ApiResult {
+pub async fn get_group_counts(State(state): State<SharedState>, Path(id): Path<i64>) -> ApiResult {
     let counts = state
         .db()
         .get_group_reward_counts(id)

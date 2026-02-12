@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use overlay_db::cache::{CacheEntry, CacheStats};
 use overlay_db::Database;
+use overlay_db::cache::{CacheEntry, CacheStats};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
@@ -103,18 +103,32 @@ impl CacheService {
                 .unwrap_or_else(|| default.to_string())
         };
         CacheSettings {
-            expiry_days: read("cache_expiry_days", "7").parse().unwrap_or(DEFAULT_EXPIRY_DAYS),
-            max_size_mb: read("cache_max_size_mb", "100").parse().unwrap_or(DEFAULT_MAX_SIZE_MB),
+            expiry_days: read("cache_expiry_days", "7")
+                .parse()
+                .unwrap_or(DEFAULT_EXPIRY_DAYS),
+            max_size_mb: read("cache_max_size_mb", "100")
+                .parse()
+                .unwrap_or(DEFAULT_MAX_SIZE_MB),
             cleanup_enabled: read("cache_cleanup_enabled", "true") == "true",
             cleanup_on_start: read("cache_cleanup_on_start", "true") == "true",
         }
     }
 
     pub fn update_settings(&self, s: &CacheSettings) -> Result<(), CacheError> {
-        self.db.set_setting("cache_expiry_days", &s.expiry_days.to_string(), "cache")?;
-        self.db.set_setting("cache_max_size_mb", &s.max_size_mb.to_string(), "cache")?;
-        self.db.set_setting("cache_cleanup_enabled", &s.cleanup_enabled.to_string(), "cache")?;
-        self.db.set_setting("cache_cleanup_on_start", &s.cleanup_on_start.to_string(), "cache")?;
+        self.db
+            .set_setting("cache_expiry_days", &s.expiry_days.to_string(), "cache")?;
+        self.db
+            .set_setting("cache_max_size_mb", &s.max_size_mb.to_string(), "cache")?;
+        self.db.set_setting(
+            "cache_cleanup_enabled",
+            &s.cleanup_enabled.to_string(),
+            "cache",
+        )?;
+        self.db.set_setting(
+            "cache_cleanup_on_start",
+            &s.cleanup_on_start.to_string(),
+            "cache",
+        )?;
         Ok(())
     }
 

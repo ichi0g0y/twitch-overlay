@@ -1,6 +1,6 @@
 //! Static file serving for overlay (web/dist) and dashboard (frontend/dist).
 
-use axum::http::{header, StatusCode, Uri};
+use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::Embed;
 
@@ -10,9 +10,7 @@ use rust_embed::Embed;
 #[folder = "../web/dist/"]
 struct OverlayAssets;
 
-pub async fn overlay_handler(
-    axum::extract::Path(path): axum::extract::Path<String>,
-) -> Response {
+pub async fn overlay_handler(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
     serve_embedded::<OverlayAssets>(&path)
 }
 
@@ -35,6 +33,23 @@ pub async fn dashboard_index() -> Response {
 /// Uses `Uri` instead of `Path` because fallback has no capture parameter.
 pub async fn dashboard_fallback(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
+
+    // Never serve SPA HTML for backend routes.
+    const NON_SPA_PREFIXES: [&str; 9] = [
+        "api", "api/", "auth", "callback", "debug", "debug/", "ws", "fax", "fax/",
+    ];
+    if NON_SPA_PREFIXES
+        .iter()
+        .any(|prefix| path == *prefix || path.starts_with(prefix))
+    {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "application/json")],
+            br#"{"status":"error","error":"route not found"}"#.to_vec(),
+        )
+            .into_response();
+    }
+
     serve_embedded::<DashboardAssets>(path)
 }
 

@@ -160,7 +160,9 @@ mod tests {
     fn test_valid_printer_address() {
         assert!(validate_setting("PRINTER_ADDRESS", "AA:BB:CC:DD:EE:FF").is_ok());
         assert!(validate_setting("PRINTER_ADDRESS", "aabbccddeeff00112233445566778899").is_ok());
-        assert!(validate_setting("PRINTER_ADDRESS", "12345678-1234-1234-1234-123456789abc").is_ok());
+        assert!(
+            validate_setting("PRINTER_ADDRESS", "12345678-1234-1234-1234-123456789abc").is_ok()
+        );
         assert!(validate_setting("PRINTER_ADDRESS", "invalid").is_err());
         assert!(validate_setting("PRINTER_ADDRESS", "").is_ok()); // empty is ok
     }

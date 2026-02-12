@@ -35,8 +35,15 @@ impl Database {
                     assigned_color = excluded.assigned_color,
                     updated_at = CURRENT_TIMESTAMP",
                 rusqlite::params![
-                    p.user_id, p.username, p.display_name, p.avatar_url, p.redeemed_at,
-                    p.is_subscriber, p.subscriber_tier, p.entry_count, p.assigned_color,
+                    p.user_id,
+                    p.username,
+                    p.display_name,
+                    p.avatar_url,
+                    p.redeemed_at,
+                    p.is_subscriber,
+                    p.subscriber_tier,
+                    p.entry_count,
+                    p.assigned_color,
                 ],
             )?;
             Ok(())

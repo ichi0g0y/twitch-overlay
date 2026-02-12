@@ -16,12 +16,10 @@ const SERVICE_UUID: uuid::Uuid = uuid::Uuid::from_u128(0x0000_ae30_0000_1000_800
 const CHAR_CONTROL: uuid::Uuid = uuid::Uuid::from_u128(0x0000_ae01_0000_1000_8000_00805f9b34fb);
 
 /// Notify characteristic (AE02) - used for device responses.
-pub const CHAR_NOTIFY: uuid::Uuid =
-    uuid::Uuid::from_u128(0x0000_ae02_0000_1000_8000_00805f9b34fb);
+pub const CHAR_NOTIFY: uuid::Uuid = uuid::Uuid::from_u128(0x0000_ae02_0000_1000_8000_00805f9b34fb);
 
 /// Data characteristic (AE03) - used for bulk data transfer.
-pub const CHAR_DATA: uuid::Uuid =
-    uuid::Uuid::from_u128(0x0000_ae03_0000_1000_8000_00805f9b34fb);
+pub const CHAR_DATA: uuid::Uuid = uuid::Uuid::from_u128(0x0000_ae03_0000_1000_8000_00805f9b34fb);
 
 // -- MXW01 Command IDs --
 const CMD_INIT: u8 = 0x01;

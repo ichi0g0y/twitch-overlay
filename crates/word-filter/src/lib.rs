@@ -6,4 +6,4 @@
 pub mod defaults;
 pub mod seed;
 
-pub use seed::{seed_default_words, SeedError};
+pub use seed::{SeedError, seed_default_words};

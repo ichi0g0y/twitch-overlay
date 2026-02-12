@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use lofty::file::TaggedFile;
 use lofty::prelude::*;
 use lofty::probe::Probe;
-use overlay_db::music::Track;
 use overlay_db::Database;
+use overlay_db::music::Track;
 use sha2::{Digest, Sha256};
 
 const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB
@@ -179,8 +179,8 @@ impl MusicService {
         let dur_secs = tagged.properties().duration().as_secs_f64();
         let duration = if dur_secs > 0.0 { Some(dur_secs) } else { None };
 
-        let artwork_data: Option<Vec<u8>> = tag
-            .and_then(|t| t.pictures().first().map(|pic| pic.data().to_vec()));
+        let artwork_data: Option<Vec<u8>> =
+            tag.and_then(|t| t.pictures().first().map(|pic| pic.data().to_vec()));
 
         let stem = || {
             std::path::Path::new(filename)

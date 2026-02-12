@@ -27,9 +27,16 @@ impl Database {
                      translation_text, translation_status, translation_lang, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 rusqlite::params![
-                    msg.message_id, msg.user_id, msg.username, msg.message,
-                    msg.fragments_json, msg.avatar_url, msg.translation_text,
-                    msg.translation_status, msg.translation_lang, msg.created_at,
+                    msg.message_id,
+                    msg.user_id,
+                    msg.username,
+                    msg.message,
+                    msg.fragments_json,
+                    msg.avatar_url,
+                    msg.translation_text,
+                    msg.translation_status,
+                    msg.translation_lang,
+                    msg.created_at,
                 ],
             )?;
             Ok(changed > 0)

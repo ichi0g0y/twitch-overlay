@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use url::Url;
 
-use crate::{Token, TwitchError, SCOPES};
+use crate::{SCOPES, Token, TwitchError};
 
 /// Twitch OAuth token response from the token endpoint.
 #[derive(Debug, Deserialize)]
@@ -132,10 +132,7 @@ impl TwitchAuth {
     }
 
     /// Parse the token endpoint response into a `Token`.
-    async fn parse_token_response(
-        &self,
-        resp: reqwest::Response,
-    ) -> Result<Token, TwitchError> {
+    async fn parse_token_response(&self, resp: reqwest::Response) -> Result<Token, TwitchError> {
         let status = resp.status();
         let body = resp.text().await?;
 

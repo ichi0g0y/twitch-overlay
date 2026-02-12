@@ -1,10 +1,10 @@
 //! FAX image serving API.
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
-use axum::Json;
-use serde_json::{json, Value};
+use axum::http::{StatusCode, header};
+use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::fax::FaxService;

@@ -4,13 +4,14 @@
 //!   POST /api/settings/v2   – reset settings to defaults
 //!   GET  /api/settings/status – lightweight feature status
 
-use axum::extract::State;
 use axum::Json;
-use serde_json::{json, Value};
+use axum::extract::State;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::app::SharedState;
 use crate::config::SettingsManager;
+use crate::services::font::FontService;
 
 use super::err_json;
 
@@ -154,4 +155,25 @@ pub async fn get_settings_status(
         .check_feature_status()
         .map_err(|e| err_json(500, &format!("Failed to check status: {e}")))?;
     Ok(Json(serde_json::to_value(status).unwrap()))
+}
+
+/// GET /api/settings (legacy compatibility endpoint)
+pub async fn get_settings_legacy(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, (axum::http::StatusCode, Json<Value>)> {
+    let svc = FontService::new(state.data_dir().clone());
+    let font_info = svc.get_font_info().ok();
+    let has_custom = font_info
+        .as_ref()
+        .map(|f| f.has_custom_font)
+        .unwrap_or(false);
+
+    Ok(Json(json!({
+        "font": {
+            "hasCustomFont": has_custom,
+            "filename": font_info.as_ref().and_then(|f| f.filename.clone()),
+            "fileSize": font_info.as_ref().and_then(|f| f.file_size),
+            "modifiedAt": font_info.as_ref().and_then(|f| f.updated_at.clone()),
+        }
+    })))
 }

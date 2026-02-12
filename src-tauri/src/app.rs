@@ -1,8 +1,10 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use overlay_db::Database;
-use tokio::sync::{broadcast, RwLock};
+use serde::Serialize;
+use tauri::Emitter;
+use tokio::sync::{RwLock, broadcast};
 
 use crate::config::{AppConfig, SettingsManager};
 
@@ -21,6 +23,8 @@ struct SharedStateInner {
     db: Database,
     /// Data directory path
     data_dir: PathBuf,
+    /// Tauri AppHandle (set during setup, used for emit)
+    app_handle: OnceLock<tauri::AppHandle>,
 }
 
 impl SharedState {
@@ -34,7 +38,22 @@ impl SharedState {
                 config: RwLock::new(config),
                 db,
                 data_dir,
+                app_handle: OnceLock::new(),
             }),
+        }
+    }
+
+    /// Store the Tauri AppHandle (called once during setup).
+    pub fn set_app_handle(&self, handle: tauri::AppHandle) {
+        let _ = self.inner.app_handle.set(handle);
+    }
+
+    /// Emit a Tauri event to all frontend windows.
+    pub fn emit_event(&self, event: &str, payload: impl Serialize + Clone) {
+        if let Some(handle) = self.inner.app_handle.get() {
+            if let Err(e) = handle.emit(event, payload) {
+                tracing::warn!("Failed to emit event '{event}': {e}");
+            }
         }
     }
 

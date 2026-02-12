@@ -18,7 +18,7 @@ pub mod twitch;
 pub mod word_filter;
 
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Standard success response.
 #[allow(dead_code)]
@@ -29,7 +29,13 @@ pub fn ok_json(data: Value) -> Json<Value> {
 /// Standard error response.
 pub fn err_json(status: u16, message: &str) -> (axum::http::StatusCode, Json<Value>) {
     (
-        axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        axum::http::StatusCode::from_u16(status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
         Json(json!({ "status": "error", "error": message })),
     )
+}
+
+/// Standard "not implemented" response.
+pub fn not_implemented(feature: &str) -> (axum::http::StatusCode, Json<Value>) {
+    err_json(501, &format!("{feature} is not yet implemented"))
 }
