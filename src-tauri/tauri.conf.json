@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicosolo/tauri-schema/refs/heads/master/tauri.conf.json",
+  "productName": "Cairo Overlay",
+  "version": "1.0.0",
+  "identifier": "com.cairo.overlay",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "cd ../frontend && bun run build",
+    "beforeDevCommand": "cd ../frontend && bun run dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cairo Overlay - Settings",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

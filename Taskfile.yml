@@ -3,226 +3,38 @@ version: "3"
 tasks:
   # 開発モード
   dev:
-    desc: 開発モードでアプリを起動（Wails）
-    cmds:
-      - task: dev:wails
-
-  dev:quick:
-    desc: クイック開発モード（Goのみ、distビルド済み前提）
-    cmds:
-      - |
-        echo "🚀 Webサーバーを起動中..."
-        go run ./cmd/server
-
-  dev:wails:
-    desc: 開発モードでアプリを起動（wails3 dev、.app生成なし）
-    cmds:
-      - |
-        # wails3 dev のフロントエンド(Vite)ポートが衝突すると起動できないため、
-        # 空いているポートを自動選択して -port / VITE_PORT を揃える
-        PORT="${VITE_PORT:-9245}"
-        is_listening() {
-          if command -v lsof >/dev/null 2>&1; then
-            lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
-            return $?
-          fi
-          python3 -c 'import socket,sys; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(0.2); r=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); sys.exit(0 if r==0 else 1)' "$1"
-        }
-
-        if is_listening "$PORT"; then
-          echo "⚠️ Viteポート ${PORT} が使用中だす。空きポートへ切り替えるだす..."
-          for p in $(seq 9245 9299); do
-            if ! is_listening "$p"; then
-              PORT="$p"
-              break
-            fi
-          done
-        fi
-
-        echo "🚀 wails3 dev を起動中... (vite port: ${PORT})"
-        DEV_USE_FS_OVERLAY=true VITE_PORT="$PORT" wails3 dev -port "$PORT"
-
-  dev:wails:quick:
-    desc: クイック開発モード（wails3 dev、オーバーレイ/WebUIは事前ビルド前提）
-    cmds:
-      - |
-        PORT="${VITE_PORT:-9245}"
-        is_listening() {
-          if command -v lsof >/dev/null 2>&1; then
-            lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
-            return $?
-          fi
-          python3 -c 'import socket,sys; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(0.2); r=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); sys.exit(0 if r==0 else 1)' "$1"
-        }
-
-        if is_listening "$PORT"; then
-          echo "⚠️ Viteポート ${PORT} が使用中だす。空きポートへ切り替えるだす..."
-          for p in $(seq 9245 9299); do
-            if ! is_listening "$p"; then
-              PORT="$p"
-              break
-            fi
-          done
-        fi
-
-        echo "🚀 wails3 dev を起動中... (vite port: ${PORT})"
-        DEV_USE_FS_OVERLAY=true VITE_PORT="$PORT" wails3 dev -port "$PORT"
-
-  dev:wails:app:
-    desc: 開発用.appを作成して起動（macOS向けフォールバック）
+    desc: 開発モードでアプリを起動（Tauri）
     cmds:
       - |
         echo "📦 OBS用オーバーレイをビルド中..."
         (cd web && bun run build)
+        echo "🚀 cargo tauri dev を起動中..."
+        cargo tauri dev
 
-        echo "📦 フロントエンドをビルド中..."
-        (cd frontend && bun run build)
-
-        echo "🔨 Goバイナリをビルド中..."
-        go build -o build/bin/twitch-overlay
-
-        echo "🚀 アプリケーションを起動中..."
-        echo "💡 フロントエンド変更時: 再起動が必要"
-        if [ "$(uname)" = "Darwin" ]; then
-          echo "📦 macOS: dev用.appを作成中..."
-          APP_DIR="build/bin/twitch-overlay.dev.app"
-          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-          cp build/bin/twitch-overlay "$APP_DIR/Contents/MacOS/twitch-overlay"
-          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
-          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
-          open -n "$APP_DIR"
-          echo "✅ 起動しました: $APP_DIR"
-          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay.dev.app/Contents/MacOS/twitch-overlay'"
-        else
-          ./build/bin/twitch-overlay
-        fi
-
-  dev:webui:
-    desc: WebUI（ヘッドレス）でサーバーを起動（Wailsなし）
+  dev:quick:
+    desc: クイック開発モード（オーバーレイは事前ビルド前提）
     cmds:
-      - |
-        # Wails devアプリが起動中だとポート競合するため停止
-        if [ "$(uname)" = "Darwin" ]; then
-          pkill -f "twitch-overlay.dev.app/Contents/MacOS/twitch-overlay" >/dev/null 2>&1 || true
-          # 既存のWebUI(dev)サーバーも停止（ポート競合回避）
-          pkill -f "twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server" >/dev/null 2>&1 || true
-        fi
-
-        echo "📦 オーバーレイをビルド中..."
-        (cd web && bun run build)
-
-        echo "📦 WebUIをビルド中..."
-        (cd frontend && bun run build)
-
-        # macOS: CoreBluetoothはCLI起動だとabort trapになることがあるため、.appバンドルで起動する
-        if [ "$(uname)" = "Darwin" ]; then
-          echo "🔨 Go(ヘッドレス)をビルド中..."
-          mkdir -p build/bin
-          go build -o build/bin/twitch-overlay-webui-server ./cmd/server
-
-          echo "📦 macOS: WebUI用.dev.appを作成中..."
-          APP_DIR="build/bin/twitch-overlay-webui.dev.app"
-          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-          cp build/bin/twitch-overlay-webui-server "$APP_DIR/Contents/MacOS/twitch-overlay-webui-server"
-          cp build/darwin/Info.plist "$APP_DIR/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ichi0g0y.twitch-overlay.webui.dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName Twitch Overlay WebUI Dev" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable twitch-overlay-webui-server" "$APP_DIR/Contents/Info.plist" >/dev/null 2>&1 || true
-
-          echo "📦 アセットを同梱中..."
-          mkdir -p "$APP_DIR/Contents/Resources/web" "$APP_DIR/Contents/Resources/frontend"
-          rsync -av --delete web/dist/ "$APP_DIR/Contents/Resources/web/dist/"
-          rsync -av --delete frontend/dist/ "$APP_DIR/Contents/Resources/frontend/dist/"
-
-          echo "🔏 署名処理中（エンタイトルメント適用）..."
-          codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist "$APP_DIR"
-
-          # 既存プロセスが残っているとポート競合するため停止
-          pkill -f "twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server" >/dev/null 2>&1 || true
-          open -n "$APP_DIR"
-          # PORT検出はDB依存にすると失敗しがちなので、devはENV優先で固定値にフォールバックする
-          PORT="${SERVER_PORT:-30303}"
-          echo "⏳ 起動確認中... http://localhost:$PORT/"
-          for i in {1..20}; do
-            if curl -fsS "http://localhost:$PORT/" >/dev/null 2>&1; then
-              echo "✅ WebUI OK: http://localhost:$PORT/"
-              break
-            fi
-            sleep 0.25
-          done
-          echo "✅ 起動しました: $APP_DIR"
-          echo "💡 終了: アプリからQuit、または 'pkill -f twitch-overlay-webui.dev.app/Contents/MacOS/twitch-overlay-webui-server'"
-        else
-          echo "🚀 Webサーバーを起動中..."
-          go run ./cmd/server
-        fi
+      - cargo tauri dev
 
   # プロダクションビルド
   build:
     desc: プロダクションビルドを実行
     cmds:
-      - echo "OBS用オーバーレイをビルド中..."
+      - echo "📦 OBS用オーバーレイをビルド中..."
       - cd web && bun run build
-      - echo "フロントエンド依存関係をインストール中..."
-      - cd frontend && bun install
-      - echo "バインディング生成中..."
-      - wails3 generate bindings -clean=true
-      - echo "フロントエンドをビルド中..."
-      - cd frontend && bun run build
-      - echo ".appバンドルを作成中..."
-      - mkdir -p build/bin/twitch-overlay.app/Contents/MacOS
-      - mkdir -p build/bin/twitch-overlay.app/Contents/Resources
-      - echo "Goバイナリをビルド中..."
-      - go build -tags production -ldflags "-w -s" -o build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay
-      - echo "Info.plistをコピー中..."
-      - cp build/darwin/Info.plist build/bin/twitch-overlay.app/Contents/
-      - echo "署名処理中（エンタイトルメント適用）..."
-      - codesign --force --deep --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay.app
-      - echo "ビルド完了 → build/bin/twitch-overlay.app"
-
-  # デバッグビルド
-  build:debug:
-    desc: デバッグビルドを実行
-    cmds:
-      - echo "OBS用オーバーレイをビルド中..."
-      - cd web && bun run build
-      - echo "フロントエンド依存関係をインストール中..."
-      - cd frontend && bun install
-      - echo "バインディング生成中..."
-      - wails3 generate bindings -clean=true
-      - echo "フロントエンドをビルド中（デバッグモード）..."
-      - cd frontend && bun run build:dev
-      - echo "Goバイナリをビルド中（デバッグモード）..."
-      - go build -tags debug -o build/bin/twitch-overlay
-      - echo "署名処理中（エンタイトルメント適用）..."
-      - codesign --force --sign - --entitlements build/darwin/entitlements.plist build/bin/twitch-overlay
-      - echo "デバッグビルド完了 → build/bin/"
+      - echo "🔨 Tauriアプリをビルド中..."
+      - cargo tauri build
+      - echo "✅ ビルド完了"
 
   # クリーンアップ
   clean:
     desc: ビルドファイルをクリーンアップ
     cmds:
       - echo "ビルドファイルをクリーンアップ中..."
-      - rm -rf build/bin
+      - rm -rf src-tauri/target
       - rm -rf frontend/dist
+      - rm -rf web/dist
       - echo "クリーンアップ完了"
-
-  # ビルド済みアプリケーションを実行
-  run:
-    desc: ビルド済みのアプリを実行
-    cmds:
-      - |
-        if [ -f build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay ]; then
-          open build/bin/twitch-overlay.app
-        else
-          echo "エラー: ビルド済みアプリが見つかりません"
-          echo "先に 'task build' でビルドしてください"
-          exit 1
-        fi
 
   # テスト実行
   test:
@@ -231,31 +43,9 @@ tasks:
       DRY_RUN_MODE: "true"
     cmds:
       - echo "テストを実行中..."
-      - go test ./...
-
-  # 配布用パッケージ作成（macOS）
-  pkg:
-    desc: 配布用パッケージを作成
-    deps: [build]
-    cmds:
-      - echo "配布用パッケージを作成中..."
-      - |
-        if [ "$(uname)" = "Darwin" ]; then
-          echo "macOS用のDMGを作成中..."
-          # DMG作成コマンド（要追加）
-          echo "TODO: DMG作成実装"
-        else
-          echo "現在のプラットフォームではパッケージ作成未対応"
-        fi
+      - cargo test
 
   # フロントエンド依存関係インストール
-  frontend:install:
-    desc: フロントエンドの依存関係をインストール
-    dir: frontend
-    cmds:
-      - bun install
-
-  # 依存関係の一括インストール
   install:
     desc: 全ての依存関係をインストール
     cmds:
@@ -265,7 +55,6 @@ tasks:
       - cd web && bun install
       - echo "依存関係のインストール完了"
 
-  # 短縮コマンド
   i:
     desc: 全ての依存関係をインストール（短縮版）
     cmds:
@@ -277,7 +66,6 @@ tasks:
     cmds:
       - echo "既存のnode_modulesを削除中..."
       - rm -rf frontend/node_modules web/node_modules
-      - echo "bun.lockbを削除中..."
       - rm -f frontend/bun.lockb web/bun.lockb
       - echo "クリーンインストール実行中..."
       - cd frontend && bun install
@@ -292,25 +80,6 @@ tasks:
       - cd frontend && bun update
       - echo "Webオーバーレイの依存関係を更新中..."
       - cd web && bun update
+      - echo "Rust依存関係を更新中..."
+      - cargo update
       - echo "依存関係の更新完了"
-
-  # 依存関係の確認
-  deps:
-    desc: インストール済みの依存関係を確認
-    cmds:
-      - echo "=== Frontend Dependencies ==="
-      - cd frontend && bun pm ls
-      - echo ""
-      - echo "=== Web Dependencies ==="
-      - cd web && bun pm ls
-
-  # バージョン情報表示
-  version:
-    desc: アプリケーションのバージョン情報を表示
-    cmds:
-      - |
-        if [ -f build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay ]; then
-          ./build/bin/twitch-overlay.app/Contents/MacOS/twitch-overlay --version
-        else
-          echo "バージョン: 開発版"
-        fi
