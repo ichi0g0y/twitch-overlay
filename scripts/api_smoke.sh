@@ -90,7 +90,7 @@ check_endpoint GET  "/api/settings/status"                  "200"     json
 check_endpoint GET  "/api/settings/auth/status"             "200"     json
 check_endpoint GET  "/api/settings/overlay"                 "200"     json
 check_endpoint GET  "/api/settings/font/file"               "200,404" text
-check_endpoint POST "/api/settings/font/preview"            "501"     json "{\"text\":\"hello\"}"
+check_endpoint POST "/api/settings/font/preview"            "200,400" json "{\"text\":\"hello\"}"
 
 # Music/cache/chat/logs
 check_endpoint GET  "/api/music/state"                      "200"     json

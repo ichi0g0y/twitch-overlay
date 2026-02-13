@@ -14,11 +14,11 @@
   - 印刷: スキャン/テスト/再接続/USB列挙は実装済み。**非DryRunの実印刷経路**は未完。
   - 画像: text/message/clock/qr/compose モジュールが追加済み。
 
-## 3. 現時点のブロッカー
-1. `task dev` / `task dev:quick` がバイナリ曖昧性で失敗しうる。
-2. `/api/printer/test-print` は DryRun 以外で 501 を返す。
-3. `/api/settings/font/preview` は 501（未実装明示）。
-4. EventSub受信後の個別処理が4種中心で、残りイベントは汎用ログ寄り。
+## 3. 現時点のブロッカー（2026-02-13 更新）
+1. `task dev` / `task dev:quick` のバイナリ曖昧性: 解消済み。
+2. `/api/printer/test-print` の非DryRun 501: 解消済み。
+3. `/api/settings/font/preview` の 501: 解消済み。
+4. EventSub 11種の副作用不足: 解消済み。
 
 ## 4. 今スプリントの実行項目（優先順）
 
@@ -28,8 +28,8 @@
   - `DRY_RUN_MODE=true task dev:quick` で起動エラーにならない。
 
 ### Sprint-2: 印刷実処理の閉塞解消（P1）
-- [ ] `/api/printer/test-print` の非DryRun経路を実装。
-- [ ] `services/print_queue.rs` の BLE TODO を解消（エンコード→送信）。
+- [x] `/api/printer/test-print` の非DryRun経路を実装。
+- [x] `services/print_queue.rs` の BLE TODO を解消（エンコード→送信）。
 - 対象:
   - `src-tauri/src/server/api/printer.rs`
   - `src-tauri/src/services/print_queue.rs`
@@ -39,8 +39,8 @@
   - 失敗時は JSON エラーを返し、ログに原因が残る。
 
 ### Sprint-3: EventSub処理の機能等価化（P1）
-- [ ] 11イベントそれぞれの処理方針を `eventsub_handler.rs` に実装。
-- [ ] 必要なイベントをDB更新・WS通知・（必要なら）通知キューへ接続。
+- [x] 11イベントそれぞれの処理方針を `eventsub_handler.rs` に実装。
+- [x] 必要なイベントをDB更新・WS通知・（必要なら）通知キューへ接続。
 - 対象:
   - `src-tauri/src/eventsub_handler.rs`
   - `src-tauri/src/services/*`（必要箇所のみ）
@@ -48,8 +48,8 @@
   - 11種イベントが「受信しただけ」ではなく、Go版相当の副作用を持つ。
 
 ### Sprint-4: UI補完（P2）
-- [ ] `font preview` API 実装（501解消）。
-- [ ] 通知ウィンドウ（WebviewWindow）作成/表示/位置反映を接続。
+- [x] `font preview` API 実装（501解消）。
+- [x] 通知ウィンドウ（WebviewWindow）作成/表示/位置反映を接続。
 - 対象:
   - `src-tauri/src/server/api/font.rs`
   - `src-tauri/src/notification/window.rs`

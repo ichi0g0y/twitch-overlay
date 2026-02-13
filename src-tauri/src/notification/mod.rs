@@ -23,6 +23,10 @@ pub async fn initialize(state: &SharedState) {
         return;
     }
 
+    if let Err(e) = window::ensure_window(state) {
+        tracing::warn!("Failed to initialize notification window: {e}");
+    }
+
     queue::start_worker(state.clone()).await;
     tracing::info!("Notification system initialized");
 }

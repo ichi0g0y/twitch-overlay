@@ -57,6 +57,11 @@ impl SharedState {
         }
     }
 
+    /// Get a clone of the Tauri AppHandle when available.
+    pub fn app_handle(&self) -> Option<tauri::AppHandle> {
+        self.inner.app_handle.get().cloned()
+    }
+
     pub fn server_port(&self) -> u16 {
         // Read from config; fallback to 8080.
         self.inner

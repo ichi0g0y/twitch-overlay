@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::printer;
+use crate::services::printer_pipeline;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 
@@ -175,13 +176,14 @@ pub async fn reconnect_printer(State(state): State<SharedState>) -> ApiResult {
 
 /// POST /api/printer/test-print
 pub async fn test_print(State(state): State<SharedState>, Json(_body): Json<Value>) -> ApiResult {
-    let (dry_run_mode, mut printer_type, printer_address, usb_printer_name) = {
+    let (dry_run_mode, mut printer_type, printer_address, usb_printer_name, rotate_print) = {
         let config = state.config().await;
         (
             config.dry_run_mode,
             config.printer_type.clone(),
             config.printer_address.clone(),
             config.usb_printer_name.clone(),
+            config.rotate_print,
         )
     };
 
@@ -205,10 +207,33 @@ pub async fn test_print(State(state): State<SharedState>, Json(_body): Json<Valu
         })));
     }
 
-    Err(err_json(
-        501,
-        "Printing pipeline is not yet integrated (set DRY_RUN_MODE=true for safe verification)",
-    ))
+    let width = catprinter::PRINT_WIDTH;
+    let bitmap = printer_pipeline::generate_test_bitmap(width);
+
+    let print_result = match printer_type.as_str() {
+        "usb" => {
+            printer_pipeline::print_bitmap_usb(&usb_printer_name, &bitmap, width, rotate_print)
+                .await
+        }
+        "bluetooth" => {
+            printer_pipeline::print_bitmap_bluetooth(&printer_address, &bitmap, width, rotate_print)
+                .await
+        }
+        _ => Err(format!("Unsupported printer type: {printer_type}")),
+    };
+
+    match print_result {
+        Ok(()) => Ok(Json(json!({
+            "success": true,
+            "message": "Test print sent",
+            "dry_run": false,
+            "printer_type": printer_type,
+        }))),
+        Err(err) => {
+            printer::mark_error(err.clone()).await;
+            Err(err_json(500, &err))
+        }
+    }
 }
 
 /// GET /api/printer/system-printers
