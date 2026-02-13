@@ -9,7 +9,7 @@ use serde_json::json;
 use tokio::sync::{RwLock, mpsc};
 
 use crate::app::SharedState;
-use crate::services::printer;
+use crate::services::printer_pipeline;
 
 /// Maximum number of queued print jobs.
 const QUEUE_CAPACITY: usize = 100;
@@ -19,6 +19,8 @@ const QUEUE_CAPACITY: usize = 100;
 pub struct PrintJob {
     /// Monochrome image ready for the thermal printer.
     pub mono_image: Vec<u8>,
+    /// Bitmap width (pixels). Defaults to 384 when set to 0.
+    pub mono_width: u16,
     /// Color image for FAX storage (optional).
     pub color_image: Option<Vec<u8>>,
     /// Description for logging.
@@ -131,26 +133,31 @@ async fn execute_print(state: &SharedState, job: &PrintJob) -> Result<(), String
     };
     let address = config.printer_address.clone();
     let usb_name = config.usb_printer_name.clone();
+    let rotate_print = config.rotate_print;
     drop(config);
+
+    let width = if job.mono_width == 0 {
+        catprinter::PRINT_WIDTH
+    } else {
+        job.mono_width
+    };
 
     match printer_type.as_str() {
         "usb" => {
             if usb_name.is_empty() {
                 return Err("USB printer name not configured".into());
             }
-            // Calculate media size: 53mm width, height proportional to image
-            let width_mm = 53.0f32;
-            let height_mm = (job.mono_image.len() as f32 / 384.0) * 53.0 / 384.0;
-            let height_mm = height_mm.max(10.0);
-            printer::print_via_usb(&usb_name, &job.mono_image, width_mm, height_mm).await
+            printer_pipeline::print_bitmap_usb(&usb_name, &job.mono_image, width, rotate_print)
+                .await
         }
-        _ => {
+        "bluetooth" => {
             if address.is_empty() {
                 return Err("Bluetooth printer address not configured".into());
             }
-            // TODO: BLE print pipeline — encode with protocol, send via BLE
-            Err("BLE print pipeline not yet integrated (use USB or dry-run mode)".into())
+            printer_pipeline::print_bitmap_bluetooth(&address, &job.mono_image, width, rotate_print)
+                .await
         }
+        _ => Err(format!("Unsupported printer type: {printer_type}")),
     }
 }
 

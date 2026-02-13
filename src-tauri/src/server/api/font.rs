@@ -1,17 +1,20 @@
 //! Font management API.
 
+use ab_glyph::FontRef;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, State};
 use axum::http::{StatusCode, header};
+use base64::Engine;
 use serde_json::{Value, json};
 
 use crate::app::SharedState;
 use crate::services::font::FontService;
 
-use super::{err_json, not_implemented};
+use super::err_json;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
+const DEFAULT_PREVIEW_TEXT: &str = "サンプルテキスト Sample Text 123";
 
 /// POST /api/settings/font – Upload custom font
 pub async fn upload_font(State(state): State<SharedState>, mut multipart: Multipart) -> ApiResult {
@@ -76,9 +79,45 @@ pub async fn get_font_data(
 }
 
 /// POST /api/settings/font/preview
-pub async fn preview_font(
-    State(_state): State<SharedState>,
-    Json(_body): Json<Value>,
-) -> ApiResult {
-    Err(not_implemented("Font preview API"))
+pub async fn preview_font(State(state): State<SharedState>, Json(body): Json<Value>) -> ApiResult {
+    let text = body
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+        .if_empty(DEFAULT_PREVIEW_TEXT);
+
+    let svc = FontService::new(state.data_dir().clone());
+    let font_data = svc
+        .get_font_data()
+        .map_err(|e| err_json(400, &format!("Failed to load custom font: {e}")))?;
+
+    let font = FontRef::try_from_slice(&font_data)
+        .map_err(|_| err_json(400, "Invalid font data (failed to parse TTF/OTF)"))?;
+
+    let preview_img = image_processor::clock::generate_preview_image(&text, &font);
+    let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+    preview_img
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| err_json(500, &format!("Failed to encode preview image: {e}")))?;
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    Ok(Json(
+        json!({ "image": format!("data:image/png;base64,{encoded}") }),
+    ))
+}
+
+trait EmptyToDefault {
+    fn if_empty(self, default: &'static str) -> String;
+}
+
+impl EmptyToDefault for String {
+    fn if_empty(self, default: &'static str) -> String {
+        if self.is_empty() {
+            default.to_string()
+        } else {
+            self
+        }
+    }
 }
