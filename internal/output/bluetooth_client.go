@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"git.massivebox.net/massivebox/go-catprinter"
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/status"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/status"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +19,10 @@ var isReconnecting bool
 var hasInitialPrintBeenDone bool
 
 func SetupBluetoothClient() (*catprinter.Client, error) {
+	if err := ensureBluetoothSafeToUse(); err != nil {
+		return nil, err
+	}
+
 	// 既存のクライアントがある場合は完全リセット（真のKeepAliveのため）
 	if latestPrinter != nil {
 		logger.Info("Resetting printer client for proper keep-alive")
@@ -54,7 +58,7 @@ func SetupBluetoothClient() (*catprinter.Client, error) {
 
 	// 新規クライアント作成
 	logger.Info("Creating new printer client")
-	instance, err := catprinter.NewClient()
+	instance, err := newCatPrinterClientWithRetry()
 	if err != nil {
 		return nil, err
 	}
@@ -232,8 +236,12 @@ func shouldForceBluetoothReset(err error) bool {
 func SetupBluetoothScannerClient() (*catprinter.Client, error) {
 	logger.Info("Creating scanner client (independent from main connection)")
 
+	if err := ensureBluetoothSafeToUse(); err != nil {
+		return nil, err
+	}
+
 	// 新規クライアント作成（既存の接続に影響しない）
-	instance, err := catprinter.NewClient()
+	instance, err := newCatPrinterClientWithRetry()
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +276,10 @@ func ReconnectBluetoothPrinter(address string) error {
 
 	// 新規クライアント作成
 	logger.Info("Creating new printer client for reconnection")
-	client, err := catprinter.NewClient()
+	if err := ensureBluetoothSafeToUse(); err != nil {
+		return err
+	}
+	client, err := newCatPrinterClientWithRetry()
 	if err != nil {
 		logger.Error("Failed to create new client", zap.Error(err))
 		return err

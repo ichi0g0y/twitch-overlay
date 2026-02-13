@@ -2,22 +2,23 @@ package twitcheventsub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/notification"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/types"
 	"github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/notification"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/types"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +34,33 @@ var (
 	rewardQueueCancel context.CancelFunc // ワーカー停止用
 	rewardQueueCtx    context.Context    // ワーカー用context
 )
+
+const chatBotUserID = "774281749"
+
+func buildLanguageDetectionMessage(fragments []twitch.ChatMessageFragment, fallback string) string {
+	var builder strings.Builder
+	hasText := false
+	hasEmote := false
+	for _, fragment := range fragments {
+		if fragment.Type == "text" {
+			builder.WriteString(fragment.Text)
+			hasText = true
+			continue
+		}
+		if fragment.Type == "emote" {
+			hasEmote = true
+		}
+	}
+
+	plain := strings.TrimSpace(builder.String())
+	if plain == "" {
+		if hasEmote && !hasText {
+			return ""
+		}
+		return fallback
+	}
+	return plain
+}
 
 // StartRewardQueueWorker はリワードイベント処理ワーカーを起動する
 // アプリケーション起動時に一度だけ呼ばれる
@@ -127,6 +155,67 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 
 	// フラグメント情報を構築（通知用）
 	fragments := buildFragmentsForNotification(message.Message.Fragments)
+	messageID := message.MessageId
+
+	if messageID != "" {
+		exists, err := localdb.ChatMessageExistsByMessageID(messageID)
+		if err != nil {
+			logger.Warn("Failed to check chat message duplication", zap.Error(err))
+		} else if exists {
+			logger.Debug("Duplicate chat message detected, skipping", zap.String("message_id", messageID))
+			return
+		}
+	}
+
+	avatarURL := ""
+	if message.Chatter.ChatterUserId != "" {
+		if cachedAvatar, err := localdb.GetLatestChatAvatar(message.Chatter.ChatterUserId); err == nil && cachedAvatar != "" {
+			avatarURL = cachedAvatar
+		} else if avatar, err := getUserAvatar(message.Chatter.ChatterUserId); err == nil {
+			avatarURL = avatar
+		} else if err != nil {
+			logger.Debug("Failed to get chat avatar", zap.Error(err))
+		}
+	}
+
+	fragmentsJSON := ""
+	if len(fragments) > 0 {
+		if encoded, err := json.Marshal(fragments); err == nil {
+			fragmentsJSON = string(encoded)
+		} else {
+			logger.Warn("Failed to encode chat fragments", zap.Error(err))
+		}
+	}
+
+	translationText := ""
+	translationStatus := ""
+	translationLang := ""
+
+	inserted, err := localdb.AddChatMessage(localdb.ChatMessageRow{
+		MessageID:         messageID,
+		UserID:            message.Chatter.ChatterUserId,
+		Username:          message.Chatter.ChatterUserName,
+		Message:           message.Message.Text,
+		FragmentsJSON:     fragmentsJSON,
+		AvatarURL:         avatarURL,
+		Translation:       translationText,
+		TranslationStatus: translationStatus,
+		TranslationLang:   translationLang,
+		CreatedAt:         time.Now().Unix(),
+	})
+	if err != nil {
+		logger.Warn("Failed to store chat message", zap.Error(err))
+	}
+	if messageID != "" && !inserted {
+		logger.Debug("Duplicate chat message detected, skipping broadcast",
+			zap.String("message_id", messageID))
+		return
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -7).Unix()
+	if err := localdb.CleanupChatMessagesBefore(cutoff); err != nil {
+		logger.Warn("Failed to cleanup chat history", zap.Error(err))
+	}
 
 	// 通知をキューに追加（フラグメント付き）
 	notification.EnqueueNotificationWithFragments(
@@ -134,6 +223,23 @@ func HandleChannelChatMessage(message twitch.EventChannelChatMessage) {
 		message.Message.Text,
 		fragments,
 	)
+
+	// サイドバー用にチャットメッセージをブロードキャスト
+	broadcast.Send(map[string]interface{}{
+		"type": "chat-message",
+		"data": map[string]interface{}{
+			"username":          message.Chatter.ChatterUserName,
+			"userId":            message.Chatter.ChatterUserId,
+			"messageId":         messageID,
+			"message":           message.Message.Text,
+			"fragments":         fragments,
+			"avatarUrl":         avatarURL,
+			"translation":       translationText,
+			"translationStatus": translationStatus,
+			"translationLang":   translationLang,
+			"timestamp":         time.Now().Format(time.RFC3339),
+		},
+	})
 
 	logger.Debug("Chat message processed",
 		zap.String("user", message.Chatter.ChatterUserName),

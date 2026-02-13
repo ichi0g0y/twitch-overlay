@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -93,6 +93,10 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		} else {
 			logger.Info("Secret setting updated", zap.String("key", key))
 		}
+
+		switch key {
+		default:
+		}
 	}
 
 	// 設定変更後にenv.Valueを再読み込み
@@ -103,18 +107,18 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// PRINTER_ADDRESSが変更された場合は再接続を試みる（Bluetoothのみ）
 	if newAddress, hasPrinterAddress := req["PRINTER_ADDRESS"]; hasPrinterAddress && newAddress != "" && env.Value.PrinterType == "bluetooth" {
 		logger.Info("Printer address changed, attempting reconnection", zap.String("new_address", newAddress))
-		
+
 		// 新しいアドレスで再接続（goroutineで非同期実行）
 		go func() {
 			// パニックからの回復処理
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("Panic during printer reconnection", 
+					logger.Error("Panic during printer reconnection",
 						zap.Any("panic", r),
 						zap.String("address", newAddress))
 				}
 			}()
-			
+
 			// 既存の接続をリセット（StopBluetoothClientでBLEデバイスごと解放）
 			func() {
 				defer func() {
@@ -124,15 +128,15 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 				}()
 				output.StopBluetoothClient()
 			}()
-			
+
 			time.Sleep(500 * time.Millisecond) // 少し待機
-			
+
 			c, err := output.SetupBluetoothClient()
 			if err != nil {
 				logger.Error("Failed to setup printer after settings change", zap.Error(err))
 				return
 			}
-			
+
 			err = output.ConnectBluetoothPrinter(c, newAddress)
 			if err != nil {
 				logger.Error("Failed to reconnect to printer with new address", zap.String("address", newAddress), zap.Error(err))
@@ -141,7 +145,7 @@ func handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
-	
+
 	// Note: KeepAlive functionality has been removed for simplicity
 	// Reconnection can be done manually via the web interface
 

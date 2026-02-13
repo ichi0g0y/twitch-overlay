@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -168,6 +168,7 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		('TICKER_NOTICE_FONT_SIZE', '16', 'overlay', false, 'ティッカーお知らせ文のフォントサイズ（px）'),
 		('TICKER_NOTICE_ALIGN', 'center', 'overlay', false, 'ティッカーお知らせ文の配置'),
 		('OVERLAY_CARDS_EXPANDED', '{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}', 'overlay', false, 'カードの折りたたみ状態'),
+		('OVERLAY_CARDS_LAYOUT', '{"left":["musicPlayer","fax","clock"],"right":["rewardCount","lottery"]}', 'overlay', false, 'カードの配置状態'),
 		('OVERLAY_DEBUG_ENABLED', 'false', 'overlay', false, 'デバッグ情報表示の有効/無効')`)
 	if err != nil {
 		logger.Error("Failed to insert default overlay settings", zap.Error(err))
@@ -220,6 +221,24 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 	// lottery_participantsテーブルを追加（プレゼントルーレット参加者管理）
 	if err := SetupLotteryParticipantsTable(db); err != nil {
 		return nil, err
+	}
+
+	// chat_messagesテーブルを追加（コメント欄履歴）
+	if err := SetupChatMessagesTable(db); err != nil {
+		return nil, err
+	}
+
+	// word_filter_wordsテーブルを追加（不適切語フィルタ）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS word_filter_words (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		language TEXT NOT NULL,
+		word TEXT NOT NULL,
+		type TEXT NOT NULL CHECK(type IN ('bad', 'good')),
+		UNIQUE(language, word, type)
+	)`)
+	if err != nil {
+		logger.Error("Failed to create word_filter_words table", zap.Error(err))
+		return nil, fmt.Errorf("failed to create word_filter_words table: %w", err)
 	}
 
 	return db, nil

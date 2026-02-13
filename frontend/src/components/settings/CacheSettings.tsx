@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { GetCacheSettings, UpdateCacheSettings, GetCacheStats, ClearAllCache, RunCacheCleanup } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 
 interface CacheSettings {
   expiry_days: number;
@@ -56,7 +56,9 @@ export const CacheSettings: React.FC = () => {
 
   const loadSettings = async () => {
     try {
-      const result = await GetCacheSettings();
+      const response = await fetch(buildApiUrl('/api/cache/settings'));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json();
       setSettings(result as CacheSettings);
       setError(null);
     } catch (err) {
@@ -68,7 +70,9 @@ export const CacheSettings: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const result = await GetCacheStats();
+      const response = await fetch(buildApiUrl('/api/cache/stats'));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json();
       setStats(result as CacheStats);
     } catch (err) {
       console.error('統計情報の読み込みに失敗:', err);
@@ -84,7 +88,12 @@ export const CacheSettings: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await UpdateCacheSettings(settings);
+      const response = await fetch(buildApiUrl('/api/cache/settings'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSuccess('設定を保存しました');
       await loadStats(); // 設定変更後に統計情報を更新
     } catch (err) {
@@ -101,7 +110,8 @@ export const CacheSettings: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await ClearAllCache();
+      const response = await fetch(buildApiUrl('/api/cache/clear'), { method: 'POST' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSuccess('キャッシュをクリアしました');
       await loadStats();
     } catch (err) {
@@ -116,7 +126,8 @@ export const CacheSettings: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await RunCacheCleanup();
+      const response = await fetch(buildApiUrl('/api/cache/cleanup'), { method: 'POST' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSuccess('期限切れキャッシュを削除しました');
       await loadStats();
     } catch (err) {

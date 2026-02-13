@@ -3,7 +3,7 @@ import { buildApiUrl } from '../../utils/api';
 import MusicUploadModal from './MusicUploadModal';
 import { Button } from '../ui/button';
 import { Upload, Plus, Trash2, Music as MusicIcon, ChevronLeft, ChevronRight, AlertTriangle, ListPlus } from 'lucide-react';
-import type { Track, Playlist } from '../../types/music';
+import type { Track, Playlist } from '@shared/types/music';
 
 const MusicManagerEmbed = () => {
   const [tracks, setTracks] = useState<Track[]>([]);

@@ -6,12 +6,13 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.uber.org/zap"
@@ -41,6 +42,9 @@ var (
 	queueProcessorRunning bool
 	queueProcessorMutex   sync.Mutex
 	queueProcessorDone    chan struct{}
+	overwriteTimerMu      sync.Mutex
+	overwriteTimer        *time.Timer
+	overwriteSeq          uint64
 )
 
 // Initialize initializes the notification manager with Wails app reference
@@ -68,6 +72,12 @@ func startQueueProcessor() {
 	for {
 		select {
 		case notification := <-notificationQueue:
+			if getNotificationDisplayMode() != "queue" {
+				logger.Debug("Notification mode is overwrite, dropping queued notification",
+					zap.String("username", notification.Username))
+				continue
+			}
+
 			// キューから通知を取り出す
 			logger.Info("Processing queued notification",
 				zap.String("username", notification.Username),
@@ -76,6 +86,7 @@ func startQueueProcessor() {
 				zap.Int("queue_size", len(notificationQueue)))
 
 			// 通知を表示（アバターURL付き）
+			stopOverwriteTimer()
 			ShowChatNotificationWithFragmentsAndAvatar(notification.Username, notification.Message, notification.Fragments, notification.AvatarURL)
 
 			// 設定から表示秒数を取得
@@ -87,6 +98,10 @@ func startQueueProcessor() {
 			time.Sleep(displayDuration)
 
 			// 通知ウィンドウを非表示にする
+			if getNotificationDisplayMode() != "queue" {
+				logger.Info("Notification mode changed, skipping hide")
+				continue
+			}
 			Close()
 			logger.Info("Notification hidden after display duration")
 
@@ -116,15 +131,22 @@ func EnqueueNotificationWithFragments(username, message string, fragments []Frag
 // EnqueueNotificationWithFragmentsAndAvatar は通知をキューに追加する（フラグメント+アバター付き）
 // この関数を呼び出すと、キュー処理goroutineが順番に通知を表示する
 func EnqueueNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if wailsApp == nil {
-		logger.Error("Notification manager not initialized")
-		return
-	}
-
 	// 通知が無効な場合はスキップ
 	if !isNotificationEnabled() {
 		logger.Debug("Notification is disabled, skipping",
 			zap.String("username", username))
+		return
+	}
+
+	// Wails無し（WebUI/headless）でも通知をWebSocketへ流す
+	if wailsApp == nil {
+		broadcastChatNotification(username, message, fragments, avatarURL)
+		return
+	}
+
+	if getNotificationDisplayMode() == "overwrite" {
+		ShowChatNotificationWithFragmentsAndAvatar(username, message, fragments, avatarURL)
+		scheduleOverwriteHide()
 		return
 	}
 
@@ -175,6 +197,50 @@ func getDisplayDuration() time.Duration {
 	}
 
 	return time.Duration(duration) * time.Second
+}
+
+// getNotificationDisplayMode returns notification mode ("queue" or "overwrite").
+func getNotificationDisplayMode() string {
+	db := localdb.GetDB()
+	if db == nil {
+		return "queue"
+	}
+
+	settingsManager := settings.NewSettingsManager(db)
+	mode, _ := settingsManager.GetRealValue("NOTIFICATION_DISPLAY_MODE")
+	if mode == "" {
+		return "queue"
+	}
+	if mode != "queue" && mode != "overwrite" {
+		return "queue"
+	}
+	return mode
+}
+
+func scheduleOverwriteHide() {
+	duration := getDisplayDuration()
+	seq := atomic.AddUint64(&overwriteSeq, 1)
+	overwriteTimerMu.Lock()
+	if overwriteTimer != nil {
+		overwriteTimer.Stop()
+	}
+	overwriteTimer = time.AfterFunc(duration, func() {
+		if atomic.LoadUint64(&overwriteSeq) != seq {
+			return
+		}
+		Close()
+	})
+	overwriteTimerMu.Unlock()
+}
+
+func stopOverwriteTimer() {
+	atomic.AddUint64(&overwriteSeq, 1)
+	overwriteTimerMu.Lock()
+	if overwriteTimer != nil {
+		overwriteTimer.Stop()
+		overwriteTimer = nil
+	}
+	overwriteTimerMu.Unlock()
 }
 
 // CreateNotificationWindow creates the notification window in hidden state
@@ -311,15 +377,16 @@ func ShowChatNotificationWithFragments(username, message string, fragments []Fra
 
 // ShowChatNotificationWithFragmentsAndAvatar shows a chat notification window with fragments and avatar
 func ShowChatNotificationWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if wailsApp == nil {
-		logger.Error("Notification manager not initialized")
-		return
-	}
-
 	// 通知が無効な場合はスキップ
 	if !isNotificationEnabled() {
 		logger.Debug("Notification is disabled, skipping",
 			zap.String("username", username))
+		return
+	}
+
+	// Wails無し（WebUI/headless）でも通知をWebSocketへ流す
+	if wailsApp == nil {
+		broadcastChatNotification(username, message, fragments, avatarURL)
 		return
 	}
 
@@ -366,24 +433,21 @@ func updateWindowContentWithFragments(username, message string, fragments []Frag
 // updateWindowContentWithFragmentsAndAvatar updates the content of existing notification window with fragments and avatar
 // Note: This should only be called after WindowRuntimeReady event or when window already exists
 func updateWindowContentWithFragmentsAndAvatar(username, message string, fragments []FragmentInfo, avatarURL string) {
-	if notificationWindow == nil {
-		logger.Warn("updateWindowContent: notification window is nil")
-		return
-	}
+	broadcastChatNotification(username, message, fragments, avatarURL)
+}
 
+func broadcastChatNotification(username, message string, fragments []FragmentInfo, avatarURL string) {
 	// Get font size from settings
 	fontSize := getNotificationFontSize()
 
-	logger.Info("Updating notification window content",
+	logger.Info("Broadcasting chat notification via WebSocket",
 		zap.String("username", username),
 		zap.String("message", message),
 		zap.Int("fragments_count", len(fragments)),
 		zap.String("avatar_url", avatarURL),
-		zap.Int("font_size", fontSize))
-
-	// Broadcast notification via WebSocket to all connected clients
-	// This uses the same WebSocket connection as the settings window
-	// Using broadcast.Send() to avoid circular dependency
+		zap.Int("font_size", fontSize),
+		zap.Bool("wails_enabled", wailsApp != nil),
+		zap.Bool("window_created", notificationWindow != nil))
 
 	payload := map[string]interface{}{
 		"type":     "chat-notification",
@@ -403,8 +467,6 @@ func updateWindowContentWithFragmentsAndAvatar(username, message string, fragmen
 	}
 
 	broadcast.Send(payload)
-
-	logger.Info("Notification broadcast via WebSocket")
 }
 
 // getNotificationFontSize は設定から通知のフォントサイズを取得する

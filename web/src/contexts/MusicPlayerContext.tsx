@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect } from 'react';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 import { getWebSocketClient } from '../utils/websocket';
 import { useSettings } from './SettingsContext';
-import type { Track, MusicPlayerState } from '../types/music';
+import type { Track, MusicPlayerState } from '@shared/types/music';
 
 interface MusicPlayerContextValue extends MusicPlayerState {
   play: () => void;

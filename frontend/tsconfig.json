@@ -22,11 +22,13 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@shared/*": ["../shared/src/*"]
     }
   },
   "include": [
-    "src"
+    "src",
+    "../shared/src"
   ],
   "references": [
     {

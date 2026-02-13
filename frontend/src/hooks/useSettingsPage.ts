@@ -1,15 +1,5 @@
-import React, { createContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import {
-  DeleteFont, GenerateFontPreview, GetAllSettings, GetAuthURL, GetFeatureStatus,
-  GetPrinterStatus, GetServerPort, GetSystemPrinters, ReconnectPrinter,
-  ResetNotificationWindowPosition,
-  ScanBluetoothDevices,
-  TestNotification,
-  TestPrint,
-  UpdateSettings, UploadFont
-} from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
-import { Browser, Events } from '@wailsio/runtime';
 import { useSettings } from '../contexts/SettingsContext';
 import {
   AuthStatus,
@@ -17,22 +7,47 @@ import {
   FeatureStatus, PrinterStatusInfo,
   StreamStatus,
   SystemPrinter,
-  TestResponse,
   TwitchUserInfo, UpdateSettingsRequest
 } from '../types';
-import { buildApiUrl, buildApiUrlAsync } from '../utils/api';
+import { buildApiUrl } from '../utils/api';
+import { getWebSocketClient } from '../utils/websocket';
 
 const SETTINGS_TAB_KEY = 'settingsPage.activeTab';
+const ALLOWED_TABS = new Set(['general', 'mic', 'twitch', 'printer', 'music', 'overlay', 'logs', 'cache', 'api']);
 
 export const SettingsPageContext = createContext<ReturnType<typeof useSettingsPage> | null>(null);
+
+const readErrorMessage = async (response: Response): Promise<string> => {
+  const fallback = `HTTP ${response.status}`;
+  try {
+    const text = await response.text();
+    if (!text) return fallback;
+    try {
+      const data = JSON.parse(text) as { detail?: string; error?: string; message?: string };
+      const detail = data.detail || data.error || data.message;
+      if (detail) {
+        return `HTTP ${response.status}: ${detail}`;
+      }
+    } catch {
+      // ignore json parse errors
+    }
+    return `HTTP ${response.status}: ${text}`;
+  } catch {
+    return fallback;
+  }
+};
 
 export const useSettingsPage = () => {
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      return localStorage.getItem(SETTINGS_TAB_KEY) || 'general';
+      const stored = localStorage.getItem(SETTINGS_TAB_KEY);
+      if (stored && ALLOWED_TABS.has(stored)) {
+        return stored;
+      }
     } catch {
-      return 'general';
+      // ignore storage errors
     }
+    return 'general';
   });
 
   // Core state
@@ -49,7 +64,6 @@ export const useSettingsPage = () => {
   const [reconnectingPrinter, setReconnectingPrinter] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
   const [testingNotification, setTestingNotification] = useState(false);
-  const [resettingNotificationPosition, setResettingNotificationPosition] = useState(false);
   const [verifyingTwitch, setVerifyingTwitch] = useState(false);
   const [webServerError, setWebServerError] = useState<{ error: string; port: number } | null>(null);
   const [webServerPort, setWebServerPort] = useState<number>(8080);
@@ -60,6 +74,8 @@ export const useSettingsPage = () => {
   const [previewText, setPreviewText] = useState<string>('サンプルテキスト Sample Text 123\nフォントプレビュー 🎨');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const settingsRef = useRef<Record<string, any>>({});
+  const unsavedChangesRef = useRef<UpdateSettingsRequest>({});
 
   // Bluetooth related
   const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>([]);
@@ -72,6 +88,26 @@ export const useSettingsPage = () => {
 
   // Show/hide secrets
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    unsavedChangesRef.current = unsavedChanges;
+  }, [unsavedChanges]);
+
+  const getSettingValueLive = useCallback((key: string): string => {
+    const pending = unsavedChangesRef.current;
+    if (Object.prototype.hasOwnProperty.call(pending, key)) {
+      return String((pending as any)[key] ?? '');
+    }
+    return String(settingsRef.current[key]?.value ?? '');
+  }, []);
+
+  const getSettingValue = (key: string): string => {
+    return (key in unsavedChanges) ? unsavedChanges[key] : (settings[key]?.value || '');
+  };
 
   // Overlay settings
   const { settings: overlaySettings, updateSettings: updateOverlaySettings } = useSettings();
@@ -107,32 +143,36 @@ export const useSettingsPage = () => {
   // Core functions
   const fetchAllSettings = async () => {
     try {
-      const allSettings = await GetAllSettings();
-      const formattedSettings: Record<string, any> = {};
-      for (const [key, value] of Object.entries(allSettings)) {
-        formattedSettings[key] = {
-          key: key,
-          value: value,
-          type: 'normal',
-          required: false,
-          description: '',
-          has_value: value !== null && value !== undefined && value !== ''
-        };
+      const response = await fetch(buildApiUrl('/api/settings/v2'));
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
       }
-      setSettings(formattedSettings);
+      const payload = await response.json();
+      const nextSettings = payload?.settings || {};
+      setSettings(nextSettings);
+      setFeatureStatus(payload?.status || null);
 
-      const status = await GetFeatureStatus();
-      setFeatureStatus(status as FeatureStatus);
+      // Prefer the port we are actually connected to.
+      const portFromLocation = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
+      if (!Number.isNaN(portFromLocation) && portFromLocation > 0) {
+        setWebServerPort(portFromLocation);
+      } else if (payload?.status?.webserver_port) {
+        setWebServerPort(Number(payload.status.webserver_port));
+      }
     } catch (err: any) {
       console.error('[fetchAllSettings] Failed to fetch settings:', err);
       toast.error('設定の取得に失敗しました: ' + err.message);
     }
   };
 
+  // moved below handleSettingChange to avoid TDZ issues
+
   const fetchAuthStatus = async () => {
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/settings/auth/status`);
+      const response = await fetch(buildApiUrl('/api/settings/auth/status'));
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       const data: AuthStatus = await response.json();
       setAuthStatus(data);
     } catch (err) {
@@ -142,8 +182,7 @@ export const useSettingsPage = () => {
 
   const fetchStreamStatus = async (showToast = false) => {
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/stream/status`);
+      const response = await fetch(buildApiUrl('/api/stream/status'));
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: StreamStatus = await response.json();
       setStreamStatus(data);
@@ -157,17 +196,21 @@ export const useSettingsPage = () => {
 
   const fetchPrinterStatus = async () => {
     try {
-      const status = await GetPrinterStatus();
+      const response = await fetch(buildApiUrl('/api/printer/status'));
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const status = await response.json();
       const printerType = status.printer_type || 'bluetooth';
-      const printerAddress = status.address || '';
+      const printerAddress = status.printer_address || '';
       const usbPrinterName = status.usb_printer_name || '';
-      const configured = printerType === 'usb' ? !!usbPrinterName : !!printerAddress;
+      const configured = Boolean(status.configured) || (printerType === 'usb' ? !!usbPrinterName : !!printerAddress);
       setPrinterStatusInfo({
-        connected: status.connected || false,
+        connected: Boolean(status.connected),
         printer_address: printerAddress,
         printer_type: printerType,
         usb_printer_name: usbPrinterName,
-        dry_run_mode: false,
+        dry_run_mode: Boolean(status.dry_run_mode),
         configured
       });
     } catch (err) {
@@ -180,6 +223,19 @@ export const useSettingsPage = () => {
     const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
     setUnsavedChanges(prev => ({ ...prev, [key]: stringValue }));
 
+    // Browser notifications require an explicit user gesture to request permission.
+    if (key === 'NOTIFICATION_ENABLED' && value === true && typeof window !== 'undefined') {
+      try {
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {
+            // ignore
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       handleAutoSave(key, stringValue);
@@ -188,38 +244,76 @@ export const useSettingsPage = () => {
 
   const handleAutoSave = async (key: string, value: string) => {
     try {
-      await UpdateSettings({ [key]: value });
+      const response = await fetch(buildApiUrl('/api/settings/v2'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      if (payload?.status) {
+        setFeatureStatus(payload.status);
+      }
+      const updates: Record<string, string> = {};
+      if (payload?.settings && typeof payload.settings === 'object') {
+        for (const [k, v] of Object.entries(payload.settings as Record<string, any>)) {
+          if (typeof v === 'string') {
+            updates[k] = v;
+            continue;
+          }
+          if (v && typeof v === 'object' && 'value' in v) {
+            updates[k] = String((v as any).value ?? '');
+          }
+        }
+      }
+      if (Object.keys(updates).length === 0) {
+        updates[key] = value;
+      }
+      applySavedSettings(updates);
 
       // OVERLAY_CARDS_EXPANDED以外の設定のみトーストを表示
       if (key !== 'OVERLAY_CARDS_EXPANDED') {
         toast.success(`設定を保存しました: ${key}`);
       }
-
-      setSettings(prev => ({
-        ...prev,
-        [key]: { ...prev[key], value: value }
-      }));
-      setUnsavedChanges(prev => {
-        const updated = { ...prev };
-        delete updated[key];
-        return updated;
-      });
     } catch (err: any) {
       console.error(`[handleAutoSave] Failed to save ${key}:`, err);
       toast.error('設定の保存に失敗しました: ' + err.message);
     }
   };
 
-  const getSettingValue = (key: string): string => {
-    return (key in unsavedChanges) ? unsavedChanges[key] : (settings[key]?.value || '');
+  const applySavedSettings = (updates: Record<string, string>) => {
+    setSettings(prev => {
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(updates)) {
+        const existing = next[key];
+        next[key] = {
+          key,
+          value,
+          type: existing?.type || 'normal',
+          required: existing?.required || false,
+          description: existing?.description || '',
+          has_value: value !== '',
+        };
+      }
+      return next;
+    });
+    setUnsavedChanges(prev => {
+      const updated = { ...prev };
+      for (const key of Object.keys(updates)) {
+        delete updated[key];
+      }
+      return updated;
+    });
   };
 
   const getBooleanValue = (key: string): boolean => getSettingValue(key) === 'true';
 
   const handleTwitchAuth = async () => {
     try {
-      const authUrl = await GetAuthURL();
-      Browser.OpenURL(authUrl);
+      // Open the backend auth endpoint in a new tab.
+      window.open('/auth', '_blank', 'noopener,noreferrer');
       toast.info('ブラウザでTwitchにログインしてください');
       setTimeout(async () => {
         await fetchAuthStatus();
@@ -238,8 +332,10 @@ export const useSettingsPage = () => {
   const verifyTwitchConfig = async () => {
     setVerifyingTwitch(true);
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/verify`);
+      const response = await fetch(buildApiUrl('/api/twitch/verify'));
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       const data: TwitchUserInfo = await response.json();
       setTwitchUserInfo(data);
       if (data.verified) {
@@ -255,7 +351,10 @@ export const useSettingsPage = () => {
   const handlePrinterReconnect = async () => {
     setReconnectingPrinter(true);
     try {
-      await ReconnectPrinter();
+      const response = await fetch(buildApiUrl('/api/printer/reconnect'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       toast.success('プリンターに再接続しました');
       await fetchPrinterStatus();
     } catch (err: any) {
@@ -268,7 +367,10 @@ export const useSettingsPage = () => {
   const handleTestPrint = async () => {
     setTestingPrinter(true);
     try {
-      TestPrint();
+      const response = await fetch(buildApiUrl('/api/printer/test-print'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       toast.success('テストプリントを送信しました');
     } catch (err: any) {
       toast.error(`テストプリントエラー: ${err.message}`);
@@ -280,24 +382,21 @@ export const useSettingsPage = () => {
   const handleTestNotification = async () => {
     setTestingNotification(true);
     try {
-      await TestNotification();
-      toast.success('テスト通知を送信しました');
+      if (!('Notification' in window)) {
+        throw new Error('このブラウザは通知APIに対応していません');
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        throw new Error('通知が許可されていません');
+      }
+      new Notification('Twitch Overlay', {
+        body: 'テスト通知だす',
+      });
+      toast.success('ブラウザ通知を送信しました');
     } catch (err: any) {
       toast.error(`テスト通知エラー: ${err.message}`);
     } finally {
       setTestingNotification(false);
-    }
-  };
-
-  const handleResetNotificationPosition = async () => {
-    setResettingNotificationPosition(true);
-    try {
-      await ResetNotificationWindowPosition();
-      toast.success('通知ウィンドウの位置をリセットしました');
-    } catch (err: any) {
-      toast.error(`位置リセットエラー: ${err.message}`);
-    } finally {
-      setResettingNotificationPosition(false);
     }
   };
 
@@ -310,30 +409,31 @@ export const useSettingsPage = () => {
     }
     setUploadingFont(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = reader.result?.toString().split(',')[1];
-          if (!base64) throw new Error('Failed to read file');
-          await UploadFont(file.name, base64);
-          toast.success(`フォント「${file.name}」をアップロードしました`);
-          await fetchAllSettings();
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        } catch (err: any) {
-          toast.error('フォントのアップロードに失敗しました: ' + err.message);
-        } finally {
-          setUploadingFont(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
+      const form = new FormData();
+      form.append('font', file);
+      const response = await fetch(buildApiUrl('/api/settings/font'), {
+        method: 'POST',
+        body: form,
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      toast.success(`フォント「${file.name}」をアップロードしました`);
+      await fetchAllSettings();
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err: any) {
+      toast.error('フォントのアップロードに失敗しました: ' + err.message);
+    } finally {
       setUploadingFont(false);
     }
   };
 
   const handleDeleteFont = async () => {
     try {
-      await DeleteFont();
+      const response = await fetch(buildApiUrl('/api/settings/font'), { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       toast.success('フォントを削除しました');
       handleSettingChange('FONT_FILENAME', '');
       await fetchAllSettings();
@@ -344,9 +444,17 @@ export const useSettingsPage = () => {
 
   const handleFontPreview = async () => {
     try {
-      const image = await GenerateFontPreview(previewText);
-      if (image) {
-        setPreviewImage(image);
+      const response = await fetch(buildApiUrl('/api/settings/font/preview'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: previewText }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      if (payload?.image) {
+        setPreviewImage(payload.image);
         toast.success('プレビューを生成しました');
       }
     } catch (err: any) {
@@ -354,24 +462,42 @@ export const useSettingsPage = () => {
     }
   };
 
+  // Wailsの埋め込みWebView(独自scheme)でも、実サーバーURLを開けるようにする
+  const resolveExternalBaseUrl = useCallback((): string => {
+    if (typeof window === 'undefined') {
+      return `http://localhost:${webServerPort}`;
+    }
+    const proto = window.location.protocol;
+    if (proto === 'http:' || proto === 'https:') {
+      return window.location.origin;
+    }
+    return `http://localhost:${webServerPort}`;
+  }, [webServerPort]);
+
+	  const openExternal = useCallback((path: string) => {
+	    try {
+	      const base = resolveExternalBaseUrl();
+	      const url = new URL(path, base).toString();
+	      window.open(url, '_blank', 'noopener,noreferrer');
+	    } catch (error) {
+	      console.error('[openExternal] Failed:', error);
+	    }
+	  }, [resolveExternalBaseUrl]);
+
+	  const handleOpenPresent = async () => {
+	    openExternal('/overlay/present');
+	  };
+
+  const handleOpenPresentDebug = async () => {
+    openExternal('/overlay/present?debug=true');
+  };
+
   const handleOpenOverlay = async () => {
-    const port = await GetServerPort();
-    Browser.OpenURL(`http://localhost:${port}/`);
+    openExternal('/overlay/');
   };
 
   const handleOpenOverlayDebug = async () => {
-    const port = await GetServerPort();
-    Browser.OpenURL(`http://localhost:${port}/?debug=true`);
-  };
-
-  const handleOpenPresent = async () => {
-    const port = await GetServerPort();
-    Browser.OpenURL(`http://localhost:${port}/present`);
-  };
-
-  const handleOpenPresentDebug = async () => {
-    const port = await GetServerPort();
-    Browser.OpenURL(`http://localhost:${port}/present?debug=true`);
+    openExternal('/overlay/?debug=true');
   };
 
   // Bluetooth device functions
@@ -387,12 +513,17 @@ export const useSettingsPage = () => {
   const handleScanDevices = async () => {
     setScanning(true);
     try {
-      const devices = await ScanBluetoothDevices();
-      const bluetoothDevices: BluetoothDevice[] = devices.map(d => ({
-        mac_address: d.mac_address as string,
-        name: d.name as string,
-        last_seen: d.last_seen as string
-      }));
+      const response = await fetch(buildApiUrl('/api/printer/scan'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      const rawDevices = Array.isArray(payload?.Devices) ? payload.Devices : payload?.devices;
+      const bluetoothDevices: BluetoothDevice[] = Array.isArray(rawDevices) ? rawDevices.map((d: any) => ({
+        mac_address: d.mac_address || d.MACAddress,
+        name: d.name || d.Name,
+        last_seen: d.last_seen || d.LastSeen,
+      })) : [];
 
       const currentAddress = getSettingValue('PRINTER_ADDRESS');
       let updatedDevices = [...bluetoothDevices];
@@ -436,8 +567,11 @@ export const useSettingsPage = () => {
 
     setTesting(true);
     try {
-      // Wails バインディング経由で TestPrint() を直接呼び出し
-      await TestPrint();
+      // Use test-print as a pragmatic connectivity check (prints a small clock).
+      const response = await fetch(buildApiUrl('/api/printer/test-print'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       toast.success('プリンターとの接続に成功しました');
     } catch (err: any) {
       toast.error('接続テスト失敗: ' + err.message);
@@ -449,9 +583,14 @@ export const useSettingsPage = () => {
   const handleRefreshSystemPrinters = async () => {
     setLoadingSystemPrinters(true);
     try {
-      const printers = await GetSystemPrinters();
-      setSystemPrinters(printers || []);
-      if (printers && printers.length > 0) {
+      const response = await fetch(buildApiUrl('/api/printer/system-printers'));
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      const printers = Array.isArray(payload?.printers) ? payload.printers : [];
+      setSystemPrinters(printers);
+      if (printers.length > 0) {
         toast.success(`${printers.length}台のプリンターが見つかりました`);
       } else {
         toast.info('システムプリンターが見つかりませんでした');
@@ -499,7 +638,7 @@ export const useSettingsPage = () => {
   const sendMusicControlCommand = async (command: string, data?: any) => {
     try {
       setIsControlDisabled(true);
-      const url = await buildApiUrlAsync(`/api/music/control/${command}`);
+      const url = buildApiUrl(`/api/music/control/${command}`);
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -526,26 +665,47 @@ export const useSettingsPage = () => {
     fetchAllSettings();
     fetchAuthStatus();
 
-    const unsubscribePrinter = Events.On('printer_connected', () => {
-      fetchAllSettings();
-      fetchPrinterStatus();
-    });
+    let unsubscribePrinterConnected: (() => void) | undefined;
+    let unsubscribePrinterDisconnected: (() => void) | undefined;
+    let unsubscribeChatNotification: (() => void) | undefined;
+    try {
+      const ws = getWebSocketClient();
+      ws.connect().catch(() => {
+        // ignore
+      });
+      unsubscribePrinterConnected = ws.on('printer_connected', () => {
+        fetchAllSettings();
+        fetchPrinterStatus();
+      });
+      unsubscribePrinterDisconnected = ws.on('printer_disconnected', () => {
+        fetchAllSettings();
+        fetchPrinterStatus();
+      });
+      unsubscribeChatNotification = ws.on('chat-notification', (data: any) => {
+        try {
+          if (typeof window === 'undefined') return;
+          if (!('Notification' in window)) return;
+          if (getSettingValueLive('NOTIFICATION_ENABLED') !== 'true') return;
+          if (Notification.permission !== 'granted') return;
 
-    const unsubscribeWebError = Events.On('webserver_error', (data: { error: string; port: number }) => {
-      setWebServerError(data);
-      toast.error(`Webサーバーの起動に失敗しました: ${data.error}`);
-    });
-
-    const unsubscribeWebStarted = Events.On('webserver_started', (data: { port: number }) => {
-      setWebServerError(null);
-      setWebServerPort(data.port);
-      toast.success(`Webサーバーがポート ${data.port} で起動しました`);
-    });
+          const title = data?.username ? String(data.username) : 'Twitch Overlay';
+          const body = data?.message ? String(data.message) : '';
+          const options: NotificationOptions = {};
+          if (body) options.body = body;
+          if (data?.avatarUrl) options.icon = String(data.avatarUrl);
+          new Notification(title, options);
+        } catch (error) {
+          console.error('[SettingsPage] Failed to show browser notification:', error);
+        }
+      });
+    } catch {
+      // ignore
+    }
 
     return () => {
-      unsubscribePrinter();
-      unsubscribeWebError();
-      unsubscribeWebStarted();
+      unsubscribePrinterConnected?.();
+      unsubscribePrinterDisconnected?.();
+      unsubscribeChatNotification?.();
     };
   }, []);
 
@@ -592,7 +752,6 @@ export const useSettingsPage = () => {
     reconnectingPrinter,
     testingPrinter,
     testingNotification,
-    resettingNotificationPosition,
     verifyingTwitch,
     webServerError,
     webServerPort,
@@ -612,15 +771,14 @@ export const useSettingsPage = () => {
     handlePrinterReconnect,
     handleTestPrint,
     handleTestNotification,
-    handleResetNotificationPosition,
-    handleFontUpload,
-    handleDeleteFont,
-    handleFontPreview,
-    handleOpenOverlay,
-    handleOpenOverlayDebug,
-    handleOpenPresent,
-    handleOpenPresentDebug,
-    handleTokenRefresh,
+	    handleFontUpload,
+	    handleDeleteFont,
+      handleFontPreview,
+      handleOpenPresent,
+      handleOpenPresentDebug,
+      handleOpenOverlay,
+      handleOpenOverlayDebug,
+      handleTokenRefresh,
 
     // Bluetooth related
     bluetoothDevices,

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -124,13 +124,13 @@ var DefaultSettings = map[string]Setting{
 		Key: "AUTO_DRY_RUN_WHEN_OFFLINE", Value: "false", Type: SettingTypeNormal, Required: false,
 		Description: "Automatically enable dry-run mode when stream is offline",
 	},
-	
+
 	// サーバー設定
 	"SERVER_PORT": {
 		Key: "SERVER_PORT", Value: "8080", Type: SettingTypeNormal, Required: false,
 		Description: "Web server port for OBS overlay",
 	},
-	
+
 	// フォント設定
 	"FONT_FILENAME": {
 		Key: "FONT_FILENAME", Value: "", Type: SettingTypeNormal, Required: false,
@@ -153,6 +153,10 @@ var DefaultSettings = map[string]Setting{
 	"WINDOW_HEIGHT": {
 		Key: "WINDOW_HEIGHT", Value: "768", Type: SettingTypeNormal, Required: false,
 		Description: "Window height",
+	},
+	"WINDOW_FULLSCREEN": {
+		Key: "WINDOW_FULLSCREEN", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Window fullscreen state",
 	},
 	"WINDOW_SCREEN_HASH": {
 		Key: "WINDOW_SCREEN_HASH", Value: "", Type: SettingTypeNormal, Required: false,
@@ -237,8 +241,236 @@ var DefaultSettings = map[string]Setting{
 		Description: "Reward count display position (left or right)",
 	},
 	"OVERLAY_CARDS_EXPANDED": {
-		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
+		Key: "OVERLAY_CARDS_EXPANDED", Value: `{"musicPlayer":true,"fax":true,"clock":true,"micTranscript":true,"rewardCount":true,"lottery":true}`, Type: SettingTypeNormal, Required: false,
 		Description: "Collapsed/expanded state of overlay setting cards",
+	},
+	"OVERLAY_CARDS_LAYOUT": {
+		Key: "OVERLAY_CARDS_LAYOUT", Value: `{"left":["musicPlayer","fax","clock","micTranscript"],"right":["rewardCount","lottery"]}`, Type: SettingTypeNormal, Required: false,
+		Description: "Layout (column + order) of overlay setting cards",
+	},
+	"MIC_TRANSCRIPT_ENABLED": {
+		Key: "MIC_TRANSCRIPT_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_POSITION": {
+		Key: "MIC_TRANSCRIPT_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript position (top-left/right/center, bottom-left/right/center)",
+	},
+	"MIC_TRANSCRIPT_V_ALIGN": {
+		Key: "MIC_TRANSCRIPT_V_ALIGN", Value: "bottom", Type: SettingTypeNormal, Required: false,
+		Description: "Vertical alignment within the transcript frame (top/bottom)",
+	},
+	"MIC_TRANSCRIPT_FRAME_HEIGHT_PX": {
+		Key: "MIC_TRANSCRIPT_FRAME_HEIGHT_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Fixed frame height (px) for mic transcript overlay (0 = auto)",
+	},
+	"MIC_TRANSCRIPT_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_FONT_SIZE", Value: "20", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font size",
+	},
+	"MIC_TRANSCRIPT_MAX_LINES": {
+		Key: "MIC_TRANSCRIPT_MAX_LINES", Value: "3", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript max lines",
+	},
+	"MIC_TRANSCRIPT_MAX_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_MAX_WIDTH_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Max width (px) for mic transcript overlay (0 = unlimited)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_SPEECH_LANGUAGE", Value: "ja", Type: SettingTypeNormal, Required: false,
+		Description: "Web Speech API language code for mic transcript sender (e.g. ja/en/ko)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_ENABLED": {
+		Key: "MIC_TRANSCRIPT_SPEECH_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable mic capture in WebUI (persisted; auto-start on reload when possible)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS", Value: "750", Type: SettingTypeNormal, Required: false,
+		Description: "Web Speech API short pause (ms) to force stop and flush final result (0 = disabled)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS", Value: "200", Type: SettingTypeNormal, Required: false,
+		Description: "Throttle interval (ms) for interim transcript sending (0 = no throttle)",
+	},
+	"MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED": {
+		Key: "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", Value: "true", Type: SettingTypeNormal, Required: false,
+		Description: "Use dual SpeechRecognition instances to reduce gaps",
+	},
+	"MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS": {
+		Key: "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS", Value: "100", Type: SettingTypeNormal, Required: false,
+		Description: "Restart delay (ms) for Web Speech API recognition",
+	},
+	"MIC_TRANSCRIPT_BOUYOMI_ENABLED": {
+		Key: "MIC_TRANSCRIPT_BOUYOMI_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable BouyomiChan integration",
+	},
+	"MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED": {
+		Key: "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable content filter (anti_sexual) for mic transcript / translations",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_ENABLED": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_ENABLED", Value: "false", Type: SettingTypeNormal, Required: false,
+		Description: "Enable translation for mic transcript overlay",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_MODE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_MODE", Value: "off", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript translation mode (off/chrome)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_LANGUAGE", Value: "en", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for mic transcript translation (Chrome language code, e.g. en/zh/ko)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_POSITION": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_POSITION", Value: "bottom-left", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript translation position (top-left/right/center, bottom-left/right/center)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Max width (px) for mic transcript translation overlay (0 = unlimited)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for mic transcript translation",
+	},
+	"MIC_TRANSCRIPT_LINE_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LINE_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript line display duration (seconds)",
+	},
+	"MIC_TRANSCRIPT_LAST_TTL_SECONDS": {
+		Key: "MIC_TRANSCRIPT_LAST_TTL_SECONDS", Value: "8", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript last line display duration (seconds, 0 = infinite)",
+	},
+	"MIC_TRANSCRIPT_TEXT_ALIGN": {
+		Key: "MIC_TRANSCRIPT_TEXT_ALIGN", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Text alignment for mic transcript overlay (left/center/right, empty = auto)",
+	},
+	"MIC_TRANSCRIPT_WHITE_SPACE": {
+		Key: "MIC_TRANSCRIPT_WHITE_SPACE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "CSS white-space for mic transcript overlay (e.g. '', nowrap, pre-line, pre-wrap)",
+	},
+	"MIC_TRANSCRIPT_BACKGROUND_COLOR": {
+		Key: "MIC_TRANSCRIPT_BACKGROUND_COLOR", Value: "transparent", Type: SettingTypeNormal, Required: false,
+		Description: "Background color for overlay (transparent or hex like #00ff00)",
+	},
+	"MIC_TRANSCRIPT_TIMER_MS": {
+		Key: "MIC_TRANSCRIPT_TIMER_MS", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Clear mic transcript text after inactivity (ms, 0 = disabled)",
+	},
+	"MIC_TRANSCRIPT_INTERIM_MARKER_LEFT": {
+		Key: "MIC_TRANSCRIPT_INTERIM_MARKER_LEFT", Value: " << ", Type: SettingTypeNormal, Required: false,
+		Description: "Left marker for interim (not-final) transcript",
+	},
+	"MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT": {
+		Key: "MIC_TRANSCRIPT_INTERIM_MARKER_RIGHT", Value: " >>", Type: SettingTypeNormal, Required: false,
+		Description: "Right marker for interim (not-final) transcript",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_1_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_1_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between transcript and translation1 (px)",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_2_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_2_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between translation1 and translation2 (px)",
+	},
+	"MIC_TRANSCRIPT_LINE_SPACING_3_PX": {
+		Key: "MIC_TRANSCRIPT_LINE_SPACING_3_PX", Value: "0", Type: SettingTypeNormal, Required: false,
+		Description: "Line spacing between translation2 and translation3 (px)",
+	},
+	"MIC_TRANSCRIPT_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript text color (hex)",
+	},
+	"MIC_TRANSCRIPT_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Mic transcript font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation1 font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for translation2 (empty = disabled)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE", Value: "", Type: SettingTypeNormal, Required: false,
+		Description: "Target language for translation3 (empty = disabled)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for translation2",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_SIZE", Value: "16", Type: SettingTypeNormal, Required: false,
+		Description: "Font size for translation3",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION2_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation2 font-family",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_TEXT_COLOR", Value: "#ffffff", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 text color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_STROKE_COLOR", Value: "#000000", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 stroke color (hex)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_STROKE_WIDTH_PX", Value: "6", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 stroke width (px)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_WEIGHT", Value: "900", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 font weight (CSS numeric weight)",
+	},
+	"MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY": {
+		Key: "MIC_TRANSCRIPT_TRANSLATION3_FONT_FAMILY", Value: "Noto Sans JP", Type: SettingTypeNormal, Required: false,
+		Description: "Translation3 font-family",
 	},
 
 	// プレゼントルーレット設定
@@ -324,6 +556,10 @@ var DefaultSettings = map[string]Setting{
 		Key: "NOTIFICATION_DISPLAY_DURATION", Value: "5", Type: SettingTypeNormal, Required: false,
 		Description: "Notification display duration in seconds",
 	},
+	"NOTIFICATION_DISPLAY_MODE": {
+		Key: "NOTIFICATION_DISPLAY_MODE", Value: "queue", Type: SettingTypeNormal, Required: false,
+		Description: "Notification display mode (queue/overwrite)",
+	},
 	"NOTIFICATION_FONT_SIZE": {
 		Key: "NOTIFICATION_FONT_SIZE", Value: "14", Type: SettingTypeNormal, Required: false,
 		Description: "Notification window font size in pixels",
@@ -337,7 +573,7 @@ type FeatureStatus struct {
 	PrinterConnected  bool     `json:"printer_connected"`
 	MissingSettings   []string `json:"missing_settings"`
 	Warnings          []string `json:"warnings"`
-	ServiceMode       bool     `json:"service_mode"`  // systemdサービスとして実行されているか
+	ServiceMode       bool     `json:"service_mode"` // systemdサービスとして実行されているか
 }
 
 func (sm *SettingsManager) CheckFeatureStatus() (*FeatureStatus, error) {
@@ -487,7 +723,7 @@ func (sm *SettingsManager) MigrateFromEnv() error {
 
 	if migrated > 0 {
 		logger.Info("Migration completed", zap.Int("migrated_count", migrated))
-		
+
 		// セキュリティ警告を表示
 		if hasSecretInEnv() {
 			logger.Warn("SECURITY WARNING: Sensitive data found in environment variables.")
@@ -535,13 +771,13 @@ func ValidateSetting(key, value string) error {
 		if value != "" {
 			// 標準的なMACアドレス形式 (AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF)
 			macMatched, _ := regexp.MatchString(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`, value)
-			
+
 			// macOS Core Bluetooth UUID形式 (32文字の16進数、ハイフンなし)
 			uuidMatched, _ := regexp.MatchString(`^[0-9A-Fa-f]{32}$`, value)
-			
+
 			// macOS UUID形式（ハイフンあり: 8-4-4-4-12）
 			uuidWithHyphenMatched, _ := regexp.MatchString(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`, value)
-			
+
 			if !macMatched && !uuidMatched && !uuidWithHyphenMatched {
 				return fmt.Errorf("invalid address format (expected MAC address or UUID)")
 			}
@@ -573,6 +809,34 @@ func ValidateSetting(key, value string) error {
 		if val, err := strconv.ParseFloat(value, 64); err != nil || val < 0.5 || val > 2.0 {
 			return fmt.Errorf("must be float between 0.5 and 2.0")
 		}
+	case "MIC_TRANSCRIPT_TRANSLATION_MODE":
+		if value != "off" && value != "chrome" {
+			return fmt.Errorf("must be 'off' or 'chrome'")
+		}
+	case "MIC_TRANSCRIPT_V_ALIGN":
+		if value != "" && value != "top" && value != "bottom" {
+			return fmt.Errorf("must be 'top' or 'bottom'")
+		}
+	case "MIC_TRANSCRIPT_FRAME_HEIGHT_PX":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 4096 {
+			return fmt.Errorf("must be integer between 0 and 4096")
+		}
+	case "MIC_TRANSCRIPT_MAX_WIDTH_PX", "MIC_TRANSCRIPT_TRANSLATION_MAX_WIDTH_PX":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 4096 {
+			return fmt.Errorf("must be integer between 0 and 4096")
+		}
+	case "MIC_TRANSCRIPT_SPEECH_SHORT_PAUSE_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 5000 {
+			return fmt.Errorf("must be integer between 0 and 5000 ms")
+		}
+	case "MIC_TRANSCRIPT_SPEECH_INTERIM_THROTTLE_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 2000 {
+			return fmt.Errorf("must be integer between 0 and 2000 ms")
+		}
+	case "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 2000 {
+			return fmt.Errorf("must be integer between 0 and 2000 ms")
+		}
 	case "TICKER_NOTICE_FONT_SIZE":
 		if val, err := strconv.Atoi(value); err != nil || val < 10 || val > 48 {
 			return fmt.Errorf("font size must be between 10 and 48 pixels")
@@ -581,7 +845,19 @@ func ValidateSetting(key, value string) error {
 		if value != "left" && value != "center" && value != "right" {
 			return fmt.Errorf("alignment must be left, center, or right")
 		}
-	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED":
+	case "NOTIFICATION_DISPLAY_MODE":
+		if value != "queue" && value != "overwrite" {
+			return fmt.Errorf("must be 'queue' or 'overwrite'")
+		}
+	case "MIC_TRANSCRIPT_LINE_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("must be integer between 1 and 300 seconds")
+		}
+	case "MIC_TRANSCRIPT_LAST_TTL_SECONDS":
+		if val, err := strconv.Atoi(value); err != nil || val < 0 || val > 300 {
+			return fmt.Errorf("must be integer between 0 and 300 seconds")
+		}
+	case "DRY_RUN_MODE", "BEST_QUALITY", "DITHER", "AUTO_ROTATE", "ROTATE_PRINT", "KEEP_ALIVE_ENABLED", "CLOCK_ENABLED", "CLOCK_SHOW_ICONS", "DEBUG_OUTPUT", "NOTIFICATION_ENABLED", "REWARD_COUNT_ENABLED", "LOTTERY_ENABLED", "LOTTERY_TICKER_ENABLED", "TICKER_NOTICE_ENABLED", "MUSIC_ENABLED", "MUSIC_AUTO_PLAY", "FAX_ENABLED", "OVERLAY_CLOCK_ENABLED", "OVERLAY_LOCATION_ENABLED", "OVERLAY_DATE_ENABLED", "OVERLAY_TIME_ENABLED", "OVERLAY_DEBUG_ENABLED", "MIC_TRANSCRIPT_SPEECH_ENABLED", "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED", "MIC_TRANSCRIPT_BOUYOMI_ENABLED", "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED":
 		// boolean値のチェック
 		if value != "true" && value != "false" {
 			return fmt.Errorf("must be 'true' or 'false'")

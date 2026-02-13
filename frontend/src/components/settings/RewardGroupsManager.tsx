@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 
 export interface RewardGroup {
   id: number;
@@ -45,8 +45,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`);
+      const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -74,8 +73,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`, {
+      const response = await fetch(buildApiUrl('/api/twitch/reward-groups'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,8 +104,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups/${groupId}`, {
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -136,8 +133,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups/${groupId}`, {
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}`), {
         method: 'DELETE',
       });
 
@@ -159,8 +155,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
     setTogglingGroupId(groupId);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups/${groupId}/toggle`, {
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}/toggle`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Wifi, Radio } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
-import * as App from '../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
 
 interface SystemStatusCardProps {
   featureStatus: FeatureStatus | null;
@@ -11,6 +10,7 @@ interface SystemStatusCardProps {
   streamStatus: StreamStatus | null;
   twitchUserInfo: TwitchUserInfo | null;
   printerStatusInfo: PrinterStatusInfo | null;
+  webServerPort?: number;
   refreshingStreamStatus: boolean;
   reconnectingPrinter: boolean;
   testingPrinter: boolean;
@@ -28,6 +28,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   streamStatus,
   twitchUserInfo,
   printerStatusInfo,
+  webServerPort,
   refreshingStreamStatus,
   reconnectingPrinter,
   testingPrinter,
@@ -38,20 +39,27 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   onPrinterReconnect,
   onTestPrint,
 }) => {
-  const [currentPort, setCurrentPort] = React.useState<number>(8080);
-
-  React.useEffect(() => {
-    App.GetServerPort()
-      .then(port => setCurrentPort(port))
-      .catch(error => console.error('Failed to get server port:', error));
-  }, []);
+  const resolvedWebServerPort = React.useMemo(() => {
+    if (typeof webServerPort === 'number' && webServerPort > 0) {
+      return webServerPort;
+    }
+    if (typeof window === 'undefined') return undefined;
+    const fromLocation = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
+    if (!Number.isNaN(fromLocation) && fromLocation > 0) {
+      return fromLocation;
+    }
+    return undefined;
+  }, [webServerPort]);
 
   if (!featureStatus) return null;
 
   return (
     <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="text-lg">システム状態</CardTitle>
+      <CardHeader className="text-left">
+        <CardTitle className="flex items-center gap-2">
+          <Wifi className="w-5 h-5 text-gray-400" />
+          システム状態
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -228,7 +236,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
               <div className="w-3 h-3 rounded-full bg-green-500" />
               <span className="font-medium dark:text-gray-200">Webサーバー</span>
               <span className="text-sm text-gray-500 dark:text-gray-400">
-                ポート {currentPort}
+                ポート {resolvedWebServerPort ?? '-'}
               </span>
             </div>
           </div>

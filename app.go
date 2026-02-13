@@ -12,27 +12,29 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ichi0g0y/twitch-overlay/internal/broadcast"
+	"github.com/ichi0g0y/twitch-overlay/internal/cache"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/faxmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/fontmanager"
+	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/music"
+	"github.com/ichi0g0y/twitch-overlay/internal/notification"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/settings"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/paths"
+	"github.com/ichi0g0y/twitch-overlay/internal/status"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitcheventsub"
+	"github.com/ichi0g0y/twitch-overlay/internal/twitchtoken"
+	"github.com/ichi0g0y/twitch-overlay/internal/webserver"
+	"github.com/ichi0g0y/twitch-overlay/internal/wordfilter"
 	twitch "github.com/joeyak/go-twitch-eventsub/v3"
-	"github.com/nantokaworks/twitch-overlay/internal/broadcast"
-	"github.com/nantokaworks/twitch-overlay/internal/cache"
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/faxmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/fontmanager"
-	"github.com/nantokaworks/twitch-overlay/internal/localdb"
-	"github.com/nantokaworks/twitch-overlay/internal/music"
-	"github.com/nantokaworks/twitch-overlay/internal/notification"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/settings"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/paths"
-	"github.com/nantokaworks/twitch-overlay/internal/status"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchapi"
-	"github.com/nantokaworks/twitch-overlay/internal/twitcheventsub"
-	"github.com/nantokaworks/twitch-overlay/internal/twitchtoken"
-	"github.com/nantokaworks/twitch-overlay/internal/webserver"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.uber.org/zap"
@@ -59,7 +61,9 @@ type Screen struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		// NOTE: 音声認識/翻訳はブラウザ（WebUI /）側で行う
+	}
 }
 
 // SetWebAssets sets the embedded web assets for the web server
@@ -97,11 +101,18 @@ func (a *App) Startup(ctx context.Context) {
 		logger.Info("Database initialized", zap.String("path", paths.GetDBPath()))
 	}
 
+	// 不適切語フィルタのデフォルトワードリストを投入
+	if err := wordfilter.SeedDefaultWords(); err != nil {
+		logger.Warn("Failed to seed word filter defaults", zap.Error(err))
+	}
+
 	// 3を超えているentry_countを3に修正（既存データの修正）
 	if err := localdb.FixEntryCountsOver3(); err != nil {
 		logger.Warn("Failed to fix entry counts over 3", zap.Error(err))
 		// エラーがあっても起動は続行
 	}
+
+	migrateLegacyTranslationSettings()
 
 	// 環境変数を読み込み（DBが初期化された後）
 	env.LoadEnv()
@@ -291,8 +302,121 @@ func (a *App) Startup(ctx context.Context) {
 	// Note: Window restoration is now handled by WindowRuntimeReady event in main.go
 }
 
+func migrateLegacyTranslationSettings() {
+	db := localdb.GetDB()
+	if db == nil {
+		return
+	}
+	manager := settings.NewSettingsManager(db)
+
+	normalizeChromeLanguageCode := func(value string) string {
+		raw := strings.TrimSpace(value)
+		if raw == "" {
+			return ""
+		}
+		normalized := strings.ToLower(raw)
+
+		// Normalize common separators and tags.
+		normalized = strings.ReplaceAll(normalized, "_", "-")
+		if strings.Contains(normalized, "-") {
+			parts := strings.Split(normalized, "-")
+			if len(parts) >= 2 {
+				// Special-case: zh-Hant variants.
+				if parts[0] == "zh" && (parts[1] == "tw" || parts[1] == "hk" || parts[1] == "hant") {
+					return "zh-Hant"
+				}
+				normalized = parts[0]
+			}
+		}
+
+		// Legacy iso639-3 and common aliases -> Chrome language codes.
+		switch normalized {
+		case "jpn", "ja":
+			return "ja"
+		case "eng", "en":
+			return "en"
+		case "zho", "cmn", "zh":
+			return "zh"
+		case "kor", "ko":
+			return "ko"
+		case "fra", "fr":
+			return "fr"
+		case "deu", "de":
+			return "de"
+		case "spa", "es":
+			return "es"
+		case "por", "pt":
+			return "pt"
+		case "rus", "ru":
+			return "ru"
+		case "ita", "it":
+			return "it"
+		case "ind", "id":
+			return "id"
+		case "tha", "th":
+			return "th"
+		case "vie", "vi":
+			return "vi"
+		case "nld", "nl":
+			return "nl"
+		case "pol", "pl":
+			return "pl"
+		case "tur", "tr":
+			return "tr"
+		case "ukr", "uk":
+			return "uk"
+		case "ell", "el":
+			return "el"
+		case "som", "so":
+			return "so"
+		}
+
+		// Keep existing value if it looks like a Chrome-friendly code.
+		if len(normalized) == 2 {
+			return normalized
+		}
+		if normalized == "zh-hant" {
+			return "zh-Hant"
+		}
+		if raw == "zh-Hant" {
+			return raw
+		}
+		return ""
+	}
+
+	migrateMode := func(key string) {
+		value, err := manager.GetRealValue(key)
+		if err != nil {
+			return
+		}
+		normalized := strings.TrimSpace(strings.ToLower(value))
+		switch normalized {
+		case "", "off", "chrome":
+			return
+		default:
+			// Unknown legacy mode -> prefer Chrome translation for browser-only flow.
+			_ = manager.SetSetting(key, "chrome")
+		}
+	}
+	migrateMode("MIC_TRANSCRIPT_TRANSLATION_MODE")
+
+	migrateLang := func(key string) {
+		value, err := manager.GetRealValue(key)
+		if err != nil {
+			return
+		}
+		next := normalizeChromeLanguageCode(value)
+		if next != "" && next != value {
+			_ = manager.SetSetting(key, next)
+		}
+	}
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION_LANGUAGE")
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION2_LANGUAGE")
+	migrateLang("MIC_TRANSCRIPT_TRANSLATION3_LANGUAGE")
+}
+
 // restoreRelativePosition restores window using relative position (fallback method)
-func (a *App) restoreRelativePosition(pos map[string]int) {
+func (a *App) restoreRelativePosition(pos map[string]int, savedFullscreen bool) {
 	logger.Info("Falling back to relative position restore",
 		zap.Int("x", pos["x"]), zap.Int("y", pos["y"]),
 		zap.Int("width", pos["width"]), zap.Int("height", pos["height"]))
@@ -305,6 +429,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 				a.mainWindow.Show()
 				logger.Info("Window shown at restored relative position")
 				a.registerWindowEventListeners()
+				a.applyFullscreenState(savedFullscreen)
 			}
 		} else {
 			logger.Warn("Saved position is invalid, centering window")
@@ -314,6 +439,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 				a.mainWindow.Show()
 				logger.Info("Window centered and shown (invalid position)")
 				a.registerWindowEventListeners()
+				a.applyFullscreenState(savedFullscreen)
 			}
 		}
 	} else {
@@ -324,6 +450,7 @@ func (a *App) restoreRelativePosition(pos map[string]int) {
 			a.mainWindow.Show()
 			logger.Info("Window centered and shown (no saved position)")
 			a.registerWindowEventListeners()
+			a.applyFullscreenState(savedFullscreen)
 		}
 	}
 }
@@ -371,6 +498,8 @@ func (a *App) restoreWindowState() {
 	absoluteXStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_X")
 	absoluteYStr, _ := settingsManager.GetRealValue("WINDOW_ABSOLUTE_Y")
 	screenIndexStr, _ := settingsManager.GetRealValue("WINDOW_SCREEN_INDEX")
+	fullscreenStr, _ := settingsManager.GetRealValue("WINDOW_FULLSCREEN")
+	savedFullscreen := parseBoolOrDefault(fullscreenStr, false)
 
 	// 画面構成が変更されているかチェック（警告のみ、復帰は続行）
 	if currentScreenHash != "" && savedScreenHash != "" && currentScreenHash != savedScreenHash {
@@ -420,6 +549,7 @@ func (a *App) restoreWindowState() {
 					a.mainWindow.Show()
 					logger.Info("Window shown at restored absolute position")
 					a.registerWindowEventListeners()
+					a.applyFullscreenState(savedFullscreen)
 				}
 			} else {
 				logger.Warn("Saved screen index no longer exists, centering window",
@@ -430,6 +560,7 @@ func (a *App) restoreWindowState() {
 					logger.Info("Calling Show() to display window (invalid screen index)")
 					a.mainWindow.Show()
 					a.registerWindowEventListeners()
+					a.applyFullscreenState(savedFullscreen)
 				}
 			}
 			return
@@ -437,7 +568,7 @@ func (a *App) restoreWindowState() {
 	}
 
 	// 絶対座標がない、またはパースに失敗した場合は相対座標にフォールバック
-	a.restoreRelativePosition(pos)
+	a.restoreRelativePosition(pos, savedFullscreen)
 	logger.Info("Window position restoration completed")
 }
 
@@ -483,6 +614,23 @@ func (a *App) registerWindowEventListeners() {
 		}
 	})
 
+	// フルスクリーン状態変更のイベントリスナー
+	a.mainWindow.OnWindowEvent(events.Common.WindowFullscreen, func(e *application.WindowEvent) {
+		if err := a.SaveWindowFullscreenState(true); err != nil {
+			logger.Error("Failed to save fullscreen state", zap.Error(err))
+		} else {
+			logger.Debug("Window fullscreen state saved")
+		}
+	})
+
+	a.mainWindow.OnWindowEvent(events.Common.WindowUnFullscreen, func(e *application.WindowEvent) {
+		if err := a.SaveWindowFullscreenState(false); err != nil {
+			logger.Error("Failed to save fullscreen state", zap.Error(err))
+		} else {
+			logger.Debug("Window fullscreen state saved")
+		}
+	})
+
 	logger.Info("Window event listeners registered")
 }
 
@@ -493,6 +641,7 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	// ウィンドウ位置を保存
 	if a.mainWindow != nil {
+		_ = a.SaveWindowFullscreenState(a.mainWindow.IsFullscreen())
 		a.mainWindow.EmitEvent("save_window_position")
 	}
 	// 保存処理を待つ
@@ -657,6 +806,17 @@ func parseIntOrDefault(s string, defaultValue int) int {
 	return v
 }
 
+func parseBoolOrDefault(s string, defaultValue bool) bool {
+	if s == "" {
+		return defaultValue
+	}
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return defaultValue
+	}
+	return v
+}
+
 // SaveWindowPosition saves the window position and size to database
 func (a *App) SaveWindowPosition(x, y, width, height int) error {
 	logger.Info("Saving window position",
@@ -698,6 +858,33 @@ func (a *App) SaveWindowPosition(x, y, width, height int) error {
 	}
 
 	return nil
+}
+
+// SaveWindowFullscreenState saves fullscreen state to database
+func (a *App) SaveWindowFullscreenState(fullscreen bool) error {
+	db := localdb.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	settingsManager := settings.NewSettingsManager(db)
+	value := "false"
+	if fullscreen {
+		value = "true"
+	}
+	return settingsManager.SetSetting("WINDOW_FULLSCREEN", value)
+}
+
+func (a *App) applyFullscreenState(savedFullscreen bool) {
+	if !savedFullscreen || a.mainWindow == nil {
+		return
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		if a.mainWindow != nil && !a.mainWindow.IsFullscreen() {
+			logger.Info("Restoring fullscreen state")
+			a.mainWindow.Fullscreen()
+		}
+	}()
 }
 
 // GetWindowPosition returns the saved window position and size
@@ -1263,33 +1450,36 @@ func (a *App) UpdateSettings(newSettings map[string]interface{}) error {
 
 		// 有効なキーかチェック
 		validKeys := map[string]bool{
-			"PRINTER_ADDRESS":               true,
-			"DEBUG_OUTPUT":                  true,
-			"DRY_RUN_MODE":                  true,
-			"BEST_QUALITY":                  true,
-			"DITHER":                        true,
-			"AUTO_ROTATE":                   true,
-			"BLACK_POINT":                   true,
-			"ROTATE_PRINT":                  true,
-			"PRINTER_TYPE":                  true,
-			"USB_PRINTER_NAME":              true,
-			"TWITCH_USER_ID":                true,
-			"CLIENT_ID":                     true,
-			"CLIENT_SECRET":                 true,
-			"TRIGGER_CUSTOM_REWORD_ID":      true,
-			"SERVER_PORT":                   true,
-			"AUTO_DRY_RUN_WHEN_OFFLINE":     true,
-			"TIMEZONE":                      true,
-			"KEEP_ALIVE_ENABLED":            true,
-			"KEEP_ALIVE_INTERVAL":           true,
-			"CLOCK_ENABLED":                 true,
-			"CLOCK_WEIGHT":                  true,
-			"CLOCK_WALLET":                  true,
-			"CLOCK_SHOW_ICONS":              true,
-			"FONT_FILENAME":                 true,
-			"NOTIFICATION_ENABLED":          true,
-			"NOTIFICATION_DISPLAY_DURATION": true,
-			"NOTIFICATION_FONT_SIZE":        true,
+			"PRINTER_ADDRESS":                     true,
+			"DEBUG_OUTPUT":                        true,
+			"DRY_RUN_MODE":                        true,
+			"BEST_QUALITY":                        true,
+			"DITHER":                              true,
+			"AUTO_ROTATE":                         true,
+			"BLACK_POINT":                         true,
+			"ROTATE_PRINT":                        true,
+			"PRINTER_TYPE":                        true,
+			"USB_PRINTER_NAME":                    true,
+			"TWITCH_USER_ID":                      true,
+			"CLIENT_ID":                           true,
+			"CLIENT_SECRET":                       true,
+			"TRIGGER_CUSTOM_REWORD_ID":            true,
+			"MIC_TRANSCRIPT_TRANSLATION_MODE":     true,
+			"MIC_TRANSCRIPT_TRANSLATION_LANGUAGE": true,
+			"SERVER_PORT":                         true,
+			"AUTO_DRY_RUN_WHEN_OFFLINE":           true,
+			"TIMEZONE":                            true,
+			"KEEP_ALIVE_ENABLED":                  true,
+			"KEEP_ALIVE_INTERVAL":                 true,
+			"CLOCK_ENABLED":                       true,
+			"CLOCK_WEIGHT":                        true,
+			"CLOCK_WALLET":                        true,
+			"CLOCK_SHOW_ICONS":                    true,
+			"FONT_FILENAME":                       true,
+			"NOTIFICATION_ENABLED":                true,
+			"NOTIFICATION_DISPLAY_DURATION":       true,
+			"NOTIFICATION_DISPLAY_MODE":           true,
+			"NOTIFICATION_FONT_SIZE":              true,
 		}
 
 		if !validKeys[dbKey] {

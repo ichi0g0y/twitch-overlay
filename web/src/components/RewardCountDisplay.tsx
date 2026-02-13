@@ -282,7 +282,7 @@ const RewardCountDisplay: React.FC = () => {
   }
 
   // カウントを配列に変換してソート（更新時刻の新しい順）
-  const countArray = Array.from(counts.values()).sort((a, b) => {
+  const countArray = Array.from(counts.values()).sort(() => {
     // 常に最新の更新を上に表示
     return 0; // 挿入順を維持（Mapは挿入順を保持）
   });

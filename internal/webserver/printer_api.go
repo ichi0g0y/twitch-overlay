@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nantokaworks/twitch-overlay/internal/env"
-	"github.com/nantokaworks/twitch-overlay/internal/output"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/env"
+	"github.com/ichi0g0y/twitch-overlay/internal/output"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -39,11 +39,17 @@ func handlePrinterScan(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Starting printer scan")
 
-	// プリンタースキャンを実行
-	c, err := output.SetupBluetoothClient()
+	// スキャン専用のクライアントをセットアップ（既存接続に影響しない）
+	c, err := output.SetupBluetoothScannerClient()
 	if err != nil {
 		logger.Error("Failed to setup scanner", zap.Error(err))
-		http.Error(w, "Failed to setup scanner", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ScanResponse{
+			Devices: []BluetoothDevice{},
+			Status:  "error",
+			Message: err.Error(),
+		})
 		return
 	}
 	defer c.Stop()
@@ -62,8 +68,14 @@ func handlePrinterScan(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logger.Error("Device scan failed", zap.Error(err))
-		response.Status = "error"
-		response.Message = err.Error()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ScanResponse{
+			Devices: []BluetoothDevice{},
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
 	} else {
 		logger.Info("Device scan completed", zap.Int("device_count", len(devices)))
 		for mac, name := range devices {

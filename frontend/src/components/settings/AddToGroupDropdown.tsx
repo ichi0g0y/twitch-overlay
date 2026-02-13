@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Loader2, Check } from 'lucide-react';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 import type { RewardGroup } from './RewardGroupsManager';
 
 interface AddToGroupDropdownProps {
@@ -46,8 +46,7 @@ export const AddToGroupDropdown: React.FC<AddToGroupDropdownProps> = ({
     setLoading(true);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`);
+      const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
 
       if (!response.ok) {
         throw new Error('グループの取得に失敗しました');
@@ -74,8 +73,7 @@ export const AddToGroupDropdown: React.FC<AddToGroupDropdownProps> = ({
     setAdding(true);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups/${groupId}/rewards`, {
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${groupId}/rewards`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

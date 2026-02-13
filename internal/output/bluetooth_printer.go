@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"git.massivebox.net/massivebox/go-catprinter"
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +33,10 @@ func NewBluetoothPrinter(config PrinterConfig) (*BluetoothPrinter, error) {
 
 // Connect はプリンターに接続する
 func (p *BluetoothPrinter) Connect() error {
+	if err := ensureBluetoothSafeToUse(); err != nil {
+		return err
+	}
+
 	// 既存のクライアントがある場合は完全リセット
 	if p.client != nil {
 		logger.Info("Resetting printer client for new connection")
@@ -49,7 +53,7 @@ func (p *BluetoothPrinter) Connect() error {
 
 	// 新規クライアント作成
 	logger.Info("Creating new printer client")
-	instance, err := catprinter.NewClient()
+	instance, err := newCatPrinterClientWithRetry()
 	if err != nil {
 		return fmt.Errorf("failed to create catprinter client: %w", err)
 	}

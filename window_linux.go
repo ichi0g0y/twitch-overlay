@@ -4,7 +4,7 @@
 package main
 
 import (
-	"github.com/nantokaworks/twitch-overlay/internal/shared/logger"
+	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 )
 
 // ScreenInfoExtended represents screen information with position

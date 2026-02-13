@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { GetServerPort } from '../../../bindings/github.com/nantokaworks/twitch-overlay/app.js';
+import { buildApiUrl } from '../../utils/api';
 import type { RewardGroup } from './RewardGroupsManager';
 
 interface AddToGroupModalProps {
@@ -39,8 +39,7 @@ export const AddToGroupModal: React.FC<AddToGroupModalProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups`);
+      const response = await fetch(buildApiUrl('/api/twitch/reward-groups'));
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -70,8 +69,7 @@ export const AddToGroupModal: React.FC<AddToGroupModalProps> = ({
     setError(null);
 
     try {
-      const port = await GetServerPort();
-      const response = await fetch(`http://localhost:${port}/api/twitch/reward-groups/${selectedGroupId}/rewards`, {
+      const response = await fetch(buildApiUrl(`/api/twitch/reward-groups/${selectedGroupId}/rewards`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

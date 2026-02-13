@@ -11,26 +11,16 @@ import { initWebSocket } from '../utils/websocket';
 import { useSettings } from '../contexts/SettingsContext';
 import type { FaxData, FaxState, ServerStatus, DynamicStyles } from '../types';
 
-// クライアントIDを生成（タブごとに一意）
-const generateClientId = (): string => {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substr(2, 9);
-  return `${timestamp}-${random}`;
-};
-
 const FaxReceiver = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isPrinterConnected, setIsPrinterConnected] = useState<boolean>(false);
   const [labelPosition, setLabelPosition] = useState<number>(0);
-  const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [, setIsAnimating] = useState<boolean>(false);
   const [faxState, setFaxState] = useState<FaxState | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
   const [indicatorAnimation, setIndicatorAnimation] = useState<'hidden' | 'entering' | 'visible' | 'exiting'>('hidden');
   const { currentFax, addToQueue, onDisplayComplete } = useFaxQueue();
-  
-  // クライアントIDを保持（コンポーネントのライフサイクル中は同じIDを使用）
-  const clientIdRef = useRef<string>(generateClientId());
-  
+
   // 処理済みメッセージIDを保持（重複処理を防ぐ）
   const processedMessageIds = useRef<Set<string>>(new Set());
   const messageIdTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -260,13 +250,15 @@ const FaxReceiver = () => {
     <div className="h-screen text-white relative overflow-hidden" style={backgroundStyle}>
       {/* 時計表示（右上） */}
       {showClock && (
-        <div className="fixed top-0 right-0 z-20">
-          <ClockDisplay
-            showLocation={showLocation}
-            showDate={showDate}
-            showTime={showTime}
-            showIcons={showClockIcons}
-          />
+        <div className="fixed top-0 right-0 z-20 flex flex-col items-end gap-2">
+          {showClock && (
+            <ClockDisplay
+              showLocation={showLocation}
+              showDate={showDate}
+              showTime={showTime}
+              showIcons={showClockIcons}
+            />
+          )}
         </div>
       )}
 

@@ -121,11 +121,6 @@ const FaxDisplay = ({ faxData, onComplete, imageType, onLabelPositionUpdate, onA
     };
   }, [imageLoaded, imageHeight, onComplete, onLabelPositionUpdate, onAnimationStateChange]);
 
-  // ease-out関数（3次ベジェ曲線）
-  const easeOut = (t: number): number => {
-    return 1 - Math.pow(1 - t, 3);
-  };
-
   // スライドアップアニメーション
   const startSlideUpAnimation = (startLabelPosition: number) => {
     // 6px/フレームで移動
