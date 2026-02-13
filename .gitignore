@@ -40,6 +40,9 @@ coverage/
 # Claude設定（ローカル）
 .claude/settings.local.json
 
+# エージェント間共有作業領域
+.context/
+
 mic-recog/build/
 mic-recog/*.spec
 
