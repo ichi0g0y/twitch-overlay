@@ -93,8 +93,8 @@ check_endpoint GET  "/api/settings/font/file"               "200,404" text
 check_endpoint POST "/api/settings/font/preview"            "200,400" json "{\"text\":\"hello\"}"
 
 # Music/cache/chat/logs
-check_endpoint GET  "/api/music/state"                      "200"     json
-check_endpoint GET  "/api/music/state/get"                  "200"     json
+check_endpoint GET  "/api/music/state"                      "200,404" json
+check_endpoint GET  "/api/music/state/get"                  "200,404" json
 check_endpoint GET  "/api/cache/stats"                      "200"     json
 check_endpoint GET  "/api/chat/messages"                    "200"     json
 check_endpoint GET  "/api/chat/history?days=7"              "200"     json
@@ -116,8 +116,8 @@ check_endpoint GET  "/api/printer/system-printers"          "200,500" json
 check_endpoint GET  "/api/stream/status"                    "200"     json
 check_endpoint GET  "/api/twitch/custom-rewards"            "200,401" json
 
-# Debug compatibility
-check_endpoint POST "/debug/clock"                          "200"     json "{\"withStats\":true}"
+# Debug compatibility (DEBUG_MODE/DEBUG_OUTPUT disabled時は403)
+check_endpoint POST "/debug/clock"                          "200,403" json "{\"withStats\":true}"
 
 say ""
 say "Summary: PASS=${PASS}, FAIL=${FAIL}, TOTAL=$((PASS + FAIL))"

@@ -148,9 +148,13 @@ fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
     let s = state.clone();
     tauri::async_runtime::spawn(async move { background::token_refresh_loop(s).await });
 
+    // Step 11: Stream status sync (startup + periodic)
+    let s = state.clone();
+    tauri::async_runtime::spawn(async move { background::stream_status_sync_loop(s).await });
+
     // Step 13: EventSub
     let s = state.clone();
-    tauri::async_runtime::spawn(async move { eventsub_handler::run(s).await });
+    tauri::async_runtime::spawn(async move { run_eventsub_handler(s).await });
 
     // Step 10: Printer KeepAlive
     let s = state.clone();
@@ -160,9 +164,23 @@ fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
     let s = state.clone();
     tauri::async_runtime::spawn(async move { services::print_queue::start_worker(s).await });
 
+    // Clock routine (hourly print)
+    let s = state.clone();
+    tauri::async_runtime::spawn(async move { services::clock_print::clock_routine_loop(s).await });
+
     // Step 14: Notification
     let s = state.clone();
-    tauri::async_runtime::spawn(async move { notification::initialize(&s).await });
+    tauri::async_runtime::spawn(async move { init_notification_system(s).await });
+}
+
+/// Public wrapper for starting the EventSub handler loop.
+pub async fn run_eventsub_handler(state: app::SharedState) {
+    eventsub_handler::run(state).await;
+}
+
+/// Public wrapper for initializing the notification system.
+pub async fn init_notification_system(state: app::SharedState) {
+    notification::initialize(&state).await;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

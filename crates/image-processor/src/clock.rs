@@ -105,6 +105,71 @@ pub fn generate_time_image_with_stats(
     DynamicImage::ImageLuma8(image::imageops::grayscale(&img))
 }
 
+/// Generate a time image with monthly Bits leaderboard (color).
+pub fn generate_time_image_with_stats_color(
+    time_str: &str,
+    leaders: &[BitsLeaderEntry],
+    font: &FontRef<'_>,
+) -> DynamicImage {
+    let title_scale = PxScale::from(DEFAULT_FONT_SIZE * 1.5);
+    let body_scale = PxScale::from(DEFAULT_FONT_SIZE);
+    let title_lh = text::line_height(font, title_scale);
+    let body_lh = text::line_height(font, body_scale);
+    let padding = 8u32;
+
+    let leader_height = if leaders.is_empty() {
+        body_lh + padding * 2
+    } else {
+        padding + (leaders.len() as u32) * (body_lh + 6) + padding
+    };
+
+    let height = padding + title_lh + padding + UNDERLINE_HEIGHT + leader_height + padding;
+    let mut img = text::blank_image(height);
+
+    // Time header
+    text::draw_centered_text(
+        &mut img,
+        font,
+        title_scale,
+        padding as i32,
+        time_str,
+        Rgba([26, 26, 26, 255]),
+    );
+
+    let mut y = padding + title_lh + padding;
+    text::draw_dashed_line(&mut img, y, UNDERLINE_HEIGHT, 8, 4);
+    y += UNDERLINE_HEIGHT + padding;
+
+    // Leaderboard entries
+    if leaders.is_empty() {
+        imageproc::drawing::draw_text_mut(
+            &mut img,
+            Rgba([90, 90, 90, 255]),
+            padding as i32,
+            y as i32,
+            body_scale,
+            font,
+            "No Bits leaderboard data",
+        );
+    } else {
+        for entry in leaders {
+            let text = format!("#{} {} - {} Bits", entry.rank, entry.user_name, entry.score);
+            imageproc::drawing::draw_text_mut(
+                &mut img,
+                Rgba([34, 34, 34, 255]),
+                padding as i32,
+                y as i32,
+                body_scale,
+                font,
+                &text,
+            );
+            y += body_lh + 6;
+        }
+    }
+
+    DynamicImage::ImageRgba8(img)
+}
+
 /// Generate a font preview image.
 pub fn generate_preview_image(sample_text: &str, font: &FontRef<'_>) -> DynamicImage {
     let scale = PxScale::from(DEFAULT_FONT_SIZE);

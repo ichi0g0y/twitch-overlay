@@ -35,13 +35,29 @@ async fn main() -> anyhow::Result<()> {
     let s = state.clone();
     tokio::spawn(async move { background::token_refresh_loop(s).await });
 
+    // Step 11: Stream status sync (startup + periodic)
+    let s = state.clone();
+    tokio::spawn(async move { background::stream_status_sync_loop(s).await });
+
+    // Step 13: EventSub
+    let s = state.clone();
+    tokio::spawn(async move { cairo_overlay_lib::run_eventsub_handler(s).await });
+
     // Step 10: Printer KeepAlive
     let s = state.clone();
     tokio::spawn(async move { background::printer_keepalive_loop(s).await });
 
+    // Clock routine (hourly print)
+    let s = state.clone();
+    tokio::spawn(async move { services::clock_print::clock_routine_loop(s).await });
+
     // Print queue worker
     let s = state.clone();
     tokio::spawn(async move { services::print_queue::start_worker(s).await });
+
+    // Step 14: Notification
+    let s = state.clone();
+    tokio::spawn(async move { cairo_overlay_lib::init_notification_system(s).await });
 
     tracing::info!(
         port = state.server_port(),

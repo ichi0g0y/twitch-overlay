@@ -1,5 +1,9 @@
 # Wails (Go) → Tauri (Rust) 移行計画
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0016-issue-tauri-migration-plan-backlog/README.md`
+
+
 - 更新日: 2026-02-12
 - 対象ブランチ: `develop`（実装は作業ブランチで進行）
 - ステータス: **移行中（約70-75%完了）**

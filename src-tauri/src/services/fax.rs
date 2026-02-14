@@ -3,10 +3,15 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, RwLock as StdRwLock};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
+type FaxStore = Arc<RwLock<HashMap<String, Fax>>>;
+
+static GLOBAL_FAX_STORES: LazyLock<StdRwLock<HashMap<String, FaxStore>>> =
+    LazyLock::new(|| StdRwLock::new(HashMap::new()));
 
 #[derive(Debug, thiserror::Error)]
 pub enum FaxError {
@@ -32,16 +37,33 @@ pub struct Fax {
 
 #[derive(Clone)]
 pub struct FaxService {
-    storage: Arc<RwLock<HashMap<String, Fax>>>,
+    storage: FaxStore,
     data_dir: PathBuf,
 }
 
 impl FaxService {
     pub fn new(data_dir: PathBuf) -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(HashMap::new())),
-            data_dir,
-        }
+        let key = data_dir.to_string_lossy().into_owned();
+        let storage = {
+            if let Some(existing) = GLOBAL_FAX_STORES
+                .read()
+                .expect("GLOBAL_FAX_STORES poisoned")
+                .get(&key)
+                .cloned()
+            {
+                existing
+            } else {
+                let mut stores = GLOBAL_FAX_STORES
+                    .write()
+                    .expect("GLOBAL_FAX_STORES poisoned");
+                stores
+                    .entry(key)
+                    .or_insert_with(|| Arc::new(RwLock::new(HashMap::new())))
+                    .clone()
+            }
+        };
+
+        Self { storage, data_dir }
     }
 
     fn output_dir(&self) -> PathBuf {

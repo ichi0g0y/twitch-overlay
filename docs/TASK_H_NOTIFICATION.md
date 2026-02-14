@@ -1,5 +1,9 @@
 # TASK H: 通知システム
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0010-issue-task-h-notification/README.md`
+
+
 - 優先度: **P2**
 - 見積: 2-3日
 - 依存: Phase C（EventSubイベント受信）

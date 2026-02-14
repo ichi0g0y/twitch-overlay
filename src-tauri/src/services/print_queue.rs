@@ -118,9 +118,14 @@ async fn should_use_dry_run(state: &SharedState) -> bool {
     if config.dry_run_mode {
         return true;
     }
-    // Auto dry-run when stream is offline (if enabled)
-    // TODO: integrate with stream status tracking
-    false
+    let auto_when_offline = config.auto_dry_run_when_offline;
+    drop(config);
+
+    auto_dry_run_from_stream(auto_when_offline, state.stream_live().await)
+}
+
+fn auto_dry_run_from_stream(auto_when_offline: bool, stream_live: Option<bool>) -> bool {
+    auto_when_offline && matches!(stream_live, Some(false))
 }
 
 /// Execute the actual printing.
@@ -171,4 +176,29 @@ fn broadcast_print_event(state: &SharedState, event_type: &str, message: &str, d
         }
     });
     let _ = state.ws_sender().send(msg.to_string());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auto_dry_run_from_stream;
+
+    #[test]
+    fn auto_dry_run_disabled_never_forces() {
+        assert!(!auto_dry_run_from_stream(false, Some(false)));
+    }
+
+    #[test]
+    fn auto_dry_run_enabled_and_offline_forces() {
+        assert!(auto_dry_run_from_stream(true, Some(false)));
+    }
+
+    #[test]
+    fn auto_dry_run_enabled_and_online_does_not_force() {
+        assert!(!auto_dry_run_from_stream(true, Some(true)));
+    }
+
+    #[test]
+    fn auto_dry_run_enabled_and_unknown_does_not_force() {
+        assert!(!auto_dry_run_from_stream(true, None));
+    }
 }

@@ -1,5 +1,9 @@
 # TASK K: 起動時初期化統合
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0013-issue-task-k-init-sequence/README.md`
+
+
 - 優先度: **P1**
 - 見積: 1日
 - 依存: Phase B, C, D, F, G, H（全ての初期化対象モジュール）

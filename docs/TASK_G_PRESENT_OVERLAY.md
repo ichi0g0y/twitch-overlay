@@ -1,5 +1,9 @@
 # TASK G: Present/Overlay整合
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0009-issue-task-g-present-overlay/README.md`
+
+
 - 優先度: **P1**
 - 見積: 1日
 - 依存: Phase C（EventSubのチャンネルポイント連携）

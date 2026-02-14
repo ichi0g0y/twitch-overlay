@@ -1,5 +1,9 @@
 # TASK L: ヘッドレスモード + 仕上げ
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0014-issue-task-l-headless-finish/README.md`
+
+
 - 優先度: **P3**
 - 見積: 1-2日
 - 依存: Phase K（初期化統合が完了していること）

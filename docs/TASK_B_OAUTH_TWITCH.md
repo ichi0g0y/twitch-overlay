@@ -1,5 +1,9 @@
 # TASK B: OAuth / Twitch復旧
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0004-issue-task-b-oauth-twitch/README.md`
+
+
 - 優先度: **P0**
 - 見積: 1-2日
 - 依存: Phase A

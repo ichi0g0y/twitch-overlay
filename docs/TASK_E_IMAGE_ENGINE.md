@@ -1,5 +1,9 @@
 # TASK E: 画像生成エンジン拡張
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0007-issue-task-e-image-engine/README.md`
+
+
 - 優先度: **P2**
 - 見積: 3-4日
 - 依存: なし（Phase Aと並列可）

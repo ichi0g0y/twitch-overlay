@@ -1,5 +1,9 @@
 # TASK J: ログ + デバッグ + SSE
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0012-issue-task-j-logs-debug-sse/README.md`
+
+
 - 優先度: **P3**
 - 見積: 1日
 - 依存: なし（他フェーズと並列可）

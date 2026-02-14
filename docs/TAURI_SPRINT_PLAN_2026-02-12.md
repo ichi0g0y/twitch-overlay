@@ -1,5 +1,9 @@
 # Tauri移行 実行スプリント計画（2026-02-12）
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0016-issue-tauri-migration-plan-backlog/README.md`
+
+
 ## 1. 目的
 `docs/TAURI_MIGRATION_PLAN.md` の中長期計画を、今すぐ実装可能な短期スプリントへ落とし込む。
 
