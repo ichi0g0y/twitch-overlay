@@ -17,7 +17,13 @@ pub async fn get_playback_state(State(state): State<SharedState>) -> ApiResult {
         .db()
         .get_playback_state()
         .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!(ps)))
+    match ps {
+        Some(playback_state) => Ok(Json(json!(playback_state))),
+        None => Err((
+            axum::http::StatusCode::NOT_FOUND,
+            Json(json!({ "error": "no saved state" })),
+        )),
+    }
 }
 
 /// POST /api/music/state/update

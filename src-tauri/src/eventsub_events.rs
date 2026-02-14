@@ -10,12 +10,14 @@ use crate::eventsub_support::{
     to_legacy_fragments, to_notification_fragments,
 };
 use crate::notification::types::NotificationType;
+use crate::services::channel_points_emote_cache;
+use crate::services::channel_points_fax;
 
 pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value) {
     match event_type {
         eventsub::EVENT_CHAT_MESSAGE => handle_chat_message(state, payload).await,
-        eventsub::EVENT_STREAM_ONLINE => handle_stream_online(state, payload),
-        eventsub::EVENT_STREAM_OFFLINE => handle_stream_offline(state, payload),
+        eventsub::EVENT_STREAM_ONLINE => handle_stream_online(state, payload).await,
+        eventsub::EVENT_STREAM_OFFLINE => handle_stream_offline(state, payload).await,
         eventsub::EVENT_REWARD_REDEMPTION => handle_reward_redemption(state, payload).await,
         eventsub::EVENT_CHANNEL_CHEER => handle_cheer(state, payload).await,
         eventsub::EVENT_CHANNEL_FOLLOW => handle_follow(state, payload).await,
@@ -43,6 +45,10 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         .and_then(|m| m.get("fragments"))
         .cloned()
         .unwrap_or(Value::Array(vec![]));
+    let learned = channel_points_emote_cache::learn_from_chat_fragments(&message_fragments).await;
+    if learned > 0 {
+        tracing::debug!(learned, "Learned chat emotes for channel points parsing");
+    }
     let fragments_json = message_fragments.to_string();
 
     let msg = overlay_db::chat::ChatMessage {
@@ -94,7 +100,8 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     .await;
 }
 
-fn handle_stream_online(state: &SharedState, payload: &Value) {
+async fn handle_stream_online(state: &SharedState, payload: &Value) {
+    state.set_stream_live(true).await;
     let msg = json!({ "is_live": true, "payload": payload });
     send_ws(state, "stream_status_changed", msg.clone());
     send_ws(state, "stream_online", msg);
@@ -104,7 +111,8 @@ fn handle_stream_online(state: &SharedState, payload: &Value) {
     );
 }
 
-fn handle_stream_offline(state: &SharedState, payload: &Value) {
+async fn handle_stream_offline(state: &SharedState, payload: &Value) {
+    state.set_stream_live(false).await;
     let msg = json!({ "is_live": false, "payload": payload });
     send_ws(state, "stream_status_changed", msg.clone());
     send_ws(state, "stream_offline", msg);
@@ -132,6 +140,10 @@ async fn handle_reward_redemption(state: &SharedState, payload: &Value) {
         if let Err(e) = state.db().increment_reward_count(&reward_id, &user_name) {
             tracing::warn!("Failed to increment reward count: {e}");
         }
+    }
+
+    if let Err(e) = channel_points_fax::process_redemption_event(state, payload).await {
+        tracing::warn!("Failed to process channel points fax print: {e}");
     }
 
     send_ws(

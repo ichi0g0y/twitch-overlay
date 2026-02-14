@@ -25,6 +25,8 @@ struct SharedStateInner {
     data_dir: PathBuf,
     /// Tauri AppHandle (set during setup, used for emit)
     app_handle: OnceLock<tauri::AppHandle>,
+    /// Last known stream live status (None = unknown)
+    stream_live: RwLock<Option<bool>>,
 }
 
 impl SharedState {
@@ -39,6 +41,7 @@ impl SharedState {
                 db,
                 data_dir,
                 app_handle: OnceLock::new(),
+                stream_live: RwLock::new(None),
             }),
         }
     }
@@ -98,5 +101,16 @@ impl SharedState {
         let mut config = self.inner.config.write().await;
         config.reload(&sm)?;
         Ok(())
+    }
+
+    /// Update the last known stream live status.
+    pub async fn set_stream_live(&self, is_live: bool) {
+        let mut status = self.inner.stream_live.write().await;
+        *status = Some(is_live);
+    }
+
+    /// Get the last known stream live status.
+    pub async fn stream_live(&self) -> Option<bool> {
+        *self.inner.stream_live.read().await
     }
 }

@@ -222,15 +222,19 @@ pub async fn stream_status(State(state): State<SharedState>) -> ApiResult {
         Ok(t) => t,
         Err(_) => return Ok(Json(json!({ "is_live": false, "viewer_count": 0 }))),
     };
-    let config = state.config().await;
-    if config.twitch_user_id.is_empty() {
+    let (client_id, twitch_user_id) = {
+        let config = state.config().await;
+        (config.client_id.clone(), config.twitch_user_id.clone())
+    };
+    if twitch_user_id.is_empty() {
         return Ok(Json(json!({ "is_live": false, "viewer_count": 0 })));
     }
-    let client = TwitchApiClient::new(config.client_id.clone());
+    let client = TwitchApiClient::new(client_id);
     let status = client
-        .get_stream_info(&token, &config.twitch_user_id)
+        .get_stream_info(&token, &twitch_user_id)
         .await
         .map_err(map_twitch_error)?;
+    state.set_stream_live(status.is_live).await;
     Ok(Json(json!({
         "is_live": status.is_live,
         "viewer_count": status.viewer_count,

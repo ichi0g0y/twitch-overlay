@@ -109,6 +109,16 @@ pub struct UserSubscription {
     pub user_login: String,
 }
 
+/// Bits leaderboard entry from GET /helix/bits/leaderboard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BitsLeaderboardEntry {
+    pub user_id: String,
+    pub user_login: String,
+    pub user_name: String,
+    pub rank: u32,
+    pub score: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -396,5 +406,21 @@ impl TwitchApiClient {
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<UserSubscription> = serde_json::from_str(&body)?;
         Ok(resp.data.into_iter().next())
+    }
+
+    /// Get bits leaderboard for the authenticated channel.
+    ///
+    /// `period` should be one of Twitch-supported values like `all`, `day`, `week`, `month`, `year`.
+    pub async fn get_bits_leaderboard(
+        &self,
+        token: &Token,
+        period: &str,
+        count: u32,
+    ) -> Result<Vec<BitsLeaderboardEntry>, TwitchError> {
+        let clamped = count.clamp(1, 100);
+        let url = format!("{HELIX_BASE}/bits/leaderboard?count={clamped}&period={period}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<BitsLeaderboardEntry> = serde_json::from_str(&body)?;
+        Ok(resp.data)
     }
 }

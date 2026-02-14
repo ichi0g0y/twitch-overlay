@@ -1,4 +1,11 @@
 pub mod cache;
+pub mod channel_points_assets;
+pub mod channel_points_emote_cache;
+pub mod channel_points_fax;
+pub mod channel_points_parse;
+pub mod clock_bits;
+pub mod clock_fax;
+pub mod clock_print;
 pub mod fax;
 pub mod font;
 pub mod log_buffer;
