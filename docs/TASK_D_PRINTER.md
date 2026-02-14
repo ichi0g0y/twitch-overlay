@@ -1,5 +1,9 @@
 # TASK D: Printer復旧
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0006-issue-task-d-printer/README.md`
+
+
 - 優先度: **P1**
 - 見積: 2-3日
 - 依存: なし（Phase Aと並列可）

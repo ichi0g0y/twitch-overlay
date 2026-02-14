@@ -1,5 +1,9 @@
 # TASK A: 検証基盤 + 互換修正
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0003-issue-task-a-compat-validation/README.md`
+
+
 - 優先度: **P0**
 - 見積: 1日
 - 依存: なし（最初に着手）

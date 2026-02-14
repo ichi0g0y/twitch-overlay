@@ -1,5 +1,9 @@
 # TASK C: EventSub実装
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0005-issue-task-c-eventsub/README.md`
+
+
 - 優先度: **P1**
 - 見積: 2-3日
 - 依存: Phase B（トークン管理必須）

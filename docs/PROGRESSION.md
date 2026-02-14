@@ -1,5 +1,9 @@
 # プレゼント抽選機能 実装計画
 
+> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
+> 移行先Issue: `issues/open/ISSUE-0015-issue-progression-lottery-migration/README.md`
+
+
 ## 概要
 
 PRESENT.mdに記載された抽選イベント機能を実装する。
