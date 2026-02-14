@@ -1,7 +1,7 @@
 # Tauri移行 実行スプリント計画（2026-02-12）
 
 > 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
-> 移行先Issue: `issues/open/ISSUE-0016-issue-tauri-migration-plan-backlog/README.md`
+> 移行先Issue: `issues/open/issue-tauri-migration-plan-backlog/README.md`
 
 
 ## 1. 目的
@@ -81,6 +81,6 @@ DRY_RUN_MODE=true task test
 ```
 
 ## 7. 更新ルール
-- 各Sprintの完了時に本ファイルのチェックボックスを更新する。
-- 大きな方針変更は `docs/TAURI_MIGRATION_PLAN.md` に反映し、
-  直近の実行順序は本ファイルを正とする。
+- 進行管理・実行順序・チェックボックス更新は `issues/` 側（`issues/open/issue-tauri-migration-plan-backlog/README.md`）を正本として更新する。
+- 本ファイルは 2026-02-12 時点の計画スナップショットとして扱い、履歴参照用途に限定する。
+- 大きな方針変更のみ `docs/TAURI_MIGRATION_PLAN.md` に反映する。
