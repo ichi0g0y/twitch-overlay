@@ -1,7 +1,7 @@
 # Tauri移行 実行スプリント計画（2026-02-12）
 
-> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
-> 移行先Issue: `issues/open/issue-tauri-migration-plan-backlog/README.md`
+> 運用メモ: 進行中タスクの正本は GitHub Issues だす。
+> 移行先Issue: https://github.com/ichi0g0y/twitch-overlay/issues/24
 
 
 ## 1. 目的
@@ -81,6 +81,6 @@ DRY_RUN_MODE=true task test
 ```
 
 ## 7. 更新ルール
-- 進行管理・実行順序・チェックボックス更新は `issues/` 側（`issues/open/issue-tauri-migration-plan-backlog/README.md`）を正本として更新する。
+- 進行管理・実行順序・チェックボックス更新は GitHub Issue 側（https://github.com/ichi0g0y/twitch-overlay/issues/24）を正本として更新する。
 - 本ファイルは 2026-02-12 時点の計画スナップショットとして扱い、履歴参照用途に限定する。
 - 大きな方針変更のみ `docs/TAURI_MIGRATION_PLAN.md` に反映する。

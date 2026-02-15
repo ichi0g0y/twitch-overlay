@@ -18,6 +18,10 @@ overlay_settings.json
 # 環境設定
 .env
 .env.local
+.envrc
+
+# Conductor / agent shared context
+.context/
 
 # 依存関係
 node_modules

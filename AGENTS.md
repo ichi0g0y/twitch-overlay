@@ -8,7 +8,7 @@
 - 共通挙動は `.ai/behavior.md` を正とする
 - 常時必読: `.ai/rules.md` / `.ai/project.md` / `.ai/workflow.md` / `.ai/behavior.md`
 - `/review-verify` 時の追加必読: `.ai/review.md` / `.ai/dev-env.md` / `.ai/git.md`
-- 手順書・計画・レビュー観点は `issues/` に集約する
+- 手順書・計画・レビュー観点は GitHub Issues に集約する
 - 作業はIssue単位でworktreeを分け、1Issue 1PRを基本に小さく進める
 
 # プロジェクト構成
