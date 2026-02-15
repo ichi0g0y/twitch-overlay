@@ -54,7 +54,10 @@ pub async fn learn_from_chat_fragments(fragments: &Value) -> usize {
         if !cache.seen_keys.contains(&key) {
             cache.seen_keys.insert(key.clone());
             cache.order.push_back(key);
-            *cache.key_counts_by_name.entry(name.to_string()).or_insert(0) += 1;
+            *cache
+                .key_counts_by_name
+                .entry(name.to_string())
+                .or_insert(0) += 1;
             learned += 1;
         }
 
@@ -164,10 +167,7 @@ mod tests {
         assert_eq!(cache.order.len(), DYNAMIC_EMOTE_LIMIT);
         assert!(!cache.seen_keys.contains(&old_key));
         assert!(cache.seen_keys.contains(&new_key));
-        assert_eq!(
-            cache.urls_by_name.get(name),
-            Some(&emote_url("new"))
-        );
+        assert_eq!(cache.urls_by_name.get(name), Some(&emote_url("new")));
         assert_eq!(cache.key_counts_by_name.get(name), Some(&1));
     }
 }
