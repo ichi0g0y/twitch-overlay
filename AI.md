@@ -83,7 +83,8 @@ Conductorで依頼する際は、依頼文に次の追加条件を含めてく�
 ```text
 - PR作成・コミット運用で重複するルールは `.ai/git.md` と `.ai/workflow.md` を参照し、そちらを優先してください。
 - PR作成に関する報告・提案・本文はすべて日本語で記述してください。
-- PRのbaseブランチはリポジトリ標準の基底ブランチにしてください。
+- PRのbaseブランチは `develop` にしてください。
+- `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、作業ブランチへ切り替えてください。
 - PR本文は日本語で、以下の見出しを含めてください:
   - 概要
   - 変更内容
@@ -93,6 +94,7 @@ Conductorで依頼する際は、依頼文に次の追加条件を含めてく�
 - 完了Issueは必ず `Closes #<issue-number>` を記載してください。
 - 参照のみのIssueは `Refs #<issue-number>` を記載してください。
 - GitHub CLI でPRを作成/更新する場合は `scripts/ghx pr ...` を使ってください。
+- `scripts/ghx pr create` では `--base develop` を省略しないでください。
 - PR作成/更新後は `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新し、`/merge` で参照できるようにしてください。
 - 実行した確認コマンド（例: task check:all, task gen:api, task gen:db）と結果を本文に明記してください。
 - 未実施の検証がある場合は「未実施項目」と理由を明記してください。
