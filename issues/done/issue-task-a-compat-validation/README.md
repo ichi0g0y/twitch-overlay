@@ -1,6 +1,6 @@
 # issue-task-a-compat-validation TASK A: 検証基盤 + 互換修正
 
-- 状態: Open
+- 状態: Done
 - 優先度: 高
 - 担当: 未定
 - 期限: 未定
@@ -70,6 +70,10 @@
 
 **対象**: printer系5エンドポイント、twitch系2エンドポイント、logs系2エンドポイント
 
+補足（2026-02-14確認）:
+- 対象9エンドポイントは現時点で実装済みで、未実装の登録ルートは確認されなかった
+- 未実装ルートを追加する場合は `src-tauri/src/server/api/mod.rs` の `not_implemented()` で `501 JSON` を返す方針とする
+
 ### A-3. `/api/present/*` 互換復元
 
 **変更対象**: `src-tauri/src/server/router.rs`
@@ -128,12 +132,12 @@ Taskfile.yml に `task test:api` として登録。
 
 ## 完了条件
 
-- [ ] `/api/nonexistent` が `404 JSON` を返す（HTML index.html ではない）
-- [ ] 未実装APIが `501 JSON` を返す
-- [ ] `/api/present/*` がGo版と同じパスで応答
-- [ ] `/api/music/state/get` が動作
-- [ ] スモークテストスクリプトが20+エンドポイントを自動検証
-- [ ] フロントエンド (frontend/, web/) でJSONパースエラーが発生しない
+- [x] `/api/nonexistent` が `404 JSON` を返す（HTML index.html ではない）
+- [x] 未実装APIが `501 JSON` を返す（※現時点は対象9エンドポイントが実装済み）
+- [x] `/api/present/*` がGo版と同じパスで応答
+- [x] `/api/music/state/get` が動作
+- [x] スモークテストスクリプトが20+エンドポイントを自動検証
+- [x] フロントエンド (frontend/, web/) でJSONパースエラーが発生しない（API応答JSONの自動パース検証で確認）
 
 ---
 
@@ -158,7 +162,7 @@ Taskfile.yml に `task test:api` として登録。
 
 ## 関連ファイル
 
-- `issues/open/issue-task-a-compat-validation/README.md`
+- `issues/done/issue-task-a-compat-validation/README.md`
 - `issues/index.md`
 
 ## 関連ドキュメント

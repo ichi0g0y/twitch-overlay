@@ -8,7 +8,6 @@ Issue IDは連番ではなく、目的が分かるkebab-caseで管理します�
 
 | ID | タイトル | 優先度 | 担当 | 期限 | 詳細 |
 | --- | --- | --- | --- | --- | --- |
-| issue-task-a-compat-validation | TASK A: 検証基盤 + 互換修正 | 高 | 未定 | 未定 | `issues/open/issue-task-a-compat-validation/README.md` |
 | issue-task-b-oauth-twitch | TASK B: OAuth / Twitch復旧 | 高 | 未定 | 未定 | `issues/open/issue-task-b-oauth-twitch/README.md` |
 | issue-task-c-eventsub | TASK C: EventSub実装 | 中 | 未定 | 未定 | `issues/open/issue-task-c-eventsub/README.md` |
 | issue-task-d-printer | TASK D: Printer復旧 | 中 | 未定 | 未定 | `issues/open/issue-task-d-printer/README.md` |
@@ -35,9 +34,9 @@ Issue IDは連番ではなく、目的が分かるkebab-caseで管理します�
 | task-docs-migration-to-issues | docs/TASK群からissues管理への移行 | 高 | 未定 | 未定 | `issues/review-waiting/task-docs-migration-to-issues/README.md` |
 | bootstrap-prompt-ops-upgrade | BOOTSTRAP準拠のAI運用アップグレード | 高 | 未定 | 未定 | `issues/review-waiting/bootstrap-prompt-ops-upgrade/README.md` |
 | issue-id-kebab-migration | Issue ID命名のkebab-case移行 | 中 | 未定 | 未定 | `issues/review-waiting/issue-id-kebab-migration/README.md` |
-
 ## Done
 
 | ID | タイトル | 優先度 | 担当 | 期限 | 詳細 |
 | --- | --- | --- | --- | --- | --- |
 | ai-instruction-issue-ops-foundation | AI指示移植とIssue運用基盤の再整備 | 高 | 未定 | 未定 | `issues/done/ai-instruction-issue-ops-foundation/README.md` |
+| issue-task-a-compat-validation | TASK A: 検証基盤 + 互換修正 | 高 | 未定 | 未定 | `issues/done/issue-task-a-compat-validation/README.md` |

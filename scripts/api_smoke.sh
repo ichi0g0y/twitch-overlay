@@ -35,20 +35,21 @@ check_endpoint() {
   local method="$1"
   local path="$2"
   local expected_codes="$3"
-  local expect_json="$4"
+  local expect_kind="$4"
   local body="${5:-}"
 
-  local tmp_file
-  tmp_file="$(mktemp)"
+  local body_file header_file
+  body_file="$(mktemp)"
+  header_file="$(mktemp)"
 
   local code
   if [[ -n "$body" ]]; then
-    code=$(curl -sS -o "$tmp_file" -w "%{http_code}" -X "$method" \
+    code=$(curl -sS -D "$header_file" -o "$body_file" -w "%{http_code}" -X "$method" \
       -H "Content-Type: application/json" \
       --data "$body" \
       "${BASE_URL}${path}" || true)
   else
-    code=$(curl -sS -o "$tmp_file" -w "%{http_code}" -X "$method" \
+    code=$(curl -sS -D "$header_file" -o "$body_file" -w "%{http_code}" -X "$method" \
       "${BASE_URL}${path}" || true)
   fi
 
@@ -61,23 +62,39 @@ check_endpoint() {
     fi
   done
 
+  local ok_content_type="true"
   local ok_json="true"
-  if [[ "$expect_json" == "json" ]]; then
-    if ! grep -Eq '^[[:space:]]*[{\[]' "$tmp_file"; then
-      ok_json="false"
+  if [[ "$expect_kind" == "json" ]]; then
+    local content_type
+    content_type="$(grep -i '^content-type:' "$header_file" | tail -n1 | cut -d: -f2- | tr -d '\r' | xargs)"
+    local content_type_lc
+    content_type_lc="$(printf '%s' "$content_type" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$content_type_lc" != application/json* ]]; then
+      ok_content_type="false"
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+      if ! jq -e . "$body_file" >/dev/null 2>&1; then
+        ok_json="false"
+      fi
+    else
+      if ! python3 -c 'import json,sys; json.load(open(sys.argv[1], "r", encoding="utf-8"))' "$body_file" >/dev/null 2>&1; then
+        ok_json="false"
+      fi
     fi
   fi
 
-  if [[ "$ok_code" == "true" && "$ok_json" == "true" ]]; then
+  if [[ "$ok_code" == "true" && "$ok_content_type" == "true" && "$ok_json" == "true" ]]; then
     PASS=$((PASS + 1))
-    say "[PASS] ${method} ${path} -> ${code}"
+    say "[PASS] ${method} ${path} -> ${code} (${expect_kind})"
   else
     FAIL=$((FAIL + 1))
-    say "[FAIL] ${method} ${path} -> ${code} (expected: ${expected_codes}, body: ${expect_json})"
-    say "       response: $(head -c 200 "$tmp_file" | tr '\n' ' ')"
+    say "[FAIL] ${method} ${path} -> ${code} (expected: ${expected_codes}, kind: ${expect_kind})"
+    say "       content-type-ok=${ok_content_type}, json-parse-ok=${ok_json}"
+    say "       response: $(head -c 200 "$body_file" | LC_ALL=C tr '\n' ' ')"
   fi
 
-  rm -f "$tmp_file"
+  rm -f "$body_file" "$header_file"
 }
 
 say "API smoke test against: ${BASE_URL}"
@@ -90,6 +107,7 @@ check_endpoint GET  "/api/settings/status"                  "200"     json
 check_endpoint GET  "/api/settings/auth/status"             "200"     json
 check_endpoint GET  "/api/settings/overlay"                 "200"     json
 check_endpoint GET  "/api/settings/font/file"               "200,404" text
+check_endpoint GET  "/api/font/data"                        "200,404" text
 check_endpoint POST "/api/settings/font/preview"            "200,400" json "{\"text\":\"hello\"}"
 
 # Music/cache/chat/logs
@@ -101,12 +119,17 @@ check_endpoint GET  "/api/chat/history?days=7"              "200"     json
 check_endpoint GET  "/api/logs?limit=10"                    "200"     json
 check_endpoint POST "/api/logs/clear"                       "200"     json
 check_endpoint GET  "/api/logs/download?format=json"        "200"     json
+check_endpoint GET  "/api/nonexistent"                      "404"     json
 
 # Present compatibility
 check_endpoint POST "/api/present/test"                     "200"     json
 check_endpoint GET  "/api/present/participants"             "200"     json
+check_endpoint POST "/api/present/start"                    "200,400" json
+check_endpoint POST "/api/present/stop"                     "200"     json
 check_endpoint POST "/api/present/lock"                     "200"     json
 check_endpoint POST "/api/present/unlock"                   "200"     json
+check_endpoint POST "/api/present/refresh-subscribers"      "200,400,401" json
+check_endpoint DELETE "/api/present/participants/smoke-user" "200,404" json
 check_endpoint POST "/api/present/clear"                    "200"     json
 
 # Printer (hardware/environment dependent)

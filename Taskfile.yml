@@ -74,6 +74,13 @@ tasks:
     cmds:
       - ./scripts/api_smoke.sh
 
+  test:api:
+    desc: API互換スモークテストを実行（dev起動後）
+    env:
+      DRY_RUN_MODE: "true"
+    cmds:
+      - ./scripts/api_smoke.sh
+
   inventory:api:
     desc: フロントエンドAPI呼び出し一覧を再生成
     cmds:
