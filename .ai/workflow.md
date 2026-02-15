@@ -73,9 +73,10 @@
 
 1. 対象Issue番号が確定していることを確認する
 2. Conductorで対象Issue用のworkspace（worktree）を作成する
-3. 基底ブランチはリポジトリ標準の基底ブランチを使う（`main` 固定にしない）
-4. 着手時にIssueへ `status:in-progress` を付与する
-5. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
+3. このリポジトリの基底ブランチは `develop` を使う
+4. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
+5. 着手時にIssueへ `status:in-progress` を付与する
+6. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
 
 ### 3. レビュー
 
@@ -120,7 +121,7 @@
 1. PR本文に `Closes #<issue-number>` を記載する
 2. 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
 3. 参照のみのIssueは `Refs #<issue-number>` を使う
-4. `gh` で PR を作成/更新する場合は `scripts/ghx pr ...` を使う
+4. `gh` で PR を作成/更新する場合は `scripts/ghx pr ...` を使い、`pr create` では `--base develop` を必ず明示する
 5. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
 6. PRが基底ブランチへマージされたらIssueが自動クローズされる
 

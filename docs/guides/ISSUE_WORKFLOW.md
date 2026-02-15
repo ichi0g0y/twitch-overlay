@@ -9,7 +9,7 @@
 - 状態管理は GitHub Issue のラベル + Close で行う
 - 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
 - PRは小さく分割して順次マージする
-- PRのbaseはリポジトリ標準の基底ブランチを使う（`main` 固定にしない）
+- PRのbaseは `develop` を使う
 - GitHub操作手段は固定しない（`gh` / REST API / GraphQL API のいずれでもよい）
 - `gh` を使う場合は `scripts/ghx ...` を基本とする
 - GitHub操作の前に `direnv` と `scripts/ghx` の実行可否を確認する
@@ -76,14 +76,16 @@
 3. 承認後に `scripts/ghx issue create` でIssueを起票する
 4. 生成したIssue番号を `.context/issue_scope.json` に保存する
 5. `.context/issue_scope.json` の `pr_number` / `pr_url` は未作成状態で初期化する
-6. ConductorでIssue用workspace（worktree）を作成する（基底はリポジトリ標準の基底ブランチ）
+6. ConductorでIssue用workspace（worktree）を作成する（基底は `develop`）
 7. 必要なら `/pick` または `/p` で対象Issueを再固定する
-8. 着手時に `status:in-progress` を付与する
-9. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
-10. レビュー前にPRを作成し、本文へ `Closes #<issue-number>` または `Refs #<issue-number>` を記載する
-11. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
-12. `/merge` / `/m` で `pr_number` を基準にマージする
-13. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
+8. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
+9. 着手時に `status:in-progress` を付与する
+10. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
+11. レビュー前にPRを作成し、本文へ `Closes #<issue-number>` または `Refs #<issue-number>` を記載する
+12. `scripts/ghx pr create` を使う場合は `--base develop` を必ず指定する
+13. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
+14. `/merge` / `/m` で `pr_number` を基準にマージする
+15. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
 
 ## PR運用
 
