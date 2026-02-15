@@ -29,6 +29,9 @@ node_modules
 # IDE設定
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS固有ファイル
 .DS_Store
