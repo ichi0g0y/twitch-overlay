@@ -18,6 +18,10 @@ overlay_settings.json
 # 環境設定
 .env
 .env.local
+.envrc
+
+# Conductor / agent shared context
+.context/
 
 # 依存関係
 node_modules
@@ -25,6 +29,9 @@ node_modules
 # IDE設定
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS固有ファイル
 .DS_Store

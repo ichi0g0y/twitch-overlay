@@ -1,7 +1,7 @@
 # Wails (Go) → Tauri (Rust) 移行計画
 
-> 運用メモ: 進行中タスクの正本は `issues/` へ移行しました。
-> 移行先Issue: `issues/open/issue-tauri-migration-plan-backlog/README.md`
+> 運用メモ: 進行中タスクの正本は GitHub Issues だす。
+> 移行先Issue: https://github.com/ichi0g0y/twitch-overlay/issues/24
 
 
 - 更新日: 2026-02-12

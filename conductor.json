@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "setup": "task install"
+    "setup": "bash ./scripts/setup_envrc.sh"
   }
 }
