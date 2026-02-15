@@ -20,7 +20,8 @@ if [ -d "$SOURCE_DIR" ]; then
   fi
   # env ディレクトリのコピー
   if [ -d "$SOURCE_DIR/env" ]; then
-    cp -a "$SOURCE_DIR/env" "$PROJECT_ROOT/"
+    mkdir -p "$PROJECT_ROOT/env"
+    cp -a "$SOURCE_DIR/env/." "$PROJECT_ROOT/env/"
     echo "Copied: env/"
   fi
 else
