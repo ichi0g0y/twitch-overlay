@@ -64,6 +64,36 @@ print(f"{num}\t{issue.get('url','')}\t{issue.get('title','')}\t{issue.get('creat
 PY
 }
 
+extract_issue_overview() {
+  local issue_json="$1"
+  python3 - "$issue_json" <<'PY'
+import json
+import re
+import sys
+
+issue = json.loads(sys.argv[1])
+title = re.sub(r"\s+", " ", issue.get("title", "")).strip()
+body = re.sub(r"\s+", " ", issue.get("body", "")).strip()
+if len(body) > 140:
+    body = body[:137].rstrip() + "..."
+print(f"{issue.get('url','')}\t{title}\t{body}\t{issue.get('createdAt','')}")
+PY
+}
+
+view_issue_overview() {
+  local issue_number="$1"
+  local repo="$2"
+
+  local -a cmd=("$GITHUB_CLI_BIN" issue view "$issue_number" --json url,title,body,createdAt)
+  if [[ -n "$repo" ]]; then
+    cmd+=(--repo "$repo")
+  fi
+
+  local json
+  json="$("${cmd[@]}")"
+  extract_issue_overview "$json"
+}
+
 list_first_issue() {
   local label="$1"
   local repo="$2"
@@ -355,9 +385,32 @@ if [[ -z "$selection_reason" ]]; then
   selection_reason="explicit"
 fi
 
+primary_issue_url=""
+primary_issue_title=""
+primary_issue_summary=""
+primary_issue_created_at=""
+if primary_overview="$(view_issue_overview "$new_primary" "$repo" 2>/dev/null)"; then
+  IFS=$'\t' read -r primary_issue_url primary_issue_title primary_issue_summary primary_issue_created_at <<<"$primary_overview"
+fi
+if [[ -z "$primary_issue_url" && -n "$selected_issue_url" && "$selected_issue" == "$new_primary" ]]; then
+  primary_issue_url="$selected_issue_url"
+fi
+
 echo "issue_scope updated: ${SCOPE_FILE}"
 echo "mode: ${selection_mode}"
 echo "primary_issue: #${new_primary}"
+if [[ -n "$primary_issue_title" ]]; then
+  echo "primary_issue_title: ${primary_issue_title}"
+fi
+if [[ -n "$primary_issue_summary" ]]; then
+  echo "primary_issue_summary: ${primary_issue_summary}"
+fi
+if [[ -n "$primary_issue_created_at" ]]; then
+  echo "primary_issue_created_at: ${primary_issue_created_at}"
+fi
+if [[ -n "$primary_issue_url" ]]; then
+  echo "primary_issue_url: ${primary_issue_url}"
+fi
 echo "related_issues: ${related_display}"
 echo "branch: ${branch}"
 echo "selection_reason: ${selection_reason}"
