@@ -18,9 +18,8 @@ type: "command"
    - `.ai/rules.md`
    - `.ai/workflow.md`
    - `.ai/dev-env.md`
-2. `direnv/ghx` の事前確認を行う。
-   - `.envrc` がない場合は `bash scripts/setup_envrc.sh` を実行する。
-   - `scripts/ghx auth status` を実行し、GitHub操作可能か確認する。
+2. `GitHub CLI` の事前確認を行う。
+   - 認証状態確認 を実行し、GitHub操作可能か確認する。
    - 失敗時はそこで停止し、原因と対処を確認する。
 3. 要件を分解し、次を含む実行計画を作成して提示する。
    - 目的 / スコープ / 非スコープ
@@ -28,7 +27,7 @@ type: "command"
    - 受け入れ条件
    - 想定テスト
 4. ユーザーに計画承認を確認する。
-5. 承認されたら `scripts/ghx issue create` で Issue を作成する。
+5. 承認されたら Issue作成 で Issue を作成する。
 6. `.context/issue_scope.json` が既にある場合は、上書き前に確認する。
 7. 生成した Issue 番号を `.context/issue_scope.json` に保存する。
    - 最低限 `primary_issue` / `related_issues` / `branch` / `picked_at` を記録する。
@@ -42,5 +41,5 @@ type: "command"
 
 - `/plan` では実装・コミット・PRマージを行わない。
 - 計画承認前に Issue を作成しない。
-- `gh` を直接呼ばず、必ず `scripts/ghx ...` を使う。
+- GitHub CLI を使う場合は標準の実行方式を使う。
 - Issue 作成後は `.context/issue_scope.json` の更新を省略しない。

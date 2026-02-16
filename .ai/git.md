@@ -36,9 +36,9 @@
 - 1Issue 1PRを基本とする
 - 1PRの変更は小さく保ち、段階的に適用する
 - PRのbaseブランチは `develop` とする
-- `scripts/ghx pr create` を使う場合、`--base develop` を省略しない
+- PR作成 を使う場合、`--base develop` を省略しない
 - PR本文には対象Issue（`#<issue-number>`）への参照を記載する
 - 完了したIssueは PR本文に `Closes #<issue-number>` を記載し、マージ時に自動クローズする
 - 参照だけのIssueは `Refs #<issue-number>` を使う
 - 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
-- `gh` で PR を作成/更新する場合は `scripts/ghx pr ...` を使う
+- `GitHub CLI` で PR を作成/更新する場合は PR操作 を使う

@@ -10,10 +10,9 @@
 - 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
 - PRは小さく分割して順次マージする
 - PRのbaseは `develop` を使う
-- GitHub操作手段は固定しない（`gh` / REST API / GraphQL API のいずれでもよい）
-- `gh` を使う場合は `scripts/ghx ...` を基本とする
-- GitHub操作の前に `direnv` と `scripts/ghx` の実行可否を確認する
-- 認証切り替えが多い環境では、`gh auth` 依存を避けてAPI実行を優先してよい
+- GitHub操作手段は固定しない（`GitHub CLI` / REST API / GraphQL API のいずれでもよい）
+- `GitHub CLI` を使う場合は標準の実行方式を使う
+- 認証切り替えが多い環境では、CLIログイン状態への依存を避けてAPI実行を優先してよい
 
 ## 状態管理
 
@@ -72,9 +71,9 @@
 
 ## 実装フロー
 
-1. `/plan` / `/pl` で必読を読み込み、`direnv/ghx` を確認する
+1. `/plan` / `/pl` で必読を読み込み、`GitHub CLI` を確認する
 2. 計画（目的・手順・受け入れ条件・テスト）を提示して承認を得る
-3. 承認後に `scripts/ghx issue create` でIssueを起票する
+3. 承認後に Issue作成 でIssueを起票する
 4. 生成したIssue番号を `.context/issue_scope.json` に保存する
 5. `.context/issue_scope.json` の `pr_number` / `pr_url` は未作成状態で初期化する
 6. ConductorでIssue用workspace（worktree）を作成する（基底は `develop`）
@@ -83,10 +82,9 @@
 9. 着手時に `status:in-progress` を付与する
 10. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
 11. レビュー前にPRを作成し、本文へ `Closes #<issue-number>` または `Refs #<issue-number>` を記載する
-12. `scripts/ghx pr create` を使う場合は `--base develop` を必ず指定する
+12. PR作成 を使う場合は `--base develop` を必ず指定する
 13. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
-14. `/merge` / `/m` で `pr_number` を基準にマージする
-15. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
+14. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
 
 ## PR運用
 
@@ -97,7 +95,7 @@
 - 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
 - PR本文には対象Issue番号を明記する
 - 仕様判断や運用判断はPRだけに閉じず、要点をIssueコメントにも残す
-- `gh` でPRを作成/更新する場合は `scripts/ghx pr ...` を使う
+- `GitHub CLI` でPRを作成/更新する場合は PR操作 を使う
 
 ## 完了条件（DoD）
 
@@ -109,7 +107,7 @@
 ## レビュー運用
 
 - レビュー依頼時に対象Issue番号を明示する（または `.context` を参照する）
-- レビュー開始前に `scripts/ghx issue view <issue-number> --comments` でIssue本文と既存コメントを確認する
+- レビュー開始前に Issue本文・コメント確認 でIssue本文と既存コメントを確認する
 - レビュー結果は対象Issueコメントに記録する
 - レビュアーはコメント内に対象Issue番号を明記する
 - 判定は `採用 / 不採用 / 追加情報必要`
@@ -118,14 +116,14 @@
 - `/rv` / `/review-verify` でIssue連携した場合は修正結果コメントを対象Issueへ追記する
 - `.context` に `related_issues` がある場合は関連Issueもあわせて検証対象にする
 - レビュアーは最新の修正結果コメント（`/rv` / `/review-verify` 実行結果）も確認する
-- `gh` でレビュー結果をIssueへ記録する場合は `scripts/ghx issue comment ...` を使う
+- `GitHub CLI` でレビュー結果をIssueへ記録する場合は Issueコメント追記 を使う
 
 ## `/review-verify` / `/rv` の挙動
 
 - 引数あり（例: `/rv 9`）の場合は引数のIssue番号を優先する
 - 引数なしの場合は `.context/issue_scope.json` を参照する
 - 引数も `.context` もない場合はIssue連携なしで通常動作し、Issueコメント追記は行わない
-- Issueが確定した場合は `scripts/ghx issue view <issue-number> --comments` で情報を取得し、`primary_issue` と `related_issues` のレビューコメントを収集する
+- Issueが確定した場合は Issue本文・コメント確認 で情報を取得し、`primary_issue` と `related_issues` のレビューコメントを収集する
 - 指摘は `採用 / 不採用 / 追加情報必要` で分類し、採用した指摘のみ修正する
 - `不採用 / 追加情報必要` の指摘は理由を記録し、未修正として扱う
 - 必要なテストを実行し、失敗時は修正して再実行する
@@ -139,18 +137,16 @@
   - `/p [primary-issue] [related-issues...]`（短縮、`/pick` と同ロジック）
   - `/review-verify <issue-number>`
   - `/rv <issue-number>`（引数なし時は `.context` を参照）
-  - `/merge [pr-number]` または `/m [pr-number]`（引数なし時は `.context` の `pr_number` を参照）
   - `/commit` または `/c`（確認付きコミット）
   - `/commit!` または `/c!`（即時コミット）
 - Codex:
   - Slash Command は使えないため、疑似コマンドとして同等内容をプロンプトで指示する
-  - `/pl` `/p` `/rv` `/m` `/c` など短縮文字列だけを送らず、処理内容を文章で明示する
+  - `/pl` `/p` `/rv` `/c` など短縮文字列だけを送らず、処理内容を文章で明示する
   - 例:
-    - `direnv/ghx確認と計画承認後のIssue作成、.context更新まで実施して（/plan 相当）`
+    - `GitHub操作確認と計画承認後のIssue作成、.context更新まで実施して（/plan 相当）`
     - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
     - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
     - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正し、結果をIssueコメントに追記して（/rv 相当）`
-    - `PR #14 を安全確認して scripts/ghx でマージし、Issueへ結果コメントして（/merge 相当）`
     - `git add -A 後に確認付きコミット候補を提示して（/commit 相当）`
 
 ## 補足

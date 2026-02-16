@@ -27,8 +27,3 @@ if [ -d "$SOURCE_DIR" ]; then
 else
   echo "Skipped: $SOURCE_DIR not found"
 fi
-
-if command -v direnv >/dev/null 2>&1 && [ -f "$PROJECT_ROOT/.envrc" ]; then
-  direnv allow "$PROJECT_ROOT"
-  echo "Applied: direnv allow $PROJECT_ROOT"
-fi

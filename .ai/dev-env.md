@@ -25,11 +25,10 @@
 
 ## GitHub操作
 
-- GitHub操作は `gh` 必須ではない
-- `gh` / GitHub REST API / GitHub GraphQL API のいずれを使ってもよい
-- `gh` を使う場合は `scripts/ghx ...` を使う
-- ファイル変更を伴う作業開始時は、まず `bash scripts/setup_envrc.sh` の適用可否を確認する
-- `/plan` / `/pl` 相当では `scripts/ghx auth status` を事前実行し、Issue操作できることを確認する
-- `scripts/ghx` は、`direnv` が使える環境ではプロジェクトルートで `direnv exec` を実行し、`direnv` 未インストール時は警告付きで `gh` にフォールバックする
-- 認証切り替えが必要な環境では、`gh auth` に依存せずAPIトークン利用を優先してよい
+- GitHub操作は `GitHub CLI` 必須ではない
+- `GitHub CLI` / GitHub REST API / GitHub GraphQL API のいずれを使ってもよい
+- `GitHub CLI` を使う場合は標準の実行方式を使う
+- `/plan` / `/pl` 相当では 認証状態確認 を事前実行し、Issue操作できることを確認する
+- 特定ラッパースクリプトの内部実装への依存を運用ルールとして固定しない
+- 認証切り替えが必要な環境では、CLIのログイン状態に依存せずAPIトークン利用を優先してよい
 - どの手段でも、Issue/PR/コメント/ラベルの結果が同等であることを優先する

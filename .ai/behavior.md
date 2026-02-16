@@ -11,7 +11,7 @@
 
 1. 指示と必読ドキュメントを確認する
 2. ファイル変更を伴う依頼では、原則 `/plan` / `/pl` 相当を先に実行する
-3. `/plan` 相当では `direnv/ghx` 事前確認、計画提示、承認取得、Issue作成、`.context/issue_scope.json` 更新まで行う
+3. `/plan` 相当では `GitHub CLI` 事前確認、計画提示、承認取得、Issue作成、`.context/issue_scope.json` 更新まで行う
 4. すでに対象Issue番号が依頼文または `.context` で確定している場合は、計画確認のみで実装へ進んでよい
 5. 対象Issue番号が確定するまで実装に進まない（複数Issueが関係する場合は `primary_issue` / `related_issues` を定義する）
 6. 必要な実装を行う
@@ -23,4 +23,4 @@
 
 - 手順は `.ai/workflow.md` を参照する
 - レビュー観点と出力テンプレートは `.ai/review.md` を参照する
-- `gh` を使う場合は `scripts/ghx ...` を基本とし、レビューコメント記録とPR操作にも同ルールを適用する
+- `GitHub CLI` を使う場合は標準の実行方式を使い、レビューコメント記録とPR操作にも同ルールを適用する
