@@ -30,6 +30,8 @@ pub struct StreamInfo {
     pub game_name: String,
     pub title: String,
     pub viewer_count: u64,
+    #[serde(default)]
+    pub started_at: Option<String>,
     #[serde(rename = "type")]
     pub stream_type: String,
 }
@@ -422,5 +424,49 @@ impl TwitchApiClient {
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<BitsLeaderboardEntry> = serde_json::from_str(&body)?;
         Ok(resp.data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HelixResponse, StreamInfo};
+
+    #[test]
+    fn stream_info_deserializes_started_at() {
+        let body = r#"{
+          "data": [{
+            "id": "s1",
+            "user_id": "u1",
+            "user_login": "login",
+            "game_name": "game",
+            "title": "title",
+            "viewer_count": 12,
+            "started_at": "2026-02-16T00:00:00Z",
+            "type": "live"
+          }]
+        }"#;
+
+        let parsed: HelixResponse<StreamInfo> = serde_json::from_str(body).unwrap();
+        let stream = &parsed.data[0];
+        assert_eq!(stream.started_at.as_deref(), Some("2026-02-16T00:00:00Z"));
+    }
+
+    #[test]
+    fn stream_info_allows_missing_started_at() {
+        let body = r#"{
+          "data": [{
+            "id": "s1",
+            "user_id": "u1",
+            "user_login": "login",
+            "game_name": "game",
+            "title": "title",
+            "viewer_count": 12,
+            "type": "live"
+          }]
+        }"#;
+
+        let parsed: HelixResponse<StreamInfo> = serde_json::from_str(body).unwrap();
+        let stream = &parsed.data[0];
+        assert_eq!(stream.started_at, None);
     }
 }
