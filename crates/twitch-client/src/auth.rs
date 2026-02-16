@@ -49,14 +49,24 @@ impl TwitchAuth {
 
     /// Generate the OAuth authorization URL with required scopes.
     pub fn get_auth_url(&self) -> Result<String, TwitchError> {
+        self.get_auth_url_with_state(None)
+    }
+
+    /// Generate the OAuth authorization URL with required scopes and optional CSRF state.
+    pub fn get_auth_url_with_state(&self, state: Option<&str>) -> Result<String, TwitchError> {
         let scope_str = SCOPES.join(" ");
         let mut url = Url::parse("https://id.twitch.tv/oauth2/authorize")?;
-        url.query_pairs_mut()
+        let mut query = url.query_pairs_mut();
+        query
             .append_pair("response_type", "code")
             .append_pair("client_id", &self.client_id)
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("scope", &scope_str)
             .append_pair("force_verify", "true");
+        if let Some(state) = state.filter(|v| !v.is_empty()) {
+            query.append_pair("state", state);
+        }
+        drop(query);
         Ok(url.to_string())
     }
 
@@ -186,6 +196,18 @@ mod tests {
         assert!(url.contains("response_type=code"));
         assert!(url.contains("force_verify=true"));
         assert!(url.contains("user%3Aread%3Achat"));
+    }
+
+    #[test]
+    fn test_auth_url_generation_with_state() {
+        let auth = TwitchAuth::new(
+            "test_client_id".into(),
+            "test_secret".into(),
+            "http://localhost:8080/callback".into(),
+        );
+        let url = auth.get_auth_url_with_state(Some("csrf-state")).unwrap();
+
+        assert!(url.contains("state=csrf-state"));
     }
 
     #[test]

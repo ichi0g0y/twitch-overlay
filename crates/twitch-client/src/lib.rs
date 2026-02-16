@@ -57,6 +57,7 @@ pub const SCOPES: &[&str] = &[
     "user:read:chat",
     "channel:read:subscriptions",
     "bits:read",
+    "channel:read:redemptions",
     "chat:read",
     "chat:edit",
     "moderator:read:followers",

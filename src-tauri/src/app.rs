@@ -27,6 +27,8 @@ struct SharedStateInner {
     app_handle: OnceLock<tauri::AppHandle>,
     /// Last known stream live status (None = unknown)
     stream_live: RwLock<Option<bool>>,
+    /// OAuth state used to protect /callback from CSRF.
+    oauth_state: RwLock<Option<String>>,
 }
 
 impl SharedState {
@@ -42,6 +44,7 @@ impl SharedState {
                 data_dir,
                 app_handle: OnceLock::new(),
                 stream_live: RwLock::new(None),
+                oauth_state: RwLock::new(None),
             }),
         }
     }
@@ -112,5 +115,17 @@ impl SharedState {
     /// Get the last known stream live status.
     pub async fn stream_live(&self) -> Option<bool> {
         *self.inner.stream_live.read().await
+    }
+
+    /// Store OAuth state before redirecting to Twitch.
+    pub async fn set_oauth_state(&self, state: String) {
+        let mut oauth_state = self.inner.oauth_state.write().await;
+        *oauth_state = Some(state);
+    }
+
+    /// Consume stored OAuth state for callback validation.
+    pub async fn take_oauth_state(&self) -> Option<String> {
+        let mut oauth_state = self.inner.oauth_state.write().await;
+        oauth_state.take()
     }
 }
