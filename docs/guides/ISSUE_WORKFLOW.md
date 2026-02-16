@@ -49,7 +49,8 @@
 
 - ファイル変更を伴う依頼は、原則 `/plan` / `/pl` から開始する
 - `/plan` 承認後に作成したIssueを `.context/issue_scope.json` へ保存して共有する
-- `/pick` / `/p` は、既存Issueを明示指定するときの補助コマンドとして使う
+- `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う
+- 引数なし時は `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を選定し、優先度ラベル付きIssueが無い場合は Open Issue 全体の最古を採用する
 - 計画相談・壁打ちなど、ファイル変更を伴わない場合はIssueスコープ未設定でもよい
 - `.context` 未設定でも、依頼文にIssue番号が明示されていれば進行してよい
 - 既に `.context/issue_scope.json` がある状態で再 `/pick` / `/p` する場合は、上書き前に警告し、ユーザー確認を取る
@@ -77,7 +78,7 @@
 4. 生成したIssue番号を `.context/issue_scope.json` に保存する
 5. `.context/issue_scope.json` の `pr_number` / `pr_url` は未作成状態で初期化する
 6. ConductorでIssue用workspace（worktree）を作成する（基底は `develop`）
-7. 必要なら `/pick` または `/p` で対象Issueを再固定する
+7. 必要なら `/pick` または `/p` で対象Issueを再固定する（引数なし時は優先度順で自動選定）
 8. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
 9. 着手時に `status:in-progress` を付与する
 10. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
@@ -134,8 +135,8 @@
 
 - Claude Code:
   - `/plan` または `/pl`（計画作成 -> 承認後Issue自動作成）
-  - `/pick <primary-issue> [related-issues...]`（任意）
-  - `/p <primary-issue> [related-issues...]`（短縮）
+  - `/pick [primary-issue] [related-issues...]`（任意、引数なし時は自動選定）
+  - `/p [primary-issue] [related-issues...]`（短縮、`/pick` と同ロジック）
   - `/review-verify <issue-number>`
   - `/rv <issue-number>`（引数なし時は `.context` を参照）
   - `/merge [pr-number]` または `/m [pr-number]`（引数なし時は `.context` の `pr_number` を参照）
@@ -147,6 +148,7 @@
   - 例:
     - `direnv/ghx確認と計画承認後のIssue作成、.context更新まで実施して（/plan 相当）`
     - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
+    - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
     - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正し、結果をIssueコメントに追記して（/rv 相当）`
     - `PR #14 を安全確認して scripts/ghx でマージし、Issueへ結果コメントして（/merge 相当）`
     - `git add -A 後に確認付きコミット候補を提示して（/commit 相当）`
