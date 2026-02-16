@@ -1,10 +1,13 @@
 //! Twitch API endpoints (OAuth, verification, custom rewards, stream status).
 
+use std::sync::LazyLock;
+
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
 
 use twitch_client::TwitchError;
 use twitch_client::api::{CreateRewardRequest, TwitchApiClient, UpdateRewardRequest};
@@ -15,6 +18,7 @@ use crate::app::SharedState;
 use super::err_json;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
+static TOKEN_REFRESH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +91,77 @@ async fn get_valid_token(
     }
 
     Ok(current)
+}
+
+fn is_unauthorized_error(err: &TwitchError) -> bool {
+    matches!(err, TwitchError::ApiError { status: 401, .. })
+}
+
+fn is_rotated_refresh_token(current: &twitch_client::Token, latest: &twitch_client::Token) -> bool {
+    latest.refresh_token != current.refresh_token
+}
+
+fn offline_stream_status_payload() -> Value {
+    json!({
+        "is_live": false,
+        "viewer_count": 0,
+        "isLive": false,
+        "viewerCount": 0,
+        "title": null,
+        "startedAt": null
+    })
+}
+
+fn stream_status_payload(status: &twitch_client::api::StreamStatus) -> Value {
+    let title = status.info.as_ref().map(|info| info.title.clone());
+    let started_at = status
+        .info
+        .as_ref()
+        .and_then(|info| info.started_at.clone());
+
+    json!({
+        "is_live": status.is_live,
+        "viewer_count": status.viewer_count,
+        "isLive": status.is_live,
+        "viewerCount": status.viewer_count,
+        "title": title,
+        "startedAt": started_at,
+        "info": status.info
+    })
+}
+
+async fn force_refresh_token(
+    state: &SharedState,
+    current: &twitch_client::Token,
+) -> Result<twitch_client::Token, (axum::http::StatusCode, Json<Value>)> {
+    let _guard = TOKEN_REFRESH_LOCK.lock().await;
+
+    if let Some(db_token) = state
+        .db()
+        .get_latest_token()
+        .map_err(|e| err_json(500, &e.to_string()))?
+    {
+        let latest = to_twitch_token(&db_token);
+        if is_rotated_refresh_token(current, &latest) {
+            tracing::info!("Token already refreshed by another request; reusing latest token");
+            return Ok(latest);
+        }
+    }
+
+    let auth = create_auth(state).await?;
+    let new_token = auth
+        .refresh_token(&current.refresh_token)
+        .await
+        .map_err(map_twitch_error)?;
+    state
+        .db()
+        .save_token(&to_db_token(&new_token))
+        .map_err(|e| err_json(500, &e.to_string()))?;
+    tracing::info!(
+        expires_at = new_token.expires_at,
+        "Token refreshed after 401"
+    );
+    Ok(new_token)
 }
 
 // ---------------------------------------------------------------------------
@@ -194,19 +269,10 @@ pub async fn callback(
 // Token refresh
 // ---------------------------------------------------------------------------
 
-/// POST /api/twitch/refresh-token
+/// GET|POST /api/twitch/refresh-token
 pub async fn refresh_token(State(state): State<SharedState>) -> ApiResult {
     let current = get_valid_token(&state).await?;
-    let auth = create_auth(&state).await?;
-    let new_token = auth
-        .refresh_token(&current.refresh_token)
-        .await
-        .map_err(map_twitch_error)?;
-    state
-        .db()
-        .save_token(&to_db_token(&new_token))
-        .map_err(|e| err_json(500, &e.to_string()))?;
-    tracing::info!(expires_at = new_token.expires_at, "Token refreshed");
+    let new_token = force_refresh_token(&state, &current).await?;
     Ok(Json(
         json!({ "success": true, "expires_at": new_token.expires_at }),
     ))
@@ -219,27 +285,31 @@ pub async fn refresh_token(State(state): State<SharedState>) -> ApiResult {
 /// GET /api/stream/status
 pub async fn stream_status(State(state): State<SharedState>) -> ApiResult {
     let token = match get_valid_token(&state).await {
-        Ok(t) => t,
-        Err(_) => return Ok(Json(json!({ "is_live": false, "viewer_count": 0 }))),
+        Ok(token) => token,
+        Err(_) => return Ok(Json(offline_stream_status_payload())),
     };
     let (client_id, twitch_user_id) = {
         let config = state.config().await;
         (config.client_id.clone(), config.twitch_user_id.clone())
     };
     if twitch_user_id.is_empty() {
-        return Ok(Json(json!({ "is_live": false, "viewer_count": 0 })));
+        return Ok(Json(offline_stream_status_payload()));
     }
     let client = TwitchApiClient::new(client_id);
-    let status = client
-        .get_stream_info(&token, &twitch_user_id)
-        .await
-        .map_err(map_twitch_error)?;
+    let status = match client.get_stream_info(&token, &twitch_user_id).await {
+        Ok(status) => status,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("stream_status got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .get_stream_info(&refreshed, &twitch_user_id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
     state.set_stream_live(status.is_live).await;
-    Ok(Json(json!({
-        "is_live": status.is_live,
-        "viewer_count": status.viewer_count,
-        "info": status.info
-    })))
+    Ok(Json(stream_status_payload(&status)))
 }
 
 // ---------------------------------------------------------------------------
@@ -254,10 +324,21 @@ pub async fn get_custom_rewards(State(state): State<SharedState>) -> ApiResult {
         return Err(err_json(400, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
-    let rewards = client
+    let rewards = match client
         .get_custom_rewards(&token, &config.twitch_user_id)
         .await
-        .map_err(map_twitch_error)?;
+    {
+        Ok(rewards) => rewards,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("get_custom_rewards got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .get_custom_rewards(&refreshed, &config.twitch_user_id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
     Ok(Json(json!({ "data": rewards })))
 }
 
@@ -282,10 +363,21 @@ pub async fn create_custom_reward(
         should_redemptions_skip_request_queue: body["should_redemptions_skip_request_queue"]
             .as_bool(),
     };
-    let reward = client
+    let reward = match client
         .create_custom_reward(&token, &config.twitch_user_id, &req)
         .await
-        .map_err(map_twitch_error)?;
+    {
+        Ok(reward) => reward,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("create_custom_reward got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .create_custom_reward(&refreshed, &config.twitch_user_id, &req)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
     let _ = state
         .db()
         .record_app_created_reward(&reward.id, &reward.title);
@@ -320,10 +412,21 @@ pub async fn update_custom_reward(
         is_paused: body["is_paused"].as_bool(),
         background_color: body["background_color"].as_str().map(String::from),
     };
-    let reward = client
+    let reward = match client
         .update_custom_reward(&token, &config.twitch_user_id, &id, &req)
         .await
-        .map_err(map_twitch_error)?;
+    {
+        Ok(reward) => reward,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("update_custom_reward got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .update_custom_reward(&refreshed, &config.twitch_user_id, &id, &req)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
     Ok(Json(json!({ "data": reward })))
 }
 
@@ -333,7 +436,7 @@ pub async fn toggle_custom_reward(
     Path(id): Path<String>,
     body: Option<Json<Value>>,
 ) -> ApiResult {
-    let token = get_valid_token(&state).await?;
+    let mut token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
         return Err(err_json(400, "TWITCH_USER_ID is not configured"));
@@ -348,10 +451,22 @@ pub async fn toggle_custom_reward(
     let is_enabled = if let Some(v) = target_enabled {
         v
     } else {
-        let rewards = client
+        let rewards = match client
             .get_custom_rewards(&token, &config.twitch_user_id)
             .await
-            .map_err(map_twitch_error)?;
+        {
+            Ok(rewards) => rewards,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("toggle_custom_reward(get) got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_custom_rewards(&token, &config.twitch_user_id)
+                    .await
+                    .map_err(map_twitch_error)?
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        };
         let current = rewards
             .iter()
             .find(|r| r.id == id)
@@ -359,10 +474,21 @@ pub async fn toggle_custom_reward(
         !current.is_enabled
     };
 
-    let reward = client
+    let reward = match client
         .update_reward_enabled(&token, &config.twitch_user_id, &id, is_enabled)
         .await
-        .map_err(map_twitch_error)?;
+    {
+        Ok(reward) => reward,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("toggle_custom_reward(update) got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .update_reward_enabled(&refreshed, &config.twitch_user_id, &id, is_enabled)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
     Ok(Json(json!({ "data": reward })))
 }
 
@@ -377,10 +503,21 @@ pub async fn delete_custom_reward(
         return Err(err_json(400, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
-    client
+    match client
         .delete_custom_reward(&token, &config.twitch_user_id, &id)
         .await
-        .map_err(map_twitch_error)?;
+    {
+        Ok(_) => {}
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("delete_custom_reward got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            client
+                .delete_custom_reward(&refreshed, &config.twitch_user_id, &id)
+                .await
+                .map_err(map_twitch_error)?;
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    }
     Ok(Json(json!({ "success": true })))
 }
 
@@ -407,4 +544,89 @@ pub async fn reward_groups_by_reward(
         .get_reward_groups_by_reward_id(&reward_id)
         .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Json(json!({ "data": groups })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use twitch_client::api::{StreamInfo, StreamStatus};
+
+    #[test]
+    fn unauthorized_error_only_matches_401() {
+        let unauthorized = TwitchError::ApiError {
+            status: 401,
+            message: "unauthorized".into(),
+        };
+        let forbidden = TwitchError::ApiError {
+            status: 403,
+            message: "forbidden".into(),
+        };
+
+        assert!(is_unauthorized_error(&unauthorized));
+        assert!(!is_unauthorized_error(&forbidden));
+        assert!(!is_unauthorized_error(&TwitchError::AuthRequired));
+    }
+
+    #[test]
+    fn rotated_refresh_token_is_detected() {
+        let current = twitch_client::Token {
+            access_token: "old-access".into(),
+            refresh_token: "old-refresh".into(),
+            scope: "scope".into(),
+            expires_at: 0,
+        };
+        let latest = twitch_client::Token {
+            access_token: "new-access".into(),
+            refresh_token: "new-refresh".into(),
+            scope: "scope".into(),
+            expires_at: 1,
+        };
+        let same = twitch_client::Token {
+            access_token: "new-access".into(),
+            refresh_token: "old-refresh".into(),
+            scope: "scope".into(),
+            expires_at: 1,
+        };
+
+        assert!(is_rotated_refresh_token(&current, &latest));
+        assert!(!is_rotated_refresh_token(&current, &same));
+    }
+
+    #[test]
+    fn offline_stream_status_payload_has_compat_keys() {
+        let payload = offline_stream_status_payload();
+        assert_eq!(payload["is_live"], false);
+        assert_eq!(payload["viewer_count"], 0);
+        assert_eq!(payload["isLive"], false);
+        assert_eq!(payload["viewerCount"], 0);
+        assert!(payload["title"].is_null());
+        assert!(payload["startedAt"].is_null());
+    }
+
+    #[test]
+    fn stream_status_payload_includes_snake_and_camel_case_fields() {
+        let status = StreamStatus {
+            is_live: true,
+            viewer_count: 77,
+            info: Some(StreamInfo {
+                id: "stream-id".into(),
+                user_id: "user-id".into(),
+                user_login: "user-login".into(),
+                game_name: "game".into(),
+                title: "live title".into(),
+                viewer_count: 77,
+                started_at: Some("2026-02-16T00:00:00Z".into()),
+                stream_type: "live".into(),
+            }),
+        };
+
+        let payload = stream_status_payload(&status);
+        assert_eq!(payload["is_live"], true);
+        assert_eq!(payload["viewer_count"], 77);
+        assert_eq!(payload["isLive"], true);
+        assert_eq!(payload["viewerCount"], 77);
+        assert_eq!(payload["title"], "live title");
+        assert_eq!(payload["startedAt"], "2026-02-16T00:00:00Z");
+        assert_eq!(payload["info"]["id"], "stream-id");
+    }
 }

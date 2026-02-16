@@ -240,7 +240,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/twitch/verify", get(api::twitch::verify_twitch))
         .route(
             "/api/twitch/refresh-token",
-            post(api::twitch::refresh_token),
+            get(api::twitch::refresh_token).post(api::twitch::refresh_token),
         )
         .route("/api/stream/status", get(api::twitch::stream_status))
         // --- Printer ---
