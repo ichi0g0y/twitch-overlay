@@ -6,9 +6,9 @@
 - 「どう直すか」より先に「なぜ問題か」を明確にする
 - レビュー結果は日本語で報告する
 - レビュー結果は対象 GitHub Issue のコメントに記録する
-- レビュー開始前に、`.context/issue_scope.json` と `scripts/ghx issue view <issue-number> --comments` で対象Issueの本文・既存コメントを確認する
+- レビュー開始前に、`.context/issue_scope.json` と Issue本文・コメント確認 で対象Issueの本文・既存コメントを確認する
 - レビュー連携の手順は `.ai/workflow.md` を参照する
-- `gh` を使ってレビュー結果を Issue に記録する場合は `scripts/ghx issue comment ...` を使う
+- `GitHub CLI` を使ってレビュー結果を Issue に記録する場合は Issueコメント追記 を使う
 
 ## 観点（優先順）
 

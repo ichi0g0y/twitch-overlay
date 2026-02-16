@@ -18,5 +18,5 @@ type: "command"
 ## 実行ルール
 
 - 詳細仕様は `.claude/commands/plan.md` に従う。
-- `direnv/ghx` 事前確認、計画提示、承認取得、Issue作成、`.context/issue_scope.json` 更新まで実行する。
-- 実装・コミット・マージは行わない。
+- `GitHub CLI` 事前確認、計画提示、承認取得、Issue作成、`.context/issue_scope.json` 更新まで実行する。
+- 実装・コミットは行わない。

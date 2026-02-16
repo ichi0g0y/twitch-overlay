@@ -20,7 +20,7 @@ argument-hint: "[issue-number]"
    - ユーザーが指示したレビュー指摘のみを対象に検証・修正する。
    - 最終報告のみ行い、Issueコメント追記は行わない。
 4. 引数または `.context/issue_scope.json` からIssueが決定できた場合:
-   - `scripts/ghx issue view <issue-number> --comments` で Issue本文と最新コメントを取得する。
+   - Issue本文・コメント確認 で Issue本文と最新コメントを取得する。
    - `primary_issue` と `related_issues` のレビューコメントを収集する。
    - 各指摘を **採用 / 不採用 / 追加情報必要** で分類して妥当性を検証する。
    - 採用した指摘のみ修正を実施する。
@@ -36,5 +36,5 @@ argument-hint: "[issue-number]"
 
 - レビュー内容は鵜呑みにせず、必ず自分で妥当性を検証する。
 - 修正対象は採用した指摘のみとする。
-- Issueコメントの取得・追記に `gh` を使う場合は `scripts/ghx ...` を使う。
+- Issueコメントの取得・追記に `GitHub CLI` を使う場合は標準の実行方式を使う。
 - `/commit` / `/c` または `/commit!` / `/c!` の明示的指示がない限りコミットしない。

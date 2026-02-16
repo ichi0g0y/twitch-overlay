@@ -12,7 +12,7 @@
 - `.ai/workflow.md`
 - `.ai/review.md`
 - `.ai/dev-env.md`
-- `bash scripts/setup_envrc.sh` を実行して `direnv` と `scripts/ghx` の動作前提を整える
+- 認証状態確認 を実行して、GitHub操作が可能な状態か確認する
 
 ## 3. 技術選定前にやること
 

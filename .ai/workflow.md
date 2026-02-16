@@ -4,10 +4,9 @@
 
 - Codex / Claude の役割は固定しない
 - 修正内容・進行状況・手順書・計画・レビュー観点は GitHub Issues に集約する
-- GitHub操作手段は固定しない（`gh` / REST API / GraphQL API のいずれでもよい）
-- `gh` を使う場合は `scripts/ghx ...` を基本とする
-- GitHub操作の前に `direnv` と `scripts/ghx` が使える状態を確認する
-- 認証切り替えが多い環境では、`gh auth` 依存を避けてAPI実行を優先してよい
+- GitHub操作手段は固定しない（`GitHub CLI` / REST API / GraphQL API のいずれでもよい）
+- `GitHub CLI` を使う場合は標準の実行方式を使う
+- 認証切り替えが多い環境では、CLIログイン状態への依存を避けてAPI実行を優先してよい
 - 状態管理は GitHub Issue のラベル + Close で運用する
 - 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
 - PR は小さく分割して順次マージする
@@ -37,7 +36,7 @@
 - `.context/issue_scope.json` が未設定でも、依頼文でIssue番号が明示されていれば進行してよい
 - 再 `/pick` / `/p` で既存スコープがある場合は、上書き前に警告してユーザー確認を行う
 - 複数Issueに関係する作業では、`primary_issue` + `related_issues` で複数Issueを保持することを基本とする
-- PR作成/更新後は、必要に応じて `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録し、`/merge` の解決候補として使える状態にする
+- PR作成/更新後は、必要に応じて `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録し、後続作業で参照できる状態にする
 - 共有ライブラリ変更で複数Issueに影響する場合は、各Issueコメントに関連Issueを相互記載する
 
 想定フォーマット:
@@ -58,9 +57,9 @@
 ### 0. `/plan` / `/pl`（計画とIssue起票）
 
 1. `AI.md` と `.ai/*` の必読を読み込む
-2. `direnv/ghx` の事前確認を行う（必要なら `bash scripts/setup_envrc.sh`）
+2. 認証状態確認 を実行し、GitHub操作可能か事前確認する
 3. 計画（目的 / 手順 / 受け入れ条件 / テスト）を提示して承認を得る
-4. 承認後に `scripts/ghx issue create` でIssueを作成する
+4. 承認後に Issue作成 でIssueを作成する
 5. `primary_issue` を `.context/issue_scope.json` に保存する
 6. `pr_number` / `pr_url` は未作成状態で初期化する
 
@@ -83,13 +82,13 @@
 
 1. レビュー依頼時は対象Issue番号を明示する
 2. 引数がない場合は `.context/issue_scope.json` の `primary_issue` を参照する
-3. レビュー前に `scripts/ghx issue view <issue-number> --comments` でIssue本文と既存コメントを確認する
+3. レビュー前に Issue本文・コメント確認 でIssue本文と既存コメントを確認する
 4. レビュー結果は GitHub Issue コメントに記載する
 5. レビュアーは対象Issue番号をコメント内に明記する
 6. 指摘は `採用 / 不採用 / 追加情報必要` で判定する
 7. 指摘にはファイルパス・行番号・根拠を含める
 8. レビュアーは最新の修正結果コメント（`/rv` / `/review-verify` の結果）も確認する
-9. `gh` でレビュー結果を Issue に記録する場合は `scripts/ghx issue comment ...` を使う
+9. `GitHub CLI` でレビュー結果を Issue に記録する場合は Issueコメント追記 を使う
 
 ### 4. `/review-verify`
 
@@ -106,15 +105,14 @@
 ### 5. Codex疑似コマンド運用
 
 - Codexでは `/pick` `/p` `/review-verify` `/rv` `/commit` `/c` `/commit!` `/c!` をコマンドとして直接実行できない
-- Codexでは `/plan` `/pl` `/merge` `/m` もコマンドとして直接実行できない
-- 短縮形（`/pl` `/p` `/rv` `/m` `/c` `/c!`）はClaude Code向けの別名であり、Codexではそのまま送らない
+- Codexでは `/plan` `/pl` もコマンドとして直接実行できない
+- 短縮形（`/pl` `/p` `/rv` `/c` `/c!`）はClaude Code向けの別名であり、Codexではそのまま送らない
 - Codexへは「`/pick` 相当を実施」「`/rv` 相当を実施」のように、処理内容を文章で明示する
 - 例:
-  - `AI.md と .ai の必読を読み込み、direnv/ghx確認と計画承認後のIssue作成まで実施して（/plan 相当）`
+  - `AI.md と .ai の必読を読み込み、GitHub操作確認と計画承認後のIssue作成まで実施して（/plan 相当）`
   - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
   - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
-  - `PR #14 を安全確認して scripts/ghx でマージし、Issueへ結果コメントして（/merge 相当）`
   - `git add -A 後に確認付きでコミット候補を提示して（/commit 相当）`
   - `git add -A 後に最初の候補で即コミットして（/commit! 相当）`
 
@@ -123,12 +121,6 @@
 1. PR本文に `Closes #<issue-number>` を記載する
 2. 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
 3. 参照のみのIssueは `Refs #<issue-number>` を使う
-4. `gh` で PR を作成/更新する場合は `scripts/ghx pr ...` を使い、`pr create` では `--base develop` を必ず明示する
+4. `GitHub CLI` で PR を作成/更新する場合は PR操作 を使い、`pr create` では `--base develop` を必ず明示する
 5. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
 6. PRが基底ブランチへマージされたらIssueが自動クローズされる
-
-### 7. `/merge` / `/m`
-
-1. `/merge` は `.context/issue_scope.json` の `pr_number` を最優先に解決する
-2. 事前確認（Draft/mergeable/必須チェック）に通過した場合のみ `scripts/ghx pr merge` を実行する
-3. マージ結果は `primary_issue`（必要に応じて `related_issues`）へコメント追記する

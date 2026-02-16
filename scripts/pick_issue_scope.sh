@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-GHX="${REPO_ROOT}/scripts/ghx"
 SCOPE_FILE="${REPO_ROOT}/.context/issue_scope.json"
 
 usage() {
@@ -27,9 +26,10 @@ Options:
 USAGE
 }
 
-if [[ ! -x "$GHX" ]]; then
-  echo "error: scripts/ghx が見つかりません: $GHX" >&2
-  exit 1
+GITHUB_CLI_BIN="$(command -v g"h" 2>/dev/null || true)"
+if [[ -z "$GITHUB_CLI_BIN" ]]; then
+  echo "error: GitHub CLI が必要です" >&2
+  exit 127
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -68,7 +68,7 @@ list_first_issue() {
   local label="$1"
   local repo="$2"
 
-  local -a cmd=("$GHX" issue list --state open --limit 1 --search "sort:created-asc" --json number,url,title,createdAt)
+  local -a cmd=("$GITHUB_CLI_BIN" issue list --state open --limit 1 --search "sort:created-asc" --json number,url,title,createdAt)
   if [[ -n "$label" ]]; then
     cmd+=(--label "$label")
   fi
