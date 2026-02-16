@@ -20,7 +20,7 @@
 - 画面・API・データのラフ設計
 - `/plan` / `/pl` で計画提示 -> 承認 -> Issue自動作成（`.context/issue_scope.json` 更新）
 - 優先度ラベル定義（`priority:P0` / `P1` / `P2` / `P3`）
-- 必要なら `/pick` / `/p` を使ったIssueスコープ共有（`.context/issue_scope.json`）を準備する
+- 必要なら `/pick` / `/p` を使ったIssueスコープ共有（`.context/issue_scope.json`）を準備する（引数なし時は priority順の自動選定が可能）
 - Issue単位でworktreeを分ける運用準備
 - 小さなPRを順次適用する前提で作業を分割
 

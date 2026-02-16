@@ -27,7 +27,7 @@ Conductorでの基本的な進め方は、次の順番です。
 
 - コーディング依頼: 明示コマンドは不要です。通常の依頼文で実装を指示します。
 - `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`direnv/ghx` を確認して計画を提示します。承認後に `scripts/ghx issue create` を実行し、Issue情報を `.context/issue_scope.json` に保存します。実装・マージは行いません。
-- `/pick <primary-issue> [related-issues...]` または `/p <primary-issue> [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。
+- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
 - `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` を参照します。
 - `/merge [pr-number]` または `/m [pr-number]`: 対象PRを安全確認のうえ `scripts/ghx pr merge` でマージします。Issue連携中は結果をIssueコメントに記録します。引数省略時は `.context/issue_scope.json` の `pr_number` を最優先の解決候補として参照します。
@@ -41,6 +41,7 @@ Conductorでの基本的な進め方は、次の順番です。
 - Codexへの指示例:
   - `AI.md と .ai の必読を読み込み、direnv/ghx確認→計画提示→承認後Issue作成と.context更新まで実施して（/plan 相当）`
   - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
+  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
   - `PR #123 を安全確認して scripts/ghx でマージし、Issueへ結果コメントして（/merge 相当）`
   - `git add -A 後に確認付きコミット候補を出して（/commit 相当）`
@@ -55,6 +56,7 @@ Conductorでの基本的な進め方は、次の順番です。
 
 - 基本は `/plan` 承認後に作成した Issue を `.context/issue_scope.json` に保持して引き回します。
 - `Issue #9` のように依頼文で明示する方法や、`/pick` `/p` による上書きも可能です。
+- `/pick` `/p` はIssue番号未指定でも実行でき、優先度ラベル順の自動選定で `primary_issue` を決定できます。
 - `.context` 未設定時は通常動作で進め、Issue固定フローは使いません。
 - `.context` と引数の両方がある場合は、引数を優先して扱います。
 
