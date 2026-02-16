@@ -90,7 +90,7 @@ async fn sync_stream_status_once(state: &SharedState) -> Result<(), String> {
         expires_at: db_token.expires_at,
     };
 
-    let redirect_uri = format!("http://127.0.0.1:{server_port}/callback");
+    let redirect_uri = format!("http://localhost:{server_port}/callback");
     let auth = TwitchAuth::new(client_id.clone(), client_secret, redirect_uri);
     let usable_token = match auth.get_or_refresh_token(&current_token).await {
         Ok(Some(refreshed)) => {
@@ -155,14 +155,20 @@ async fn apply_stream_status(state: &SharedState, is_live: bool, viewer_count: u
 
 /// Periodically check and refresh the Twitch OAuth token.
 pub async fn token_refresh_loop(state: SharedState) {
+    const CHECK_INTERVAL_SECS: u64 = 30 * 60;
+    const INITIAL_BACKOFF_SECS: u64 = 30;
+    const MAX_BACKOFF_SECS: u64 = 30 * 60;
+
     // Wait for initial startup
     sleep(Duration::from_secs(10)).await;
+    let mut failure_backoff_secs = INITIAL_BACKOFF_SECS;
 
     loop {
         let db_token = match state.db().get_latest_token() {
             Ok(Some(t)) => t,
             _ => {
-                sleep(Duration::from_secs(60)).await;
+                failure_backoff_secs = INITIAL_BACKOFF_SECS;
+                sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
                 continue;
             }
         };
@@ -170,7 +176,7 @@ pub async fn token_refresh_loop(state: SharedState) {
         let now = chrono::Utc::now().timestamp();
         let time_until_expiry = db_token.expires_at - now;
 
-        if time_until_expiry <= 0 || time_until_expiry <= 30 * 60 {
+        if time_until_expiry <= 30 * 60 {
             tracing::info!(
                 time_until_expiry,
                 "Token expiring soon or expired, refreshing"
@@ -178,11 +184,12 @@ pub async fn token_refresh_loop(state: SharedState) {
 
             let config = state.config().await;
             if config.client_id.is_empty() || config.client_secret.is_empty() {
-                sleep(Duration::from_secs(300)).await;
+                failure_backoff_secs = INITIAL_BACKOFF_SECS;
+                sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
                 continue;
             }
 
-            let redirect_uri = format!("http://127.0.0.1:{}/callback", config.server_port);
+            let redirect_uri = format!("http://localhost:{}/callback", config.server_port);
             let auth = twitch_client::auth::TwitchAuth::new(
                 config.client_id.clone(),
                 config.client_secret.clone(),
@@ -200,6 +207,13 @@ pub async fn token_refresh_loop(state: SharedState) {
                     };
                     if let Err(e) = state.db().save_token(&db_tok) {
                         tracing::error!("Failed to save refreshed token: {e}");
+                        tracing::warn!(
+                            retry_after_secs = failure_backoff_secs,
+                            "Retrying token refresh with exponential backoff"
+                        );
+                        sleep(Duration::from_secs(failure_backoff_secs)).await;
+                        failure_backoff_secs = (failure_backoff_secs * 2).min(MAX_BACKOFF_SECS);
+                        continue;
                     } else {
                         tracing::info!(
                             expires_at = db_tok.expires_at,
@@ -209,18 +223,18 @@ pub async fn token_refresh_loop(state: SharedState) {
                 }
                 Err(e) => {
                     tracing::error!("Token auto-refresh failed: {e}");
-                    sleep(Duration::from_secs(300)).await;
+                    tracing::warn!(
+                        retry_after_secs = failure_backoff_secs,
+                        "Retrying token refresh with exponential backoff"
+                    );
+                    sleep(Duration::from_secs(failure_backoff_secs)).await;
+                    failure_backoff_secs = (failure_backoff_secs * 2).min(MAX_BACKOFF_SECS);
                     continue;
                 }
             }
         }
 
-        // Sleep until 30 min before expiry, or 1 hour max
-        let sleep_secs = if time_until_expiry > 30 * 60 {
-            (time_until_expiry - 30 * 60).min(3600) as u64
-        } else {
-            300
-        };
-        sleep(Duration::from_secs(sleep_secs)).await;
+        failure_backoff_secs = INITIAL_BACKOFF_SECS;
+        sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
     }
 }

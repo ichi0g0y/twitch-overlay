@@ -8,6 +8,7 @@ use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use twitch_client::TwitchError;
 use twitch_client::api::{CreateRewardRequest, TwitchApiClient, UpdateRewardRequest};
@@ -57,7 +58,7 @@ async fn create_auth(
     if config.client_id.is_empty() || config.client_secret.is_empty() {
         return Err(err_json(400, "Twitch credentials not configured"));
     }
-    let redirect_uri = format!("http://127.0.0.1:{}/callback", config.server_port);
+    let redirect_uri = format!("http://localhost:{}/callback", config.server_port);
     Ok(TwitchAuth::new(
         config.client_id.clone(),
         config.client_secret.clone(),
@@ -217,8 +218,10 @@ pub async fn auth_redirect(State(state): State<SharedState>) -> impl IntoRespons
         Ok(a) => a,
         Err(e) => return Err(e),
     };
+    let oauth_state = Uuid::new_v4().to_string();
+    state.set_oauth_state(oauth_state.clone()).await;
     let url = auth
-        .get_auth_url()
+        .get_auth_url_with_state(Some(&oauth_state))
         .map_err(|e| err_json(500, &e.to_string()))?;
     Ok(Redirect::temporary(&url))
 }
@@ -226,6 +229,7 @@ pub async fn auth_redirect(State(state): State<SharedState>) -> impl IntoRespons
 #[derive(Debug, Deserialize)]
 pub struct CallbackQuery {
     pub code: Option<String>,
+    pub state: Option<String>,
     pub error: Option<String>,
     pub error_description: Option<String>,
 }
@@ -246,6 +250,17 @@ pub async fn callback(
         .code
         .filter(|c| !c.is_empty())
         .ok_or_else(|| err_json(400, "OAuth code missing"))?;
+    let callback_state = q
+        .state
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| err_json(400, "OAuth state missing"))?;
+    let expected_state = state
+        .take_oauth_state()
+        .await
+        .ok_or_else(|| err_json(400, "OAuth state not initialized"))?;
+    if callback_state != expected_state {
+        return Err(err_json(400, "OAuth state mismatch"));
+    }
     let auth = create_auth(&state).await?;
     let token = auth.exchange_code(&code).await.map_err(map_twitch_error)?;
     state
