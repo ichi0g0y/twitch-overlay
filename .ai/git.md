@@ -26,7 +26,7 @@
 
 ## ブランチ・worktree運用
 
-- `develop` ブランチを基点にIssue単位のブランチを作成する
+- `develop` を基点にIssue単位のブランチを作成する
 - Issue単位で専用worktreeを作成し、作業の混線を防ぐ
 - レビューや検証で分離が必要な場合は、追加worktreeを作成して確認する
 - `git rev-parse --abbrev-ref HEAD` の結果が `develop` の場合、コミットせず作業ブランチへ切り替える
@@ -38,7 +38,8 @@
 - PRのbaseブランチは `develop` とする
 - PR作成 を使う場合、`--base develop` を省略しない
 - PR本文には対象Issue（`#<issue-number>`）への参照を記載する
-- 完了したIssueは PR本文に `Closes #<issue-number>` を記載し、マージ時に自動クローズする
-- 参照だけのIssueは `Refs #<issue-number>` を使う
-- 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
+- `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` とする
+- `Closes` は `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` のIssueを記載する
+- `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
+- 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
 - `GitHub CLI` で PR を作成/更新する場合は PR操作 を使う

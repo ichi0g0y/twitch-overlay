@@ -21,11 +21,11 @@ argument-hint: "[issue-number]"
    - 最終報告のみ行い、Issueコメント追記は行わない。
 4. 引数または `.context/issue_scope.json` からIssueが決定できた場合:
    - Issue本文・コメント確認 で Issue本文と最新コメントを取得する。
-   - `primary_issue` と `related_issues` のレビューコメントを収集する。
+   - `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）のレビューコメントを収集する。
    - 各指摘を **採用 / 不採用 / 追加情報必要** で分類して妥当性を検証する。
    - 採用した指摘のみ修正を実施する。
    - 必要なテストを実行し、失敗したら修正して再実行する。
-5. 4でIssueが決定できた場合のみ、`primary_issue` と `related_issues` に修正結果コメントを追記する。以下を必ず含める。
+5. 4でIssueが決定できた場合のみ、`primary_issue` と反映対象の `active_related_issues` に修正結果コメントを追記する。以下を必ず含める。
    - 対象Issue番号
    - 指摘ごとの判定（採用 / 不採用 / 追加情報必要）
    - 実施した修正内容

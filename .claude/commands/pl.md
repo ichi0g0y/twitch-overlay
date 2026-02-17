@@ -1,10 +1,10 @@
 ---
-title: "計画・Issue起票タスク"
-read_only: false
+title: "計画準備タスク"
+read_only: true
 type: "command"
 ---
 
-# 計画作成とIssue起票（/pl）
+# 計画準備（/pl）
 
 ## 短縮コマンド宣言
 
@@ -13,10 +13,11 @@ type: "command"
 
 ## 目的
 
-`/plan` と同等に、計画承認後の Issue 自動作成と `.context` 保存まで完了させる。
+実装前に、AIを計画準備状態へ遷移させる。
 
 ## 実行ルール
 
-- 詳細仕様は `.claude/commands/plan.md` に従う。
-- `GitHub CLI` 事前確認、計画提示、承認取得、Issue作成、`.context/issue_scope.json` 更新まで実行する。
-- 実装・コミットは行わない。
+- `AI.md` と `.ai/*` の必読ルールを読み込む。
+- 認証状態確認 を実行し、GitHub操作可能か確認する。
+- `.context/issue_scope.json` があれば状態確認に利用する。
+- 現在状態と次の1手を提示し、実装やIssue作成は行わない。

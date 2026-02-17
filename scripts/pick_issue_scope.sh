@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SCOPE_FILE="${REPO_ROOT}/.context/issue_scope.json"
+LOCK_DIR="${REPO_ROOT}/.context/.issue_scope.lock"
+OWNER_ID="${ISSUE_SCOPE_OWNER:-codex:${USER:-unknown}}"
 
 usage() {
   cat <<'USAGE'
@@ -26,7 +28,7 @@ Options:
 USAGE
 }
 
-GITHUB_CLI_BIN="$(command -v g"h" 2>/dev/null || true)"
+GITHUB_CLI_BIN="$(command -v gh 2>/dev/null || true)"
 if [[ -z "$GITHUB_CLI_BIN" ]]; then
   echo "error: GitHub CLI が必要です" >&2
   exit 127
@@ -109,6 +111,22 @@ list_first_issue() {
   local json
   json="$("${cmd[@]}")"
   extract_first_issue "$json"
+}
+
+acquire_lock() {
+  local retries=50
+  local attempt=0
+  while (( attempt < retries )); do
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+      trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+      return 0
+    fi
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+
+  echo "error: issue_scope のロック取得に失敗しました: ${LOCK_DIR}" >&2
+  exit 1
 }
 
 mode="replace"
@@ -209,154 +227,138 @@ else
   fi
 fi
 
+if [[ -z "$selection_reason" ]]; then
+  selection_reason="explicit"
+fi
+
 branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-picked_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+normalized_csv=""
+if ((${#normalized_issues[@]})); then
+  normalized_csv="$(IFS=,; echo "${normalized_issues[*]}")"
+fi
 
-existing_primary=""
-existing_related_csv=""
-existing_pr_number=""
-existing_pr_url=""
-
-if (( scope_exists == 1 )); then
-  mapfile -t scope_lines < <(python3 - "$SCOPE_FILE" <<'PY'
+json_payload="$(python3 - "$mode" "$SCOPE_FILE" "$scope_exists" "$selected_issue" "$normalized_csv" "$branch" "$now" "$OWNER_ID" <<'PY'
 import json
 import sys
 
-path = sys.argv[1]
+mode = sys.argv[1]
+scope_path = sys.argv[2]
+scope_exists = sys.argv[3] == "1"
+selected_issue = int(sys.argv[4])
+normalized_csv = sys.argv[5]
+branch = sys.argv[6]
+now = sys.argv[7]
+owner_id = sys.argv[8]
+
+provided = [int(x) for x in normalized_csv.split(",") if x]
+
+existing = {}
+if scope_exists:
+    with open(scope_path, encoding="utf-8") as f:
+        existing = json.load(f)
+
+existing_primary = existing.get("primary_issue")
 try:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-except Exception as e:
-    print(f"error: issue_scope の読み込みに失敗しました: {e}", file=sys.stderr)
-    sys.exit(2)
+    existing_primary = int(existing_primary) if existing_primary is not None else None
+except Exception:
+    existing_primary = None
 
-primary = data.get("primary_issue")
-related = data.get("related_issues")
-if not isinstance(related, list):
-    related = []
+existing_related_raw = existing.get("related_issues")
+if not isinstance(existing_related_raw, list):
+    existing_related_raw = []
 
-normalized_related = []
-for item in related:
+existing_related = []
+for item in existing_related_raw:
     try:
-        normalized_related.append(str(int(item)))
+        existing_related.append(int(item))
     except Exception:
-        continue
+        pass
 
-pr_number = data.get("pr_number")
-pr_url = data.get("pr_url")
+existing_active = existing.get("active_related_issues")
+if not isinstance(existing_active, dict):
+    existing_active = {}
 
-print("" if primary is None else str(int(primary)))
-print(",".join(normalized_related))
-print("" if pr_number is None else str(pr_number))
-print("" if pr_url is None else str(pr_url))
-PY
-)
+existing_pr_number = existing.get("pr_number")
+existing_pr_url = existing.get("pr_url")
+existing_picked_at = existing.get("picked_at")
 
-  existing_primary="${scope_lines[0]:-}"
-  existing_related_csv="${scope_lines[1]:-}"
-  existing_pr_number="${scope_lines[2]:-}"
-  existing_pr_url="${scope_lines[3]:-}"
-fi
 
-declare -a existing_related=()
-if [[ -n "$existing_related_csv" ]]; then
-  IFS=',' read -r -a existing_related <<<"$existing_related_csv"
-fi
+def dedup_keep_order(values):
+    out = []
+    seen = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
-dedup_keep_order() {
-  awk 'NF && !seen[$0]++'
-}
+if mode == "append":
+    if existing_primary is None:
+        print("error: 既存 issue_scope に primary_issue がないため --append-related を実行できません。", file=sys.stderr)
+        sys.exit(1)
 
-declare -a new_related=()
-new_primary=""
-new_pr_number=""
-new_pr_url=""
-
-if [[ "$mode" == "append" ]]; then
-  if [[ -z "$existing_primary" ]]; then
-    echo "error: 既存 issue_scope に primary_issue がないため --append-related を実行できません。" >&2
-    exit 1
-  fi
-
-  new_primary="$existing_primary"
-  new_pr_number="$existing_pr_number"
-  new_pr_url="$existing_pr_url"
-
-  declare -a append_targets=()
-  if ((${#normalized_issues[@]})); then
-    append_targets=("${normalized_issues[@]}")
-  else
-    append_targets=("$selected_issue")
-  fi
-
-  declare -a merged=()
-  merged=("${existing_related[@]}" "${append_targets[@]}")
-
-  declare -a filtered=()
-  for num in "${merged[@]}"; do
-    if [[ "$num" != "$new_primary" ]]; then
-      filtered+=("$num")
-    fi
-  done
-
-  if ((${#filtered[@]})); then
-    mapfile -t new_related < <(printf '%s\n' "${filtered[@]}" | dedup_keep_order)
-  fi
-else
-  new_primary="$selected_issue"
-
-  declare -a provided_related=()
-  if ((${#normalized_issues[@]} > 1)); then
-    provided_related=("${normalized_issues[@]:1}")
-  fi
-
-  declare -a filtered=()
-  for num in "${provided_related[@]}"; do
-    if [[ "$num" != "$new_primary" ]]; then
-      filtered+=("$num")
-    fi
-  done
-
-  if ((${#filtered[@]})); then
-    mapfile -t new_related < <(printf '%s\n' "${filtered[@]}" | dedup_keep_order)
-  fi
-fi
-
-related_csv=""
-if ((${#new_related[@]})); then
-  related_csv="$(IFS=,; echo "${new_related[*]}")"
-fi
-
-json_payload="$(python3 - "$new_primary" "$related_csv" "$branch" "$picked_at" "$new_pr_number" "$new_pr_url" <<'PY'
-import json
-import sys
-
-primary = int(sys.argv[1])
-related_csv = sys.argv[2]
-branch = sys.argv[3]
-picked_at = sys.argv[4]
-pr_number_raw = sys.argv[5]
-pr_url_raw = sys.argv[6]
-
-related = [int(x) for x in related_csv.split(",") if x]
-
-if pr_number_raw == "":
-    pr_number = None
+    new_primary = existing_primary
+    append_targets = provided if provided else [selected_issue]
+    merged = existing_related + append_targets
+    new_related = [x for x in dedup_keep_order(merged) if x != new_primary]
+    pr_number = existing_pr_number
+    pr_url = existing_pr_url
+    picked_at = existing_picked_at or now
 else:
-    try:
-        pr_number = int(pr_number_raw)
-    except ValueError:
-        pr_number = pr_number_raw
+    if provided:
+        new_primary = provided[0]
+        provided_related = provided[1:]
+    else:
+        new_primary = selected_issue
+        provided_related = []
 
-pr_url = pr_url_raw if pr_url_raw else None
+    new_related = [x for x in dedup_keep_order(provided_related) if x != new_primary]
+
+    if existing_primary == new_primary:
+        pr_number = existing_pr_number
+        pr_url = existing_pr_url
+    else:
+        pr_number = None
+        pr_url = None
+    picked_at = now
+
+allowed_states = {"reserved", "in_progress", "ready_for_close", "closed"}
+active_related = {}
+for issue in new_related:
+    key = str(issue)
+    raw = existing_active.get(key, {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    state = raw.get("state")
+    if state not in allowed_states:
+        state = "reserved"
+
+    entry = {
+        "state": state,
+        "owner": str(raw.get("owner") or owner_id),
+        "reserved_at": str(raw.get("reserved_at") or now),
+        "updated_at": now,
+    }
+
+    expires_at = raw.get("expires_at")
+    if expires_at:
+        entry["expires_at"] = str(expires_at)
+
+    active_related[key] = entry
 
 payload = {
-    "primary_issue": primary,
-    "related_issues": related,
+    "schema_version": 2,
+    "primary_issue": new_primary,
+    "related_issues": new_related,
+    "active_related_issues": active_related,
     "branch": branch,
     "pr_number": pr_number,
     "pr_url": pr_url,
     "picked_at": picked_at,
+    "updated_at": now,
 }
 
 print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -367,23 +369,31 @@ if (( dry_run == 1 )); then
   printf '%s\n' "$json_payload"
 else
   mkdir -p "$(dirname "$SCOPE_FILE")"
-  printf '%s\n' "$json_payload" > "$SCOPE_FILE"
+  acquire_lock
+  tmp_file="${SCOPE_FILE}.tmp.$$"
+  printf '%s\n' "$json_payload" > "$tmp_file"
+  mv "$tmp_file" "$SCOPE_FILE"
 fi
 
-related_display="[]"
-if ((${#new_related[@]})); then
-  related_display="[$(IFS=', '; echo "${new_related[*]}")]"
-fi
+IFS=$'\t' read -r new_primary related_display active_display <<<"$(python3 - "$json_payload" <<'PY'
+import json
+import sys
 
-if [[ "$mode" == "append" ]]; then
-  selection_mode="append-related"
-else
-  selection_mode="replace"
-fi
-
-if [[ -z "$selection_reason" ]]; then
-  selection_reason="explicit"
-fi
+payload = json.loads(sys.argv[1])
+related = payload.get("related_issues", [])
+active = payload.get("active_related_issues", {})
+related_display = "[]" if not related else "[" + ", ".join(str(x) for x in related) + "]"
+if not active:
+    active_display = "{}"
+else:
+    parts = []
+    for key in sorted(active, key=lambda x: int(x)):
+        state = active.get(key, {}).get("state", "")
+        parts.append(f"{key}:{state}")
+    active_display = "{" + ", ".join(parts) + "}"
+print(f"{payload.get('primary_issue')}\t{related_display}\t{active_display}")
+PY
+)"
 
 primary_issue_url=""
 primary_issue_title=""
@@ -397,7 +407,8 @@ if [[ -z "$primary_issue_url" && -n "$selected_issue_url" && "$selected_issue" =
 fi
 
 echo "issue_scope updated: ${SCOPE_FILE}"
-echo "mode: ${selection_mode}"
+echo "mode: ${mode}"
+echo "schema_version: 2"
 echo "primary_issue: #${new_primary}"
 if [[ -n "$primary_issue_title" ]]; then
   echo "primary_issue_title: ${primary_issue_title}"
@@ -412,6 +423,7 @@ if [[ -n "$primary_issue_url" ]]; then
   echo "primary_issue_url: ${primary_issue_url}"
 fi
 echo "related_issues: ${related_display}"
+echo "active_related_issues: ${active_display}"
 echo "branch: ${branch}"
 echo "selection_reason: ${selection_reason}"
 if [[ -n "$selected_issue_url" ]]; then
