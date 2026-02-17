@@ -46,6 +46,9 @@ fn to_db_token(t: &twitch_client::Token) -> overlay_db::tokens::Token {
 fn map_twitch_error(err: TwitchError) -> (axum::http::StatusCode, Json<Value>) {
     match err {
         TwitchError::AuthRequired => err_json(401, "Authentication required"),
+        TwitchError::TokenRefreshFailed(_) => {
+            err_json(401, "Token refresh failed, please re-authenticate")
+        }
         TwitchError::ApiError { status, message } => err_json(status, &message),
         other => err_json(500, &other.to_string()),
     }
@@ -580,6 +583,13 @@ mod tests {
         assert!(is_unauthorized_error(&unauthorized));
         assert!(!is_unauthorized_error(&forbidden));
         assert!(!is_unauthorized_error(&TwitchError::AuthRequired));
+    }
+
+    #[test]
+    fn token_refresh_failed_maps_to_401() {
+        let (status, body) = map_twitch_error(TwitchError::TokenRefreshFailed("invalid".into()));
+        assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(body.0["error"], "Token refresh failed, please re-authenticate");
     }
 
     #[test]
