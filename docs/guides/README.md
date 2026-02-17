@@ -9,6 +9,7 @@
 - [ISSUE_WORKFLOW.md](ISSUE_WORKFLOW.md): GitHub Issue運用仕様
 - [CODING_STANDARDS.md](CODING_STANDARDS.md): コミットメッセージなどの基本規約
 - [ISSUE_MIGRATION_MAP.md](ISSUE_MIGRATION_MAP.md): ローカルIssue移送対応表
+- [DEVELOP_FLOW_BOOTSTRAP.md](DEVELOP_FLOW_BOOTSTRAP.md): mainデフォルト + develop運用（`/merge-to-main`/`/mtm`必須）の導入手順
 
 ## 追加ルール
 
