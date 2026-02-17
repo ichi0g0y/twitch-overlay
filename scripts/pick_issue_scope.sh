@@ -18,6 +18,7 @@ Behavior:
   - 引数あり: 指定Issueを primary/related として設定
   - 引数なし: Open Issue から priority:P0 -> P1 -> P2 -> P3 の順で最古Issueを自動選定
   - 優先度ラベル付きIssueが無い場合: Open Issue 全体の最古Issueを選定
+  - primary_issue を設定した場合: Issue本文から概要を数行生成して結果に表示
 
 Options:
   --force             既存 issue_scope を上書きする（replaceモード時）
@@ -66,7 +67,7 @@ print(f"{num}\t{issue.get('url','')}\t{issue.get('title','')}\t{issue.get('creat
 PY
 }
 
-extract_issue_overview() {
+extract_issue_metadata() {
   local issue_json="$1"
   python3 - "$issue_json" <<'PY'
 import json
@@ -75,14 +76,73 @@ import sys
 
 issue = json.loads(sys.argv[1])
 title = re.sub(r"\s+", " ", issue.get("title", "")).strip()
-body = re.sub(r"\s+", " ", issue.get("body", "")).strip()
-if len(body) > 140:
-    body = body[:137].rstrip() + "..."
-print(f"{issue.get('url','')}\t{title}\t{body}\t{issue.get('createdAt','')}")
+print(f"{issue.get('url','')}\t{title}\t{issue.get('createdAt','')}")
 PY
 }
 
-view_issue_overview() {
+extract_issue_overview_lines() {
+  local issue_json="$1"
+  python3 - "$issue_json" <<'PY'
+import json
+import re
+import sys
+
+issue = json.loads(sys.argv[1])
+title = re.sub(r"\s+", " ", issue.get("title", "")).strip()
+body = issue.get("body") or ""
+
+def normalize(text: str) -> str:
+    text = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+def shorten(text: str, limit: int = 96) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+lines = []
+in_code_block = False
+
+for raw in body.splitlines():
+    line = raw.strip()
+    if line.startswith("```"):
+        in_code_block = not in_code_block
+        continue
+    if in_code_block or not line:
+        continue
+    if line.startswith("#"):
+        continue
+
+    line = re.sub(r"^[-*+]\s+", "", line)
+    line = re.sub(r"^\d+\.\s+", "", line)
+    line = re.sub(r"^>\s*", "", line)
+    line = normalize(line)
+    if not line:
+        continue
+    lines.append(line)
+
+summary = []
+if title:
+    summary.append(f"課題: {shorten(title, 88)}")
+
+for line in lines:
+    if line == title:
+        continue
+    summary.append(shorten(line))
+    if len(summary) >= 3:
+        break
+
+if len(summary) == 1:
+    summary.append("本文: 未記載")
+
+for item in summary[:3]:
+    print(f"  - {item}")
+PY
+}
+
+fetch_issue_json() {
   local issue_number="$1"
   local repo="$2"
 
@@ -93,7 +153,7 @@ view_issue_overview() {
 
   local json
   json="$("${cmd[@]}")"
-  extract_issue_overview "$json"
+  printf '%s\n' "$json"
 }
 
 list_first_issue() {
@@ -397,10 +457,13 @@ PY
 
 primary_issue_url=""
 primary_issue_title=""
-primary_issue_summary=""
 primary_issue_created_at=""
-if primary_overview="$(view_issue_overview "$new_primary" "$repo" 2>/dev/null)"; then
-  IFS=$'\t' read -r primary_issue_url primary_issue_title primary_issue_summary primary_issue_created_at <<<"$primary_overview"
+primary_issue_overview_lines=""
+if primary_issue_json="$(fetch_issue_json "$new_primary" "$repo" 2>/dev/null)"; then
+  if primary_issue_metadata="$(extract_issue_metadata "$primary_issue_json")"; then
+    IFS=$'\t' read -r primary_issue_url primary_issue_title primary_issue_created_at <<<"$primary_issue_metadata"
+  fi
+  primary_issue_overview_lines="$(extract_issue_overview_lines "$primary_issue_json")"
 fi
 if [[ -z "$primary_issue_url" && -n "$selected_issue_url" && "$selected_issue" == "$new_primary" ]]; then
   primary_issue_url="$selected_issue_url"
@@ -413,14 +476,15 @@ echo "primary_issue: #${new_primary}"
 if [[ -n "$primary_issue_title" ]]; then
   echo "primary_issue_title: ${primary_issue_title}"
 fi
-if [[ -n "$primary_issue_summary" ]]; then
-  echo "primary_issue_summary: ${primary_issue_summary}"
-fi
 if [[ -n "$primary_issue_created_at" ]]; then
   echo "primary_issue_created_at: ${primary_issue_created_at}"
 fi
 if [[ -n "$primary_issue_url" ]]; then
   echo "primary_issue_url: ${primary_issue_url}"
+fi
+if [[ -n "$primary_issue_overview_lines" ]]; then
+  echo "primary_issue_overview:"
+  printf '%s\n' "$primary_issue_overview_lines"
 fi
 echo "related_issues: ${related_display}"
 echo "active_related_issues: ${active_display}"
