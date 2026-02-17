@@ -29,4 +29,6 @@
 
 - 詳細は [`.ai/dev-env.md`](.ai/dev-env.md) を正本として参照する
 - CodexはSlash Command機能がないため、`/review-verify` 相当はプロンプトで明示指示する
-- `/plan` `/pl` `/pick` `/p` `/review-verify` `/rv` `/commit` `/c` `/commit!` `/c!` は疑似コマンドとして扱い、処理内容を依頼文で明示する
+- `/plan` `/pl` `/pick` `/p` `/review-verify` `/rv` `/merge-to-main` `/mtm` `/commit` `/c` `/commit!` `/c!` は疑似コマンドとして扱い、処理内容を依頼文で明示する
+- `develop -> main` 反映時は `/merge-to-main` または `/mtm` 相当の手順を必須とする
+- `merge-to-main` の定義は [`.claude/commands/merge-to-main.md`](.claude/commands/merge-to-main.md)、短縮形は [`.claude/commands/mtm.md`](.claude/commands/mtm.md) を参照する

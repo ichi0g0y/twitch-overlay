@@ -21,6 +21,7 @@ Conductorでの基本的な進め方は、次の順番です。
 4. レビュー時は `.context` のIssue情報を起点に GitHub Issue を読み、レビュー結果をIssueコメントへ記載する
 5. `/review-verify <issue-number>` または `/rv <issue-number>` で指摘対応し、修正結果をIssueコメントへ追記する（引数なし時は `.context` を参照）
 6. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
+7. リリース時は `/merge-to-main` または `/mtm` で `develop -> main` のPRを作成し、通常はそのままマージする
 
 ### コマンド説明
 
@@ -29,6 +30,7 @@ Conductorでの基本的な進め方は、次の順番です。
 - `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。`primary_issue` 設定時は、Issue本文から生成した概要（数行）も同時表示します。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
 - `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を参照します。
+- `/merge-to-main [--no-merge] [release-label]` または `/mtm [--no-merge] [release-label]`: `develop -> main` 反映時の手順です。`base=main` / `head=develop` のリリースPRを作成（既存Open PRがあれば再利用）し、デフォルトでマージまで実行します。PR作成/再利用のみで止める場合は `--no-merge` を指定します。詳細は `.claude/commands/merge-to-main.md` を参照します。
 - `/commit` または `/c`: 確認付きコミットです。候補メッセージ確認後にコミットします。
 - `/commit!` または `/c!`: 確認なしで即時コミットします。
 
@@ -41,6 +43,7 @@ Conductorでの基本的な進め方は、次の順番です。
   - `Issue #7 を primary_issue として .context/issue_scope.json を更新し、Issue本文から概要を数行表示して（/pick 相当）`
   - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新し、Issue本文から概要を数行表示して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
+  - `develop から main へのリリースPRを作成して通常はそのままマージし、必要なら --no-merge で作成のみ実行して、.context の pr_number/pr_url を更新して（/mtm 相当）`
   - `git add -A 後に確認付きコミット候補を出して（/commit 相当）`
 
 ### レビュー連携の要点
