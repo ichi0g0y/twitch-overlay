@@ -180,7 +180,7 @@ pub fn create_router(state: SharedState) -> Router {
             "/api/twitch/reward-groups/{gid}/rewards/{rid}",
             post(api::reward::add_reward_to_group).delete(api::reward::remove_reward_from_group),
         )
-        // --- Custom rewards (stubbed for explicit 501 JSON until implemented) ---
+        // --- Custom rewards ---
         .route(
             "/api/twitch/custom-rewards",
             get(api::twitch::get_custom_rewards).post(api::twitch::create_custom_reward),
