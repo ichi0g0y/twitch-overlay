@@ -1,0 +1,88 @@
+name: mark-released-on-main-merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  mark-released:
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+      contents: read
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_LABEL: ${{ vars.RELEASE_LABEL || '' }}
+        with:
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const releasePr = context.payload.pull_request
+            const releaseMergedAt = new Date(releasePr.merged_at || 0).getTime()
+
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              { owner, repo, pull_number: releasePr.number, per_page: 100 }
+            )
+
+            const candidatePrNumbers = new Set()
+
+            for (const c of commits) {
+              const message = c.commit?.message || ""
+              for (const m of message.matchAll(/\bMerge pull request #(\d+)\b/g)) {
+                candidatePrNumbers.add(Number(m[1]))
+              }
+
+              const associated = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: c.sha
+              })
+
+              for (const pr of associated.data) {
+                candidatePrNumbers.add(pr.number)
+              }
+            }
+
+            const targetPrNumbers = new Set()
+            for (const prNumber of candidatePrNumbers) {
+              if (prNumber === releasePr.number) continue
+
+              const { data: pr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber
+              })
+
+              if (pr.base.ref !== "develop") continue
+              if (!pr.merged_at) continue
+              if (new Date(pr.merged_at).getTime() > releaseMergedAt) continue
+              targetPrNumbers.add(pr.number)
+            }
+
+            for (const issue_number of targetPrNumbers) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number,
+                  name: "release:pending"
+                })
+              } catch (e) {
+                if (e.status !== 404) throw e
+              }
+
+              const releaseLabel = process.env.RELEASE_LABEL
+              if (releaseLabel) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number,
+                  labels: [releaseLabel]
+                })
+              }
+            }
