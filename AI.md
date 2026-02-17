@@ -26,7 +26,7 @@ Conductorでの基本的な進め方は、次の順番です。
 
 - コーディング依頼: 明示コマンドは不要です。通常の依頼文で実装を指示します。
 - `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`GitHub CLI` を確認して計画を提示します。**Issue作成は行いません**。実装・マージも行いません。
-- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。
+- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。`primary_issue` 設定時は、Issue本文から生成した概要（数行）も同時表示します。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
 - `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を参照します。
 - `/commit` または `/c`: 確認付きコミットです。候補メッセージ確認後にコミットします。
@@ -38,8 +38,8 @@ Conductorでの基本的な進め方は、次の順番です。
 - Codex では疑似コマンド運用になるため、`/p` などの文字列だけではなく処理内容を依頼文で明示してください。
 - Codexへの指示例:
   - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
-  - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
-  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
+  - `Issue #7 を primary_issue として .context/issue_scope.json を更新し、Issue本文から概要を数行表示して（/pick 相当）`
+  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新し、Issue本文から概要を数行表示して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
   - `git add -A 後に確認付きコミット候補を出して（/commit 相当）`
 

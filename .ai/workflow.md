@@ -32,7 +32,7 @@
 - `/plan` / `/pl` は計画準備のみを行い、Issue作成・実装・マージは行わない
 - Issue作成は、ユーザー指示またはIssue番号明示後に実施する
 - Issue作成後は `.context/issue_scope.json` に `primary_issue` を保存して共有する
-- `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う
+- `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う（`primary_issue` 設定時は Issue本文から概要を数行生成して同時表示する）
 - 引数なし時は `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を選定し、優先度ラベル付きIssueが無い場合は Open Issue 全体の最古を採用する
 - 計画相談・壁打ちなど、ファイル変更を伴わない場合はIssueスコープ未設定でもよい
 - `.context/issue_scope.json` が未設定でも、依頼文でIssue番号が明示されていれば進行してよい
@@ -132,8 +132,8 @@
 - Codexへは「`/pick` 相当を実施」「`/rv` 相当を実施」のように、処理内容を文章で明示する
 - 例:
   - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
-  - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
-  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
+  - `Issue #7 を primary_issue として .context/issue_scope.json を更新し、Issue本文から概要を数行表示して（/pick 相当）`
+  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新し、Issue本文から概要を数行表示して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
   - `git add -A 後に確認付きでコミット候補を提示して（/commit 相当）`
   - `git add -A 後に最初の候補で即コミットして（/commit! 相当）`
