@@ -15,8 +15,8 @@
 
 Conductorでの基本的な進め方は、次の順番です。
 
-1. `/plan` または `/pl` で計画モードに入り、`GitHub CLI` の実行可否を確認する
-2. 計画を承認後、Issue を自動作成し `.context/issue_scope.json` に保存する
+1. `/plan` または `/pl` で計画準備を行う（計画のみ。Issue作成はしない）
+2. 必要に応じてIssue化する（依頼文でIssue番号明示、または指示後にIssue作成）
 3. Issue単位でworktreeを作成して実装する
 4. レビュー時は `.context` のIssue情報を起点に GitHub Issue を読み、レビュー結果をIssueコメントへ記載する
 5. `/review-verify <issue-number>` または `/rv <issue-number>` で指摘対応し、修正結果をIssueコメントへ追記する（引数なし時は `.context` を参照）
@@ -25,10 +25,10 @@ Conductorでの基本的な進め方は、次の順番です。
 ### コマンド説明
 
 - コーディング依頼: 明示コマンドは不要です。通常の依頼文で実装を指示します。
-- `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`GitHub CLI` を確認して計画を提示します。承認後に Issue作成 を実行し、Issue情報を `.context/issue_scope.json` に保存します。実装・マージは行いません。
+- `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`GitHub CLI` を確認して計画を提示します。**Issue作成は行いません**。実装・マージも行いません。
 - `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
-- `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` を参照します。
+- `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を参照します。
 - `/commit` または `/c`: 確認付きコミットです。候補メッセージ確認後にコミットします。
 - `/commit!` または `/c!`: 確認なしで即時コミットします。
 
@@ -37,7 +37,7 @@ Conductorでの基本的な進め方は、次の順番です。
 - 上記のスラッシュコマンドは Claude Code 前提です。
 - Codex では疑似コマンド運用になるため、`/p` などの文字列だけではなく処理内容を依頼文で明示してください。
 - Codexへの指示例:
-  - `AI.md と .ai の必読を読み込み、GitHub操作確認→計画提示→承認後Issue作成と.context更新まで実施して（/plan 相当）`
+  - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
   - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
   - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
   - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
@@ -51,9 +51,9 @@ Conductorでの基本的な進め方は、次の順番です。
 
 ### Issue番号の受け渡し
 
-- 基本は `/plan` 承認後に作成した Issue を `.context/issue_scope.json` に保持して引き回します。
-- `Issue #9` のように依頼文で明示する方法や、`/pick` `/p` による上書きも可能です。
-- `/pick` `/p` はIssue番号未指定でも実行でき、優先度ラベル順の自動選定で `primary_issue` を決定できます。
+- 基本は `Issue #9` のように依頼文で明示する方法です。
+- 必要なら `/pick` `/p` で `.context/issue_scope.json` に保持して引き回します。
+- `.context` の基本形式は `schema_version: 2`（`primary_issue` / `related_issues` / `active_related_issues`）です。
 - `.context` 未設定時は通常動作で進め、Issue固定フローは使いません。
 - `.context` と引数の両方がある場合は、引数を優先して扱います。
 
@@ -90,8 +90,9 @@ Conductorで依頼する際は、依頼文に次の追加条件を含めてく�
   - テスト手順
   - 影響範囲
   - チェックリスト
-- 完了Issueは必ず `Closes #<issue-number>` を記載してください。
-- 参照のみのIssueは `Refs #<issue-number>` を記載してください。
+- `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` にしてください。
+- `Closes` には `primary_issue` と `active_related_issues` が `ready_for_close` / `closed` のIssueを記載してください。
+- `Refs` には `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載してください。
 - GitHub CLI でPRを作成/更新する場合は PR操作 を使ってください。
 - PR作成 では `--base develop` を省略しないでください。
 - PR作成/更新後は `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新し、後続作業で参照できるようにしてください。

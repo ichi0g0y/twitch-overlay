@@ -1,14 +1,14 @@
 ---
-title: "計画・Issue起票タスク"
-read_only: false
+title: "計画準備タスク"
+read_only: true
 type: "command"
 ---
 
-# 計画作成とIssue起票（/plan）
+# 計画準備（/plan）
 
 ## 目的
 
-実装に入る前に、計画を確定し、承認後に GitHub Issue を自動作成して `.context/issue_scope.json` へ保存する。
+実装に入る前に、AIを「計画準備状態」に遷移させる。
 
 ## 実行手順
 
@@ -21,25 +21,18 @@ type: "command"
 2. `GitHub CLI` の事前確認を行う。
    - 認証状態確認 を実行し、GitHub操作可能か確認する。
    - 失敗時はそこで停止し、原因と対処を確認する。
-3. 要件を分解し、次を含む実行計画を作成して提示する。
+3. `.context/issue_scope.json` が存在する場合は内容を確認する。
+4. 要件を分解し、次を含む実行計画を作成して提示する。
    - 目的 / スコープ / 非スコープ
    - 実装手順
    - 受け入れ条件
    - 想定テスト
-4. ユーザーに計画承認を確認する。
-5. 承認されたら Issue作成 で Issue を作成する。
-6. `.context/issue_scope.json` が既にある場合は、上書き前に確認する。
-7. 生成した Issue 番号を `.context/issue_scope.json` に保存する。
-   - 最低限 `primary_issue` / `related_issues` / `branch` / `picked_at` を記録する。
-   - `pr_number` / `pr_url` は未作成状態として空にしておく。
-8. 日本語で結果を報告する。
-   - 計画の要点
-   - 作成した Issue 番号・URL
-   - 次に実施する1手（実装着手）
+5. 日本語で現在状態を報告する。
+   - ルール読み込み完了可否
+   - Issue連携の有無（`primary_issue` / `related_issues` / `active_related_issues`）
+   - 次に行う1手（通常は「Issue化の要否確認」）
 
 ## ルール
 
-- `/plan` では実装・コミット・PRマージを行わない。
-- 計画承認前に Issue を作成しない。
-- GitHub CLI を使う場合は標準の実行方式を使う。
-- Issue 作成後は `.context/issue_scope.json` の更新を省略しない。
+- `/plan` は準備状態に入るためのコマンドであり、実装・Issue作成・コミット・PRマージを実行しない。
+- その後にファイル変更を伴う依頼へ進む場合は、`.ai/behavior.md` の通常時フローに従って Issue化可否を確認する。

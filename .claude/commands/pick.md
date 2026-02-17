@@ -21,8 +21,8 @@ argument-hint: "[primary-issue-number] [related-issue-number ...]"
    - 引数あり: 指定Issueを採用する。
    - 引数なし: `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を採用する。
    - 優先度ラベル付きIssueが無い場合: Open Issue 全体の最古を採用する。
-4. `.context/issue_scope.json` を更新する（`primary_issue` / `related_issues` / `branch` / `picked_at`）。
-5. 結果を報告する（primary/issue概要/related/branch/selection_reason）。
+4. `.context/issue_scope.json` を更新する（`schema_version: 2`、`primary_issue` / `related_issues` / `active_related_issues` / `branch` / `picked_at`）。
+5. 結果を報告する（primary/issue概要/related/active_related/branch/selection_reason）。
 
 ## ルール
 

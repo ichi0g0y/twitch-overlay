@@ -47,7 +47,9 @@
 ## Issueスコープ管理（標準）
 
 - ファイル変更を伴う依頼は、原則 `/plan` / `/pl` から開始する
-- `/plan` 承認後に作成したIssueを `.context/issue_scope.json` へ保存して共有する
+- `/plan` / `/pl` は計画準備のみを行い、Issue作成・実装・マージは行わない
+- Issue作成はユーザー指示またはIssue番号明示後に実施する
+- Issue作成後は `.context/issue_scope.json` に `primary_issue` を保存して共有する
 - `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う
 - 引数なし時は `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を選定し、優先度ラベル付きIssueが無い場合は Open Issue 全体の最古を採用する
 - 計画相談・壁打ちなど、ファイル変更を伴わない場合はIssueスコープ未設定でもよい
@@ -55,17 +57,30 @@
 - 既に `.context/issue_scope.json` がある状態で再 `/pick` / `/p` する場合は、上書き前に警告し、ユーザー確認を取る
 - 再設定時は `上書き / relatedに追加 / 取消` のいずれかを選ぶ
 - `/pick` / `/p` 後は `.context/issue_scope.json` の `branch` を作業ブランチとして固定し、勝手に変更しない
+- `.context/issue_scope.json` は `schema_version: 2` を基本形式とし、`primary_issue` / `related_issues` / `active_related_issues` を利用する
+- `active_related_issues` の状態は `reserved` / `in_progress` / `ready_for_close` / `closed` を使う
+- `issue_scope.json` 更新は原子更新を必須とし、ロック取得後に一時ファイルへ書き込み、`mv` で置換する
 - 軽微修正をまとめる場合は `primary_issue` + `related_issues` で複数Issueを保持してよい
 - 共有ライブラリ変更で複数Issueに影響する場合は、各Issueコメントに関連Issueを相互記載する
 
 ```json
 {
+  "schema_version": 2,
   "primary_issue": 9,
   "related_issues": [12, 15],
+  "active_related_issues": {
+    "12": {
+      "state": "in_progress",
+      "owner": "conductor:ws-event:chat-a",
+      "reserved_at": "2026-02-15T10:30:00Z",
+      "updated_at": "2026-02-15T10:45:00Z"
+    }
+  },
   "branch": "feature/example",
   "pr_number": 34,
   "pr_url": "https://github.com/example/repo/pull/34",
-  "picked_at": "2026-02-15T10:30:00Z"
+  "picked_at": "2026-02-15T10:30:00Z",
+  "updated_at": "2026-02-15T11:40:00Z"
 }
 ```
 
@@ -73,26 +88,26 @@
 
 1. `/plan` / `/pl` で必読を読み込み、`GitHub CLI` を確認する
 2. 計画（目的・手順・受け入れ条件・テスト）を提示して承認を得る
-3. 承認後に Issue作成 でIssueを起票する
-4. 生成したIssue番号を `.context/issue_scope.json` に保存する
-5. `.context/issue_scope.json` の `pr_number` / `pr_url` は未作成状態で初期化する
-6. ConductorでIssue用workspace（worktree）を作成する（基底は `develop`）
-7. 必要なら `/pick` または `/p` で対象Issueを再固定する（引数なし時は優先度順で自動選定）
-8. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
-9. 着手時に `status:in-progress` を付与する
-10. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
-11. レビュー前にPRを作成し、本文へ `Closes #<issue-number>` または `Refs #<issue-number>` を記載する
-12. PR作成 を使う場合は `--base develop` を必ず指定する
-13. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
-14. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
+3. `/plan` / `/pl` 自体では Issue作成しない
+4. Issue化指示またはIssue番号明示を受けたら、対象Issueを確定する
+5. ConductorでIssue用workspace（worktree）を作成する（基底は `develop`）
+6. 必要なら `/pick` または `/p` で対象Issueを再固定する（引数なし時は優先度順で自動選定）
+7. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
+8. 着手時に `status:in-progress` を付与する
+9. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
+10. レビュー前にPRを作成し、本文へ `Closes #<issue-number>` または `Refs #<issue-number>` を記載する
+11. PR作成 を使う場合は `--base develop` を必ず指定する
+12. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
+13. マージでIssueを自動クローズする（自動クローズされない場合は手動でクローズし、理由を残す）
 
 ## PR運用
 
 - 1Issue 1PRを基本とする
 - 1PRの変更は小さく保つ
 - 着手後の早い段階で Draft PR を作成してもよい
-- 完了Issueは `Closes #...`、参照のみは `Refs #...` を使い分ける
-- 複数Issueを同一PRで完了させる場合は、複数の `Closes #...` を記載してよい
+- `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues`
+- `Closes` は `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` のIssueを記載する
+- `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
 - PR本文には対象Issue番号を明記する
 - 仕様判断や運用判断はPRだけに閉じず、要点をIssueコメントにも残す
 - `GitHub CLI` でPRを作成/更新する場合は PR操作 を使う
@@ -123,7 +138,7 @@
 - 引数あり（例: `/rv 9`）の場合は引数のIssue番号を優先する
 - 引数なしの場合は `.context/issue_scope.json` を参照する
 - 引数も `.context` もない場合はIssue連携なしで通常動作し、Issueコメント追記は行わない
-- Issueが確定した場合は Issue本文・コメント確認 で情報を取得し、`primary_issue` と `related_issues` のレビューコメントを収集する
+- Issueが確定した場合は Issue本文・コメント確認 で情報を取得し、`primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）のレビューコメントを収集する
 - 指摘は `採用 / 不採用 / 追加情報必要` で分類し、採用した指摘のみ修正する
 - `不採用 / 追加情報必要` の指摘は理由を記録し、未修正として扱う
 - 必要なテストを実行し、失敗時は修正して再実行する
@@ -132,7 +147,7 @@
 ## コマンド運用
 
 - Claude Code:
-  - `/plan` または `/pl`（計画作成 -> 承認後Issue自動作成）
+  - `/plan` または `/pl`（計画準備のみ）
   - `/pick [primary-issue] [related-issues...]`（任意、引数なし時は自動選定）
   - `/p [primary-issue] [related-issues...]`（短縮、`/pick` と同ロジック）
   - `/review-verify <issue-number>`
@@ -143,7 +158,7 @@
   - Slash Command は使えないため、疑似コマンドとして同等内容をプロンプトで指示する
   - `/pl` `/p` `/rv` `/c` など短縮文字列だけを送らず、処理内容を文章で明示する
   - 例:
-    - `GitHub操作確認と計画承認後のIssue作成、.context更新まで実施して（/plan 相当）`
+    - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
     - `Issue #7 を primary_issue として .context/issue_scope.json を更新して（/pick 相当）`
     - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新して`
     - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正し、結果をIssueコメントに追記して（/rv 相当）`

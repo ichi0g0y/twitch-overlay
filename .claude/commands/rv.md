@@ -21,9 +21,10 @@ argument-hint: "[issue-number]"
 - 詳細仕様は `.ai/workflow.md` の「/review-verify」と `.ai/review.md` に従う。
 - 引数がある場合はそのIssueを優先し、未指定時は `.context/issue_scope.json` を参照する。
 - 引数も `.context` も未設定ならIssue連携なしの通常動作で進め、Issueコメント追記は行わない。
-- Issueが確定した場合は Issue本文・コメント確認 でIssue情報を取得し、`primary_issue` と `related_issues` のレビューコメントを収集して各指摘を `採用 / 不採用 / 追加情報必要` で判定する。
+- Issueが確定した場合は Issue本文・コメント確認 でIssue情報を取得し、`primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）のレビューコメントを収集して各指摘を `採用 / 不採用 / 追加情報必要` で判定する。
 - 採用した指摘のみ修正し、必要なテストを実行する。
 - Issue連携を行った場合のみ、対象Issueに「判定・修正内容・テスト結果」を追記する。
+- 指摘を反映したIssueの `active_related_issues` 状態を更新する。
 
 ## ルール
 
