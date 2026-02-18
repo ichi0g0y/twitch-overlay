@@ -17,6 +17,7 @@ argument-hint: "[primary-issue-number] [related-issue-number ...]"
 2. 既存ファイルがある場合:
    - 既存スコープがある旨を警告する。
    - `上書き / relatedに追加 / 取消` のいずれで続行するかユーザーに確認する。
+   - `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持し、追加対象Issueを `related_issues` と `active_related_issues` に登録して継続する（新規stateは `reserved`）。
 3. `scripts/pick_issue_scope.sh` を使って `primary_issue` と `related_issues` を決定する。
    - 引数あり: 指定Issueを採用する。
    - 引数なし: `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を採用する。

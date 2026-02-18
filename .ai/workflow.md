@@ -39,6 +39,7 @@
 - `.context/issue_scope.json` は `schema_version: 2` を基本形式とし、`primary_issue` / `related_issues` / `active_related_issues` を使って状態管理する
 - `active_related_issues` の状態は `reserved` / `in_progress` / `ready_for_close` / `closed` を使う
 - 再 `/pick` / `/p` で既存スコープがある場合は、上書き前に警告してユーザー確認を行う
+- 再 `/pick` / `/p` で `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持し、追加Issueを `related_issues` と `active_related_issues` の両方へ登録して継続する（新規登録時のstateは `reserved`）。
 - PR作成/更新後は、必要に応じて `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録し、後続作業で参照できる状態にする
 - `issue_scope.json` 更新時は排他制御を必須とし、`mkdir .context/.issue_scope.lock` 等でロック取得後に一時ファイルへ書き込み、`mv` で置換する
 - ロックは更新成功/失敗にかかわらず必ず解放する
