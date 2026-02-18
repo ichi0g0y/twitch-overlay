@@ -11,6 +11,8 @@
 - 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
 - PR は小さく分割して順次マージする
 - 既存の未コミット変更があっても、Issue作成とIssue番号の確定は通常どおり進める
+- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリストで管理する
+- Issue分割は、優先度・担当・期限・リリース単位が異なる場合に限定し、分割時は親子Issueを `Refs #...` で相互参照する
 
 ## Issue状態とラベル
 
@@ -30,6 +32,7 @@
 
 - ファイル変更を伴う依頼は、原則 `/plan` / `/pl` から開始する
 - `/plan` / `/pl` は計画準備のみを行い、Issue作成・実装・マージは行わない
+- `/pick` / `/p` などの明示指示がない依頼は、まず plan モードとして扱い、Issue設計とスコープ確認を先行する
 - Issue作成は、ユーザー指示またはIssue番号明示後に実施する
 - Issue作成後は `.context/issue_scope.json` に `primary_issue` を保存して共有する
 - `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う（`primary_issue` 設定時は Issue本文から概要を数行生成して同時表示する）
@@ -97,13 +100,15 @@
 ### 1. Issue化とスコープ固定
 
 1. 実装をIssue連携で進める場合は、対象Issue番号を確定する
-2. 必要なら `/pick` または `/p` で対象Issueを再固定する
-3. 固定時は `schema_version: 2` の `issue_scope` 形式で `primary_issue` / `related_issues` / `active_related_issues` を記録する
-4. `.context/issue_scope.json` が未設定でも、Issue番号を依頼文で明示して進めてよい
+2. 対象作業が同一目的・同一完了条件なら単一Issueへ集約し、Issue本文チェックリストで進捗管理する
+3. Issue分割が必要な場合は、優先度・担当・期限・リリース単位の差分を根拠にし、親子Issueを `Refs #...` で相互参照する
+4. 必要なら `/pick` または `/p` で対象Issueを再固定する
+5. 固定時は `schema_version: 2` の `issue_scope` 形式で `primary_issue` / `related_issues` / `active_related_issues` を記録する
+6. `.context/issue_scope.json` が未設定でも、Issue番号を依頼文で明示して進めてよい
 
 ### 2. 実装
 
-1. 対象Issue番号が確定していることを確認する
+1. 対象Issue番号が確定していることを確認する（`primary_issue` と必要な `related_issues` を明示する）
 2. Conductorで対象Issue用のworkspace（worktree）を作成する
 3. このリポジトリの基底ブランチは `develop` を使う
 4. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
