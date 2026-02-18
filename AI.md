@@ -27,7 +27,7 @@ Conductorでの基本的な進め方は、次の順番です。
 
 - コーディング依頼: 明示コマンドは不要です。通常の依頼文で実装を指示します。
 - `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`GitHub CLI` を確認して計画を提示します。**Issue作成は行いません**。実装・マージも行いません。
-- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。`primary_issue` 設定時は、Issue本文から生成した概要（数行）も同時表示します。
+- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。既存 `primary_issue` がある状態で再 `/pick` し `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持して追加Issueを `related_issues` と `active_related_issues` に登録して継続します（新規stateは `reserved`）。`primary_issue` 設定時は、Issue本文から生成した概要（数行）も同時表示します。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
 - `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を参照します。
 - `/merge-to-main [--no-merge] [release-label]` または `/mtm [--no-merge] [release-label]`: `develop -> main` 反映時の手順です。`base=main` / `head=develop` のリリースPRを作成（既存Open PRがあれば再利用）し、デフォルトでマージまで実行します。PR作成/再利用のみで止める場合は `--no-merge` を指定します。詳細は `.claude/commands/merge-to-main.md` を参照します。
