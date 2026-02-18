@@ -119,6 +119,11 @@ impl EventSubConfig {
 /// Events are delivered via `mpsc::Receiver<EventSubEvent>`.
 pub struct EventSubClient;
 
+enum MessageAction {
+    Continue,
+    Reconnect(String),
+}
+
 impl EventSubClient {
     /// Start the EventSub loop. Returns an event receiver and shutdown sender.
     pub async fn connect(
@@ -136,18 +141,30 @@ impl EventSubClient {
         mut shutdown_rx: mpsc::Receiver<()>,
     ) {
         let mut failures: u32 = 0;
+        let mut ws_url = EVENTSUB_URL.to_string();
         loop {
             if shutdown_rx.try_recv().is_ok() {
                 tracing::info!("EventSub shutdown requested");
                 return;
             }
-            match Self::connect_once(&config, &event_tx, &mut shutdown_rx).await {
-                Ok(()) => {
+            match Self::connect_once(&config, &ws_url, &event_tx, &mut shutdown_rx).await {
+                Ok(Some(next_url)) => {
+                    failures = 0;
+                    ws_url = next_url;
+                    tracing::info!(ws_url = %ws_url, "EventSub reconnect URL accepted");
+                }
+                Ok(None) => {
                     tracing::info!("EventSub connection closed cleanly");
                     return;
                 }
                 Err(e) => {
                     failures += 1;
+                    if ws_url != EVENTSUB_URL {
+                        tracing::warn!(
+                            "EventSub reconnect URL failed, falling back to default URL"
+                        );
+                        ws_url = EVENTSUB_URL.to_string();
+                    }
                     let backoff = Self::backoff_duration(failures);
                     tracing::warn!(
                         error = %e, attempt = failures,
@@ -162,13 +179,14 @@ impl EventSubClient {
 
     async fn connect_once(
         config: &EventSubConfig,
+        ws_url: &str,
         event_tx: &mpsc::Sender<EventSubEvent>,
         shutdown_rx: &mut mpsc::Receiver<()>,
-    ) -> Result<(), TwitchError> {
+    ) -> Result<Option<String>, TwitchError> {
         use tokio_tungstenite::tungstenite::Message as Msg;
 
-        tracing::info!("Connecting to EventSub WebSocket");
-        let (mut ws, _) = connect_async(EVENTSUB_URL).await?;
+        tracing::info!(ws_url = %ws_url, "Connecting to EventSub WebSocket");
+        let (mut ws, _) = connect_async(ws_url).await?;
         let session_id = Self::wait_for_welcome(&mut ws).await?;
         Self::subscribe_events(config, &session_id).await?;
 
@@ -178,12 +196,19 @@ impl EventSubClient {
                 _ = shutdown_rx.recv() => {
                     tracing::info!("EventSub shutdown during listen");
                     let _ = ws.close(None).await;
-                    return Ok(());
+                    return Ok(None);
                 }
                 result = tokio::time::timeout(timeout, ws.next()) => {
                     match result {
                         Ok(Some(Ok(Msg::Text(text)))) => {
-                            Self::handle_message(&text, event_tx).await?;
+                            match Self::handle_message(&text, event_tx).await? {
+                                MessageAction::Continue => {}
+                                MessageAction::Reconnect(next_url) => {
+                                    tracing::info!(next_url = %next_url, "EventSub session_reconnect received");
+                                    let _ = ws.close(None).await;
+                                    return Ok(Some(next_url));
+                                }
+                            }
                         }
                         Ok(Some(Ok(Msg::Ping(data)))) => {
                             let _ = ws.send(Msg::Pong(data)).await;
@@ -231,11 +256,12 @@ impl EventSubClient {
     async fn handle_message(
         text: &str,
         event_tx: &mpsc::Sender<EventSubEvent>,
-    ) -> Result<(), TwitchError> {
+    ) -> Result<MessageAction, TwitchError> {
         let ws_msg: WsMessage = serde_json::from_str(text)?;
         match ws_msg.metadata.message_type.as_str() {
             "session_keepalive" => {
                 tracing::trace!("EventSub keepalive received");
+                Ok(MessageAction::Continue)
             }
             "notification" => {
                 if let Some(sub_type) = ws_msg
@@ -256,6 +282,16 @@ impl EventSubClient {
                     tracing::debug!(event_type = %event.event_type, "EventSub notification");
                     let _ = event_tx.send(event).await;
                 }
+                Ok(MessageAction::Continue)
+            }
+            "session_reconnect" => {
+                if let Some(next_url) = Self::parse_reconnect_url(&ws_msg.payload) {
+                    Ok(MessageAction::Reconnect(next_url))
+                } else {
+                    Err(TwitchError::EventSub(
+                        "session_reconnect missing reconnect_url".into(),
+                    ))
+                }
             }
             "revocation" => {
                 let sub_type = ws_msg
@@ -265,10 +301,23 @@ impl EventSubClient {
                     .and_then(|t| t.as_str())
                     .unwrap_or("unknown");
                 tracing::warn!(sub_type, "EventSub subscription revoked");
+                Ok(MessageAction::Continue)
             }
-            other => tracing::debug!(msg_type = other, "Unhandled EventSub message"),
+            other => {
+                tracing::debug!(msg_type = other, "Unhandled EventSub message");
+                Ok(MessageAction::Continue)
+            }
         }
-        Ok(())
+    }
+
+    fn parse_reconnect_url(payload: &serde_json::Value) -> Option<String> {
+        payload
+            .get("session")
+            .and_then(|session| session.get("reconnect_url"))
+            .and_then(|url| url.as_str())
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(ToOwned::to_owned)
     }
 
     async fn subscribe_events(
@@ -336,5 +385,31 @@ impl EventSubClient {
     fn backoff_duration(failures: u32) -> Duration {
         let d = BASE_BACKOFF * 2u32.saturating_pow(failures.saturating_sub(1));
         d.min(MAX_BACKOFF)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_reconnect_url_from_payload() {
+        let payload = serde_json::json!({
+            "session": {
+                "reconnect_url": "wss://eventsub.wss.twitch.tv/ws?token=reconnect"
+            }
+        });
+        assert_eq!(
+            EventSubClient::parse_reconnect_url(&payload).as_deref(),
+            Some("wss://eventsub.wss.twitch.tv/ws?token=reconnect")
+        );
+    }
+
+    #[test]
+    fn parse_reconnect_url_missing_returns_none() {
+        let payload = serde_json::json!({
+            "session": {}
+        });
+        assert_eq!(EventSubClient::parse_reconnect_url(&payload), None);
     }
 }
