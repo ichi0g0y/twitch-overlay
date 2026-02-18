@@ -6,12 +6,11 @@ use twitch_client::eventsub;
 use crate::app::SharedState;
 use crate::events;
 use crate::eventsub_support::{
-    already_processed_redemption, enqueue_notification, non_empty, send_ws, str_field,
-    to_legacy_fragments, to_notification_fragments,
+    RewardEnqueueResult, enqueue_notification, enqueue_reward_redemption, non_empty, send_ws,
+    str_field, to_legacy_fragments, to_notification_fragments,
 };
 use crate::notification::types::NotificationType;
 use crate::services::channel_points_emote_cache;
-use crate::services::channel_points_fax;
 
 pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value) {
     match event_type {
@@ -123,39 +122,16 @@ async fn handle_stream_offline(state: &SharedState, payload: &Value) {
 }
 
 async fn handle_reward_redemption(state: &SharedState, payload: &Value) {
-    let redemption_id = str_field(payload, &["id"]);
-    if !redemption_id.is_empty() && already_processed_redemption(&redemption_id).await {
-        tracing::debug!(redemption_id, "Duplicate redemption ignored");
-        return;
-    }
-
-    let reward_id = str_field(payload, &["reward", "id"]);
-    let reward_title = str_field(payload, &["reward", "title"]);
-    let user_name = non_empty(
-        str_field(payload, &["user_name"]),
-        str_field(payload, &["user_login"]),
-    );
-
-    if !reward_id.is_empty() {
-        if let Err(e) = state.db().increment_reward_count(&reward_id, &user_name) {
-            tracing::warn!("Failed to increment reward count: {e}");
+    match enqueue_reward_redemption(state, payload).await {
+        Ok(RewardEnqueueResult::Queued) => {}
+        Ok(RewardEnqueueResult::Duplicate) => {
+            let redemption_id = str_field(payload, &["id"]);
+            tracing::debug!(redemption_id, "Duplicate redemption ignored");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to enqueue reward redemption: {e}");
         }
     }
-
-    if let Err(e) = channel_points_fax::process_redemption_event(state, payload).await {
-        tracing::warn!("Failed to process channel points fax print: {e}");
-    }
-
-    send_ws(
-        state,
-        "channel_points",
-        json!({
-            "reward_id": reward_id,
-            "reward_title": reward_title,
-            "user_name": user_name,
-            "payload": payload,
-        }),
-    );
 }
 
 async fn handle_cheer(state: &SharedState, payload: &Value) {
