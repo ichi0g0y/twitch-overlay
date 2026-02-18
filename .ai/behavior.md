@@ -12,13 +12,14 @@
 1. 指示と必読ドキュメントを確認する
 2. ファイル変更を伴う依頼では、原則 `/plan` / `/pl` 相当を先に実行する
 3. `/plan` / `/pl` 相当は計画準備のみとし、実装・Issue作成は行わない
-4. 実装前に、Issue化するかをユーザーへ確認する（依頼文でIssue番号が明示されている場合は確認済みとして扱ってよい）
-5. Issue化する場合は、対象Issue番号が確定するまで実装に進まない（複数Issueが関係する場合は `primary_issue` / `related_issues` を定義する）
-6. 必要なら `primary_issue` / `related_issues` / `active_related_issues` を `.context/issue_scope.json` に記録する
-7. 必要な実装を行う
-8. 必要な検証を行う
-9. 修正規模を確認し、レビューへ進むべきかを判断する
-10. 判断結果（レビューへ進む / 進まない）と理由を含めて、日本語で報告する
+4. `/pick` / `/p` などの明示指示がない依頼は、plan モードとして Issue設計とスコープ確認を先行する
+5. 実装前に、Issue化するかをユーザーへ確認する（依頼文でIssue番号が明示されている場合は確認済みとして扱ってよい）
+6. Issue化する場合は、対象Issue番号が確定するまで実装に進まない（複数Issueが関係する場合は `primary_issue` / `related_issues` を定義する）
+7. 必要なら `primary_issue` / `related_issues` / `active_related_issues` を `.context/issue_scope.json` に記録する
+8. 必要な実装を行う
+9. 必要な検証を行う
+10. 修正規模を確認し、レビューへ進むべきかを判断する
+11. 判断結果（レビューへ進む / 進まない）と理由を含めて、日本語で報告する
 
 ## レビュー時・`/review-verify` 時
 

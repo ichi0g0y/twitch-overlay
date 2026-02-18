@@ -32,3 +32,11 @@
 - `/plan` `/pl` `/pick` `/p` `/review-verify` `/rv` `/merge-to-main` `/mtm` `/commit` `/c` `/commit!` `/c!` は疑似コマンドとして扱い、処理内容を依頼文で明示する
 - `develop -> main` 反映時は `/merge-to-main` または `/mtm` 相当の手順を必須とする
 - `merge-to-main` の定義は [`.claude/commands/merge-to-main.md`](.claude/commands/merge-to-main.md)、短縮形は [`.claude/commands/mtm.md`](.claude/commands/mtm.md) を参照する
+
+## 運用計画（Issue設計とスコープ）
+
+- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリストで管理する
+- Issue分割は、優先度・担当・期限・リリース単位が異なる場合に限定し、分割時は親子Issueを `Refs #...` で相互参照する
+- `pick` 等の明示指示がない依頼は、まず plan モードとして扱い、Issue設計とスコープ確認を先に行う
+- 実装着手時に `primary_issue` と必要な `related_issues` を確定し、Issue単位worktree + 小PRで順次進める
+- この方針は Codex / Claude 共通で適用し、正本の `.ai/workflow.md`（必要に応じて `.ai/behavior.md`）を基準として整合させる
