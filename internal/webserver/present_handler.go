@@ -472,7 +472,15 @@ func handlePresentStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	drawResult, err := lottery.DrawLottery(currentLottery.Participants, lottery.DrawOptions{
+	latestParticipants, err := localdb.GetAllLotteryParticipants()
+	if err != nil {
+		logger.Error("Failed to load participants from database before draw", zap.Error(err))
+		http.Error(w, "Failed to load participants", http.StatusInternalServerError)
+		return
+	}
+	currentLottery.Participants = latestParticipants
+
+	drawResult, err := lottery.DrawLottery(latestParticipants, lottery.DrawOptions{
 		BaseTicketsLimit:  lotterySettings.BaseTicketsLimit,
 		FinalTicketsLimit: lotterySettings.FinalTicketsLimit,
 		LastWinner:        lotterySettings.LastWinner,
@@ -728,6 +736,7 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 			// サブスク情報も更新可能
 			currentLottery.Participants[i].IsSubscriber = updates.IsSubscriber
 			currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
+			currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
 
 			// サブスク状態が変更された場合は色を再割り当て
 			if subscriberChanged {
@@ -837,13 +846,20 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 		oldMonths := p.SubscribedMonths
 
 		if err != nil {
-			// サブスクではない、またはエラー
-			p.IsSubscriber = false
-			p.SubscribedMonths = 0
-			p.SubscriberTier = ""
-			logger.Debug("User is not subscribed or error occurred",
-				zap.String("user_id", p.UserID),
-				zap.Error(err))
+			// 未サブスクは正規状態として更新する
+			if errors.Is(err, twitchapi.ErrUserNotSubscribed) {
+				p.IsSubscriber = false
+				p.SubscribedMonths = 0
+				p.SubscriberTier = ""
+				logger.Debug("User is not subscribed",
+					zap.String("user_id", p.UserID))
+			} else {
+				// API障害時は既存値を保持して継続
+				logger.Warn("Failed to refresh user subscription info, keeping current values",
+					zap.String("user_id", p.UserID),
+					zap.Error(err))
+				continue
+			}
 		} else {
 			// サブスク情報取得成功
 			p.IsSubscriber = true
