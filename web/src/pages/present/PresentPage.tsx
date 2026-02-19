@@ -14,6 +14,7 @@ export interface PresentParticipant {
   avatar_url: string
   redeemed_at: string
   is_subscriber: boolean
+  subscribed_months: number
   subscriber_tier: string // "1000", "2000", "3000"
   entry_count: number // 購入口数（最大3口）
   assigned_color: string // ルーレットセグメントの色（非サブスクの場合）
@@ -43,17 +44,9 @@ export const PresentPage: React.FC = () => {
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
-    console.log('Spin complete, winner:', winner)
-    // RouletteWheelの大型表示と同じタイミングで王冠マークを表示（2秒遅延）
-    setTimeout(() => {
-      setLotteryState((prev) => ({
-        ...prev,
-        winner,
-        is_running: false,
-      }))
-      // 当選者発表と同時に紙吹雪を開始（再抽選かクリアまで継続）
-      setShowConfetti(true)
-    }, 2000)
+    // 当選者の正本はバックエンドの lottery_winner 通知を使用する。
+    // ここでは表示上のフォールバック情報としてログのみ残す。
+    console.log('Spin complete (local fallback), winner:', winner)
   }
 
   // 抽選開始
@@ -313,6 +306,7 @@ export const PresentPage: React.FC = () => {
               winner: message.data.winner,
             }))
             setIsSpinning(false)
+            setShowConfetti(true)
           }, 2000)
           break
 
@@ -416,6 +410,7 @@ export const PresentPage: React.FC = () => {
               <RouletteWheel
                 participants={lotteryState.participants}
                 isSpinning={isSpinning}
+                winner={lotteryState.winner}
                 onSpinComplete={handleSpinComplete}
               />
             </div>

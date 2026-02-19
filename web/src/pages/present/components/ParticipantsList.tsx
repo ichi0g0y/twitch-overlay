@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Edit2, Save, X, Trash2 } from 'lucide-react';
 import type { PresentParticipant } from '../PresentPage';
 import { buildApiUrl } from '../../../utils/api';
+import { calculateParticipantTickets } from '../utils/ticketCalculator';
 
 interface ParticipantsListProps {
   participants: PresentParticipant[];
@@ -25,19 +26,8 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   const [editForm, setEditForm] = useState<Partial<PresentParticipant>>({});
   // 総口数を計算（購入口数 + サブスクボーナス）
   const totalEntries = participants.reduce((sum, p) => {
-    const baseCount = p.entry_count || 1;
-    let bonusWeight = 0;
-    if (p.is_subscriber) {
-      // Tier のみでボーナス計算（案B：サブスク優遇型）
-      if (p.subscriber_tier === '3000') {
-        bonusWeight = 12;
-      } else if (p.subscriber_tier === '2000') {
-        bonusWeight = 6;
-      } else if (p.subscriber_tier === '1000') {
-        bonusWeight = 3;
-      }
-    }
-    return sum + baseCount + bonusWeight;
+    const { finalTickets } = calculateParticipantTickets(p);
+    return sum + finalTickets;
   }, 0);
 
   // テスト参加者追加
@@ -148,22 +138,11 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
             const redeemedAt = new Date(participant.redeemed_at);
             const timeAgo = getTimeAgo(redeemedAt);
 
-            // 購入口数 + サブスクボーナス
-            const baseCount = participant.entry_count || 1;
-            console.log(`[ParticipantsList] User ${participant.username}: entry_count=${participant.entry_count}, baseCount=${baseCount}`);
-            let bonusWeight = 0;
-            if (participant.is_subscriber) {
-              // Tier のみでボーナス計算（案B：サブスク優遇型）
-              if (participant.subscriber_tier === '3000') {
-                bonusWeight = 12;
-              } else if (participant.subscriber_tier === '2000') {
-                bonusWeight = 6;
-              } else if (participant.subscriber_tier === '1000') {
-                bonusWeight = 3;
-              }
-            }
-            const totalWeight = baseCount + bonusWeight;
-            const winProbability = ((totalWeight / totalEntries) * 100).toFixed(1);
+            const { baseTickets, finalTickets, bonusTickets } = calculateParticipantTickets(participant);
+            console.log(`[ParticipantsList] User ${participant.username}: entry_count=${participant.entry_count}, baseTickets=${baseTickets}`);
+            const winProbability = totalEntries > 0
+              ? ((finalTickets / totalEntries) * 100).toFixed(1)
+              : '0.0';
             const isEditing = editingUserId === participant.user_id;
 
             return (
@@ -264,9 +243,9 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                         <span>{timeAgo}</span>
                       </div>
                       <div className="text-xs text-yellow-300 font-bold mt-1">
-                        🎫 {baseCount}口
-                        {bonusWeight > 0 && (
-                          <span className="text-pink-300"> +{bonusWeight}ボーナス</span>
+                        🎫 {baseTickets}口
+                        {bonusTickets > 0 && (
+                          <span className="text-pink-300"> +{bonusTickets}ボーナス</span>
                         )}
                         {' '}• 確率 {winProbability}%
                       </div>

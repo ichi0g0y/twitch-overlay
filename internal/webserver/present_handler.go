@@ -2,12 +2,15 @@ package webserver
 
 import (
 	"encoding/json"
+	"errors"
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
+	"github.com/ichi0g0y/twitch-overlay/internal/lottery"
 	"github.com/ichi0g0y/twitch-overlay/internal/settings"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
 	"github.com/ichi0g0y/twitch-overlay/internal/twitchapi"
@@ -462,20 +465,107 @@ func handlePresentStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lotterySettings, err := localdb.GetLotterySettings()
+	if err != nil {
+		logger.Error("Failed to get lottery settings", zap.Error(err))
+		http.Error(w, "Failed to get lottery settings", http.StatusInternalServerError)
+		return
+	}
+
+	drawResult, err := lottery.DrawLottery(currentLottery.Participants, lottery.DrawOptions{
+		BaseTicketsLimit:  lotterySettings.BaseTicketsLimit,
+		FinalTicketsLimit: lotterySettings.FinalTicketsLimit,
+		LastWinner:        lotterySettings.LastWinner,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, lottery.ErrNoEligibleUser):
+			http.Error(w, "No eligible participants", http.StatusBadRequest)
+		case errors.Is(err, lottery.ErrNoParticipants):
+			http.Error(w, "No participants", http.StatusBadRequest)
+		default:
+			logger.Error("Failed to draw lottery", zap.Error(err))
+			http.Error(w, "Failed to draw lottery", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	winner := drawResult.Winner
+	if winner == nil {
+		http.Error(w, "Failed to resolve winner", http.StatusInternalServerError)
+		return
+	}
+
 	currentLottery.IsRunning = false
 	currentLottery.StartedAt = nil
+	currentLottery.Winner = winner
 
-	logger.Info("Lottery stopped")
+	lotterySettings.LastWinner = winner.Username
+	if err := localdb.UpdateLotterySettings(*lotterySettings); err != nil {
+		logger.Warn("Failed to update lottery last winner", zap.Error(err))
+	}
+
+	participantsDetailJSON, err := json.Marshal(drawResult.ParticipantsDetail)
+	if err != nil {
+		logger.Warn("Failed to marshal participants detail", zap.Error(err))
+		participantsDetailJSON = []byte("[]")
+	}
+
+	rewardIDs := []string{}
+	if strings.TrimSpace(lotterySettings.RewardID) != "" {
+		rewardIDs = append(rewardIDs, lotterySettings.RewardID)
+	}
+	rewardIDsJSON, err := json.Marshal(rewardIDs)
+	if err != nil {
+		logger.Warn("Failed to marshal reward IDs", zap.Error(err))
+		rewardIDsJSON = []byte("[]")
+	}
+
+	if err := localdb.SaveLotteryHistory(localdb.LotteryHistory{
+		WinnerName:        winner.Username,
+		TotalParticipants: drawResult.TotalParticipants,
+		TotalTickets:      drawResult.TotalTickets,
+		ParticipantsJSON:  string(participantsDetailJSON),
+		RewardIDsJSON:     string(rewardIDsJSON),
+		DrawnAt:           time.Now(),
+	}); err != nil {
+		logger.Warn("Failed to save lottery history", zap.Error(err))
+	}
+
+	winnerIndex := -1
+	for i, participant := range currentLottery.Participants {
+		if participant.UserID == winner.UserID {
+			winnerIndex = i
+			break
+		}
+	}
+
+	logger.Info("Lottery stopped with winner",
+		zap.String("winner_user_id", winner.UserID),
+		zap.String("winner_username", winner.Username),
+		zap.Int("total_tickets", drawResult.TotalTickets))
 
 	// WebSocketで抽選停止を通知
 	BroadcastWSMessage("lottery_stopped", map[string]interface{}{
 		"stopped_at": time.Now(),
 	})
+	BroadcastWSMessage("lottery_winner", map[string]interface{}{
+		"winner":              winner,
+		"winner_index":        winnerIndex,
+		"total_participants":  drawResult.TotalParticipants,
+		"total_tickets":       drawResult.TotalTickets,
+		"participants_detail": drawResult.ParticipantsDetail,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Lottery stopped",
+		"success":             true,
+		"message":             "Lottery stopped",
+		"winner":              winner,
+		"winner_index":        winnerIndex,
+		"total_participants":  drawResult.TotalParticipants,
+		"total_tickets":       drawResult.TotalTickets,
+		"participants_detail": drawResult.ParticipantsDetail,
 	})
 }
 
