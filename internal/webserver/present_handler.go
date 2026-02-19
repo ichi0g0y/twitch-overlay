@@ -312,11 +312,13 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 	// ランダムなサブスク情報を生成
 	isSubscriber := rand.Float32() < 0.5 // 50%の確率でサブスク
 	var subscriberTier string
+	subscribedMonths := 0
 
 	if isSubscriber {
 		// Tierは1000, 2000, 3000からランダム
 		tiers := []string{"1000", "2000", "3000"}
 		subscriberTier = tiers[rand.Intn(len(tiers))]
+		subscribedMonths = rand.Intn(24) + 1
 	}
 
 	// 購入口数を1-3でランダムに生成
@@ -325,15 +327,16 @@ func handlePresentTest(w http.ResponseWriter, r *http.Request) {
 	// テスト用の参加者を1人作成
 	now := time.Now()
 	testParticipant := types.PresentParticipant{
-		UserID:         userIDStr,
-		Username:       username,
-		DisplayName:    displayName,
-		AvatarURL:      "",
-		RedeemedAt:     now,
-		IsSubscriber:   isSubscriber,
-		SubscriberTier: subscriberTier,
-		EntryCount:     entryCount,
-		AssignedColor:  "", // 色は後で割り当て
+		UserID:           userIDStr,
+		Username:         username,
+		DisplayName:      displayName,
+		AvatarURL:        "",
+		RedeemedAt:       now,
+		IsSubscriber:     isSubscriber,
+		SubscribedMonths: subscribedMonths,
+		SubscriberTier:   subscriberTier,
+		EntryCount:       entryCount,
+		AssignedColor:    "", // 色は後で割り当て
 	}
 
 	// 色を割り当て
@@ -736,15 +739,17 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Twitch API でサブスク状況を取得
-		subInfo, err := twitchapi.GetUserSubscription(broadcasterID, p.UserID)
+		subInfo, err := twitchapi.GetUserSubscriptionCached(broadcasterID, p.UserID)
 
 		// サブスク状況が変わったかチェック
 		oldIsSubscriber := p.IsSubscriber
 		oldTier := p.SubscriberTier
+		oldMonths := p.SubscribedMonths
 
 		if err != nil {
 			// サブスクではない、またはエラー
 			p.IsSubscriber = false
+			p.SubscribedMonths = 0
 			p.SubscriberTier = ""
 			logger.Debug("User is not subscribed or error occurred",
 				zap.String("user_id", p.UserID),
@@ -752,14 +757,16 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// サブスク情報取得成功
 			p.IsSubscriber = true
+			p.SubscribedMonths = subInfo.CumulativeMonths
 			p.SubscriberTier = subInfo.Tier
 			logger.Debug("User subscription info retrieved",
 				zap.String("user_id", p.UserID),
+				zap.Int("cumulative_months", subInfo.CumulativeMonths),
 				zap.String("tier", subInfo.Tier))
 		}
 
 		// 変更があった場合のみ更新
-		if oldIsSubscriber != p.IsSubscriber || oldTier != p.SubscriberTier {
+		if oldIsSubscriber != p.IsSubscriber || oldTier != p.SubscriberTier || oldMonths != p.SubscribedMonths {
 			if err := localdb.UpdateLotteryParticipant(p.UserID, *p); err != nil {
 				logger.Error("Failed to update participant",
 					zap.String("user_id", p.UserID),
@@ -776,7 +783,9 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 			logger.Info("Participant subscription status updated",
 				zap.String("user_id", p.UserID),
 				zap.Bool("old_is_subscriber", oldIsSubscriber),
-				zap.Bool("new_is_subscriber", p.IsSubscriber))
+				zap.Bool("new_is_subscriber", p.IsSubscriber),
+				zap.Int("old_subscribed_months", oldMonths),
+				zap.Int("new_subscribed_months", p.SubscribedMonths))
 		}
 	}
 
@@ -956,7 +965,7 @@ func handlePresentUnlock(w http.ResponseWriter, r *http.Request) {
 
 	// WebSocketで通知
 	BroadcastWSMessage("lottery_unlocked", map[string]interface{}{
-		"is_locked": false,
+		"is_locked":   false,
 		"unlocked_at": time.Now(),
 	})
 

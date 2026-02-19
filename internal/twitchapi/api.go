@@ -3,6 +3,7 @@ package twitchapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +29,7 @@ type ChannelInfo struct {
 // GetStreamInfo retrieves current stream information
 func GetStreamInfo() (*StreamInfo, error) {
 	reqURL := fmt.Sprintf("https://api.twitch.tv/helix/streams?user_id=%s", url.QueryEscape(*env.Value.TwitchUserID))
-	
+
 	resp, err := makeAuthenticatedGetRequest(reqURL)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,7 @@ func GetStreamInfo() (*StreamInfo, error) {
 // GetChannelInfo retrieves channel information including follower count
 func GetChannelInfo() (*ChannelInfo, error) {
 	reqURL := fmt.Sprintf("https://api.twitch.tv/helix/channels/followers?broadcaster_id=%s", url.QueryEscape(*env.Value.TwitchUserID))
-	
+
 	resp, err := makeAuthenticatedGetRequest(reqURL)
 	if err != nil {
 		return nil, err
@@ -132,7 +133,7 @@ type BitsLeaderboardResponse struct {
 // GetBitsLeaderboard retrieves the bits leaderboard for a specific period
 func GetBitsLeaderboard(period string) ([]*BitsLeaderboardEntry, *BitsLeaderboardResponse, error) {
 	logger.Info("Getting bits leaderboard", zap.String("period", period))
-	
+
 	// For "month" period, we need to specify started_at parameter
 	var reqURL string
 	if period == "month" {
@@ -142,13 +143,13 @@ func GetBitsLeaderboard(period string) ([]*BitsLeaderboardEntry, *BitsLeaderboar
 		now := time.Now()
 		firstOfMonth := time.Date(now.Year(), now.Month(), 1, 8, 0, 0, 0, time.UTC)
 		startedAt := firstOfMonth.Format(time.RFC3339)
-		reqURL = fmt.Sprintf("https://api.twitch.tv/helix/bits/leaderboard?count=5&period=%s&started_at=%s&broadcaster_id=%s", 
+		reqURL = fmt.Sprintf("https://api.twitch.tv/helix/bits/leaderboard?count=5&period=%s&started_at=%s&broadcaster_id=%s",
 			url.QueryEscape(period), url.QueryEscape(startedAt), url.QueryEscape(*env.Value.TwitchUserID))
 	} else {
-		reqURL = fmt.Sprintf("https://api.twitch.tv/helix/bits/leaderboard?count=5&period=%s&broadcaster_id=%s", 
+		reqURL = fmt.Sprintf("https://api.twitch.tv/helix/bits/leaderboard?count=5&period=%s&broadcaster_id=%s",
 			url.QueryEscape(period), url.QueryEscape(*env.Value.TwitchUserID))
 	}
-	
+
 	resp, err := makeAuthenticatedGetRequest(reqURL)
 	if err != nil {
 		logger.Warn("Failed to get bits leaderboard, returning empty result", zap.Error(err))
@@ -193,7 +194,7 @@ func GetBitsLeaderboard(period string) ([]*BitsLeaderboardEntry, *BitsLeaderboar
 // GetUserAvatar retrieves the profile image URL for a user
 func GetUserAvatar(userID string) (string, error) {
 	reqURL := fmt.Sprintf("https://api.twitch.tv/helix/users?id=%s", url.QueryEscape(userID))
-	
+
 	resp, err := makeAuthenticatedGetRequest(reqURL)
 	if err != nil {
 		return "", err
@@ -344,12 +345,15 @@ func GetUserChatColors(userIDs []string) ([]UserChatColor, error) {
 
 // UserSubscription represents subscription information for a user
 type UserSubscription struct {
-	UserID   string `json:"user_id"`
-	UserName string `json:"user_name"`
-	UserLogin string `json:"user_login"`
-	Tier     string `json:"tier"` // "1000", "2000", or "3000"
-	IsGift   bool   `json:"is_gift"`
+	UserID           string `json:"user_id"`
+	UserName         string `json:"user_name"`
+	UserLogin        string `json:"user_login"`
+	Tier             string `json:"tier"` // "1000", "2000", or "3000"
+	IsGift           bool   `json:"is_gift"`
+	CumulativeMonths int    `json:"cumulative_months,omitempty"`
 }
+
+var ErrUserNotSubscribed = errors.New("user is not subscribed")
 
 // GetUserSubscription retrieves subscription information for a specific user
 // Returns subscription info if the user is subscribed, error if not subscribed
@@ -365,7 +369,7 @@ func GetUserSubscription(broadcasterID, userID string) (*UserSubscription, error
 
 	// 404 or 400 means user is not subscribed
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
-		return nil, fmt.Errorf("user is not subscribed")
+		return nil, ErrUserNotSubscribed
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -385,7 +389,7 @@ func GetUserSubscription(broadcasterID, userID string) (*UserSubscription, error
 	}
 
 	if len(result.Data) == 0 {
-		return nil, fmt.Errorf("user is not subscribed")
+		return nil, ErrUserNotSubscribed
 	}
 
 	logger.Debug("Successfully retrieved user subscription info",

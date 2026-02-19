@@ -383,14 +383,17 @@ func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRede
 			// サブスク情報を取得
 			isSubscriber := false
 			subscriberTier := ""
+			subscribedMonths := 0
 			broadcasterID := *env.Value.TwitchUserID
 			if broadcasterID != "" && message.User.UserID != "" {
-				if subInfo, err := twitchapi.GetUserSubscription(broadcasterID, message.User.UserID); err == nil {
+				if subInfo, err := twitchapi.GetUserSubscriptionCached(broadcasterID, message.User.UserID); err == nil {
 					isSubscriber = true
 					subscriberTier = subInfo.Tier
+					subscribedMonths = subInfo.CumulativeMonths
 					logger.Debug("User subscription info retrieved",
 						zap.String("user_id", message.User.UserID),
 						zap.String("tier", subInfo.Tier),
+						zap.Int("cumulative_months", subInfo.CumulativeMonths),
 						zap.Bool("is_gift", subInfo.IsGift))
 				} else {
 					logger.Debug("User is not subscribed or failed to get subscription info",
@@ -401,15 +404,16 @@ func processRewardEvent(message twitch.EventChannelChannelPointsCustomRewardRede
 
 			// 参加者情報を作成
 			participant := types.PresentParticipant{
-				UserID:         message.User.UserID,
-				Username:       message.User.UserLogin,
-				DisplayName:    message.User.UserName,
-				AvatarURL:      avatarURL,
-				RedeemedAt:     time.Now(),
-				IsSubscriber:   isSubscriber,
-				SubscriberTier: subscriberTier,
-				EntryCount:     1,  // デフォルトは1口
-				AssignedColor:  "", // 色は自動割り当て
+				UserID:           message.User.UserID,
+				Username:         message.User.UserLogin,
+				DisplayName:      message.User.UserName,
+				AvatarURL:        avatarURL,
+				RedeemedAt:       time.Now(),
+				IsSubscriber:     isSubscriber,
+				SubscribedMonths: subscribedMonths,
+				SubscriberTier:   subscriberTier,
+				EntryCount:       1,  // デフォルトは1口
+				AssignedColor:    "", // 色は自動割り当て
 			}
 
 			// DBに保存
