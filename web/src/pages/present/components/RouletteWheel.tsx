@@ -6,6 +6,8 @@ import { calculateParticipantTickets } from '../utils/ticketCalculator';
 interface RouletteWheelProps {
   participants: PresentParticipant[];
   isSpinning: boolean;
+  baseTicketsLimit: number;
+  finalTicketsLimit: number;
   winner?: PresentParticipant | null;
   onSpinComplete?: (winner: PresentParticipant) => void;
 }
@@ -13,6 +15,8 @@ interface RouletteWheelProps {
 export const RouletteWheel: React.FC<RouletteWheelProps> = ({
   participants,
   isSpinning,
+  baseTicketsLimit,
+  finalTicketsLimit,
   winner,
   onSpinComplete,
 }) => {
@@ -117,14 +121,20 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
     // まず総口数を計算
     participants.forEach((participant) => {
-      const { finalTickets } = calculateParticipantTickets(participant);
+      const { finalTickets } = calculateParticipantTickets(participant, {
+        baseTicketsLimit,
+        finalTicketsLimit,
+      });
       totalWeight += finalTickets;
     });
 
     // 各参加者のセグメント角度を計算
     let currentAngle = -Math.PI / 2; // 上部から開始
     participants.forEach((participant) => {
-      const { finalTickets } = calculateParticipantTickets(participant);
+      const { finalTickets } = calculateParticipantTickets(participant, {
+        baseTicketsLimit,
+        finalTicketsLimit,
+      });
       const weight = finalTickets;
       const angleSize = (weight / totalWeight) * (Math.PI * 2);
 
@@ -226,7 +236,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-  }, [participants, rotation]);
+  }, [participants, rotation, baseTicketsLimit, finalTicketsLimit]);
 
   // 矢印が指しているユーザーをリアルタイムで計算
   const updateArrowUser = () => {

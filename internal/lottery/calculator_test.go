@@ -69,6 +69,7 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "tier1 1 month minimum bonus",
 			base: 3,
 			sub: &SubscriptionInfo{
+				IsSubscriber:     true,
 				Tier:             "1000",
 				CumulativeMonths: 1,
 			},
@@ -78,6 +79,7 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "tier1 6 months",
 			base: 3,
 			sub: &SubscriptionInfo{
+				IsSubscriber:     true,
 				Tier:             "1000",
 				CumulativeMonths: 6,
 			},
@@ -87,6 +89,7 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "tier3 12 months",
 			base: 3,
 			sub: &SubscriptionInfo{
+				IsSubscriber:     true,
 				Tier:             "3000",
 				CumulativeMonths: 12,
 			},
@@ -96,6 +99,7 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "unknown tier has no bonus",
 			base: 3,
 			sub: &SubscriptionInfo{
+				IsSubscriber:     true,
 				Tier:             "unknown",
 				CumulativeMonths: 12,
 			},
@@ -105,6 +109,7 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "apply final tickets limit",
 			base: 3,
 			sub: &SubscriptionInfo{
+				IsSubscriber:      true,
 				Tier:              "3000",
 				CumulativeMonths:  12,
 				FinalTicketsLimit: 7,
@@ -115,10 +120,21 @@ func TestCalculateFinalTickets(t *testing.T) {
 			name: "negative base ticket",
 			base: -1,
 			sub: &SubscriptionInfo{
+				IsSubscriber:     true,
 				Tier:             "1000",
 				CumulativeMonths: 1,
 			},
 			expect: 1,
+		},
+		{
+			name: "tier is set but non subscriber has no bonus",
+			base: 3,
+			sub: &SubscriptionInfo{
+				IsSubscriber:     false,
+				Tier:             "3000",
+				CumulativeMonths: 12,
+			},
+			expect: 3,
 		},
 	}
 

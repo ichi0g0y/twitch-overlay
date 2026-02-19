@@ -97,6 +97,7 @@ func buildWeightedUsers(participants []types.PresentParticipant, options DrawOpt
 		)
 
 		subscriptionInfo := &SubscriptionInfo{
+			IsSubscriber:      participant.IsSubscriber,
 			Tier:              participant.SubscriberTier,
 			CumulativeMonths:  participant.SubscribedMonths,
 			FinalTicketsLimit: options.FinalTicketsLimit,

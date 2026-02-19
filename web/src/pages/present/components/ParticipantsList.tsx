@@ -7,12 +7,16 @@ import { calculateParticipantTickets } from '../utils/ticketCalculator';
 interface ParticipantsListProps {
   participants: PresentParticipant[];
   winner: PresentParticipant | null;
+  baseTicketsLimit: number;
+  finalTicketsLimit: number;
   debugMode?: boolean;
 }
 
 export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   participants,
   winner,
+  baseTicketsLimit,
+  finalTicketsLimit,
   debugMode = false,
 }) => {
   // デバッグ: participants の変更を追跡
@@ -26,7 +30,10 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   const [editForm, setEditForm] = useState<Partial<PresentParticipant>>({});
   // 総口数を計算（購入口数 + サブスクボーナス）
   const totalEntries = participants.reduce((sum, p) => {
-    const { finalTickets } = calculateParticipantTickets(p);
+    const { finalTickets } = calculateParticipantTickets(p, {
+      baseTicketsLimit,
+      finalTicketsLimit,
+    });
     return sum + finalTickets;
   }, 0);
 
@@ -138,7 +145,13 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
             const redeemedAt = new Date(participant.redeemed_at);
             const timeAgo = getTimeAgo(redeemedAt);
 
-            const { baseTickets, finalTickets, bonusTickets } = calculateParticipantTickets(participant);
+            const { baseTickets, finalTickets, bonusTickets } = calculateParticipantTickets(
+              participant,
+              {
+                baseTicketsLimit,
+                finalTicketsLimit,
+              }
+            );
             console.log(`[ParticipantsList] User ${participant.username}: entry_count=${participant.entry_count}, baseTickets=${baseTickets}`);
             const winProbability = totalEntries > 0
               ? ((finalTickets / totalEntries) * 100).toFixed(1)
@@ -186,7 +199,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                           <input
                             type="number"
                             min="1"
-                            max="3"
+                            max={String(baseTicketsLimit)}
                             value={editForm.entry_count || 1}
                             onChange={(e) => setEditForm({ ...editForm, entry_count: parseInt(e.target.value) })}
                             className="w-16 px-1 py-0.5 bg-black/30 rounded"

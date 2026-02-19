@@ -1,6 +1,7 @@
 import type { PresentParticipant } from '../PresentPage';
 
 const DEFAULT_BASE_TICKETS_LIMIT = 3;
+const UNLIMITED_FINAL_TICKETS_LIMIT = 0;
 
 const getTierCoefficient = (tier: string): number => {
   switch (tier) {
@@ -26,7 +27,8 @@ export const calculateBaseTickets = (
 
 export const calculateFinalTickets = (
   baseTickets: number,
-  participant: PresentParticipant
+  participant: PresentParticipant,
+  finalTicketsLimit: number = UNLIMITED_FINAL_TICKETS_LIMIT
 ): number => {
   const safeBaseTickets = Math.max(0, baseTickets);
   const coefficient = getTierCoefficient(participant.subscriber_tier);
@@ -40,12 +42,32 @@ export const calculateFinalTickets = (
     }
   }
 
-  return safeBaseTickets + bonus;
+  const totalTickets = safeBaseTickets + bonus;
+  if (finalTicketsLimit > 0) {
+    return Math.min(totalTickets, finalTicketsLimit);
+  }
+
+  return totalTickets;
 };
 
-export const calculateParticipantTickets = (participant: PresentParticipant) => {
-  const baseTickets = calculateBaseTickets(participant.entry_count);
-  const finalTickets = calculateFinalTickets(baseTickets, participant);
+interface TicketCalculatorOptions {
+  baseTicketsLimit?: number;
+  finalTicketsLimit?: number;
+}
+
+export const calculateParticipantTickets = (
+  participant: PresentParticipant,
+  options: TicketCalculatorOptions = {}
+) => {
+  const baseTickets = calculateBaseTickets(
+    participant.entry_count,
+    options.baseTicketsLimit
+  );
+  const finalTickets = calculateFinalTickets(
+    baseTickets,
+    participant,
+    options.finalTicketsLimit
+  );
   return {
     baseTickets,
     finalTickets,

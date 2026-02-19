@@ -24,6 +24,8 @@ interface LotteryState {
   enabled: boolean
   is_running: boolean
   is_locked: boolean
+  base_tickets_limit: number
+  final_tickets_limit: number
   participants: PresentParticipant[]
   winner: PresentParticipant | null
 }
@@ -33,6 +35,8 @@ export const PresentPage: React.FC = () => {
     enabled: false,
     is_running: false,
     is_locked: false,
+    base_tickets_limit: 3,
+    final_tickets_limit: 0,
     participants: [],
     winner: null,
   })
@@ -266,10 +270,21 @@ export const PresentPage: React.FC = () => {
           break
 
         case 'lottery_participants_updated':
-          setLotteryState((prev) => ({
-            ...prev,
-            participants: message.data,
-          }))
+          if (Array.isArray(message.data)) {
+            setLotteryState((prev) => ({
+              ...prev,
+              participants: message.data,
+            }))
+          } else {
+            setLotteryState((prev) => ({
+              ...prev,
+              participants: message.data?.participants || [],
+              base_tickets_limit:
+                message.data?.base_tickets_limit ?? prev.base_tickets_limit,
+              final_tickets_limit:
+                message.data?.final_tickets_limit ?? prev.final_tickets_limit,
+            }))
+          }
           break
 
         case 'lottery_started':
@@ -355,6 +370,8 @@ export const PresentPage: React.FC = () => {
             enabled: data.enabled,
             is_running: data.is_running,
             is_locked: data.is_locked || false,
+            base_tickets_limit: data.base_tickets_limit ?? 3,
+            final_tickets_limit: data.final_tickets_limit ?? 0,
             participants: data.participants || [],
             winner: data.winner || null,
           })
@@ -410,6 +427,8 @@ export const PresentPage: React.FC = () => {
               <RouletteWheel
                 participants={lotteryState.participants}
                 isSpinning={isSpinning}
+                baseTicketsLimit={lotteryState.base_tickets_limit}
+                finalTicketsLimit={lotteryState.final_tickets_limit}
                 winner={lotteryState.winner}
                 onSpinComplete={handleSpinComplete}
               />
@@ -491,6 +510,8 @@ export const PresentPage: React.FC = () => {
               <ParticipantsList
                 participants={lotteryState.participants}
                 winner={lotteryState.winner}
+                baseTicketsLimit={lotteryState.base_tickets_limit}
+                finalTicketsLimit={lotteryState.final_tickets_limit}
                 debugMode={debugMode}
               />
             </div>

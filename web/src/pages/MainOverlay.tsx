@@ -24,7 +24,11 @@ export const MainOverlay: React.FC = () => {
 
         case 'lottery_participants_updated':
           console.log('[MainOverlay] Participants updated:', message.data);
-          setParticipants(message.data || []);
+          if (Array.isArray(message.data)) {
+            setParticipants(message.data || []);
+          } else {
+            setParticipants(message.data?.participants || []);
+          }
           break;
 
         case 'lottery_participants_cleared':

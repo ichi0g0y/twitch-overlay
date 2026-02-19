@@ -16,6 +16,7 @@ type RewardUsage struct {
 
 // SubscriptionInfo は口数計算に必要なサブスク情報を表す。
 type SubscriptionInfo struct {
+	IsSubscriber      bool
 	Tier              string
 	CumulativeMonths  int
 	FinalTicketsLimit int
@@ -61,7 +62,7 @@ func CalculateFinalTickets(baseTickets int, subInfo *SubscriptionInfo) int {
 	coefficient := tierCoefficient(subInfo.Tier)
 	bonus := 0
 
-	if coefficient > 0 {
+	if subInfo.IsSubscriber && coefficient > 0 {
 		rawBonus := float64(months) * coefficient * 1.1 / 3.0
 		bonus = int(math.Ceil(rawBonus))
 
