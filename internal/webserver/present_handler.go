@@ -1,6 +1,8 @@
 package webserver
 
 import (
+	"sync"
+
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
 	"github.com/ichi0g0y/twitch-overlay/internal/settings"
 	"github.com/ichi0g0y/twitch-overlay/internal/shared/logger"
@@ -22,6 +24,9 @@ var (
 		"#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6",
 		"#ec4899", "#14b8a6", "#f97316", "#06b6d4", "#a855f7",
 	}
+
+	// 抽選停止の二重実行を防ぐための排他制御
+	lotteryStopMu sync.Mutex
 )
 
 // assignColorToParticipant は参加者に色を割り当てる
@@ -75,11 +80,7 @@ func assignColorToParticipant(participant types.PresentParticipant) string {
 	}
 
 	// 全ての色が使用済みの場合は、user_idのハッシュで決定
-	hash := 0
-	for _, c := range participant.UserID {
-		hash = hash*31 + int(c)
-	}
-	return colorPalette[hash%len(colorPalette)]
+	return paletteColorForUserID(participant.UserID)
 }
 
 // LoadLotteryParticipantsFromDB はDBから参加者を復元する（起動時に呼ばれる）
@@ -210,15 +211,31 @@ func assignColorToParticipantAtIndex(idx int, usedColors map[string]bool) {
 		return
 	}
 
-	hash := 0
-	for _, c := range currentLottery.Participants[idx].UserID {
-		hash = hash*31 + int(c)
-	}
-	color := colorPalette[hash%len(colorPalette)]
+	color := paletteColorForUserID(currentLottery.Participants[idx].UserID)
 	currentLottery.Participants[idx].AssignedColor = color
 	logger.Debug("Assigned hash-based color to participant",
 		zap.String("user_id", currentLottery.Participants[idx].UserID),
 		zap.String("color", color))
+}
+
+func paletteColorForUserID(userID string) string {
+	if len(colorPalette) == 0 {
+		return ""
+	}
+	return colorPalette[paletteColorIndexForUserID(userID, len(colorPalette))]
+}
+
+func paletteColorIndexForUserID(userID string, paletteLen int) int {
+	if paletteLen <= 0 {
+		return 0
+	}
+
+	var hash uint64
+	for _, c := range userID {
+		hash = hash*31 + uint64(c)
+	}
+
+	return int(hash % uint64(paletteLen))
 }
 
 // InitializePresentLottery は起動時にロック状態を設定DBから復元し、Twitchリワードの状態を同期

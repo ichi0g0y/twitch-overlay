@@ -35,8 +35,10 @@ export const calculateFinalTickets = (
   const subscribedMonths = Math.max(0, participant.subscribed_months || 0);
 
   let bonus = 0;
-  if (participant.is_subscriber && coefficient > 0) {
-    bonus = Math.ceil((subscribedMonths * coefficient * 1.1) / 3);
+  if (participant.is_subscriber) {
+    if (coefficient > 0) {
+      bonus = Math.ceil((subscribedMonths * coefficient * 1.1) / 3);
+    }
     if (bonus < 1) {
       bonus = 1;
     }

@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/ichi0g0y/twitch-overlay/internal/localdb"
@@ -73,9 +74,22 @@ func handleDeleteParticipant(w http.ResponseWriter, userID string) {
 
 // handleUpdateParticipant は特定の参加者の情報を更新
 func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID string) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
 	// リクエストボディをパース
 	var updates types.PresentParticipant
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+	if err := json.Unmarshal(body, &updates); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// フィールド有無で部分更新を判定する
+	updateFields := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(body, &updateFields); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -88,8 +102,7 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 			continue
 		}
 
-		// サブスク状態の変更をチェック
-		subscriberChanged := p.IsSubscriber != updates.IsSubscriber
+		oldIsSubscriber := currentLottery.Participants[i].IsSubscriber
 
 		// 更新可能なフィールドのみ更新
 		if updates.EntryCount > 0 {
@@ -102,10 +115,19 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 			currentLottery.Participants[i].Username = updates.Username
 		}
 
-		// サブスク情報も更新可能
-		currentLottery.Participants[i].IsSubscriber = updates.IsSubscriber
-		currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
-		currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
+		// サブスク情報はリクエストに含まれる項目のみ更新する
+		if hasUpdateField(updateFields, "is_subscriber") {
+			currentLottery.Participants[i].IsSubscriber = updates.IsSubscriber
+		}
+		if hasUpdateField(updateFields, "subscriber_tier") {
+			currentLottery.Participants[i].SubscriberTier = updates.SubscriberTier
+		}
+		if hasUpdateField(updateFields, "subscribed_months") {
+			currentLottery.Participants[i].SubscribedMonths = updates.SubscribedMonths
+		}
+
+		// サブスク状態の変更をチェック
+		subscriberChanged := oldIsSubscriber != currentLottery.Participants[i].IsSubscriber
 
 		// サブスク状態が変更された場合は色を再割り当て
 		if subscriberChanged {
@@ -140,4 +162,9 @@ func handleUpdateParticipant(w http.ResponseWriter, r *http.Request, userID stri
 		"success": true,
 		"message": "Participant updated",
 	})
+}
+
+func hasUpdateField(fields map[string]json.RawMessage, key string) bool {
+	_, ok := fields[key]
+	return ok
 }

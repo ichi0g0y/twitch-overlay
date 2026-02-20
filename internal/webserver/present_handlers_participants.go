@@ -141,13 +141,21 @@ func handlePresentStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(currentLottery.Participants) == 0 {
-		http.Error(w, "No participants", http.StatusBadRequest)
+	if currentLottery.IsRunning {
+		http.Error(w, "Lottery already running", http.StatusBadRequest)
 		return
 	}
 
-	if currentLottery.IsRunning {
-		http.Error(w, "Lottery already running", http.StatusBadRequest)
+	latestParticipants, err := localdb.GetAllLotteryParticipants()
+	if err != nil {
+		logger.Error("Failed to load participants from database before lottery start", zap.Error(err))
+		http.Error(w, "Failed to load participants", http.StatusInternalServerError)
+		return
+	}
+	currentLottery.Participants = latestParticipants
+
+	if len(currentLottery.Participants) == 0 {
+		http.Error(w, "No participants", http.StatusBadRequest)
 		return
 	}
 

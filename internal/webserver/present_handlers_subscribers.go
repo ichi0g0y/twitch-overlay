@@ -115,10 +115,11 @@ func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterI
 	} else {
 		p.IsSubscriber = true
 		p.SubscriberTier = subInfo.Tier
-		p.SubscribedMonths = subInfo.CumulativeMonths
+		p.SubscribedMonths = twitchapi.ResolveSubscribedMonths(subInfo.CumulativeMonths, oldMonths)
 		logger.Debug("User subscription info retrieved",
 			zap.String("user_id", p.UserID),
-			zap.Int("cumulative_months", subInfo.CumulativeMonths),
+			zap.Int("api_cumulative_months", subInfo.CumulativeMonths),
+			zap.Int("resolved_cumulative_months", p.SubscribedMonths),
 			zap.String("tier", subInfo.Tier))
 	}
 
@@ -154,6 +155,9 @@ func applyRefreshedParticipants(participants []types.PresentParticipant, colorRe
 		logger.Error("Failed to reload participants for color reassignment", zap.Error(err))
 		return participants
 	}
+
+	// 色割り当て関数が currentLottery.Participants を参照するため、先に更新する
+	currentLottery.Participants = latestParticipants
 
 	for i := range latestParticipants {
 		latestParticipants[i].AssignedColor = assignColorToParticipant(latestParticipants[i])

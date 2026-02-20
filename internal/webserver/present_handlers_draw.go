@@ -27,6 +27,9 @@ func handlePresentStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lotteryStopMu.Lock()
+	defer lotteryStopMu.Unlock()
+
 	if !currentLottery.IsRunning {
 		http.Error(w, "Lottery not running", http.StatusBadRequest)
 		return

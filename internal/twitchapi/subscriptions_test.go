@@ -102,3 +102,41 @@ func TestGetUserSubscriptionCached_ErrorNoCache(t *testing.T) {
 		t.Fatalf("error should not be cached: got=%d want=2", callCount)
 	}
 }
+
+func TestResolveSubscribedMonths(t *testing.T) {
+	tests := []struct {
+		name     string
+		api      int
+		current  int
+		expected int
+	}{
+		{
+			name:     "use api months when available",
+			api:      12,
+			current:  3,
+			expected: 12,
+		},
+		{
+			name:     "fallback to current months when api is unavailable",
+			api:      0,
+			current:  9,
+			expected: 9,
+		},
+		{
+			name:     "default to one month when both are unavailable",
+			api:      0,
+			current:  0,
+			expected: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := ResolveSubscribedMonths(tc.api, tc.current)
+			if got != tc.expected {
+				t.Fatalf("ResolveSubscribedMonths(%d, %d) = %d, want %d", tc.api, tc.current, got, tc.expected)
+			}
+		})
+	}
+}

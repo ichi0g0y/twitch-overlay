@@ -62,9 +62,11 @@ func CalculateFinalTickets(baseTickets int, subInfo *SubscriptionInfo) int {
 	coefficient := tierCoefficient(subInfo.Tier)
 	bonus := 0
 
-	if subInfo.IsSubscriber && coefficient > 0 {
-		rawBonus := float64(months) * coefficient * 1.1 / 3.0
-		bonus = int(math.Ceil(rawBonus))
+	if subInfo.IsSubscriber {
+		if coefficient > 0 {
+			rawBonus := float64(months) * coefficient * 1.1 / 3.0
+			bonus = int(math.Ceil(rawBonus))
+		}
 
 		// サブスク登録者は計算結果が0でも最低1口ボーナスを付与。
 		if bonus < 1 {

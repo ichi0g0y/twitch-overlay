@@ -89,13 +89,20 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
 
   // 編集保存
   const handleSaveEdit = async (userId: string) => {
+    const normalizedEditForm: Partial<PresentParticipant> = {
+      ...editForm,
+    };
+    if (normalizedEditForm.is_subscriber && !normalizedEditForm.subscriber_tier) {
+      normalizedEditForm.subscriber_tier = '1000';
+    }
+
     try {
       const response = await fetch(buildApiUrl(`/api/present/participants/${userId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(normalizedEditForm),
       });
       if (!response.ok) {
         throw new Error('Failed to update participant');

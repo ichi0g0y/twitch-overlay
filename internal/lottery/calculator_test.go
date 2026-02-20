@@ -96,14 +96,14 @@ func TestCalculateFinalTickets(t *testing.T) {
 			expect: 9,
 		},
 		{
-			name: "unknown tier has no bonus",
+			name: "unknown tier でも最低1口ボーナスを付与",
 			base: 3,
 			sub: &SubscriptionInfo{
 				IsSubscriber:     true,
 				Tier:             "unknown",
 				CumulativeMonths: 12,
 			},
-			expect: 3,
+			expect: 4,
 		},
 		{
 			name: "apply final tickets limit",

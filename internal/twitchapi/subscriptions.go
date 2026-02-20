@@ -7,6 +7,7 @@ import (
 )
 
 const subscriptionCacheTTL = 30 * time.Minute
+const defaultSubscribedMonths = 1
 
 type subscriptionCacheEntry struct {
 	subscription    *UserSubscription
@@ -20,7 +21,7 @@ var (
 	subscriptionFetcher = GetUserSubscription
 )
 
-// GetUserSubscriptionCached retrieves subscription information with 30-minute cache.
+// GetUserSubscriptionCached は30分キャッシュ付きでサブスク情報を取得する。
 func GetUserSubscriptionCached(broadcasterID, userID string) (*UserSubscription, error) {
 	now := time.Now()
 	key := broadcasterID + ":" + userID
@@ -59,7 +60,7 @@ func GetUserSubscriptionCached(broadcasterID, userID string) (*UserSubscription,
 	return cloneUserSubscription(sub), nil
 }
 
-// ClearSubscriptionCache clears all cached subscription entries.
+// ClearSubscriptionCache はキャッシュされた全サブスクエントリを削除する。
 func ClearSubscriptionCache() {
 	subscriptionCacheMu.Lock()
 	subscriptionCache = map[string]subscriptionCacheEntry{}
@@ -72,4 +73,16 @@ func cloneUserSubscription(sub *UserSubscription) *UserSubscription {
 	}
 	cloned := *sub
 	return &cloned
+}
+
+// ResolveSubscribedMonths はHelix APIの累積月数を正規化する。
+// Helix /subscriptions はcumulative_monthsを返却しないため、呼び出し元でフォールバックが必要。
+func ResolveSubscribedMonths(apiMonths, currentMonths int) int {
+	if apiMonths > 0 {
+		return apiMonths
+	}
+	if currentMonths > 0 {
+		return currentMonths
+	}
+	return defaultSubscribedMonths
 }
