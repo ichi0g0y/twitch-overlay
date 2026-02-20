@@ -17,6 +17,7 @@
 - [`.ai/review.md`](.ai/review.md)
 - [`.ai/git.md`](.ai/git.md)
 - [`.ai/dev-env.md`](.ai/dev-env.md)
+- [`.ai/conductor-prompts.md`](.ai/conductor-prompts.md) — Conductor固有プロンプト
 
 # Claude Code 固有の補足
 
