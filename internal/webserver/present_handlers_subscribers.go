@@ -15,6 +15,8 @@ import (
 
 var errSubscriberDBNotInitialized = errors.New("database not initialized")
 
+var getUserSubscriptionCached = twitchapi.GetUserSubscriptionCached
+
 // handleRefreshSubscribers は全参加者のサブスク状況をTwitch APIから更新
 func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -40,11 +42,11 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(participants) == 0 {
-		respondRefreshResult(w, "No participants to refresh", 0)
+		respondRefreshResult(w, "No participants to refresh", 0, []string{})
 		return
 	}
 
-	updatedCount, colorReassignNeeded := refreshParticipantsSubscriptionInfo(participants, broadcasterID)
+	updatedCount, colorReassignNeeded, failedUsers := refreshParticipantsSubscriptionInfo(participants, broadcasterID)
 	participants = applyRefreshedParticipants(participants, colorReassignNeeded)
 	currentLottery.Participants = participants
 
@@ -52,9 +54,10 @@ func handleRefreshSubscribers(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Subscriber status refresh completed",
 		zap.Int("total", len(participants)),
 		zap.Int("updated", updatedCount),
+		zap.Int("failed", len(failedUsers)),
 		zap.Bool("color_reassigned", colorReassignNeeded))
 
-	respondRefreshResult(w, "Subscriber status refreshed", updatedCount)
+	respondRefreshResult(w, "Subscriber status refreshed", updatedCount, failedUsers)
 }
 
 func loadBroadcasterID() (string, error) {
@@ -72,30 +75,34 @@ func loadBroadcasterID() (string, error) {
 	return broadcasterID, nil
 }
 
-func refreshParticipantsSubscriptionInfo(participants []types.PresentParticipant, broadcasterID string) (int, bool) {
+func refreshParticipantsSubscriptionInfo(participants []types.PresentParticipant, broadcasterID string) (int, bool, []string) {
 	updatedCount := 0
 	colorReassignNeeded := false
+	failedUsers := []string{}
 
 	for i := range participants {
-		updated, colorChanged := refreshOneParticipantSubscription(&participants[i], broadcasterID)
+		updated, colorChanged, failed := refreshOneParticipantSubscription(&participants[i], broadcasterID)
 		if updated {
 			updatedCount++
 		}
 		if colorChanged {
 			colorReassignNeeded = true
 		}
+		if failed {
+			failedUsers = append(failedUsers, displayNameOrFallback(participants[i]))
+		}
 	}
 
-	return updatedCount, colorReassignNeeded
+	return updatedCount, colorReassignNeeded, failedUsers
 }
 
-func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterID string) (bool, bool) {
+func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterID string) (bool, bool, bool) {
 	if !isNumericUserID(p.UserID) {
 		logger.Debug("Skipping non-numeric user_id", zap.String("user_id", p.UserID))
-		return false, false
+		return false, false, false
 	}
 
-	subInfo, err := twitchapi.GetUserSubscriptionCached(broadcasterID, p.UserID)
+	subInfo, err := getUserSubscriptionCached(broadcasterID, p.UserID)
 	oldIsSubscriber := p.IsSubscriber
 	oldTier := p.SubscriberTier
 	oldMonths := p.SubscribedMonths
@@ -110,7 +117,7 @@ func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterI
 			logger.Warn("Failed to refresh user subscription info, keeping current values",
 				zap.String("user_id", p.UserID),
 				zap.Error(err))
-			return false, false
+			return false, false, true
 		}
 	} else {
 		p.IsSubscriber = true
@@ -125,12 +132,12 @@ func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterI
 
 	changed := oldIsSubscriber != p.IsSubscriber || oldTier != p.SubscriberTier || oldMonths != p.SubscribedMonths
 	if !changed {
-		return false, false
+		return false, false, false
 	}
 
 	if err := localdb.UpdateLotteryParticipant(p.UserID, *p); err != nil {
 		logger.Error("Failed to update participant", zap.String("user_id", p.UserID), zap.Error(err))
-		return false, false
+		return false, false, true
 	}
 
 	logger.Info("Participant subscription status updated",
@@ -140,7 +147,7 @@ func refreshOneParticipantSubscription(p *types.PresentParticipant, broadcasterI
 		zap.Int("old_subscribed_months", oldMonths),
 		zap.Int("new_subscribed_months", p.SubscribedMonths))
 
-	return true, oldIsSubscriber != p.IsSubscriber
+	return true, oldIsSubscriber != p.IsSubscriber, false
 }
 
 func applyRefreshedParticipants(participants []types.PresentParticipant, colorReassignNeeded bool) []types.PresentParticipant {
@@ -183,11 +190,22 @@ func isNumericUserID(userID string) bool {
 	return true
 }
 
-func respondRefreshResult(w http.ResponseWriter, message string, updated int) {
+func respondRefreshResult(w http.ResponseWriter, message string, updated int, failedUsers []string) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": message,
-		"updated": updated,
+		"success":      true,
+		"message":      message,
+		"updated":      updated,
+		"failed_users": failedUsers,
 	})
+}
+
+func displayNameOrFallback(p types.PresentParticipant) string {
+	if p.DisplayName != "" {
+		return p.DisplayName
+	}
+	if p.Username != "" {
+		return p.Username
+	}
+	return p.UserID
 }

@@ -45,6 +45,7 @@ export const PresentPage: React.FC = () => {
   const [showConfetti, setShowConfetti] = useState(false)
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null)
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
@@ -181,6 +182,17 @@ export const PresentPage: React.FC = () => {
       // 成功通知（オプション）
       if (result.updated > 0) {
         console.log(`${result.updated} 人の参加者のサブスク状況を更新しました`)
+      }
+
+      const failedUsers: string[] = Array.isArray(result.failed_users)
+        ? result.failed_users.filter((name: unknown) => typeof name === 'string')
+        : []
+      if (failedUsers.length > 0) {
+        setRefreshWarning(
+          `一部ユーザーのサブスク情報取得に失敗しました（${failedUsers.length}人）: ${failedUsers.join(', ')}`
+        )
+      } else {
+        setRefreshWarning(null)
       }
     } catch (error) {
       console.error('Error refreshing subscriber status:', error)
@@ -439,6 +451,11 @@ export const PresentPage: React.FC = () => {
           <div className='lg:col-span-1 flex flex-col gap-4 h-[800px]'>
             {/* コントロールボタン */}
             <div className='bg-purple-500/20 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-400'>
+              {refreshWarning && (
+                <div className='mb-3 rounded-md border border-yellow-400/60 bg-yellow-500/20 p-2 text-xs text-yellow-100'>
+                  {refreshWarning}
+                </div>
+              )}
               <div className='flex gap-3 justify-center items-center'>
                 {/* ロック/ロック解除ボタン */}
                 <button

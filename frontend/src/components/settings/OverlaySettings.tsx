@@ -2,6 +2,10 @@ import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Pri
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrl } from '../../utils/api';
+import { LotteryHistory } from './lottery/LotteryHistory';
+import { LotteryRuleDisplay } from './lottery/LotteryRuleDisplay';
+import { LotterySettings } from './lottery/LotterySettings';
+import type { LotteryHistoryItem, LotteryRuntimeState, LotterySettingsState } from './lottery/types';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
@@ -92,6 +96,19 @@ export const OverlaySettings: React.FC = () => {
     display_name?: string;
     user_names?: string[];
   }>>([]);
+  const [lotterySettingsState, setLotterySettingsState] = useState<LotterySettingsState | null>(null);
+  const [lotteryHistory, setLotteryHistory] = useState<LotteryHistoryItem[]>([]);
+  const [lotteryRuntimeState, setLotteryRuntimeState] = useState<LotteryRuntimeState>({
+    is_running: false,
+    participants_count: 0,
+  });
+  const [lotteryBaseLimitInput, setLotteryBaseLimitInput] = useState<number>(3);
+  const [lotteryFinalLimitInput, setLotteryFinalLimitInput] = useState<number>(0);
+  const [isLotteryLoading, setIsLotteryLoading] = useState(false);
+  const [isLotteryDrawing, setIsLotteryDrawing] = useState(false);
+  const [isLotterySaving, setIsLotterySaving] = useState(false);
+  const [isLotteryResettingWinner, setIsLotteryResettingWinner] = useState(false);
+  const [lotteryStatusMessage, setLotteryStatusMessage] = useState<string>('');
   const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
   const groupRewardIdsRef = useRef<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
@@ -321,6 +338,72 @@ export const OverlaySettings: React.FC = () => {
     }
   };
 
+  const readResponseError = async (response: Response): Promise<string> => {
+    const fallback = `HTTP ${response.status}`;
+    try {
+      const text = await response.text();
+      if (!text) return fallback;
+      try {
+        const parsed = JSON.parse(text) as { error?: string; message?: string; detail?: string };
+        const detail = parsed.error || parsed.message || parsed.detail;
+        return detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status}: ${text}`;
+      } catch {
+        return `HTTP ${response.status}: ${text}`;
+      }
+    } catch {
+      return fallback;
+    }
+  };
+
+  const fetchLotterySettings = async () => {
+    const response = await fetch(buildApiUrl('/api/lottery/settings'));
+    if (!response.ok) {
+      throw new Error(await readResponseError(response));
+    }
+    const data: LotterySettingsState = await response.json();
+    setLotterySettingsState(data);
+    setLotteryBaseLimitInput(data.base_tickets_limit ?? 3);
+    setLotteryFinalLimitInput(data.final_tickets_limit ?? 0);
+  };
+
+  const fetchLotteryHistory = async (limit = 20) => {
+    const response = await fetch(buildApiUrl(`/api/lottery/history?limit=${limit}`));
+    if (!response.ok) {
+      throw new Error(await readResponseError(response));
+    }
+    const data = await response.json() as { history?: LotteryHistoryItem[] };
+    setLotteryHistory(data.history || []);
+  };
+
+  const fetchLotteryRuntimeState = async () => {
+    const response = await fetch(buildApiUrl('/api/present/participants'));
+    if (!response.ok) {
+      throw new Error(await readResponseError(response));
+    }
+    const data = await response.json() as { is_running?: boolean; participants?: unknown[] };
+    setLotteryRuntimeState({
+      is_running: Boolean(data.is_running),
+      participants_count: Array.isArray(data.participants) ? data.participants.length : 0,
+    });
+  };
+
+  const fetchLotteryOverview = async () => {
+    setIsLotteryLoading(true);
+    try {
+      await Promise.all([
+        fetchLotterySettings(),
+        fetchLotteryHistory(20),
+        fetchLotteryRuntimeState(),
+      ]);
+      setLotteryStatusMessage('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLotteryStatusMessage(`抽選情報の取得に失敗しました: ${message}`);
+    } finally {
+      setIsLotteryLoading(false);
+    }
+  };
+
   // グループリワードIDを取得（無限ループ防止のため、groupRewardIdsを依存配列に含めない）
   useEffect(() => {
     if (!overlaySettings?.reward_count_enabled) {
@@ -442,6 +525,77 @@ export const OverlaySettings: React.FC = () => {
       if (unsubReset) unsubReset();
     };
   }, [overlaySettings?.reward_count_enabled, overlaySettings?.reward_count_group_id]);
+
+  useEffect(() => {
+    fetchLotteryOverview();
+  }, []);
+
+  useEffect(() => {
+    let unsubStarted: (() => void) | null = null;
+    let unsubStopped: (() => void) | null = null;
+    let unsubWinner: (() => void) | null = null;
+    let unsubParticipantsUpdated: (() => void) | null = null;
+    let unsubParticipantsCleared: (() => void) | null = null;
+    let unsubWinnerReset: (() => void) | null = null;
+
+    const setupLotteryWebSocket = async () => {
+      try {
+        const { getWebSocketClient } = await import('../../utils/websocket');
+        const wsClient = getWebSocketClient();
+        await wsClient.connect();
+
+        unsubStarted = wsClient.on('lottery_started', () => {
+          setLotteryRuntimeState(prev => ({ ...prev, is_running: true }));
+          setLotteryStatusMessage('抽選を開始しました');
+        });
+
+        unsubStopped = wsClient.on('lottery_stopped', async () => {
+          setLotteryRuntimeState(prev => ({ ...prev, is_running: false }));
+          try {
+            await Promise.all([fetchLotterySettings(), fetchLotteryHistory(20), fetchLotteryRuntimeState()]);
+          } catch (error) {
+            console.error('Failed to refresh lottery data after stop:', error);
+          }
+        });
+
+        unsubWinner = wsClient.on('lottery_winner', async () => {
+          try {
+            await Promise.all([fetchLotterySettings(), fetchLotteryHistory(20)]);
+          } catch (error) {
+            console.error('Failed to refresh lottery data after winner event:', error);
+          }
+        });
+
+        unsubParticipantsUpdated = wsClient.on('lottery_participants_updated', (data: any) => {
+          setLotteryRuntimeState(prev => ({
+            ...prev,
+            participants_count: Array.isArray(data?.participants) ? data.participants.length : prev.participants_count,
+          }));
+        });
+
+        unsubParticipantsCleared = wsClient.on('lottery_participants_cleared', () => {
+          setLotteryRuntimeState(prev => ({ ...prev, participants_count: 0, is_running: false }));
+        });
+
+        unsubWinnerReset = wsClient.on('lottery_winner_reset', () => {
+          setLotterySettingsState(prev => prev ? { ...prev, last_winner: '' } : prev);
+        });
+      } catch (error) {
+        console.error('Failed to setup WebSocket for lottery:', error);
+      }
+    };
+
+    setupLotteryWebSocket();
+
+    return () => {
+      if (unsubStarted) unsubStarted();
+      if (unsubStopped) unsubStopped();
+      if (unsubWinner) unsubWinner();
+      if (unsubParticipantsUpdated) unsubParticipantsUpdated();
+      if (unsubParticipantsCleared) unsubParticipantsCleared();
+      if (unsubWinnerReset) unsubWinnerReset();
+    };
+  }, []);
 
   // 音楽ステータスの更新を監視
   useEffect(() => {
@@ -604,6 +758,105 @@ export const OverlaySettings: React.FC = () => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     setDragOverPosition({ column, index });
+  };
+
+  const syncLotteryRewardSetting = async (rewardId: string | null) => {
+    const response = await fetch(buildApiUrl('/api/lottery/settings'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reward_id: rewardId ?? '' }),
+    });
+    if (!response.ok) {
+      throw new Error(await readResponseError(response));
+    }
+    await fetchLotterySettings();
+  };
+
+  const handleLotteryDraw = async () => {
+    setIsLotteryDrawing(true);
+    setLotteryStatusMessage('');
+    try {
+      const response = await fetch(buildApiUrl('/api/lottery/draw'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response));
+      }
+      setLotteryStatusMessage('抽選を実行しました');
+      await Promise.all([fetchLotterySettings(), fetchLotteryHistory(20), fetchLotteryRuntimeState()]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLotteryStatusMessage(`抽選に失敗しました: ${message}`);
+      alert(`抽選に失敗しました: ${message}`);
+    } finally {
+      setIsLotteryDrawing(false);
+    }
+  };
+
+  const handleLotteryResetWinner = async () => {
+    setIsLotteryResettingWinner(true);
+    setLotteryStatusMessage('');
+    try {
+      const response = await fetch(buildApiUrl('/api/lottery/reset-winner'), { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response));
+      }
+      await fetchLotterySettings();
+      setLotteryStatusMessage('前回当選者をリセットしました');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLotteryStatusMessage(`前回当選者のリセットに失敗しました: ${message}`);
+      alert(`前回当選者のリセットに失敗しました: ${message}`);
+    } finally {
+      setIsLotteryResettingWinner(false);
+    }
+  };
+
+  const handleSaveLotteryLimits = async () => {
+    if (!Number.isFinite(lotteryBaseLimitInput) || lotteryBaseLimitInput <= 0) {
+      alert('基本口数上限は1以上を指定してください');
+      return;
+    }
+    if (!Number.isFinite(lotteryFinalLimitInput) || lotteryFinalLimitInput < 0) {
+      alert('最終口数上限は0以上を指定してください');
+      return;
+    }
+
+    setIsLotterySaving(true);
+    setLotteryStatusMessage('');
+    try {
+      const response = await fetch(buildApiUrl('/api/lottery/settings'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_tickets_limit: lotteryBaseLimitInput,
+          final_tickets_limit: lotteryFinalLimitInput,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response));
+      }
+      await fetchLotterySettings();
+      setLotteryStatusMessage('抽選設定を保存しました');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLotteryStatusMessage(`抽選設定の保存に失敗しました: ${message}`);
+      alert(`抽選設定の保存に失敗しました: ${message}`);
+    } finally {
+      setIsLotterySaving(false);
+    }
+  };
+
+  const handleDeleteLotteryHistory = async (id: number) => {
+    try {
+      const response = await fetch(buildApiUrl(`/api/lottery/history/${id}`), { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response));
+      }
+      await fetchLotteryHistory(20);
+      setLotteryStatusMessage('抽選履歴を削除しました');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`抽選履歴の削除に失敗しました: ${message}`);
+    }
   };
 
   const renderMusicPlayerCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
@@ -1425,43 +1678,49 @@ export const OverlaySettings: React.FC = () => {
       </CardHeader>
       {isExpanded && (
         <CardContent className="space-y-4 text-left">
-          {/* LOTTERY_ENABLEDは廃止され、常に有効として扱われます */}
-            <div className="space-y-2">
-              <Label htmlFor="lottery-reward">抽選対象リワード</Label>
-              {customRewards.length > 0 ? (
-                <Select
-                  value={overlaySettings?.lottery_reward_id || ''}
-                  onValueChange={(value) =>
-                    updateOverlaySettings({
-                      lottery_reward_id: value || null
-                    })
-                  }
-                >
-                  <SelectTrigger id="lottery-reward">
-                    <SelectValue placeholder="リワードを選択..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customRewards.map(reward => (
-                      <SelectItem key={reward.id} value={reward.id}>
-                        {reward.title} ({reward.cost}pt)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm text-gray-500 dark:text-gray-400">
-                  {authStatus?.authenticated
-                    ? 'リワードを読み込み中...'
-                    : 'Twitchタブで認証してください'}
-                </div>
-              )}
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                このリワードを使用したユーザーが抽選対象になります
-              </p>
-            </div>
+          <LotterySettings
+            isLoading={isLotteryLoading}
+            runtimeState={lotteryRuntimeState}
+            onRefreshOverview={fetchLotteryOverview}
+            rewardOptions={customRewards}
+            rewardId={overlaySettings?.lottery_reward_id || lotterySettingsState?.reward_id || ''}
+            isAuthenticated={Boolean(authStatus?.authenticated)}
+            onRewardChange={async (value) => {
+              const rewardId = value || null;
+              try {
+                await updateOverlaySettings({
+                  lottery_reward_id: rewardId
+                });
+                await syncLotteryRewardSetting(rewardId);
+                setLotteryStatusMessage('抽選対象リワードを更新しました');
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                alert(`抽選対象リワードの更新に失敗しました: ${message}`);
+              }
+            }}
+            onDraw={handleLotteryDraw}
+            isDrawing={isLotteryDrawing}
+            onResetWinner={handleLotteryResetWinner}
+            isResettingWinner={isLotteryResettingWinner}
+            lastWinner={lotterySettingsState?.last_winner || ''}
+            baseLimit={lotteryBaseLimitInput}
+            finalLimit={lotteryFinalLimitInput}
+            onBaseLimitChange={setLotteryBaseLimitInput}
+            onFinalLimitChange={setLotteryFinalLimitInput}
+            onSaveLimits={handleSaveLotteryLimits}
+            isSaving={isLotterySaving}
+            statusMessage={lotteryStatusMessage}
+          />
+
+          <LotteryHistory
+            history={lotteryHistory}
+            onDelete={handleDeleteLotteryHistory}
+          />
+
+            <LotteryRuleDisplay />
 
             {/* ティッカー表示設定 */}
-            <div className="flex items-center justify-between space-x-2">
+            <div className="flex items-center justify-between space-x-2 pt-4 border-t">
               <div className="space-y-0.5">
                 <Label htmlFor="lottery-ticker">オーバーレイでティッカー表示</Label>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
