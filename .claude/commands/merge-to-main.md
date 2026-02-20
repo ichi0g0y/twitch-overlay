@@ -14,7 +14,7 @@ argument-hint: "[--no-merge] [release-label]"
 
 ## 実行手順
 
-1. `AI.md` と `.ai/workflow.md` のPR運用ルールを確認する。
+1. `CLAUDE.md` と `.ai/workflow.md` のPR運用ルールを確認する。
 2. `.context/current_issue` が存在する場合は `current_issue` を把握する。
 3. `origin/main` と `origin/develop` を最新化し、`develop` が存在することを確認する。
 4. `base=main` / `head=develop` のOpen PRが既にあるか確認する。

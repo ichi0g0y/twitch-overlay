@@ -40,7 +40,7 @@ Conductorで依頼する際に、依頼文に追加するプロンプトテン�
 CodexはSlash Commandを使えないため、処理内容を依頼文で明示する。
 
 ```text
-- AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）
+- CLAUDE.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）
 - Issue #7 を current_issue として .context/current_issue を更新して（/pick 相当）
 - 引数なしで /pick 相当を実施し、priority順でcurrent_issueを自動選定して
 - Issue #7 のレビューコメントを検証し、採用指摘のみ修正して（/rv 相当）

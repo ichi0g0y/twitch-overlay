@@ -13,7 +13,7 @@ type: "command"
 ## 実行手順
 
 1. 以下をこの順で読み込む。
-   - `AI.md`
+   - `CLAUDE.md`
    - `.ai/rules.md`
    - `.ai/workflow.md`
    - `.ai/dev-env.md`
