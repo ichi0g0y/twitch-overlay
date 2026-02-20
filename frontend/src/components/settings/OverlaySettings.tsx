@@ -108,6 +108,8 @@ export const OverlaySettings: React.FC = () => {
   const [isLotteryDrawing, setIsLotteryDrawing] = useState(false);
   const [isLotterySaving, setIsLotterySaving] = useState(false);
   const [isLotteryResettingWinner, setIsLotteryResettingWinner] = useState(false);
+  const [isRefreshingSubscribers, setIsRefreshingSubscribers] = useState(false);
+  const [subscriberWarning, setSubscriberWarning] = useState<string | null>(null);
   const [lotteryStatusMessage, setLotteryStatusMessage] = useState<string>('');
   const [groupRewardIds, setGroupRewardIds] = useState<Set<string>>(new Set());
   const groupRewardIdsRef = useRef<Set<string>>(new Set());
@@ -807,6 +809,36 @@ export const OverlaySettings: React.FC = () => {
       alert(`前回当選者のリセットに失敗しました: ${message}`);
     } finally {
       setIsLotteryResettingWinner(false);
+    }
+  };
+
+  const handleRefreshSubscribers = async () => {
+    setIsRefreshingSubscribers(true);
+    setSubscriberWarning(null);
+    setLotteryStatusMessage('');
+    try {
+      const response = await fetch(buildApiUrl('/api/present/refresh-subscribers'), {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response));
+      }
+
+      const result = await response.json() as { updated?: number; failed_users?: unknown[] };
+      const failedUsers = Array.isArray(result.failed_users)
+        ? result.failed_users.filter((name: unknown): name is string => typeof name === 'string')
+        : [];
+      if (failedUsers.length > 0) {
+        setSubscriberWarning(
+          `一部ユーザーのサブスク情報取得に失敗しました（${failedUsers.length}人）: ${failedUsers.join(', ')}`
+        );
+      }
+      setLotteryStatusMessage(`${result.updated || 0}人のサブスク状況を更新しました`);
+    } catch (error) {
+      console.error('Failed to refresh subscriber status:', error);
+      setSubscriberWarning('サブスク状況の更新に失敗しました');
+    } finally {
+      setIsRefreshingSubscribers(false);
     }
   };
 
@@ -1702,6 +1734,9 @@ export const OverlaySettings: React.FC = () => {
             isDrawing={isLotteryDrawing}
             onResetWinner={handleLotteryResetWinner}
             isResettingWinner={isLotteryResettingWinner}
+            onRefreshSubscribers={handleRefreshSubscribers}
+            isRefreshingSubscribers={isRefreshingSubscribers}
+            subscriberWarning={subscriberWarning}
             lastWinner={lotterySettingsState?.last_winner || ''}
             baseLimit={lotteryBaseLimitInput}
             finalLimit={lotteryFinalLimitInput}
