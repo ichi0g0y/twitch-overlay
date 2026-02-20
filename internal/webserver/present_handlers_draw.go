@@ -77,16 +77,16 @@ func executePresentStop() (*presentStopResult, error) {
 	}
 
 	winnerIndex := findWinnerIndex(currentLottery.Participants, winner.UserID)
-	logger.Info("Lottery stopped with winner",
-		zap.String("winner_user_id", winner.UserID),
-		zap.String("winner_username", winner.Username),
-		zap.Int("total_tickets", drawResult.TotalTickets))
-
-	return &presentStopResult{
+	result := &presentStopResult{
 		winner:      winner,
 		winnerIndex: winnerIndex,
 		drawResult:  drawResult,
-	}, nil
+	}
+
+	logDrawResult(result)
+	logDrawParticipantsDetail(drawResult.ParticipantsDetail)
+
+	return result, nil
 }
 
 func loadDrawInputs() (*localdb.LotterySettings, []types.PresentParticipant, error) {
