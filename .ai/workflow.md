@@ -166,5 +166,6 @@
 6. `GitHub CLI` で PR を作成/更新する場合は PR操作 を使い、`pr create` では `--base develop` を必ず明示する
 7. PRマージ前に、`Closes` 記載Issueの進行度チェックリスト完了を確認し、未完了なら `Refs` に修正する
 8. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
-9. PRマージ時は、`Closes` に記載されたIssueのみ自動クローズされる
-10. `develop -> main` 反映時は `/merge-to-main` / `/mtm` 相当の手順を必須とする
+9. PR作成時に `.context/issue_scope.json` が存在する場合、そのPRで完了した作業に対応するIssue本文のチェックボックスを `- [x]` に更新する（`gh issue edit --body-file` を使用）
+10. PRマージ時は、`Closes` に記載されたIssueのみ自動クローズされる
+11. `develop -> main` 反映時は `/merge-to-main` / `/mtm` 相当の手順を必須とする
