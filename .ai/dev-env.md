@@ -25,10 +25,8 @@
 
 ## GitHub操作
 
-- GitHub操作は `GitHub CLI` 必須ではない
-- `GitHub CLI` / GitHub REST API / GitHub GraphQL API のいずれを使ってもよい
-- `GitHub CLI` を使う場合は標準の実行方式を使う
-- `/plan` / `/pl` 相当では 認証状態確認 を事前実行し、GitHub操作可能か確認する
+- GitHub操作の手段は固定しない
+- GitHub REST API / GitHub GraphQL API など、環境に合う手段を選んでよい
 - 特定ラッパースクリプトの内部実装への依存を運用ルールとして固定しない
 - 認証切り替えが必要な環境では、CLIのログイン状態に依存せずAPIトークン利用を優先してよい
 - どの手段でも、Issue/PR/コメント/ラベルの結果が同等であることを優先する

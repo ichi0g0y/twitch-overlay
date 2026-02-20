@@ -5,21 +5,25 @@
 - コミットメッセージは日本語で書く
 - ドキュメント作成時は日本語で書く
 
-# AI運用の正本
+# 最重要
 
-- 共通挙動は `.ai/behavior.md` を正とする
-- 常時必読: `.ai/rules.md` / `.ai/project.md` / `.ai/workflow.md` / `.ai/behavior.md`
-- `/review-verify` 時の追加必読: `.ai/review.md` / `.ai/dev-env.md` / `.ai/git.md`
-- 手順書・計画・レビュー観点は GitHub Issues に集約する
-- 作業はIssue単位でworktreeを分け、1Issue 1PRを基本に小さく進める
+**Codex / Claude の共通運用は [`.ai/workflow.md`](.ai/workflow.md) を正とする。**
 
-# 運用計画（Issue設計とスコープ）
+# 必読ドキュメント
 
-- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリストで管理する
-- Issue分割は、優先度・担当・期限・リリース単位が異なる場合に限定し、分割時は親子Issueを `Refs #...` で相互参照する
-- `pick` 等の明示指示がない依頼は、まず plan モードとして扱い、Issue設計とスコープ確認を先に行う
-- 実装着手時に `primary_issue` と必要な `related_issues` を確定し、Issue単位worktree + 小PRで順次進める
-- この方針は Codex / Claude 共通で適用し、正本の `.ai/workflow.md`（必要に応じて `.ai/behavior.md`）を基準として整合させる
+- [`.ai/rules.md`](.ai/rules.md)
+- [`.ai/project.md`](.ai/project.md)
+- [`.ai/workflow.md`](.ai/workflow.md)
+- [`.ai/review.md`](.ai/review.md)
+- [`.ai/git.md`](.ai/git.md)
+- [`.ai/dev-env.md`](.ai/dev-env.md)
+
+# Claude Code 固有の補足
+
+- `/pick` 相当の指示やIssue番号の明示がなく、`current_issue` も未確定の依頼は、planモードでOpen Issue候補を優先度順に提示し、採用Issueをユーザー確認する
+- 対象Issue確定時は `.context/current_issue` にIssue番号を1行で書き出す
+- セッション開始時に `.context/current_issue` があれば対象Issueとして復元する
+- 対象PRがマージされ、Issue完了が確認できたら `.context/current_issue` を削除する
 
 # エージェント
 
@@ -31,7 +35,6 @@
 - `security-auditor` — セキュリティ監査（分析のみ、編集禁止）
 - `repo-mapper` — リポジトリ構造・影響範囲分析
 
-
 # プロジェクト構成
 
 ## ディレクトリ構成
@@ -40,8 +43,8 @@
   - Wailsの埋め込みアセットとして配信
   - `.env`のポート設定（3456）は**単体デバッグ用のみ**
   - 通常はビルド後にWailsから配信される
-  
-- **`frontend/`** - Wails Settings画面用フロントエンド  
+
+- **`frontend/`** - Wails Settings画面用フロントエンド
   - Wailsアプリのメインフロントエンド（設定画面）
   - `GetServerPort()`でGoから動的にバックエンドポートを取得
   - APIアクセス時は必ず動的ポート取得を使用
@@ -58,7 +61,7 @@
    cd web && bun run build  # オーバーレイをビルド
    task dev                 # Wailsで統合動作確認
    ```
-   
+
 2. **単体デバッグ（特殊な場合のみ）**
    ```bash
    cd web && bun run dev    # localhost:5174で単体起動
@@ -74,7 +77,7 @@ task dev  # Wailsアプリとして起動して確認
 - **オーバーレイ（web/）は単体では正常動作しない**
   - 必ずビルドしてWailsに組み込んで動作確認する
   - `bun run dev`での単体起動はデバッグ目的のみ
-  
+
 - **APIポートの扱い**
   - frontend/: `GetServerPort()`で動的取得（必須）
   - web/: Wails経由で配信されるため相対パス使用
@@ -260,7 +263,7 @@ func TestFunctionName(t *testing.T) {
     }{
         // テストケース
     }
-    
+
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             // テストロジック
@@ -295,29 +298,8 @@ func TestFunctionName(t *testing.T) {
 - **勝手にコミットしない** - ユーザーから明示的にコミットの指示があった場合のみコミットを実行する
 - コード変更後は、変更内容の説明のみ行い、コミットは行わない
 
-### コミットメッセージ絵文字ガイド
-
-- 🐛 :bug: バグ修正
-- 🎈 :balloon: 文字列変更や軽微な修正
-- 👍 :+1: 機能改善
-- ✨ :sparkles: 部分的な機能追加
-- 🎉 :tada: 盛大に祝うべき大きな機能追加
-- ♻️ :recycle: リファクタリング
-- 🚿 :shower: 不要な機能・使われなくなった機能の削除
-- 💚 :green_heart: テストやCIの修正・改善
-- 👕 :shirt: Lintエラーの修正やコードスタイルの修正
-- 🚀 :rocket: パフォーマンス改善
-- 🆙 :up: 依存パッケージなどのアップデート
-- 🔒 :lock: 新機能の公開範囲の制限
-- 👮 :cop: セキュリティ関連の改善
-- 🔧 :wrench: 設定関連変更
-- 📝 :memo: ドキュメントの整理
-- 🚧 :construction: 作業中
-
 ### コミットメッセージフォーマット
 
-```
-:emoji: Subject
-
-Commit body...
-```
+- 形式: `絵文字 scope: 説明`
+- 説明は日本語で簡潔に書く
+- 完全な絵文字リストは `docs/guides/CODING_STANDARDS.md` を参照する

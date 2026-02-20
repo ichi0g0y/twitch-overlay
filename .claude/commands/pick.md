@@ -1,34 +1,39 @@
 ---
-title: "Issueスコープ固定タスク"
+title: "Issue固定タスク"
 read_only: false
 type: "command"
-argument-hint: "[primary-issue-number] [related-issue-number ...]"
+argument-hint: "[issue-number]"
 ---
 
-# Issueスコープ固定（/pick）
+# Issue固定（/pick）
 
 ## 目的
 
-対象Issueを `.context/issue_scope.json` に保存し、修正者・レビュアー・PR作成時で共通参照できるようにする。
+対象Issueを `.context/current_issue` に保存し、既存Issue継続時の作業対象を明示する。
 
 ## 実行手順
 
-1. 既存の `.context/issue_scope.json` の有無を確認する。
-2. 既存ファイルがある場合:
-   - 既存スコープがある旨を警告する。
-   - `上書き / relatedに追加 / 取消` のいずれで続行するかユーザーに確認する。
-   - `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持し、追加対象Issueを `related_issues` と `active_related_issues` に登録して継続する（新規stateは `reserved`）。
-3. `scripts/pick_issue_scope.sh` を使って `primary_issue` と `related_issues` を決定する。
-   - 引数あり: 指定Issueを採用する。
-   - 引数なし: `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を採用する。
-   - 優先度ラベル付きIssueが無い場合: Open Issue 全体の最古を採用する。
-4. `.context/issue_scope.json` を更新する（`schema_version: 2`、`primary_issue` / `related_issues` / `active_related_issues` / `branch` / `picked_at`）。
-5. 結果を報告する（primary/issue概要/related/active_related/branch/selection_reason）。
+1. 引数（Issue番号）の有無を確認する。
+2. 引数がある場合:
+   - Issueの存在を確認する（手段は固定しない。例: `gh issue view <issue-number>` / GitHub REST API / GraphQL API）。
+   - 最初に選んだ手段が使えない場合は、別手段に切り替えて確認する。
+   - 存在確認に失敗した場合は `.context/current_issue` を更新せずに中断し、その旨をユーザーへ報告する。
+   - 既存の `.context/current_issue` があっても、ユーザー明示指示として引数のIssue番号で上書き保存する。
+3. 引数がない場合:
+   - 既存の `.context/current_issue` の有無を確認する。
+   - 既存ファイルがある場合は、既存スコープがある旨を警告し、上書きしてよいかユーザーに確認する。
+   - ユーザーが上書きを拒否した場合は `.context/current_issue` を変更せずに終了する。
+   - Open Issue を優先度順（`P0 -> P1 -> P2 -> P3 -> 優先度なし`）で候補取得する。
+   - 候補が0件なら、その旨をユーザーへ報告して終了する（新規Issue起票は行わない）。
+   - 最上位が1件ならそのIssue番号を設定する。
+   - 複数候補ならユーザーに選択を求める。
+4. 設定結果を報告する（Issue番号と現在ブランチ名）。
 
 ## ルール
 
 - `/pick` は任意コマンド。未実行でも通常動作は可能。
-- `/pick` 後は、`.context/issue_scope.json` の `branch` を作業ブランチとして固定し、勝手に変更しない。
-- 軽微修正をまとめる場合は複数Issueを `related_issues` に登録してよい。
-- 共有ライブラリ変更で複数Issueへ影響する場合は、各Issueコメントに関連Issueを相互記載する。
-- 実処理は `scripts/pick_issue_scope.sh` を唯一の更新経路として扱う。
+- `.context/current_issue` はIssue番号のみを保存する。
+- `current_issue` の上書きは、`/pick <issue-number>` の明示指示時（存在確認成功時）か、引数なし `/pick` でユーザーが上書きに同意した場合のみ行う。
+- 引数あり（`/pick <issue-number>`）はユーザー明示指示として、確認なしで上書きしてよい。
+- 引数なしで既存スコープを変更する場合は、ユーザー確認なしで上書きしない。
+- 共有ライブラリ変更を伴う場合は、影響先Issueと `Refs #...` で相互に記載する。
