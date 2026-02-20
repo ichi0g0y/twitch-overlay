@@ -571,6 +571,7 @@ type FeatureStatus struct {
 	TwitchConfigured  bool     `json:"twitch_configured"`
 	PrinterConfigured bool     `json:"printer_configured"`
 	PrinterConnected  bool     `json:"printer_connected"`
+	WebServerPort     int      `json:"webserver_port"`
 	MissingSettings   []string `json:"missing_settings"`
 	Warnings          []string `json:"warnings"`
 	ServiceMode       bool     `json:"service_mode"` // systemdサービスとして実行されているか
@@ -581,6 +582,12 @@ func (sm *SettingsManager) CheckFeatureStatus() (*FeatureStatus, error) {
 		MissingSettings: []string{},
 		Warnings:        []string{},
 		ServiceMode:     os.Getenv("RUNNING_AS_SERVICE") == "true",
+	}
+	status.WebServerPort = 8080
+	if serverPort, err := sm.GetSetting("SERVER_PORT"); err == nil {
+		if port, parseErr := strconv.Atoi(serverPort); parseErr == nil && port > 0 {
+			status.WebServerPort = port
+		}
 	}
 
 	// Twitch設定チェック

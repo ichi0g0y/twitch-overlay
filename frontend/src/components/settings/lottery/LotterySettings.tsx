@@ -10,6 +10,9 @@ type Props = {
   isLoading: boolean;
   runtimeState: LotteryRuntimeState;
   onRefreshOverview: () => void;
+  onRefreshSubscribers?: () => void | Promise<void>;
+  isRefreshingSubscribers?: boolean;
+  subscriberWarning?: string | null;
   rewardOptions: LotteryRewardOption[];
   rewardId: string;
   isAuthenticated: boolean;
@@ -32,6 +35,9 @@ export const LotterySettings: React.FC<Props> = ({
   isLoading,
   runtimeState,
   onRefreshOverview,
+  onRefreshSubscribers,
+  isRefreshingSubscribers = false,
+  subscriberWarning = null,
   rewardOptions,
   rewardId,
   isAuthenticated,
@@ -51,27 +57,52 @@ export const LotterySettings: React.FC<Props> = ({
 }) => {
   return (
     <>
-      <div className="flex items-center justify-between p-3 rounded border bg-gray-50 dark:bg-gray-900/30">
-        <div>
-          <p className="text-sm font-medium">抽選状態</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {runtimeState.is_running ? '実行中' : '待機中'} / 参加者 {runtimeState.participants_count} 人
-          </p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between p-3 rounded border bg-gray-50 dark:bg-gray-900/30">
+          <div>
+            <p className="text-sm font-medium">抽選状態</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {runtimeState.is_running ? '実行中' : '待機中'} / 参加者 {runtimeState.participants_count} 人
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onRefreshOverview}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              更新
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void onRefreshSubscribers?.();
+              }}
+              disabled={!onRefreshSubscribers || isRefreshingSubscribers}
+            >
+              {isRefreshingSubscribers ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              サブスク更新
+            </Button>
+          </div>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onRefreshOverview}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RefreshCw className="w-4 h-4" />
-          )}
-          更新
-        </Button>
+        {subscriberWarning && (
+          <p className="rounded border border-yellow-300 bg-yellow-50 px-2 py-1 text-xs text-yellow-700 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
+            {subscriberWarning}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
