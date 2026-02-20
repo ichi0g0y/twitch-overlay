@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="bun-types" />
 
 interface ImportMetaEnv {
   readonly VITE_API_HOST: string

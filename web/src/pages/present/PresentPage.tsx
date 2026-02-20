@@ -3,22 +3,10 @@ import React, { useEffect, useState } from 'react'
 import Confetti from 'react-confetti'
 import { ConfirmDialog } from '../../components/ui/confirm-dialog'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import type { PresentParticipant } from '../../types'
 import { buildApiUrl } from '../../utils/api'
 import { ParticipantsList } from './components/ParticipantsList'
 import { RouletteWheel } from './components/RouletteWheel'
-
-export interface PresentParticipant {
-  user_id: string
-  username: string
-  display_name: string
-  avatar_url: string
-  redeemed_at: string
-  is_subscriber: boolean
-  subscribed_months: number
-  subscriber_tier: string // "1000", "2000", "3000"
-  entry_count: number // 購入口数（最大3口）
-  assigned_color: string // ルーレットセグメントの色（非サブスクの場合）
-}
 
 interface LotteryState {
   enabled: boolean
