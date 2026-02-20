@@ -52,6 +52,20 @@ export interface ServerStatus {
   printerConnected: boolean;
 }
 
+// プレゼント参加者
+export interface PresentParticipant {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
+  redeemed_at: string;
+  is_subscriber: boolean;
+  subscribed_months: number;
+  subscriber_tier: string;
+  entry_count: number;
+  assigned_color: string;
+}
+
 // アニメーション用の動的スタイル
 export interface DynamicStyles {
   transform?: string;

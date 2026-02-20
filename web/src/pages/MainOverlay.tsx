@@ -6,8 +6,8 @@ import { Toaster } from 'sonner';
 import { ParticipantTicker } from '../components/ParticipantTicker';
 import { useSettings } from '../contexts/SettingsContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import type { PresentParticipant } from '../types';
 import { buildApiUrl } from '../utils/api';
-import type { PresentParticipant } from './present/PresentPage';
 
 export const MainOverlay: React.FC = () => {
   const { settings } = useSettings();

@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
-import type { PresentParticipant } from '../pages/present/PresentPage';
 import { useSettings } from '../contexts/SettingsContext';
+import type { PresentParticipant } from '../types';
 
 interface ParticipantTickerProps {
   participants: PresentParticipant[];

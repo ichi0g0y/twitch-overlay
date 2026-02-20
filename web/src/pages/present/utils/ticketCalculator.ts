@@ -1,4 +1,4 @@
-import type { PresentParticipant } from '../PresentPage';
+import type { PresentParticipant } from '../../../types';
 
 const DEFAULT_BASE_TICKETS_LIMIT = 3;
 const UNLIMITED_FINAL_TICKETS_LIMIT = 0;

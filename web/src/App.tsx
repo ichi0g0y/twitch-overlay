@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { LotteryOverlay } from './components/Lottery';
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { PresentPage } from './pages/present/PresentPage';
@@ -20,6 +21,7 @@ function App() {
 
           {/* プレゼントルーレットページ */}
           <Route path="/present" element={<PresentPage />} />
+          <Route path="/present/overlay" element={<LotteryOverlay />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

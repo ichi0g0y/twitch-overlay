@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { PresentParticipant } from '../PresentPage';
+import type { PresentParticipant } from '../../../types';
 import { playTickSound, playFanfareSound } from '../../../utils/sound';
 import { calculateParticipantTickets } from '../utils/ticketCalculator';
 

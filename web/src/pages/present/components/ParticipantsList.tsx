@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Edit2, Save, X, Trash2 } from 'lucide-react';
-import type { PresentParticipant } from '../PresentPage';
+import type { PresentParticipant } from '../../../types';
 import { buildApiUrl } from '../../../utils/api';
 import { calculateParticipantTickets } from '../utils/ticketCalculator';
 

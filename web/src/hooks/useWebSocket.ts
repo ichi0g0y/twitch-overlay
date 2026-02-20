@@ -70,6 +70,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       'lottery_stopped',
       'lottery_winner',
       'lottery_participants_cleared',
+      'lottery_locked',
+      'lottery_unlocked',
       'mic_transcript',
       'mic_transcript_translation',
       // 必要に応じて他のメッセージタイプを追加
