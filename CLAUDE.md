@@ -25,16 +25,6 @@
 - セッション開始時に `.context/current_issue` があれば対象Issueとして復元する
 - 対象PRがマージされ、Issue完了が確認できたら `.context/current_issue` を削除する
 
-# エージェント
-
-`.claude/agents/` にプロジェクト専用エージェントが定義されている。Task ツール使用時は汎用エージェントではなくこれらを優先する:
-
-- `implementer` — 実装担当（最小差分、既存パターン遵守）
-- `code-reviewer` — コードレビュー・テスト戦略（分析のみ、編集禁止）
-- `test-runner` — テスト実行・品質検証（Write/Edit禁止）
-- `security-auditor` — セキュリティ監査（分析のみ、編集禁止）
-- `repo-mapper` — リポジトリ構造・影響範囲分析
-
 # プロジェクト構成
 
 ## ディレクトリ構成
