@@ -125,8 +125,8 @@
 
 - Claude Code:
   - `/plan` または `/pl`（計画準備のみ）
-  - `/pick [primary-issue] [related-issues...]`（任意、引数なし時は自動選定）
-  - `/p [primary-issue] [related-issues...]`（短縮、`/pick` と同ロジック）
+  - `/pick [issue-number]`（任意、引数なし時は自動選定）
+  - `/p [issue-number]`（短縮、`/pick` と同ロジック）
   - `/review-verify <issue-number>`
   - `/rv <issue-number>`（引数なし時は `.context` を参照）
   - `/commit` または `/c`（確認付きコミット）
