@@ -11,14 +11,14 @@
 - 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
 - PR は小さく分割して順次マージする
 - 既存の未コミット変更があっても、Issue作成とIssue番号の確定は通常どおり進める
-- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリストで管理する
+- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリスト（完了判定付き）で管理する
 - Issue分割は、優先度・担当・期限・リリース単位が異なる場合に限定し、分割時は親子Issueを `Refs #...` で相互参照する
 
 ## Issue状態とラベル
 
 - `Open`: 未着手/待機中（ラベルなし）
 - `In Progress`: `status:in-progress` ラベルを付与
-- `Close`: 完了。PRマージ後にIssueをクローズする
+- `Close`: 完了。Issue進行度が完了し、`Closes #...` を含むPRがマージされた場合にクローズする
 - 優先度は `priority:P0` / `priority:P1` / `priority:P2` / `priority:P3` で管理する
 
 優先度の目安:
@@ -34,6 +34,7 @@
 - `/plan` / `/pl` は計画準備のみを行い、Issue作成・実装・マージは行わない
 - `/pick` / `/p` などの明示指示がない依頼は、まず plan モードとして扱い、Issue設計とスコープ確認を先行する
 - Issue作成は、ユーザー指示またはIssue番号明示後に実施する
+- Issue作成時は、Issue本文に進行度チェックリスト（完了判定項目）を必ず含める
 - Issue作成後は `.context/issue_scope.json` に `primary_issue` を保存して共有する
 - `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う（`primary_issue` 設定時は Issue本文から概要を数行生成して同時表示する）
 - 引数なし時は `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を選定し、優先度ラベル付きIssueが無い場合は Open Issue 全体の最古を採用する
@@ -101,10 +102,11 @@
 
 1. 実装をIssue連携で進める場合は、対象Issue番号を確定する
 2. 対象作業が同一目的・同一完了条件なら単一Issueへ集約し、Issue本文チェックリストで進捗管理する
-3. Issue分割が必要な場合は、優先度・担当・期限・リリース単位の差分を根拠にし、親子Issueを `Refs #...` で相互参照する
-4. 必要なら `/pick` または `/p` で対象Issueを再固定する
-5. 固定時は `schema_version: 2` の `issue_scope` 形式で `primary_issue` / `related_issues` / `active_related_issues` を記録する
-6. `.context/issue_scope.json` が未設定でも、Issue番号を依頼文で明示して進めてよい
+3. Issue本文に進行度チェックリスト（完了判定項目）がない場合は、実装前に追記してから進行する
+4. Issue分割が必要な場合は、優先度・担当・期限・リリース単位の差分を根拠にし、親子Issueを `Refs #...` で相互参照する
+5. 必要なら `/pick` または `/p` で対象Issueを再固定する
+6. 固定時は `schema_version: 2` の `issue_scope` 形式で `primary_issue` / `related_issues` / `active_related_issues` を記録する
+7. `.context/issue_scope.json` が未設定でも、Issue番号を依頼文で明示して進めてよい
 
 ### 2. 実装
 
@@ -157,10 +159,12 @@
 ### 6. PRと完了
 
 1. `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` とする
-2. `Closes` は `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` のIssueを記載する
-3. `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
-4. 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
-5. `GitHub CLI` で PR を作成/更新する場合は PR操作 を使い、`pr create` では `--base develop` を必ず明示する
-6. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
-7. PRが基底ブランチへマージされたらIssueが自動クローズされる
-8. `develop -> main` 反映時は `/merge-to-main` / `/mtm` 相当の手順を必須とする
+2. `Closes` は、Issue進行度チェックリストが完了している `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` かつ進行度完了のIssueのみ記載する
+3. 進行度が未完了のIssueは状態にかかわらず `Refs` に記載し、`Closes` を使わない
+4. `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
+5. 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
+6. `GitHub CLI` で PR を作成/更新する場合は PR操作 を使い、`pr create` では `--base develop` を必ず明示する
+7. PRマージ前に、`Closes` 記載Issueの進行度チェックリスト完了を確認し、未完了なら `Refs` に修正する
+8. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
+9. PRマージ時は、`Closes` に記載されたIssueのみ自動クローズされる
+10. `develop -> main` 反映時は `/merge-to-main` / `/mtm` 相当の手順を必須とする

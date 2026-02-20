@@ -1,16 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { PresentParticipant } from '../PresentPage';
 import { playTickSound, playFanfareSound } from '../../../utils/sound';
+import { calculateParticipantTickets } from '../utils/ticketCalculator';
 
 interface RouletteWheelProps {
   participants: PresentParticipant[];
   isSpinning: boolean;
+  baseTicketsLimit: number;
+  finalTicketsLimit: number;
+  winner?: PresentParticipant | null;
   onSpinComplete?: (winner: PresentParticipant) => void;
 }
 
 export const RouletteWheel: React.FC<RouletteWheelProps> = ({
   participants,
   isSpinning,
+  baseTicketsLimit,
+  finalTicketsLimit,
+  winner,
   onSpinComplete,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,6 +38,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
   // 待機中状態: 参加者がいるが回転していない
   const isIdle = participants.length > 0 && !isSpinning && !isStopped && !currentArrowUser;
+  const displayWinner = winner ?? currentArrowUser;
 
   // 参加者がクリアされた時に当選者表示もリセット
   useEffect(() => {
@@ -113,41 +121,21 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
     // まず総口数を計算
     participants.forEach((participant) => {
-      const baseCount = participant.entry_count || 1;
-
-      // Tier のみでボーナス計算（案B：サブスク優遇型）
-      let bonusWeight = 0;
-      if (participant.is_subscriber) {
-        if (participant.subscriber_tier === '3000') {
-          bonusWeight = 12;
-        } else if (participant.subscriber_tier === '2000') {
-          bonusWeight = 6;
-        } else if (participant.subscriber_tier === '1000') {
-          bonusWeight = 3;
-        }
-      }
-
-      totalWeight += baseCount + bonusWeight;
+      const { finalTickets } = calculateParticipantTickets(participant, {
+        baseTicketsLimit,
+        finalTicketsLimit,
+      });
+      totalWeight += finalTickets;
     });
 
     // 各参加者のセグメント角度を計算
     let currentAngle = -Math.PI / 2; // 上部から開始
     participants.forEach((participant) => {
-      const baseCount = participant.entry_count || 1;
-
-      // Tier のみでボーナス計算（案B：サブスク優遇型）
-      let bonusWeight = 0;
-      if (participant.is_subscriber) {
-        if (participant.subscriber_tier === '3000') {
-          bonusWeight = 12;
-        } else if (participant.subscriber_tier === '2000') {
-          bonusWeight = 6;
-        } else if (participant.subscriber_tier === '1000') {
-          bonusWeight = 3;
-        }
-      }
-
-      const weight = baseCount + bonusWeight;
+      const { finalTickets } = calculateParticipantTickets(participant, {
+        baseTicketsLimit,
+        finalTicketsLimit,
+      });
+      const weight = finalTickets;
       const angleSize = (weight / totalWeight) * (Math.PI * 2);
 
       segments.push({
@@ -248,7 +236,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-  }, [participants, rotation]);
+  }, [participants, rotation, baseTicketsLimit, finalTicketsLimit]);
 
   // 矢印が指しているユーザーをリアルタイムで計算
   const updateArrowUser = () => {
@@ -436,18 +424,18 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
   return (
     <div className="relative">
       {/* 当選者発表時は中央に大きく表示 */}
-      {isStopped && currentArrowUser ? (
+      {isStopped && displayWinner ? (
         <div className="flex items-center justify-center" style={{ height: '800px' }}>
           <div className="animate-bounce flex flex-col items-center">
             <div className="text-5xl font-bold text-yellow-300 mb-8 text-center">🎉 当選者 🎉</div>
             <div className="flex flex-col items-center gap-6">
               <img
-                src={currentArrowUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentArrowUser.display_name || currentArrowUser.username)}&size=192&background=random`}
-                alt={currentArrowUser.display_name || currentArrowUser.username}
+                src={displayWinner.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayWinner.display_name || displayWinner.username)}&size=192&background=random`}
+                alt={displayWinner.display_name || displayWinner.username}
                 className="w-48 h-48 rounded-full border-8 border-yellow-300 shadow-2xl"
               />
               <div className="text-6xl font-bold text-white leading-tight text-center">
-                {currentArrowUser.display_name || currentArrowUser.username}さん
+                {displayWinner.display_name || displayWinner.username}さん
               </div>
             </div>
           </div>

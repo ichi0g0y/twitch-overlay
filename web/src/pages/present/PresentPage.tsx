@@ -14,6 +14,7 @@ export interface PresentParticipant {
   avatar_url: string
   redeemed_at: string
   is_subscriber: boolean
+  subscribed_months: number
   subscriber_tier: string // "1000", "2000", "3000"
   entry_count: number // 購入口数（最大3口）
   assigned_color: string // ルーレットセグメントの色（非サブスクの場合）
@@ -23,6 +24,8 @@ interface LotteryState {
   enabled: boolean
   is_running: boolean
   is_locked: boolean
+  base_tickets_limit: number
+  final_tickets_limit: number
   participants: PresentParticipant[]
   winner: PresentParticipant | null
 }
@@ -32,6 +35,8 @@ export const PresentPage: React.FC = () => {
     enabled: false,
     is_running: false,
     is_locked: false,
+    base_tickets_limit: 3,
+    final_tickets_limit: 0,
     participants: [],
     winner: null,
   })
@@ -43,17 +48,9 @@ export const PresentPage: React.FC = () => {
 
   // ルーレット停止完了時のコールバック
   const handleSpinComplete = (winner: PresentParticipant) => {
-    console.log('Spin complete, winner:', winner)
-    // RouletteWheelの大型表示と同じタイミングで王冠マークを表示（2秒遅延）
-    setTimeout(() => {
-      setLotteryState((prev) => ({
-        ...prev,
-        winner,
-        is_running: false,
-      }))
-      // 当選者発表と同時に紙吹雪を開始（再抽選かクリアまで継続）
-      setShowConfetti(true)
-    }, 2000)
+    // 当選者の正本はバックエンドの lottery_winner 通知を使用する。
+    // ここでは表示上のフォールバック情報としてログのみ残す。
+    console.log('Spin complete (local fallback), winner:', winner)
   }
 
   // 抽選開始
@@ -273,10 +270,21 @@ export const PresentPage: React.FC = () => {
           break
 
         case 'lottery_participants_updated':
-          setLotteryState((prev) => ({
-            ...prev,
-            participants: message.data,
-          }))
+          if (Array.isArray(message.data)) {
+            setLotteryState((prev) => ({
+              ...prev,
+              participants: message.data,
+            }))
+          } else {
+            setLotteryState((prev) => ({
+              ...prev,
+              participants: message.data?.participants || [],
+              base_tickets_limit:
+                message.data?.base_tickets_limit ?? prev.base_tickets_limit,
+              final_tickets_limit:
+                message.data?.final_tickets_limit ?? prev.final_tickets_limit,
+            }))
+          }
           break
 
         case 'lottery_started':
@@ -313,6 +321,7 @@ export const PresentPage: React.FC = () => {
               winner: message.data.winner,
             }))
             setIsSpinning(false)
+            setShowConfetti(true)
           }, 2000)
           break
 
@@ -361,6 +370,8 @@ export const PresentPage: React.FC = () => {
             enabled: data.enabled,
             is_running: data.is_running,
             is_locked: data.is_locked || false,
+            base_tickets_limit: data.base_tickets_limit ?? 3,
+            final_tickets_limit: data.final_tickets_limit ?? 0,
             participants: data.participants || [],
             winner: data.winner || null,
           })
@@ -416,6 +427,9 @@ export const PresentPage: React.FC = () => {
               <RouletteWheel
                 participants={lotteryState.participants}
                 isSpinning={isSpinning}
+                baseTicketsLimit={lotteryState.base_tickets_limit}
+                finalTicketsLimit={lotteryState.final_tickets_limit}
+                winner={lotteryState.winner}
                 onSpinComplete={handleSpinComplete}
               />
             </div>
@@ -496,6 +510,8 @@ export const PresentPage: React.FC = () => {
               <ParticipantsList
                 participants={lotteryState.participants}
                 winner={lotteryState.winner}
+                baseTicketsLimit={lotteryState.base_tickets_limit}
+                finalTicketsLimit={lotteryState.final_tickets_limit}
                 debugMode={debugMode}
               />
             </div>

@@ -44,20 +44,23 @@ func AddLotteryParticipant(participant types.PresentParticipant) error {
 		logger.Error("Database not initialized")
 		return sql.ErrConnDone
 	}
+	baseTicketsLimit := getCurrentBaseTicketsLimit(db)
+	entryCount := sanitizeEntryCount(participant.EntryCount)
 
 	insertSQL := `
 	INSERT INTO lottery_participants (
 		user_id, username, display_name, avatar_url, redeemed_at,
-		is_subscriber, subscriber_tier, entry_count, assigned_color, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		is_subscriber, subscribed_months, subscriber_tier, entry_count, assigned_color, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, MIN(?, ?), ?, ?)
 	ON CONFLICT(user_id) DO UPDATE SET
 		username = excluded.username,
 		display_name = excluded.display_name,
 		avatar_url = excluded.avatar_url,
 		redeemed_at = excluded.redeemed_at,
 		is_subscriber = excluded.is_subscriber,
+		subscribed_months = excluded.subscribed_months,
 		subscriber_tier = excluded.subscriber_tier,
-		entry_count = MIN(lottery_participants.entry_count + excluded.entry_count, 3),
+		entry_count = MIN(lottery_participants.entry_count + excluded.entry_count, ?),
 		assigned_color = excluded.assigned_color,
 		updated_at = excluded.updated_at
 	`
@@ -69,10 +72,13 @@ func AddLotteryParticipant(participant types.PresentParticipant) error {
 		participant.AvatarURL,
 		participant.RedeemedAt,
 		participant.IsSubscriber,
+		participant.SubscribedMonths,
 		participant.SubscriberTier,
-		participant.EntryCount,
+		entryCount,
+		baseTicketsLimit,
 		participant.AssignedColor,
 		time.Now(),
+		baseTicketsLimit,
 	)
 
 	if err != nil {
@@ -104,7 +110,7 @@ func GetAllLotteryParticipants() ([]types.PresentParticipant, error) {
 
 	selectSQL := `
 	SELECT user_id, username, display_name, avatar_url, redeemed_at,
-	       is_subscriber, subscriber_tier, entry_count, assigned_color
+	       is_subscriber, subscribed_months, subscriber_tier, entry_count, assigned_color
 	FROM lottery_participants
 	ORDER BY redeemed_at ASC
 	`
@@ -126,6 +132,7 @@ func GetAllLotteryParticipants() ([]types.PresentParticipant, error) {
 			&p.AvatarURL,
 			&p.RedeemedAt,
 			&p.IsSubscriber,
+			&p.SubscribedMonths,
 			&p.SubscriberTier,
 			&p.EntryCount,
 			&p.AssignedColor,
@@ -186,12 +193,14 @@ func UpdateLotteryParticipant(userID string, participant types.PresentParticipan
 		logger.Error("Database not initialized")
 		return sql.ErrConnDone
 	}
+	baseTicketsLimit := getCurrentBaseTicketsLimit(db)
+	entryCount := sanitizeEntryCount(participant.EntryCount)
 
 	updateSQL := `
 	UPDATE lottery_participants
 	SET username = ?, display_name = ?, avatar_url = ?,
-	    is_subscriber = ?, subscriber_tier = ?,
-	    entry_count = MIN(?, 3), assigned_color = ?, updated_at = ?
+	    is_subscriber = ?, subscribed_months = ?, subscriber_tier = ?,
+	    entry_count = MIN(?, ?), assigned_color = ?, updated_at = ?
 	WHERE user_id = ?
 	`
 
@@ -200,8 +209,10 @@ func UpdateLotteryParticipant(userID string, participant types.PresentParticipan
 		participant.DisplayName,
 		participant.AvatarURL,
 		participant.IsSubscriber,
+		participant.SubscribedMonths,
 		participant.SubscriberTier,
-		participant.EntryCount,
+		entryCount,
+		baseTicketsLimit,
 		participant.AssignedColor,
 		time.Now(),
 		userID,
@@ -255,26 +266,28 @@ func ClearAllLotteryParticipants() error {
 	return nil
 }
 
-// FixEntryCountsOver3 は3を超えているentry_countを3に修正
+// FixEntryCountsOver3 はentry_countを現在の基本口数上限に合わせて修正
 func FixEntryCountsOver3() error {
 	db := GetDB()
 	if db == nil {
 		logger.Error("Database not initialized")
 		return sql.ErrConnDone
 	}
+	baseTicketsLimit := getCurrentBaseTicketsLimit(db)
 
-	updateSQL := `UPDATE lottery_participants SET entry_count = 3 WHERE entry_count > 3`
+	updateSQL := `UPDATE lottery_participants SET entry_count = ? WHERE entry_count > ?`
 
-	result, err := db.Exec(updateSQL)
+	result, err := db.Exec(updateSQL, baseTicketsLimit, baseTicketsLimit)
 	if err != nil {
-		logger.Error("Failed to fix entry counts over 3", zap.Error(err))
+		logger.Error("Failed to fix entry counts over base limit", zap.Error(err))
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
-		logger.Info("Fixed entry counts over 3",
-			zap.Int64("rows_affected", rowsAffected))
+		logger.Info("Fixed entry counts over base limit",
+			zap.Int64("rows_affected", rowsAffected),
+			zap.Int("base_tickets_limit", baseTicketsLimit))
 	}
 
 	// WALチェックポイントを実行して変更をメインDBに反映

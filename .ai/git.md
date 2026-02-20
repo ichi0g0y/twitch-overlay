@@ -39,7 +39,9 @@
 - PR作成 を使う場合、`--base develop` を省略しない
 - PR本文には対象Issue（`#<issue-number>`）への参照を記載する
 - `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` とする
-- `Closes` は `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` のIssueを記載する
+- `Closes` は、Issue進行度チェックリストが完了している `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` かつ進行度完了のIssueのみ記載する
+- 進行度未完了のIssueは状態にかかわらず `Refs` に記載し、`Closes` を使わない
 - `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
 - 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
+- PRマージ前に、`Closes` 記載Issueの進行度チェックリスト完了を確認する
 - `GitHub CLI` で PR を作成/更新する場合は PR操作 を使う

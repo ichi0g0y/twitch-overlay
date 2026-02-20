@@ -223,6 +223,11 @@ func SetupDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// lottery_settings / lottery_history テーブルを追加（抽選設定・履歴管理）
+	if err := SetupLotteryTables(db); err != nil {
+		return nil, err
+	}
+
 	// chat_messagesテーブルを追加（コメント欄履歴）
 	if err := SetupChatMessagesTable(db); err != nil {
 		return nil, err
