@@ -65,6 +65,6 @@
 - 1PRの変更は小さく保ち、段階的に適用する
 - PRのbaseブランチは `develop` とする
 - PR本文には対象Issueへの参照を記載する
-- `Closes` は `current_issue`（会話または `.context/current_issue` で確定したIssue番号）を記載する
-- `Refs` は関連Issueを記載し、共有ライブラリ変更時は相互Issueを明示する
+- `Closes` は作業対象のサブIssue番号を記載する（親Issueではなくサブ）
+- `Refs` は親Issueや関連Issueを記載し、共有ライブラリ変更時は相互Issueを明示する
 - `develop` から `main` への反映は `.claude/commands/merge-to-main.md` に従う
