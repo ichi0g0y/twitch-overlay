@@ -5,11 +5,11 @@
 実装方針・レビュー運用・厳守ルールはこのファイルでは定義しません。
 必ず `.ai/` 配下のルールドキュメントを参照してください（正はそちらです）。
 
-- `.ai/behavior.md`
 - `.ai/rules.md`
 - `.ai/workflow.md`
 - `.ai/review.md`
 - `.ai/git.md`
+- `.ai/dev-env.md`
 
 ## コーディングからレビューまでの流れ（Conductor）
 
@@ -18,56 +18,45 @@ Conductorでの基本的な進め方は、次の順番です。
 1. `/plan` または `/pl` で計画準備を行う（計画のみ。Issue作成はしない）
 2. 必要に応じてIssue化する（依頼文でIssue番号明示、または指示後にIssue作成）
 3. Issue単位でworktreeを作成して実装する
-4. レビュー時は `.context` のIssue情報を起点に GitHub Issue を読み、レビュー結果をIssueコメントへ記載する
-5. `/review-verify <issue-number>` または `/rv <issue-number>` で指摘対応し、修正結果をIssueコメントへ追記する（引数なし時は `.context` を参照）
-6. PR作成/更新時に `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新する
-7. リリース時は `/merge-to-main` または `/mtm` で `develop -> main` のPRを作成し、通常はそのままマージする
-
-### 作業開始時の先出し報告
-
-実装前に、次の4点を最初の報告で明示してください（詳細ルールは `.ai/workflow.md` を正とする）。
-
-1. 読み込んだ必読ドキュメント
-2. 作業対象Issue（`primary_issue` / `related_issues`）
-3. 作業前制約（例: `/plan` 先行、コミット条件）
-4. 直後に実行する具体アクション
+4. レビュー時は `.context` のIssue情報を起点に GitHub Issue を読み、レビュー結果を共有する
+5. `/review-verify <issue-number>` または `/rv <issue-number>` で指摘対応する（引数なし時は `.context/current_issue` を参照）
+6. リリース時は `/merge-to-main` または `/mtm` で `develop -> main` のPRを作成し、通常はそのままマージする
 
 ### コマンド説明
 
 - コーディング依頼: 明示コマンドは不要です。通常の依頼文で実装を指示します。
-- `/plan` または `/pl`: `AI.md` と `.ai/*` を読み込み、`GitHub CLI` を確認して計画を提示します。**Issue作成は行いません**。実装・マージも行いません。
-- `/pick [primary-issue] [related-issues...]` または `/p [primary-issue] [related-issues...]`: 対象Issueを `.context/issue_scope.json` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で最古Issueを自動選定し、該当が無い場合は Open Issue 全体の最古を採用します（`scripts/pick_issue_scope.sh` を使用）。既存 `primary_issue` がある状態で再 `/pick` し `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持して追加Issueを `related_issues` と `active_related_issues` に登録して継続します（新規stateは `reserved`）。`primary_issue` 設定時は、Issue本文から生成した概要（数行）も同時表示します。
+- `/plan` または `/pl`: `.ai/*` を読み込み、GitHub操作可能か確認して計画を提示します。**Issue作成は行いません**。実装・マージも行いません。
+- `/pick [issue-number]` または `/p [issue-number]`: 対象Issueを `.context/current_issue` に固定します（任意）。引数なし時は Open Issue から `priority:P0 -> P1 -> P2 -> P3` の順で候補を提示します。
 - レビュー依頼: 明示コマンドは不要です。差分レビューを依頼します。
-- `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。Issue連携した場合は修正結果コメントをIssueへ追記します。引数なし時は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を参照します。
-- `/merge-to-main [--no-merge] [release-label]` または `/mtm [--no-merge] [release-label]`: `develop -> main` 反映時の手順です。`base=main` / `head=develop` のリリースPRを作成（既存Open PRがあれば再利用）し、デフォルトでマージまで実行します。PR作成/再利用のみで止める場合は `--no-merge` を指定します。詳細は `.claude/commands/merge-to-main.md` を参照します。
+- `/review-verify <issue-number>` または `/rv <issue-number>`: 対象Issueのレビューコメントを読み込み、採用された指摘のみ修正します。引数なし時は `.context/current_issue` を参照します。
+- `/merge-to-main [--no-merge]` または `/mtm [--no-merge]`: `develop -> main` 反映時の手順です。`base=main` / `head=develop` のリリースPRを作成（既存Open PRがあれば再利用）し、デフォルトでマージまで実行します。PR作成/再利用のみで止める場合は `--no-merge` を指定します。
 - `/commit` または `/c`: 確認付きコミットです。候補メッセージ確認後にコミットします。
 - `/commit!` または `/c!`: 確認なしで即時コミットします。
 
 注記:
 
 - 上記のスラッシュコマンドは Claude Code 前提です。
-- Codex では疑似コマンド運用になるため、`/p` などの文字列だけではなく処理内容を依頼文で明示してください。
+- Codex では疑似コマンド運用になるため、処理内容を依頼文で明示してください。
 - Codexへの指示例:
   - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
-  - `Issue #7 を primary_issue として .context/issue_scope.json を更新し、Issue本文から概要を数行表示して（/pick 相当）`
-  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新し、Issue本文から概要を数行表示して`
-  - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
-  - `develop から main へのリリースPRを作成して通常はそのままマージし、必要なら --no-merge で作成のみ実行して、.context の pr_number/pr_url を更新して（/mtm 相当）`
+  - `Issue #7 を current_issue として .context/current_issue を更新して（/pick 相当）`
+  - `引数なしで /pick 相当を実施し、priority順でcurrent_issueを自動選定して`
+  - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正して（/rv 相当）`
+  - `develop から main へのリリースPRを作成してそのままマージして（/mtm 相当）`
   - `git add -A 後に確認付きコミット候補を出して（/commit 相当）`
 
 ### レビュー連携の要点
 
-- レビューで修正点がある場合は、レビュー担当が対象Issueへレビューコメントを追加します。
+- レビュー結果の共有は手動コピーまたは `.context/` 経由で行います。
 - レビュー結果の報告は日本語で記述します。
 - CodexはSlash Commandを使えないため、同等処理はプロンプトで明示指示します。
 
 ### Issue番号の受け渡し
 
 - 基本は `Issue #9` のように依頼文で明示する方法です。
-- 必要なら `/pick` `/p` で `.context/issue_scope.json` に保持して引き回します。
-- `.context` の基本形式は `schema_version: 2`（`primary_issue` / `related_issues` / `active_related_issues`）です。
-- `.context` 未設定時は通常動作で進め、Issue固定フローは使いません。
-- `.context` と引数の両方がある場合は、引数を優先して扱います。
+- 必要なら `/pick` `/p` で `.context/current_issue` に保持して引き回します。
+- `.context/current_issue` 未設定時は通常動作で進め、Issue固定フローは使いません。
+- `.context/current_issue` と引数の両方がある場合は、引数を優先して扱います。
 
 ## Conductor利用時の追加プロンプト
 
@@ -78,15 +67,11 @@ Conductorで依頼する際は、依頼文に次の追加条件を含めてく�
 
 ```text
 - レビュー運用の正は `.ai/review.md` と `.ai/workflow.md` を参照し、重複する指示がある場合はそちらを優先してください。
-- 対象Issue番号（例: `#9`）を明記してください。省略する場合は `.context/issue_scope.json` を先に設定してください。
-- **レビュー開始前に**、対象Issueの既存コメント（特に `/rv` / `/review-verify` 実行結果）を Issue本文・コメント確認 で必ず確認してください。
+- 対象Issue番号（例: `#9`）を明記してください。省略する場合は `.context/current_issue` を先に設定してください。
 - レビュー結果の報告は必ず日本語で記述してください。
-- レビュー結果は対象Issueコメントに記載してください。
-- GitHub CLI でレビュー結果をIssueへ記録する場合は Issueコメント追記 を使ってください。
 - `/review-verify` 相当の実行時は、指摘ごとに `採用 / 不採用 / 追加情報必要` を明記してください。
 - 修正を行った場合は、実施したテスト内容と結果を最終報告に必ず記載してください。
-- 最終報告には、追記したIssueコメントのURL（`issue_comment_url`）を必ず記載してください。
-- 対象Issue番号を確定できない、またはIssueコメントの追記に失敗した場合は、実装を進めずに停止して確認してください。
+- 対象Issue番号を確定できない場合は、実装を進めずに停止して確認してください。
 ```
 
 ### PR作成依頼時
@@ -102,15 +87,10 @@ Conductorで依頼する際は、依頼文に次の追加条件を含めてく�
   - テスト手順
   - 影響範囲
   - チェックリスト
-- `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` にしてください。
-- `Closes` には `primary_issue` と `active_related_issues` が `ready_for_close` / `closed` のIssueを記載してください。
-- `Refs` には `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載してください。
-- GitHub CLI でPRを作成/更新する場合は PR操作 を使ってください。
-- PR作成 では `--base develop` を省略しないでください。
-- PR作成/更新後は `.context/issue_scope.json` の `pr_number`（必要に応じて `pr_url`）を更新し、後続作業で参照できるようにしてください。
+- `Closes` は `current_issue` を記載してください。
+- `Refs` は関連Issueを記載してください。
 - 実行した確認コマンド（例: task check:all, task gen:api, task gen:db）と結果を本文に明記してください。
 - 未実施の検証がある場合は「未実施項目」と理由を明記してください。
 - 最終報告には、作成/更新したPRのURL（`pr_url`）を必ず記載してください。
-- 関連Issueへ進捗コメントを追記した場合は、そのIssueコメントURL（`issue_comment_url`）も記載してください。
 - PR作成または更新に失敗した場合は、失敗したコマンドとエラーメッセージを添えて停止し、次アクション確認を行ってください。
 ```

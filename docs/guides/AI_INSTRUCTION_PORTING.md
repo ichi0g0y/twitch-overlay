@@ -26,7 +26,7 @@
 6. `.ai/workflow.md` のコマンド例を実運用に合わせて更新する
 7. Claude Code を使う場合は `.claude/commands/` を配置し、`/plan` / `/pl`（計画準備のみ）と `/pick` / `/p` / `/review-verify [issue-number]` / `/rv [issue-number]` / `/commit` / `/c` / `/commit!` / `/c!` を有効化する
 8. Codex を使う場合は Slash Command が使えないため、同等処理をプロンプトで指示する運用を明記する
-9. 必要に応じて `.context/issue_scope.json` を使う運用（`schema_version: 2`、`primary_issue` / `related_issues` / `active_related_issues` / `pr_number` の保持）を明記する
+9. 必要に応じて `.context/current_issue` を使う運用（対象Issue番号を1行で記録）を明記する
 10. GitHub操作を `GitHub CLI` で行う場合は標準の実行方式を前提にドキュメント化する
 11. 既存のタスク管理資料（`docs/TODO.md` など）がある場合は、GitHub Issues運用に移行する
 12. 旧タスク管理資料への参照が残っていないことを確認する（`README.md` / `docs/` / `AGENTS.md` など）

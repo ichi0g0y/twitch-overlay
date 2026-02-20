@@ -15,7 +15,7 @@ argument-hint: "[--no-merge] [release-label]"
 ## 実行手順
 
 1. `AI.md` と `.ai/workflow.md` のPR運用ルールを確認する。
-2. 現在のIssueスコープ（`.context/issue_scope.json`）を確認し、`primary_issue` を把握する。
+2. `.context/current_issue` が存在する場合は `current_issue` を把握する。
 3. `origin/main` と `origin/develop` を最新化し、`develop` が存在することを確認する。
 4. `base=main` / `head=develop` のOpen PRが既にあるか確認する。
 5. Open PRがない場合は `develop -> main` のPRを作成する。
@@ -23,8 +23,7 @@ argument-hint: "[--no-merge] [release-label]"
    - 本文には、目的・影響範囲・確認手順・未実施項目を記載する。
 6. Open PRがある場合は、そのPRを再利用する（重複PRは作成しない）。
 7. `--no-merge` が明示されていない場合は、チェック成功を確認してPRをマージする。
-8. `.context/issue_scope.json` を使う運用の場合は、`pr_number` / `pr_url` / `updated_at` をロック付きで更新する。
-9. 結果を日本語で報告する（作成/再利用したPR URL、マージ有無、未実施項目）。
+8. 結果を日本語で報告する（作成/再利用したPR URL、マージ有無、未実施項目）。
 
 ## ルール
 

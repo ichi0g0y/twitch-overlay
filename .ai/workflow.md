@@ -2,23 +2,21 @@
 
 ## AI協調フロー
 
+- ユーザー指示の目的を最優先にする
 - Codex / Claude の役割は固定しない
+- レビュー作成側か指摘対応側かを、ターンごとに判断する
 - 修正内容・進行状況・手順書・計画・レビュー観点は GitHub Issues に集約する
-- GitHub操作手段は固定しない（`GitHub CLI` / REST API / GraphQL API のいずれでもよい）
-- `GitHub CLI` を使う場合は標準の実行方式を使う
-- 認証切り替えが多い環境では、CLIログイン状態への依存を避けてAPI実行を優先してよい
+- GitHub操作手段は固定しない（REST API / GraphQL API など、環境に合う手段を選ぶ）
 - 状態管理は GitHub Issue のラベル + Close で運用する
-- 1 Issue 1 worktree を基本とし、強く関連するIssueのみ同一worktreeで扱う
+- 1 Issue 1 worktree を基本とし、強く関連する作業のみ同一worktreeで扱う
 - PR は小さく分割して順次マージする
-- 既存の未コミット変更があっても、Issue作成とIssue番号の確定は通常どおり進める
-- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約し、進捗はIssue本文のチェックリスト（完了判定付き）で管理する
-- Issue分割は、優先度・担当・期限・リリース単位が異なる場合に限定し、分割時は親子Issueを `Refs #...` で相互参照する
+- 既存の未コミット変更があっても、Issue定義の作成とIssue番号の確定は通常どおり進める
 
 ## Issue状態とラベル
 
 - `Open`: 未着手/待機中（ラベルなし）
 - `In Progress`: `status:in-progress` ラベルを付与
-- `Close`: 完了。Issue進行度が完了し、`Closes #...` を含むPRがマージされた場合にクローズする
+- `Close`: 完了。PRマージ後にIssueをクローズする
 - 優先度は `priority:P0` / `priority:P1` / `priority:P2` / `priority:P3` で管理する
 
 優先度の目安:
@@ -28,144 +26,71 @@
 3. `P2`: 通常優先度
 4. `P3`: 低優先度・後続対応可
 
-## Issueスコープ管理（標準）
+## Issue設計原則
 
-- ファイル変更を伴う依頼は、原則 `/plan` / `/pl` から開始する
-- `/plan` / `/pl` は計画準備のみを行い、Issue作成・実装・マージは行わない
-- `/pick` / `/p` などの明示指示がない依頼は、まず plan モードとして扱い、Issue設計とスコープ確認を先行する
-- Issue作成は、ユーザー指示またはIssue番号明示後に実施する
-- Issue作成時は、Issue本文に進行度チェックリスト（完了判定項目）を必ず含める
-- Issue作成後は `.context/issue_scope.json` に `primary_issue` を保存して共有する
-- `/pick` / `/p` は、既存Issueを明示指定するとき、または引数なしで優先度順に自動選定するときの補助コマンドとして使う（`primary_issue` 設定時は Issue本文から概要を数行生成して同時表示する）
-- 引数なし時は `priority:P0 -> P1 -> P2 -> P3` の順で Open Issue の最古を選定し、優先度ラベル付きIssueが無い場合は Open Issue 全体の最古を採用する
-- 計画相談・壁打ちなど、ファイル変更を伴わない場合はIssueスコープ未設定でもよい
-- `.context/issue_scope.json` が未設定でも、依頼文でIssue番号が明示されていれば進行してよい
-- `.context/issue_scope.json` は `schema_version: 2` を基本形式とし、`primary_issue` / `related_issues` / `active_related_issues` を使って状態管理する
-- `active_related_issues` の状態は `reserved` / `in_progress` / `ready_for_close` / `closed` を使う
-- 再 `/pick` / `/p` で既存スコープがある場合は、上書き前に警告してユーザー確認を行う
-- 再 `/pick` / `/p` で `relatedに追加` を選んだ場合は、既存 `primary_issue` を維持し、追加Issueを `related_issues` と `active_related_issues` の両方へ登録して継続する（新規登録時のstateは `reserved`）。
-- PR作成/更新後は、必要に応じて `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録し、後続作業で参照できる状態にする
-- `issue_scope.json` 更新時は排他制御を必須とし、`mkdir .context/.issue_scope.lock` 等でロック取得後に一時ファイルへ書き込み、`mv` で置換する
-- ロックは更新成功/失敗にかかわらず必ず解放する
-- 共有ライブラリ変更で複数Issueに影響する場合は、各Issueコメントに関連Issueを相互記載する
+- 新規タスク起票時は、同一目的・同一完了条件の作業を原則1つのIssueに集約する
+- 進捗はIssue本文のチェックリストで管理する
+- Issue分割は優先度・担当・期限・リリース単位が異なる場合に限定する
+- 分割した親子Issueは `Refs #...` で相互参照する
+- `/pick` 相当の指示やIssue番号の明示がなく、`current_issue` も未確定の依頼は、planモードでOpen Issue候補を優先度順に提示し、採用Issueをユーザー確認する
+- 適切な既存Issueがない場合は、その旨をユーザーへ報告し、以降はユーザー指示に従う
 
-想定フォーマット:
+## Issueスコープ管理
 
-```json
-{
-  "schema_version": 2,
-  "primary_issue": 9,
-  "related_issues": [12, 15, 18],
-  "active_related_issues": {
-    "12": {
-      "state": "in_progress",
-      "owner": "conductor:ws-event:chat-a",
-      "reserved_at": "2026-02-15T10:30:00Z",
-      "expires_at": "2026-02-15T12:30:00Z",
-      "updated_at": "2026-02-15T10:45:00Z"
-    },
-    "15": {
-      "state": "ready_for_close",
-      "owner": "conductor:ws-event:chat-a",
-      "reserved_at": "2026-02-15T10:50:00Z",
-      "updated_at": "2026-02-15T11:40:00Z"
-    }
-  },
-  "branch": "feature/example",
-  "pr_number": 34,
-  "pr_url": "https://github.com/example/repo/pull/34",
-  "picked_at": "2026-02-15T10:30:00Z",
-  "updated_at": "2026-02-15T11:40:00Z"
-}
-```
+- `current_issue` は会話コンテキストと `.context/current_issue` の二重管理で扱う
+- セッション開始時に `.context/current_issue` があれば、対象Issueとして復元する
+- 会話コンテキストと `.context/current_issue` が不一致の場合は、ユーザー最新の明示指示を優先し、明示がない場合は `.context/current_issue` を正とする
+- 計画相談・壁打ちは `current_issue` 未設定でも進めてよい
+- Issue番号が未指定かつ `current_issue` 未確定のときは、planモードでOpen Issueを優先度順（`P0 -> P1 -> P2 -> P3 -> 優先度なし`）に複数件取得して候補化する
+- 候補が1件ならそのIssueを `current_issue` として確定し、複数件ならユーザーに選択してもらい、選ばれたIssueを `current_issue` として確定する
+- 適切な候補がない場合は、候補0件であることをユーザーへ報告し、`current_issue` は未確定のままにする
+- 既存Issueを継続する場合は `/pick` / `/p` またはIssue番号明示で対象を切り替える
+- `current_issue` 確定時は `.context/current_issue` にIssue番号を1行で書き出す
+- `.context/current_issue` を再設定する場合は、ユーザー最新指示でIssue番号が明示されているときを除き、上書き前にユーザー確認を行う
+- 共有ライブラリ変更を含む場合は、影響先Issueと `Refs #...` で相互に記載する
+- 対象PRがマージされ、Issue完了が確認できたら `.context/current_issue` を削除する
 
 ## 基本フロー
 
-### 0. `/plan` / `/pl`（計画準備）
+### 0. 受付ゲート
 
-1. `AI.md` と `.ai/*` の必読を読み込む
-2. 認証状態確認 を実行し、GitHub操作可能か事前確認する
-3. 計画（目的 / 手順 / 受け入れ条件 / テスト）を提示して承認を得る
-4. `/plan` / `/pl` 自体では Issue作成しない
-5. その後、Issue化が必要ならユーザー指示を受けて Issue作成 へ進む
+1. ユーザー指示の目的・完了条件・期待する成果物を確認する
+2. `/pick` 相当の指示やIssue番号の明示がなく、`current_issue` も未確定の場合は、planモードでOpen Issue候補の提示とスコープ確認を先に行う（計画相談・壁打ちは除く）
+3. そのターンでレビュー作成側か指摘対応側かを決め、進め方を明示する
 
-### 0.5 初動報告フォーマット（必須）
+### 1. 計画
 
-作業開始時は、実装前に次の4点を先出しで報告する。
+1. ユーザー指示を分解し、同一目的・同一完了条件の作業を原則1つのIssueに集約する
+2. Issue定義の作成として、目的・手順・受け入れ条件・チェックリストを整理する
+3. 分割が必要な場合は、優先度・担当・期限・リリース単位の差異を根拠に分割する
+4. スコープ合意後は、同一エージェントがIssue確定（既存Issue選択）から実装まで継続して進める
 
-1. 読み込んだ必読ドキュメント（`AI.md` / `.ai/*`）
-2. 作業対象Issue（`primary_issue` / `related_issues`）
-3. 作業前制約（例: `/plan` 先行、コミット条件、検証時の制約）
-4. このターンで最初に実行する具体アクション
+### 2. スコープ固定（任意）
 
-### 1. Issue化とスコープ固定
+1. 対象Issue番号を確定し、会話コンテキストの `current_issue` と同期する
+2. `current_issue` 確定時は `.context/current_issue` にIssue番号を1行で保存する
+3. 未確定時はOpen Issue候補を提示し、候補0件なら報告のみ行ってユーザー確認で次アクションを決定する
 
-1. 実装をIssue連携で進める場合は、対象Issue番号を確定する
-2. 対象作業が同一目的・同一完了条件なら単一Issueへ集約し、Issue本文チェックリストで進捗管理する
-3. Issue本文に進行度チェックリスト（完了判定項目）がない場合は、実装前に追記してから進行する
-4. Issue分割が必要な場合は、優先度・担当・期限・リリース単位の差分を根拠にし、親子Issueを `Refs #...` で相互参照する
-5. 必要なら `/pick` または `/p` で対象Issueを再固定する
-6. 固定時は `schema_version: 2` の `issue_scope` 形式で `primary_issue` / `related_issues` / `active_related_issues` を記録する
-7. `.context/issue_scope.json` が未設定でも、Issue番号を依頼文で明示して進めてよい
+### 3. 実装
 
-### 2. 実装
+1. ファイル変更に着手する時点で対象Issueが未作成なら、この段階でIssueを作成して番号を確定する
+2. Conductorで対象Issue用のworkspace（worktree）を作成し、基底ブランチは `develop` を使う
+3. Issue化している場合は、着手時にIssueへ `status:in-progress` を付与する
+4. 修正規模が当初想定を超える場合は、分割方針またはスコープ変更を先に確認する
+5. 実装・テスト結果、判断理由、残課題は日本語で報告し、必要に応じてIssueへ記録する
 
-1. 対象Issue番号が確定していることを確認する（`primary_issue` と必要な `related_issues` を明示する）
-2. Conductorで対象Issue用のworkspace（worktree）を作成する
-3. このリポジトリの基底ブランチは `develop` を使う
-4. `git rev-parse --abbrev-ref HEAD` が `develop` の場合はコミットせず、Issue用ブランチへ切り替える
-5. 着手時にIssueへ `status:in-progress` を付与する
-6. 実装・テストを行い、必要に応じてIssueコメントで進捗共有する
-
-### 3. レビュー
+### 4. レビュー
 
 1. レビュー依頼時は対象Issue番号を明示する
-2. 引数がない場合は `.context/issue_scope.json` の `primary_issue` を参照する
-3. レビュー前に Issue本文・コメント確認 でIssue本文と既存コメントを確認する
-4. レビュー結果は GitHub Issue コメントに記載する
-5. レビュアーは対象Issue番号をコメント内に明記する
-6. 指摘は `採用 / 不採用 / 追加情報必要` で判定する
-7. 指摘にはファイルパス・行番号・根拠を含める
-8. レビュアーは最新の修正結果コメント（`/rv` / `/review-verify` の結果）も確認する
-9. `GitHub CLI` でレビュー結果を Issue に記録する場合は Issueコメント追記 を使う
+2. レビュー指摘にはファイルパス・行番号・根拠を含める
+3. 指摘は `採用 / 不採用 / 追加情報必要` で判定する
+4. レビューコメントのIssue記録が必要な場合は、指摘要約・採否・対応方針をIssueへ記載する
+5. ユーザーフィードバックや追加判断も、履歴が必要な場合はIssueへ記録する
 
-### 4. `/review-verify`
+### 5. PRと完了
 
-- Claude Code:
-  - `/review-verify <issue-number>` または `/rv <issue-number>` を使用する
-  - 引数がない場合は `.context/issue_scope.json` の `primary_issue` と `active_related_issues`（`in_progress` / `ready_for_close`）を対象にする
-  - 引数も `.context/issue_scope.json` もない場合は通常動作で進め、Issue連携は行わない
-  - 指摘を反映したIssueのみ `active_related_issues` の状態を更新する
-  - Issue連携を行った場合のみ、修正後に対象Issueへ修正結果コメントを追記する
-- Codex:
-  - Slash Command は使えないため、同等内容をプロンプトで指示する
-  - 例: 「Issue #9 の最新レビューコメントを検証し、採用指摘のみ修正し、反映したIssueの `active_related_issues` 状態を更新して結果をIssueコメントに追記」
-
-### 5. Codex疑似コマンド運用
-
-- Codexでは `/pick` `/p` `/review-verify` `/rv` `/merge-to-main` `/mtm` `/commit` `/c` `/commit!` `/c!` をコマンドとして直接実行できない
-- Codexでは `/plan` `/pl` もコマンドとして直接実行できない
-- 短縮形（`/pl` `/p` `/rv` `/mtm` `/c` `/c!`）はClaude Code向けの別名であり、Codexではそのまま送らない
-- Codexへは「`/pick` 相当を実施」「`/rv` 相当を実施」「`/mtm` 相当を実施」のように、処理内容を文章で明示する
-- 例:
-  - `AI.md と .ai の必読を読み込み、計画準備状態へ入って（/plan 相当）`
-  - `Issue #7 を primary_issue として .context/issue_scope.json を更新し、Issue本文から概要を数行表示して（/pick 相当）`
-  - `引数なしで /pick 相当を実施し、priority順でprimary_issueを自動選定して .context/issue_scope.json を更新し、Issue本文から概要を数行表示して`
-  - `Issue #7 のレビューコメントを検証し、採用指摘のみ修正してIssueへ結果コメントして（/rv 相当）`
-  - `develop から main へのリリースPRを作成して通常はそのままマージし、必要なら --no-merge で作成のみ実行して、.context の pr_number/pr_url を更新して（/mtm 相当）`
-  - `git add -A 後に確認付きでコミット候補を提示して（/commit 相当）`
-  - `git add -A 後に最初の候補で即コミットして（/commit! 相当）`
-
-### 6. PRと完了
-
-1. `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` とする
-2. `Closes` は、Issue進行度チェックリストが完了している `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` かつ進行度完了のIssueのみ記載する
-3. 進行度が未完了のIssueは状態にかかわらず `Refs` に記載し、`Closes` を使わない
-4. `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
-5. 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
-6. `GitHub CLI` で PR を作成/更新する場合は PR操作 を使い、`pr create` では `--base develop` を必ず明示する
-7. PRマージ前に、`Closes` 記載Issueの進行度チェックリスト完了を確認し、未完了なら `Refs` に修正する
-8. PR作成/更新後は `.context/issue_scope.json` に `pr_number`（必要なら `pr_url`）を記録する
-9. PR作成時に `.context/issue_scope.json` が存在する場合、そのPRで完了した作業に対応するIssue本文のチェックボックスを `- [x]` に更新する（`gh issue edit --body-file` を使用）
-10. PRマージ時は、`Closes` に記載されたIssueのみ自動クローズされる
-11. `develop -> main` 反映時は `/merge-to-main` / `/mtm` 相当の手順を必須とする
+1. PR本文には対象Issueを記載する
+2. `Closes` は `current_issue`（会話または `.context/current_issue` で確定した番号）を記載する
+3. `Refs` は関連Issueのみを記載し、共有ライブラリ変更時は相互Issueを明示する
+4. PRマージ後にIssueが自動クローズされない場合は、マージPRを参照して手動クローズする
+5. 対象Issueの完了が確認できたら `.context/current_issue` を削除する

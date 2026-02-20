@@ -1,28 +1,56 @@
 # Gitコミットルール
 
-## コミット制限
+## 🚨 絶対厳守: コミット制限
 
 - `/commit` / `/c` または `/commit!` / `/c!` の明示がない限り、コミットしない
-- 曖昧な承認（OK、進めて等）ではコミットしない
+- 「OK」「進めて」「PR作って」「pushして」などの曖昧な指示ではコミットしない
+- ユーザー明示指示がない `git commit --amend` は実行しない
+- コミットに Claude 共著フッターを追加しない
+- コミット開始の条件は、ユーザー最新指示に `/commit` 系コマンドが明示されていること
+- `/commit` / `/commit!` の実行中に発生した確認への返答は、同一手順内の継続指示として扱う
 
-## メッセージ形式
+## コミットメッセージフォーマット
 
 - 形式: `絵文字 scope: 説明`
 - 説明は日本語で簡潔に書く
+- scopeは変更対象に合わせて選ぶ（例: `docs` / `app` / `root`）
+- 完全な絵文字リストは `docs/guides/CODING_STANDARDS.md` を参照する
 
 ### 例
 
 - `✨ docs: 初期ガイドを追加`
-- `📝 workflow: ルール文書を整理`
+- `🐛 app: APIエラーハンドリングを修正`
 - `♻️ root: テンプレート構成を簡素化`
 
-## `/commit` と `/commit!`
+## コミット運用（`/commit` / `/commit!`）
 
-- `/commit`: 候補メッセージを提示し、確認後にコミット
-- `/commit!`: 最初の候補で即コミット
-- `/c`: `/commit` の短縮コマンド
-- `/c!`: `/commit!` の短縮コマンド
-- どちらも `git add -A` を前提に運用する
+### トリガー
+
+- `/commit` / `/c`
+- `/commit!` / `/c!`
+
+### 共通ルール
+
+- どちらも `git add -A` でステージングしてから処理する
+- ステージング実行前の可否はユーザーに確認しない
+- ステージ後に `git diff --cached --name-only` をユーザーに提示して対象ファイルを確認する
+- ステージ対象に意図しない変更がある場合は、コミット前にユーザーへ報告する
+
+### ステージング
+
+1. `git add -A` を実行する
+2. `git diff --cached --name-only` を表示して対象を確認する
+
+### `/commit`（確認あり）
+
+1. 変更内容に基づき、コミットメッセージ候補を3つ提示する
+2. ユーザーが選んだ候補でコミットする
+
+### `/commit!`（確認なし）
+
+1. 変更内容に基づき、コミットメッセージ候補を3つ生成する
+2. ステージ対象に意図しない変更がある場合は、コミット前に必ずユーザーへ報告し、同一手順内で継続可否を確認する
+3. 継続指示がある場合は、ユーザー確認なしで先頭候補を使って即コミットする
 
 ## ブランチ・worktree運用
 
@@ -36,12 +64,7 @@
 - 1Issue 1PRを基本とする
 - 1PRの変更は小さく保ち、段階的に適用する
 - PRのbaseブランチは `develop` とする
-- PR作成 を使う場合、`--base develop` を省略しない
-- PR本文には対象Issue（`#<issue-number>`）への参照を記載する
-- `Closes` / `Refs` の判定対象は `primary_issue + active_related_issues + related_issues` とする
-- `Closes` は、Issue進行度チェックリストが完了している `primary_issue` と、`active_related_issues` が `ready_for_close` / `closed` かつ進行度完了のIssueのみ記載する
-- 進行度未完了のIssueは状態にかかわらず `Refs` に記載し、`Closes` を使わない
-- `Refs` は `active_related_issues` が `reserved` / `in_progress` のIssue、および候補のみ（`related_issues` のみ）のIssueを記載する
-- 複数Issueを同一PRで扱う場合、上記判定に沿って `Closes #...` / `Refs #...` を複数併記してよい
-- PRマージ前に、`Closes` 記載Issueの進行度チェックリスト完了を確認する
-- `GitHub CLI` で PR を作成/更新する場合は PR操作 を使う
+- PR本文には対象Issueへの参照を記載する
+- `Closes` は `current_issue`（会話または `.context/current_issue` で確定したIssue番号）を記載する
+- `Refs` は関連Issueを記載し、共有ライブラリ変更時は相互Issueを明示する
+- `develop` から `main` への反映は `.claude/commands/merge-to-main.md` に従う

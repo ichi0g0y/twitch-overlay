@@ -14,14 +14,13 @@ type: "command"
 
 1. 以下をこの順で読み込む。
    - `AI.md`
-   - `.ai/behavior.md`
    - `.ai/rules.md`
    - `.ai/workflow.md`
    - `.ai/dev-env.md`
-2. `GitHub CLI` の事前確認を行う。
-   - 認証状態確認 を実行し、GitHub操作可能か確認する。
+2. GitHub操作の事前確認を行う。
+   - 認証状態確認を実行し、GitHub操作可能か確認する。
    - 失敗時はそこで停止し、原因と対処を確認する。
-3. `.context/issue_scope.json` が存在する場合は内容を確認する。
+3. `.context/current_issue` が存在する場合は内容を確認する。
 4. 要件を分解し、次を含む実行計画を作成して提示する。
    - 目的 / スコープ / 非スコープ
    - 実装手順
@@ -29,10 +28,10 @@ type: "command"
    - 想定テスト
 5. 日本語で現在状態を報告する。
    - ルール読み込み完了可否
-   - Issue連携の有無（`primary_issue` / `related_issues` / `active_related_issues`）
+   - Issue連携の有無（`current_issue`）
    - 次に行う1手（通常は「Issue化の要否確認」）
 
 ## ルール
 
 - `/plan` は準備状態に入るためのコマンドであり、実装・Issue作成・コミット・PRマージを実行しない。
-- その後にファイル変更を伴う依頼へ進む場合は、`.ai/behavior.md` の通常時フローに従って Issue化可否を確認する。
+- その後にファイル変更を伴う依頼へ進む場合は、`.ai/workflow.md` の基本フローに従って Issue化可否を確認する。
