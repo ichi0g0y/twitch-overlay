@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use image::DynamicImage;
-use image_processor::text::Fragment;
+use image_engine::text::Fragment;
 use reqwest::Client;
 use twitch_client::Token;
 use twitch_client::api::TwitchApiClient;

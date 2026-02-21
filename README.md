@@ -62,7 +62,7 @@ task build
 
 ### プロジェクト構成
 - **`src-tauri/`** - Tauriアプリ本体（Rust）
-- **`crates/`** - Rustワークスペースクレート（catprinter, image-processor, overlay-db, twitch-client, word-filter）
+- **`crates/`** - Rustワークスペースクレート（catprinter, image-engine, overlay-db, twitch-client, word-filter）
 - **`web/`** - OBSオーバーレイ用フロントエンド（ビルド後Tauriに組み込み）
 - **`frontend/`** - Settings画面用フロントエンド（Dashboard）
 

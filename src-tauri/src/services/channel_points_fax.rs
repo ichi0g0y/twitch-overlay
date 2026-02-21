@@ -81,9 +81,9 @@ async fn render_save_and_enqueue(
 
     let fragments = channel_points_assets::build_fragments_for_input(state, user_input).await;
     let color_image =
-        image_processor::message::message_to_image(display_name, &fragments, &font, true);
+        image_engine::message::message_to_image(display_name, &fragments, &font, true);
     let mono_source =
-        image_processor::message::message_to_image(display_name, &fragments, &font, false);
+        image_engine::message::message_to_image(display_name, &fragments, &font, false);
 
     let color_png = image_to_png_bytes(&color_image)?;
     let mono_png = image_to_png_bytes(&mono_source)?;

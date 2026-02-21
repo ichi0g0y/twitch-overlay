@@ -1,6 +1,6 @@
 //! Bits leaderboard helpers for clock printing.
 
-use image_processor::clock::BitsLeaderEntry;
+use image_engine::clock::BitsLeaderEntry;
 use twitch_client::Token;
 use twitch_client::api::TwitchApiClient;
 use twitch_client::auth::TwitchAuth;

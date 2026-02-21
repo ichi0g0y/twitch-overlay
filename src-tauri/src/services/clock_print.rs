@@ -10,7 +10,7 @@ use ab_glyph::FontRef;
 use chrono::Timelike;
 use chrono_tz::Tz;
 use image::{DynamicImage, ImageFormat};
-use image_processor::clock::BitsLeaderEntry;
+use image_engine::clock::BitsLeaderEntry;
 use tokio::time::sleep;
 
 use crate::app::SharedState;
@@ -134,7 +134,7 @@ fn generate_clock_simple_image(
     let font_data = load_clock_font_data(state)?;
     let font = FontRef::try_from_slice(&font_data)
         .map_err(|_| "failed to parse clock font data (TTF/OTF)".to_string())?;
-    Ok(image_processor::clock::generate_time_image_simple(
+    Ok(image_engine::clock::generate_time_image_simple(
         time_str, &font,
     ))
 }
@@ -147,7 +147,7 @@ fn generate_clock_stats_image(
     let font_data = load_clock_font_data(state)?;
     let font = FontRef::try_from_slice(&font_data)
         .map_err(|_| "failed to parse clock font data (TTF/OTF)".to_string())?;
-    Ok(image_processor::clock::generate_time_image_with_stats(
+    Ok(image_engine::clock::generate_time_image_with_stats(
         time_str, leaders, &font,
     ))
 }
@@ -160,7 +160,7 @@ fn generate_clock_stats_color_image(
     let font_data = load_clock_font_data(state)?;
     let font = FontRef::try_from_slice(&font_data)
         .map_err(|_| "failed to parse clock font data (TTF/OTF)".to_string())?;
-    Ok(image_processor::clock::generate_time_image_with_stats_color(time_str, leaders, &font))
+    Ok(image_engine::clock::generate_time_image_with_stats_color(time_str, leaders, &font))
 }
 
 fn now_in_timezone(name: &str) -> chrono::DateTime<Tz> {

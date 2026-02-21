@@ -33,7 +33,7 @@
 
 - **`crates/`** - Rustワークスペースクレート
   - `catprinter` - サーマルプリンター制御
-  - `image-processor` - 画像処理
+  - `image-engine` - 画像処理
   - `overlay-db` - データベース管理
   - `twitch-client` - Twitch連携
   - `word-filter` - ワードフィルター

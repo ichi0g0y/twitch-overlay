@@ -6,7 +6,7 @@ members = [
     "crates/twitch-client",
     "crates/overlay-db",
     "crates/word-filter",
-    "crates/image-processor",
+    "crates/image-engine",
 ]
 
 [workspace.package]
