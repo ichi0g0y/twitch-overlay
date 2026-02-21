@@ -4,6 +4,7 @@
 //! and KeepAlive functionality for thermal printers.
 
 pub mod ble;
+mod ble_init;
 pub mod keepalive;
 pub mod options;
 pub mod protocol;
