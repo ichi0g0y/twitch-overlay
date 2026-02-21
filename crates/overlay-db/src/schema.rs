@@ -154,4 +154,26 @@ CREATE TABLE IF NOT EXISTS lottery_participants (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS lottery_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    reward_id TEXT,
+    last_winner TEXT,
+    base_tickets_limit INTEGER NOT NULL DEFAULT 3,
+    final_tickets_limit INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS lottery_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    winner_name TEXT NOT NULL,
+    total_participants INTEGER NOT NULL,
+    total_tickets INTEGER NOT NULL,
+    participants_json TEXT,
+    reward_ids_json TEXT,
+    drawn_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lottery_history_drawn_at
+    ON lottery_history(drawn_at DESC);
 "#;

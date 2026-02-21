@@ -199,7 +199,24 @@ pub fn create_router(state: SharedState) -> Router {
             "/api/lottery/add-participant",
             post(api::present::add_participant),
         )
+        .route("/api/lottery/draw", post(api::present::draw_lottery))
         .route("/api/lottery/clear", post(api::present::clear_lottery))
+        .route(
+            "/api/lottery/settings",
+            get(api::present::get_lottery_settings).put(api::present::update_lottery_settings),
+        )
+        .route(
+            "/api/lottery/reset-winner",
+            post(api::present::reset_lottery_winner),
+        )
+        .route(
+            "/api/lottery/history",
+            get(api::present::get_lottery_history),
+        )
+        .route(
+            "/api/lottery/history/{id}",
+            delete(api::present::delete_lottery_history),
+        )
         .route(
             "/api/lottery/{user_id}",
             delete(api::present::remove_participant),

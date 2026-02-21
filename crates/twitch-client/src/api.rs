@@ -109,6 +109,17 @@ pub struct UserSubscription {
     pub tier: String,
     pub user_id: String,
     pub user_login: String,
+    #[serde(default)]
+    pub cumulative_months: Option<i32>,
+}
+
+/// User chat color from GET /helix/chat/color.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatColor {
+    pub user_id: String,
+    pub user_name: String,
+    pub user_login: String,
+    pub color: String,
 }
 
 /// Bits leaderboard entry from GET /helix/bits/leaderboard.
@@ -408,6 +419,28 @@ impl TwitchApiClient {
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<UserSubscription> = serde_json::from_str(&body)?;
         Ok(resp.data.into_iter().next())
+    }
+
+    /// Get chat colors for up to 100 users.
+    pub async fn get_user_chat_colors(
+        &self,
+        token: &Token,
+        user_ids: &[String],
+    ) -> Result<Vec<ChatColor>, TwitchError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = user_ids
+            .iter()
+            .take(100)
+            .map(|user_id| format!("user_id={user_id}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{HELIX_BASE}/chat/color?{query}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<ChatColor> = serde_json::from_str(&body)?;
+        Ok(resp.data)
     }
 
     /// Get bits leaderboard for the authenticated channel.
