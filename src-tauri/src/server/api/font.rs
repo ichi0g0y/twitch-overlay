@@ -96,7 +96,7 @@ pub async fn preview_font(State(state): State<SharedState>, Json(body): Json<Val
     let font = FontRef::try_from_slice(&font_data)
         .map_err(|_| err_json(400, "Invalid font data (failed to parse TTF/OTF)"))?;
 
-    let preview_img = image_processor::clock::generate_preview_image(&text, &font);
+    let preview_img = image_engine::clock::generate_preview_image(&text, &font);
     let mut buf = std::io::Cursor::new(Vec::<u8>::new());
     preview_img
         .write_to(&mut buf, image::ImageFormat::Png)

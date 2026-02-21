@@ -1,7 +1,7 @@
 //! Printer configuration options.
 //!
 //! These options control print quality, image orientation, and thresholding.
-//! Note: Actual dithering is handled by the image-processor crate;
+//! Note: Actual dithering is handled by the image-engine crate;
 //! the `dither` flag here signals whether dithering should be applied upstream.
 
 /// Configuration options for thermal printer output.
@@ -10,7 +10,7 @@ pub struct PrinterOptions {
     /// Use high-quality mode (slower, darker print with more energy).
     pub best_quality: bool,
 
-    /// Whether to apply dithering (actual algorithm is in image-processor crate).
+    /// Whether to apply dithering (actual algorithm is in image-engine crate).
     pub dither: bool,
 
     /// Automatically rotate landscape images to portrait for better resolution.

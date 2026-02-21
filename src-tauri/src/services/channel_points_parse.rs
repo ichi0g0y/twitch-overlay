@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use image::DynamicImage;
-use image_processor::text::Fragment;
+use image_engine::text::Fragment;
 use reqwest::Client;
 
 #[derive(Debug)]

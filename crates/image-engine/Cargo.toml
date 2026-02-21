@@ -1,5 +1,5 @@
 [package]
-name = "image-processor"
+name = "image-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

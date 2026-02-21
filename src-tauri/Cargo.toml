@@ -60,4 +60,4 @@ overlay-db = { path = "../crates/overlay-db" }
 catprinter = { path = "../crates/catprinter" }
 twitch-client = { path = "../crates/twitch-client" }
 word-filter = { path = "../crates/word-filter" }
-image-processor = { path = "../crates/image-processor" }
+image-engine = { path = "../crates/image-engine" }
