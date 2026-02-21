@@ -1,6 +1,6 @@
 # twitch-overlay
 
-Twitchカスタムリワードと連携した配信用オーバーレイシステム（Wails版）
+Twitchカスタムリワードと連携した配信用オーバーレイシステム
 
 > **📝 利用について**
 > このプロジェクトは個人の配信環境向けにカスタマイズされています。
@@ -10,7 +10,7 @@ Twitchカスタムリワードと連携した配信用オーバーレイシス�
 
 ## 概要
 
-Go言語とReact/TypeScriptを使用したデスクトップアプリケーションです。配信用オーバーレイとプリンター制御を統合し、よりシンプルなセットアップと管理を実現しています。
+Rust（Tauri 2）とReact/TypeScriptを使用したデスクトップアプリケーションです。配信用オーバーレイとプリンター制御を統合し、よりシンプルなセットアップと管理を実現しています。
 
 ## 機能
 
@@ -18,15 +18,17 @@ Go言語とReact/TypeScriptを使用したデスクトップアプリケーシ�
 - **FAX風演出**: 受信した画像をFAX風に表示・印刷
 - **統計情報表示**: リアルタイムで更新される各種統計
 - **カスタム時計**: 配信画面用のカスタマイズ可能な時計
-- **Settings画面**: Wailsアプリ内蔵の設定管理UI
+- **Settings画面**: Tauriアプリ内蔵の設定管理UI
 - **WebSocketリアルタイム通信**: オーバーレイとの双方向通信
 - **音楽プレイヤー**: BGM再生機能（ビジュアライザー付き）
+- **抽選イベント**: サブスクボーナス付きルーレット抽選
 
 ## 必要要件
 
-- Go 1.21以上
+- Rust / Cargo
+- Tauri CLI v2 (`cargo install tauri-cli`)
 - Node.js 20以上 / Bun
-- Wails v3 CLI (`go install github.com/wailsapp/wails/v3/cmd/wails3@latest`)
+- [Task](https://taskfile.dev/)（タスクランナー）
 - Bluetooth対応サーマルプリンター（Cat Printer）
 - macOS / Linux / Windows
 
@@ -34,23 +36,22 @@ Go言語とReact/TypeScriptを使用したデスクトップアプリケーシ�
 
 ### 1. リポジトリをクローン
 ```bash
-git clone https://github.com/yourusername/twitch-overlay.git
+git clone https://github.com/ichi0g0y/twitch-overlay.git
 cd twitch-overlay
 ```
 
 ### 2. 依存関係をインストール
 ```bash
-# Wails CLIのインストール（未インストールの場合）
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+# Tauri CLIのインストール（未インストールの場合）
+cargo install tauri-cli
 
 # フロントエンド依存関係
-cd frontend && bun install && cd ..
-cd web && bun install && cd ..
+task install
 ```
 
-### 3. ビルド
+### 3. 起動
 ```bash
-# 開発ビルド（ホットリロード付き）
+# Tauriデスクトップアプリとして起動（推奨）
 task dev
 
 # プロダクションビルド
@@ -60,19 +61,23 @@ task build
 ## 開発
 
 ### プロジェクト構成
-- **`web/`** - オーバーレイ用フロントエンド（ビルド後Wailsに埋め込み）
-- **`frontend/`** - Wails Settings画面用フロントエンド
-- **`internal/`** - Goバックエンド（API、プリンター制御等）
+- **`src-tauri/`** - Tauriアプリ本体（Rust）
+- **`crates/`** - Rustワークスペースクレート（catprinter, image-processor, overlay-db, twitch-client, word-filter）
+- **`web/`** - OBSオーバーレイ用フロントエンド（ビルド後Tauriに組み込み）
+- **`frontend/`** - Settings画面用フロントエンド（Dashboard）
 
 ### 開発コマンド
 ```bash
-# Wails開発モード（統合開発環境）
+# Tauriデスクトップアプリとして起動（フロントエンドビルド含む）
 task dev
+
+# ヘッドレスサーバー起動（フロントエンドは事前ビルド前提）
+task dev:quick
 
 # オーバーレイのビルド
 cd web && bun run build
 
-# テストの実行（DRY_RUN_MODE=trueで実行）
+# テストの実行
 task test
 ```
 
@@ -86,12 +91,12 @@ task test
 ### オーバーレイの開発フロー
 1. `web/`ディレクトリで変更を行う
 2. `cd web && bun run build`でビルド
-3. `task dev`でWailsアプリとして動作確認
+3. `task dev`でTauriアプリとして動作確認
 4. オーバーレイは`http://localhost:[動的ポート]/overlay/`でアクセス可能
 
 ## 設定管理
 
-すべての設定はWailsアプリケーションのSettings画面から行います。環境変数ファイル（.env）は不要です。
+すべての設定はTauriアプリケーションのSettings画面から行います。環境変数ファイル（.env）は不要です。
 
 ### Twitch認証
 
@@ -109,6 +114,16 @@ Settings画面で以下の設定が可能です：
 - **一般設定**: サーバーポート、タイムゾーン、時計表示
 - **開発者設定**: DRY_RUNモード、デバッグ出力
 
+## タスク管理（Taskfile）
+
+主要なタスクコマンド:
+- `task dev` - Tauriデスクトップアプリとして起動（既定）
+- `task dev:quick` - ヘッドレスサーバー起動（フロントエンドは事前ビルド前提）
+- `task build` - プロダクションビルド
+- `task test` - テスト実行（`DRY_RUN_MODE=true`）
+- `task install` - フロントエンド依存関係インストール
+- `task clean` - ビルドファイルクリーンアップ
+
 ## トラブルシューティング
 
 ### Bluetooth権限エラー（Linux）
@@ -125,16 +140,8 @@ sudo usermod -a -G bluetooth $USER
 
 ### オーバーレイが表示されない
 1. `cd web && bun run build`でオーバーレイをビルド
-2. `task dev`でWailsアプリを再起動
+2. `task dev`でアプリを再起動
 3. Settings画面でポート設定を確認
-
-## タスク管理（Taskfile）
-
-主要なタスクコマンド:
-- `task dev:wails` - 開発モード起動（Wails/デスクトップ）
-- `task dev:webui` - WebUI起動（ヘッドレス）
-- `task build` - プロダクションビルド
-- `task test` - テスト実行
 
 ## ライセンス
 

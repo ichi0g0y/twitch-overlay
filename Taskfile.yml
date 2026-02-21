@@ -7,18 +7,6 @@ tasks:
     cmds:
       - task: dev:tauri
 
-  # 旧式モード（BEサーバー起動、Dashboardはブラウザからアクセス）
-  dev:wails:
-    desc: 旧式モードでサーバーを起動
-    cmds:
-      - |
-        echo "📦 OBS用オーバーレイをビルド中..."
-        (cd web && bun run build)
-        echo "📦 フロントエンド(Dashboard)をビルド中..."
-        (cd frontend && bun run build)
-        echo "🚀 サーバーを起動中..."
-        cargo run -p cairo-overlay --bin cairo-overlay-server
-
   dev:quick:
     desc: クイック開発モード（フロントエンドは事前ビルド前提）
     cmds:
@@ -80,11 +68,6 @@ tasks:
       DRY_RUN_MODE: "true"
     cmds:
       - ./scripts/api_smoke.sh
-
-  inventory:api:
-    desc: フロントエンドAPI呼び出し一覧を再生成
-    cmds:
-      - ./scripts/extract_api_inventory.sh docs/TAURI_API_CALLS.md
 
   # フロントエンド依存関係インストール
   install:
