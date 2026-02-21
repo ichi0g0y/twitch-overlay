@@ -24,9 +24,9 @@ const OVERLAY_KEYS: &[&str] = &[
     "FAX_IMAGE_TYPE",
     "OVERLAY_CLOCK_ENABLED",
     "OVERLAY_CLOCK_FORMAT",
-    "OVERLAY_LOCATION_ENABLED",
-    "OVERLAY_DATE_ENABLED",
-    "OVERLAY_TIME_ENABLED",
+    "LOCATION_ENABLED",
+    "DATE_ENABLED",
+    "TIME_ENABLED",
     "OVERLAY_DEBUG_ENABLED",
     "OVERLAY_CARDS_EXPANDED",
     "OVERLAY_CARDS_LAYOUT",
@@ -49,6 +49,7 @@ const OVERLAY_KEYS: &[&str] = &[
     "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED",
     "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS",
     "MIC_TRANSCRIPT_BOUYOMI_ENABLED",
+    "MIC_TRANSCRIPT_BOUYOMI_URL",
     "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED",
     "MIC_TRANSCRIPT_TRANSLATION_ENABLED",
     "MIC_TRANSCRIPT_TRANSLATION_MODE",
@@ -125,7 +126,7 @@ pub async fn update_overlay_settings(
 
     // Convert JSON key format (snake_case) to DB key format (SCREAMING_SNAKE_CASE)
     for (key, value) in &body {
-        let db_key = key.to_uppercase();
+        let db_key = normalize_overlay_db_key(key);
         let str_val = match value {
             Value::String(s) => s.clone(),
             Value::Bool(b) => b.to_string(),
@@ -166,13 +167,79 @@ fn build_overlay_json(state: &SharedState) -> Result<Value, (axum::http::StatusC
 
     let mut map = serde_json::Map::new();
     for &key in OVERLAY_KEYS {
-        let val = sm.get_setting(key).unwrap_or_default();
-        // Use snake_case keys for JSON
+        let val = get_overlay_setting_value(state, &sm, key);
+        // Use snake_case keys for JSON.
         let json_key = key.to_lowercase();
-        map.insert(json_key, Value::String(val));
+        let json_val = smart_json_value(&val);
+        map.insert(json_key, json_val.clone());
+        if let Some(legacy_json_key) = legacy_overlay_json_key(key) {
+            map.insert(legacy_json_key.to_string(), json_val);
+        }
     }
 
     Ok(Value::Object(map))
+}
+
+fn normalize_overlay_db_key(key: &str) -> String {
+    match key {
+        "overlay_location_enabled" | "location_enabled" => "LOCATION_ENABLED".to_string(),
+        "overlay_date_enabled" | "date_enabled" => "DATE_ENABLED".to_string(),
+        "overlay_time_enabled" | "time_enabled" => "TIME_ENABLED".to_string(),
+        _ => key.to_uppercase(),
+    }
+}
+
+fn legacy_overlay_key(key: &str) -> Option<&'static str> {
+    match key {
+        "LOCATION_ENABLED" => Some("OVERLAY_LOCATION_ENABLED"),
+        "DATE_ENABLED" => Some("OVERLAY_DATE_ENABLED"),
+        "TIME_ENABLED" => Some("OVERLAY_TIME_ENABLED"),
+        _ => None,
+    }
+}
+
+fn legacy_overlay_json_key(key: &str) -> Option<&'static str> {
+    match key {
+        "LOCATION_ENABLED" => Some("overlay_location_enabled"),
+        "DATE_ENABLED" => Some("overlay_date_enabled"),
+        "TIME_ENABLED" => Some("overlay_time_enabled"),
+        _ => None,
+    }
+}
+
+fn get_overlay_setting_value(state: &SharedState, sm: &SettingsManager, key: &str) -> String {
+    if let Ok(Some(value)) = state.db().get_setting(key) {
+        return value;
+    }
+
+    if let Some(legacy_key) = legacy_overlay_key(key) {
+        if let Ok(Some(legacy_value)) = state.db().get_setting(legacy_key) {
+            if let Err(e) = sm.set_setting(key, &legacy_value) {
+                tracing::warn!("Failed to migrate overlay setting {legacy_key} -> {key}: {e}");
+            }
+            return legacy_value;
+        }
+    }
+
+    sm.get_setting(key).unwrap_or_default()
+}
+
+fn smart_json_value(val: &str) -> Value {
+    match val {
+        "true" => Value::Bool(true),
+        "false" => Value::Bool(false),
+        _ => {
+            if let Ok(n) = val.parse::<i64>() {
+                return Value::Number(n.into());
+            }
+            if let Ok(f) = val.parse::<f64>() {
+                if let Some(n) = serde_json::Number::from_f64(f) {
+                    return Value::Number(n);
+                }
+            }
+            Value::String(val.to_string())
+        }
+    }
 }
 
 /// Broadcast overlay settings to all WebSocket clients.
@@ -186,4 +253,94 @@ fn broadcast_overlay_settings(
     });
     let _ = state.ws_sender().send(msg.to_string());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{legacy_overlay_json_key, normalize_overlay_db_key, smart_json_value};
+    use serde_json::Value;
+
+    #[test]
+    fn smart_json_value_converts_bool_true() {
+        assert_eq!(smart_json_value("true"), Value::Bool(true));
+    }
+
+    #[test]
+    fn smart_json_value_converts_bool_false() {
+        assert_eq!(smart_json_value("false"), Value::Bool(false));
+    }
+
+    #[test]
+    fn smart_json_value_converts_int() {
+        assert_eq!(smart_json_value("42"), Value::Number(42.into()));
+    }
+
+    #[test]
+    fn smart_json_value_converts_float() {
+        assert_eq!(smart_json_value("3.14"), serde_json::json!(3.14));
+    }
+
+    #[test]
+    fn smart_json_value_keeps_plain_string() {
+        assert_eq!(
+            smart_json_value("hello"),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn smart_json_value_keeps_empty_string() {
+        assert_eq!(smart_json_value(""), Value::String(String::new()));
+    }
+
+    #[test]
+    fn smart_json_value_keeps_json_like_string() {
+        assert_eq!(
+            smart_json_value("{\"a\":1}"),
+            Value::String("{\"a\":1}".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_overlay_db_key_accepts_legacy_overlay_prefix() {
+        assert_eq!(
+            normalize_overlay_db_key("overlay_location_enabled"),
+            "LOCATION_ENABLED"
+        );
+        assert_eq!(
+            normalize_overlay_db_key("overlay_date_enabled"),
+            "DATE_ENABLED"
+        );
+        assert_eq!(
+            normalize_overlay_db_key("overlay_time_enabled"),
+            "TIME_ENABLED"
+        );
+    }
+
+    #[test]
+    fn normalize_overlay_db_key_accepts_new_key_names() {
+        assert_eq!(
+            normalize_overlay_db_key("location_enabled"),
+            "LOCATION_ENABLED"
+        );
+        assert_eq!(normalize_overlay_db_key("date_enabled"), "DATE_ENABLED");
+        assert_eq!(normalize_overlay_db_key("time_enabled"), "TIME_ENABLED");
+    }
+
+    #[test]
+    fn legacy_overlay_json_key_maps_clock_detail_flags() {
+        assert_eq!(
+            legacy_overlay_json_key("LOCATION_ENABLED"),
+            Some("overlay_location_enabled")
+        );
+        assert_eq!(
+            legacy_overlay_json_key("DATE_ENABLED"),
+            Some("overlay_date_enabled")
+        );
+        assert_eq!(
+            legacy_overlay_json_key("TIME_ENABLED"),
+            Some("overlay_time_enabled")
+        );
+        assert_eq!(legacy_overlay_json_key("CLOCK_ENABLED"), None);
+    }
 }

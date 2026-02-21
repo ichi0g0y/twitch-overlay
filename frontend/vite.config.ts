@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 const BACKEND_PORT = process.env.VITE_BACKEND_PORT || process.env.SERVER_PORT || '8080';
+console.log(`[vite] API proxy target: http://localhost:${BACKEND_PORT}`);
 
 // https://vitejs.dev/config/
 export default defineConfig({

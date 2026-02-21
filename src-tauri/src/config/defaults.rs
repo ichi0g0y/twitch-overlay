@@ -179,6 +179,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         "Screen index where window is located",
     ),
+    (
+        "WINDOW_STATE_JSON",
+        "",
+        false,
+        false,
+        "Window state as JSON",
+    ),
     // --- Music ---
     (
         "MUSIC_ENABLED",
@@ -240,26 +247,14 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         "Clock format (12h or 24h)",
     ),
     (
-        "OVERLAY_LOCATION_ENABLED",
+        "LOCATION_ENABLED",
         "true",
         false,
         false,
         "Show location in overlay",
     ),
-    (
-        "OVERLAY_DATE_ENABLED",
-        "true",
-        false,
-        false,
-        "Show date in overlay",
-    ),
-    (
-        "OVERLAY_TIME_ENABLED",
-        "true",
-        false,
-        false,
-        "Show time in overlay",
-    ),
+    ("DATE_ENABLED", "true", false, false, "Show date in overlay"),
+    ("TIME_ENABLED", "true", false, false, "Show time in overlay"),
     (
         "OVERLAY_DEBUG_ENABLED",
         "false",
@@ -401,6 +396,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         false,
         "Enable BouyomiChan",
+    ),
+    (
+        "MIC_TRANSCRIPT_BOUYOMI_URL",
+        "http://localhost:50080",
+        false,
+        false,
+        "BouyomiChan HTTP API URL",
     ),
     (
         "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED",

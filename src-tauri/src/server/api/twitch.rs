@@ -60,7 +60,7 @@ async fn create_auth(
 ) -> Result<TwitchAuth, (axum::http::StatusCode, Json<Value>)> {
     let config = state.config().await;
     if config.client_id.is_empty() || config.client_secret.is_empty() {
-        return Err(err_json(400, "Twitch credentials not configured"));
+        return Err(err_json(401, "Twitch credentials not configured"));
     }
     let redirect_uri = format!("http://localhost:{}/callback", config.server_port);
     Ok(TwitchAuth::new(
@@ -346,7 +346,7 @@ pub async fn get_custom_rewards(State(state): State<SharedState>) -> ApiResult {
     let token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
-        return Err(err_json(400, "TWITCH_USER_ID is not configured"));
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
     let rewards = match client
@@ -375,7 +375,7 @@ pub async fn create_custom_reward(
     let token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
-        return Err(err_json(400, "TWITCH_USER_ID is not configured"));
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
     let req = CreateRewardRequest {
@@ -426,7 +426,7 @@ pub async fn update_custom_reward(
     let token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
-        return Err(err_json(400, "TWITCH_USER_ID is not configured"));
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
     let req = UpdateRewardRequest {
@@ -464,7 +464,7 @@ pub async fn toggle_custom_reward(
     let mut token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
-        return Err(err_json(400, "TWITCH_USER_ID is not configured"));
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
 
@@ -525,7 +525,7 @@ pub async fn delete_custom_reward(
     let token = get_valid_token(&state).await?;
     let config = state.config().await;
     if config.twitch_user_id.is_empty() {
-        return Err(err_json(400, "TWITCH_USER_ID is not configured"));
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
     let client = TwitchApiClient::new(config.client_id.clone());
     match client

@@ -23,15 +23,15 @@ interface CustomReward {
   saved_display_name?: string;
   saved_is_enabled?: boolean;
   redemptions_redeemed_current_stream?: number;
-  max_per_stream_setting: {
+  max_per_stream_setting?: {
     is_enabled: boolean;
     max_per_stream: number;
   };
-  max_per_user_per_stream_setting: {
+  max_per_user_per_stream_setting?: {
     is_enabled: boolean;
     max_per_user_per_stream: number;
   };
-  global_cooldown_setting: {
+  global_cooldown_setting?: {
     is_enabled: boolean;
     global_cooldown_seconds: number;
   };
@@ -618,17 +618,17 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
                     {/* 詳細情報 */}
                     <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
-                      {reward.max_per_stream_setting.is_enabled && (
+                      {reward.max_per_stream_setting?.is_enabled && (
                         <div>
                           配信ごとの上限: {reward.max_per_stream_setting.max_per_stream}
                         </div>
                       )}
-                      {reward.max_per_user_per_stream_setting.is_enabled && (
+                      {reward.max_per_user_per_stream_setting?.is_enabled && (
                         <div>
                           ユーザーごとの上限: {reward.max_per_user_per_stream_setting.max_per_user_per_stream}
                         </div>
                       )}
-                      {reward.global_cooldown_setting.is_enabled && (
+                      {reward.global_cooldown_setting?.is_enabled && (
                         <div>
                           クールダウン: {reward.global_cooldown_setting.global_cooldown_seconds}秒
                         </div>

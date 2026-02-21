@@ -163,6 +163,30 @@ impl Database {
         })
     }
 
+    pub fn get_playlist_tracks_full(&self, playlist_id: &str) -> Result<Vec<Track>, DbError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.id, t.file_path, t.title, t.artist, t.album, t.duration, t.added_at
+                 FROM playlist_tracks pt
+                 JOIN tracks t ON pt.track_id = t.id
+                 WHERE pt.playlist_id = ?1
+                 ORDER BY pt.position",
+            )?;
+            let rows = stmt.query_map([playlist_id], |row| {
+                Ok(Track {
+                    id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    duration: row.get(5)?,
+                    added_at: row.get(6)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        })
+    }
+
     // --- Playback State ---
 
     pub fn get_playback_state(&self) -> Result<Option<PlaybackState>, DbError> {

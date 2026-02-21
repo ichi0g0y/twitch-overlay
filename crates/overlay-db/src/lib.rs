@@ -295,6 +295,12 @@ mod tests {
 
         let pt = db.get_playlist_tracks("p1").unwrap();
         assert_eq!(pt.len(), 1);
+        assert_eq!(pt[0].track_id, "t1");
+
+        let full_tracks = db.get_playlist_tracks_full("p1").unwrap();
+        assert_eq!(full_tracks.len(), 1);
+        assert_eq!(full_tracks[0].id, "t1");
+        assert_eq!(full_tracks[0].title, Some("Song".into()));
 
         db.delete_track("t1").unwrap();
         assert!(db.get_all_tracks().unwrap().is_empty());

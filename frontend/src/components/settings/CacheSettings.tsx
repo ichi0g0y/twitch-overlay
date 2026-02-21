@@ -17,9 +17,8 @@ interface CacheSettings {
 
 interface CacheStats {
   total_files: number;
-  total_size_mb: number;
-  oldest_file_date: string;
-  expired_files: number;
+  total_size_bytes: number;
+  oldest_file_date: string | null;
 }
 
 export const CacheSettings: React.FC = () => {
@@ -31,9 +30,8 @@ export const CacheSettings: React.FC = () => {
   });
   const [stats, setStats] = useState<CacheStats>({
     total_files: 0,
-    total_size_mb: 0,
-    oldest_file_date: '',
-    expired_files: 0,
+    total_size_bytes: 0,
+    oldest_file_date: null,
   });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -110,7 +108,7 @@ export const CacheSettings: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch(buildApiUrl('/api/cache/clear'), { method: 'POST' });
+      const response = await fetch(buildApiUrl('/api/cache/clear'), { method: 'DELETE' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSuccess('キャッシュをクリアしました');
       await loadStats();
@@ -168,7 +166,7 @@ export const CacheSettings: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                 {stats.total_files}
@@ -177,15 +175,9 @@ export const CacheSettings: React.FC = () => {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {stats.total_size_mb.toFixed(1)} MB
+                {(stats.total_size_bytes / 1024 / 1024).toFixed(1)} MB
               </div>
               <div className="text-sm text-gray-500">使用容量</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                {stats.expired_files}
-              </div>
-              <div className="text-sm text-gray-500">期限切れ</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-gray-600 dark:text-gray-400">

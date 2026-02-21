@@ -131,6 +131,43 @@ export const useSettings = () => {
   return context;
 };
 
+function coerceOverlayValue(val: unknown): unknown {
+  if (val === 'true') return true;
+  if (val === 'false') return false;
+  if (typeof val === 'string' && val !== '' && !Number.isNaN(Number(val))) {
+    return Number(val);
+  }
+  return val;
+}
+
+function applyClockDetailKeyAliases(target: Record<string, unknown>): void {
+  const aliasPairs: Array<[string, string]> = [
+    ['location_enabled', 'overlay_location_enabled'],
+    ['date_enabled', 'overlay_date_enabled'],
+    ['time_enabled', 'overlay_time_enabled'],
+  ];
+
+  for (const [newKey, legacyKey] of aliasPairs) {
+    const newValue = target[newKey];
+    const legacyValue = target[legacyKey];
+    if (newValue === undefined && legacyValue !== undefined) {
+      target[newKey] = legacyValue;
+    }
+    if (legacyValue === undefined && newValue !== undefined) {
+      target[legacyKey] = newValue;
+    }
+  }
+}
+
+function normalizeOverlayData(data: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(data)) {
+    result[key] = coerceOverlayValue(val);
+  }
+  applyClockDetailKeyAliases(result);
+  return result;
+}
+
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<OverlaySettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -141,9 +178,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const response = await fetch(buildApiUrl('/api/settings/overlay'));
       if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
-        console.log('📥 Settings fetched:', data);
+        const data = (await response.json()) as Record<string, unknown>;
+        const normalizedData = normalizeOverlayData(data) as unknown as OverlaySettings;
+        setSettings(normalizedData);
+        console.log('📥 Settings fetched:', normalizedData);
       } else {
         setError('Failed to load settings');
       }
@@ -168,8 +206,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // 設定更新メッセージを処理
     const unsubSettings = wsClient.on('settings', (data) => {
-      console.log('📡 Settings updated via WebSocket, refetching all settings...');
-      // 部分更新ではなく、全設定を再取得して最新の状態を反映
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const normalizedData = normalizeOverlayData(data as Record<string, unknown>) as unknown as OverlaySettings;
+        setSettings(normalizedData);
+        console.log('📡 Settings updated via WebSocket:', normalizedData);
+        return;
+      }
+
+      console.log('📡 Settings updated via WebSocket, but payload was invalid. Refetching settings...');
       fetchSettings();
     });
 
