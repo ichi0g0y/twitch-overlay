@@ -5,6 +5,7 @@ use axum::extract::State;
 use serde_json::{Value, json};
 
 use crate::app::SharedState;
+use crate::events;
 use overlay_db::music::PlaybackState;
 
 use super::err_json;
@@ -46,6 +47,7 @@ pub async fn update_music_status(
     // Broadcast to WebSocket clients
     let msg = json!({ "type": "music_status", "data": body });
     let _ = state.ws_sender().send(msg.to_string());
+    state.emit_event(events::MUSIC_STATUS_UPDATE, body);
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -71,5 +73,6 @@ pub async fn music_control(
         "data": body_val,
     });
     let _ = state.ws_sender().send(msg.to_string());
+    state.emit_event(events::MUSIC_CONTROL_COMMAND, msg.clone());
     Ok(Json(json!({ "status": "ok", "action": action })))
 }

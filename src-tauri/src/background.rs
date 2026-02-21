@@ -38,9 +38,9 @@ pub async fn printer_keepalive_loop(state: SharedState) {
         tracing::debug!("Printer KeepAlive: reconnecting to {address}");
         if let Err(e) = printer::reconnect_bluetooth(&address).await {
             tracing::warn!("Printer KeepAlive failed: {e}");
-            printer::mark_error(e).await;
+            printer::mark_error(&state, e).await;
         } else {
-            printer::mark_connected("bluetooth", &address).await;
+            printer::mark_connected(&state, "bluetooth", &address).await;
             tracing::debug!("Printer KeepAlive: reconnected successfully");
         }
     }
