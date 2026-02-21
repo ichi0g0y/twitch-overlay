@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
-import { ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
+import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 import { Switch } from './ui/switch';
 
 type SidebarSide = 'left' | 'right';
@@ -26,12 +26,57 @@ const RESIZE_MIN_WIDTH = 220;
 const RESIZE_MAX_WIDTH = 520;
 const FONT_MIN_SIZE = 12;
 const FONT_MAX_SIZE = 40;
+const EMOTE_CDN_BASE = 'https://static-cdn.jtvnw.net/emoticons/v2';
 
 const formatTime = (timestamp?: string) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+};
+
+const emoteUrlFromId = (id: string) => `${EMOTE_CDN_BASE}/${id}/static/light/2.0`;
+
+const normalizeFragments = (raw: any): ChatFragment[] | undefined => {
+  let source = raw;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!Array.isArray(source)) return undefined;
+
+  const fragments: ChatFragment[] = [];
+  for (const item of source) {
+    if (!item || typeof item !== 'object') continue;
+
+    const type = item.type === 'emote' ? 'emote' : 'text';
+    const text = typeof item.text === 'string' ? item.text : '';
+    if (type === 'emote') {
+      const emoteIdRaw = item.emoteId ?? item.emote_id ?? item?.emote?.id;
+      const emoteId = typeof emoteIdRaw === 'string' ? emoteIdRaw : undefined;
+      const emoteUrlRaw = item.emoteUrl ?? item.emote_url;
+      const emoteUrl = typeof emoteUrlRaw === 'string'
+        ? emoteUrlRaw
+        : emoteId
+          ? emoteUrlFromId(emoteId)
+          : undefined;
+
+      fragments.push({
+        type: 'emote',
+        text,
+        emoteId,
+        emoteUrl,
+      });
+      continue;
+    }
+
+    fragments.push({ type: 'text', text });
+  }
+
+  return fragments.length > 0 ? fragments : undefined;
 };
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -170,7 +215,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             userId: item.userId ?? item.user_id,
             username: item.username,
             message: item.message,
-            fragments: item.fragments,
+            fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
             avatarUrl: item.avatarUrl ?? item.avatar_url,
             translation: item.translation ?? item.translation_text,
             translationStatus: item.translationStatus ?? item.translation_status,
@@ -216,7 +261,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             userId: data.userId,
             username: data.username,
             message: data.message,
-            fragments: data.fragments,
+            fragments: normalizeFragments(data.fragments ?? data.fragments_json ?? data.fragmentsJson),
             avatarUrl: data.avatarUrl,
             translation: data.translation,
             translationStatus: data.translationStatus,

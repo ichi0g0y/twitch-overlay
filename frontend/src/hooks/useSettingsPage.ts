@@ -640,14 +640,20 @@ export const useSettingsPage = () => {
     try {
       setIsControlDisabled(true);
       const url = buildApiUrl(`/api/music/control/${command}`);
+      const payload = data ?? {};
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: data ? JSON.stringify(data) : undefined
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`Control command failed: ${response.status}`);
+        const detail = await response.text().catch(() => '');
+        throw new Error(
+          detail
+            ? `Control command failed: ${response.status} (${detail})`
+            : `Control command failed: ${response.status}`,
+        );
       }
     } catch (error) {
       console.error('Music control error:', error);

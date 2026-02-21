@@ -1,7 +1,7 @@
 //! Music track management service.
 
 use std::io::Cursor;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lofty::file::TaggedFile;
 use lofty::prelude::*;
@@ -150,7 +150,42 @@ impl MusicService {
 
     pub fn get_track_path(&self, id: &str) -> Result<PathBuf, MusicError> {
         let track = self.get_track(id)?;
-        Ok(PathBuf::from(&track.file_path))
+        let raw = track.file_path.trim();
+
+        // Current format: absolute path to hashed file.
+        let direct = PathBuf::from(raw);
+        if direct.is_file() {
+            return Ok(direct);
+        }
+
+        // Legacy format: filename-only path.
+        if !raw.is_empty() {
+            let under_tracks = self.tracks_dir().join(raw);
+            if under_tracks.is_file() {
+                return Ok(under_tracks);
+            }
+
+            // Legacy DB can store original filename while the real file is saved as <id>.<ext>.
+            if let Some(ext) = Path::new(raw).extension().and_then(|e| e.to_str()) {
+                let by_id_with_ext = self.tracks_dir().join(format!("{id}.{ext}"));
+                if by_id_with_ext.is_file() {
+                    return Ok(by_id_with_ext);
+                }
+            }
+        }
+
+        // Final fallback: scan known extensions by track id.
+        for ext in VALID_EXTENSIONS {
+            let candidate = self.tracks_dir().join(format!("{id}.{ext}"));
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+
+        Err(MusicError::NotFound(format!(
+            "{id} (file path: {})",
+            track.file_path
+        )))
     }
 
     pub fn get_artwork_path(&self, id: &str) -> Option<PathBuf> {
