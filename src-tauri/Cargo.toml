@@ -1,5 +1,6 @@
 [package]
 name = "cairo-overlay"
+default-run = "cairo-overlay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

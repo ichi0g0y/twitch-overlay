@@ -1,11 +1,27 @@
 version: "3"
 
 tasks:
-  # 開発モード（既定: Tauriデバッグ）
+  # 開発モード（ホットリロード付き）
   dev:
-    desc: Tauriデスクトップアプリとして起動（既定）
+    desc: ホットリロード付き開発モード
     cmds:
-      - task: dev:tauri
+      - |
+        if [ -z "$SERVER_PORT" ]; then
+          DB_PORT=$(sqlite3 "$HOME/.twitch-overlay/local.db" \
+            "SELECT value FROM settings WHERE key='SERVER_PORT'" 2>/dev/null)
+          export SERVER_PORT="${DB_PORT:-8080}"
+        fi
+        echo "📦 web/dist を準備中..."
+        (cd web && bun run build)
+        echo "🔥 Overlay開発サーバーを起動中... (port 5174)"
+        (cd web && bun run dev) &
+        WEB_PID=$!
+        trap "kill $WEB_PID 2>/dev/null" EXIT
+        echo "🚀 cargo tauri dev を起動中..."
+        echo "   Backend:       http://localhost:$SERVER_PORT"
+        echo "   Dashboard HMR: http://localhost:5173"
+        echo "   Overlay HMR:   http://localhost:5174"
+        cargo tauri dev
 
   dev:quick:
     desc: クイック開発モード（フロントエンドは事前ビルド前提）

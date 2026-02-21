@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.cairo.overlay",
   "build": {
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../frontend && bun run dev",
     "frontendDist": "../frontend/dist",
     "beforeBuildCommand": "cd ../web && bun run build && cd ../frontend && bun run build"
   },
