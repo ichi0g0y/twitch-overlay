@@ -1,7 +1,5 @@
-// Tauri commands will be added in subsequent phases.
-// Each module corresponds to a domain:
-// - printer.rs (Phase 5)
-// - settings.rs (Phase 2)
-// - twitch.rs (Phase 4)
-// - music.rs (Phase 6)
-// - window.rs (Phase 7)
+// Tauri commands module.
+//
+// Most functionality is provided via the axum REST API + WebSocket
+// (see server/router.rs). Tauri-specific commands (get_server_port,
+// get_version) are defined directly in lib.rs.

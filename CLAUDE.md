@@ -79,9 +79,9 @@ task dev  # Tauriアプリとして起動して確認
 # プロジェクトガイドライン
 
 ## プロジェクトの経緯と参照情報
-- このプロジェクトは元々Go + Wails構成で、現在はTauri 2（Rust）に移行済み
+- このプロジェクトは元々Go + Wails構成だったが、Tauri 2（Rust）への移行が完了済み
 - バックエンドはRust（`src-tauri/` + `crates/`）で実装されている
-- Go/Wailsのレガシーコード（`internal/`、`main.go`等）はまだリポジトリに残存しているが、実行には使用されない
+- Go/Wailsのレガシーコードは全て削除済み
 - 元プロジェクトのディレクトリ: `/Users/toka/Abyss/twitch-overlay/`
 
 ## テスト実行時の注意事項
@@ -102,8 +102,8 @@ task dev  # Tauriアプリとして起動して確認
 ## プリンター接続管理
 
 ### KeepAlive機能の仕様
-- go-catprinterモジュールには組み込みのKeepAlive機能が存在しない
-- 長時間接続を維持するため、定期的にDisconnect→Reconnectを実行する必要がある
+- catprinterクレート（Rust）にKeepAlive機能を実装済み
+- 長時間接続を維持するため、定期的にDisconnect→Reconnectを実行する
 - この処理により、Bluetooth接続の安定性を保つ
 
 ### KeepAlive実装の階層的アプローチ
@@ -142,7 +142,7 @@ task dev  # Tauriアプリとして起動して確認
 ## Bluetooth権限設定（Linux環境）
 
 ### 権限が必要な理由
-- go-catprinterはBluetoothデバイスにアクセスするためHCIソケットを使用
+- catprinterクレートはBluetoothデバイスにアクセスするためHCIソケットを使用
 - 通常のユーザー権限ではHCIソケットにアクセスできない
 - `cap_net_raw`と`cap_net_admin`のケーパビリティが必要
 
@@ -219,58 +219,6 @@ rsync -avz --exclude='.git' --exclude='dist' --exclude='node_modules' --exclude=
 3. **期待される動作**:
    - 一時停止→再生：問題なし（従来通り）
    - 停止→再生：MediaElementSourceNodeエラー無し、Visualizer表示正常
-
-## Goテストガイドライン
-
-### テストフレームワーク
-- Go標準ライブラリの `testing` パッケージを使用する
-- 外部のテストフレームワークは明示的に要求されない限り使用しない
-
-### ファイル構成
-- テストファイルは必ず `_test.go` で終わる
-- テストファイルはテスト対象のコードと同じパッケージ/ディレクトリに配置する
-- 命名規則: `filename.go` → `filename_test.go`
-
-### テスト関数の命名
-- テスト関数名は `Test` で始まり、その後に関数名/メソッド名を続ける
-- わかりやすい名前を使用: `TestFunctionName` または `TestTypeName_MethodName`
-- サブテストには `t.Run()` を使用し、わかりやすい名前を付ける
-
-### テストの構成
-```go
-// 基本的なテスト構造
-func TestFunctionName(t *testing.T) {
-    // 準備 (Arrange)
-    // 実行 (Act)
-    // 検証 (Assert)
-}
-
-// テーブル駆動テスト
-func TestFunctionName(t *testing.T) {
-    tests := []struct {
-        name     string
-        input    type
-        expected type
-    }{
-        // テストケース
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // テストロジック
-        })
-    }
-}
-```
-
-### ベストプラクティス
-- 複数のテストケースにはテーブル駆動テストを使用
-- テストは独立して実行できるようにする
-- テストヘルパー関数には `t.Helper()` を使用
-- テストフィクスチャは `testdata/` ディレクトリに配置
-- 外部依存関係は必要に応じてモックする
-- 並行実行可能なテストには `t.Parallel()` を使用
-- AAA パターン（準備・実行・検証）に従う
 
 ### ソースファイルサイズ制限
 
