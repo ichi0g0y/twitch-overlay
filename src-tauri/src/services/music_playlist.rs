@@ -1,7 +1,7 @@
 //! Playlist management service.
 
 use overlay_db::Database;
-use overlay_db::music::{Playlist, PlaylistTrack};
+use overlay_db::music::{Playlist, PlaylistTrack, Track};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +95,10 @@ impl PlaylistService {
 
     pub fn get_tracks(&self, playlist_id: &str) -> Result<Vec<PlaylistTrack>, PlaylistError> {
         Ok(self.db.get_playlist_tracks(playlist_id)?)
+    }
+
+    pub fn get_tracks_full(&self, playlist_id: &str) -> Result<Vec<Track>, PlaylistError> {
+        Ok(self.db.get_playlist_tracks_full(playlist_id)?)
     }
 
     /// Reorder a track within a playlist.

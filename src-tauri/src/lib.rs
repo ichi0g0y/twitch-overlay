@@ -79,6 +79,7 @@ pub fn init_foundation() -> Result<(Database, AppConfig, PathBuf), anyhow::Error
     if let Err(e) = sm.migrate_from_env() {
         tracing::error!("Failed to migrate from env: {e}");
     }
+    migrate_legacy_overlay_settings(&sm);
     sm.initialize_defaults()?;
     migrate_legacy_settings(&sm);
 
@@ -96,6 +97,42 @@ pub fn init_foundation() -> Result<(Database, AppConfig, PathBuf), anyhow::Error
 
     tracing::info!("Settings loaded (port={})", config.server_port);
     Ok((db, config, dir))
+}
+
+/// Migrate overlay clock detail flags from legacy OVERLAY_* keys.
+fn migrate_legacy_overlay_settings(sm: &SettingsManager) {
+    let key_pairs = [
+        ("OVERLAY_LOCATION_ENABLED", "LOCATION_ENABLED"),
+        ("OVERLAY_DATE_ENABLED", "DATE_ENABLED"),
+        ("OVERLAY_TIME_ENABLED", "TIME_ENABLED"),
+    ];
+
+    for (legacy_key, new_key) in key_pairs {
+        let has_new = match sm.db().get_setting(new_key) {
+            Ok(v) => v.is_some(),
+            Err(e) => {
+                tracing::warn!("Failed to read setting {new_key}: {e}");
+                continue;
+            }
+        };
+        if has_new {
+            continue;
+        }
+
+        let legacy_value = match sm.db().get_setting(legacy_key) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Failed to read legacy setting {legacy_key}: {e}");
+                continue;
+            }
+        };
+        if let Some(value) = legacy_value {
+            tracing::info!("Migrating {legacy_key} -> {new_key}");
+            if let Err(e) = sm.set_setting(new_key, &value) {
+                tracing::warn!("Failed to migrate {legacy_key} -> {new_key}: {e}");
+            }
+        }
+    }
 }
 
 /// Migrate legacy translation settings (ISO 639-3 → Chrome codes).

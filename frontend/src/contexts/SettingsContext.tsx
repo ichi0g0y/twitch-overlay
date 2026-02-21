@@ -16,9 +16,9 @@ export interface OverlaySettings {
   clock_enabled?: boolean;
   clock_format?: string;
   clock_show_icons?: boolean;
-  overlay_location_enabled?: boolean;
-  overlay_date_enabled?: boolean;
-  overlay_time_enabled?: boolean;
+  location_enabled?: boolean;
+  date_enabled?: boolean;
+  time_enabled?: boolean;
 
   // リワードカウント表示設定
   reward_count_enabled?: boolean;
@@ -140,11 +140,31 @@ function coerceOverlayValue(val: unknown): unknown {
   return val;
 }
 
+function applyClockDetailKeyAliases(target: Record<string, unknown>): void {
+  const aliasPairs: Array<[string, string]> = [
+    ['location_enabled', 'overlay_location_enabled'],
+    ['date_enabled', 'overlay_date_enabled'],
+    ['time_enabled', 'overlay_time_enabled'],
+  ];
+
+  for (const [newKey, legacyKey] of aliasPairs) {
+    const newValue = target[newKey];
+    const legacyValue = target[legacyKey];
+    if (newValue === undefined && legacyValue !== undefined) {
+      target[newKey] = legacyValue;
+    }
+    if (legacyValue === undefined && newValue !== undefined) {
+      target[legacyKey] = newValue;
+    }
+  }
+}
+
 function normalizeOverlayData(data: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(data)) {
     result[key] = coerceOverlayValue(val);
   }
+  applyClockDetailKeyAliases(result);
   return result;
 }
 

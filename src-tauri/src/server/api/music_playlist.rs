@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::app::SharedState;
+use crate::services::music::MusicService;
 use crate::services::music_playlist::PlaylistService;
 
 use super::err_json;
@@ -51,13 +52,27 @@ pub async fn get_playlist_tracks(
     Path(id): Path<String>,
 ) -> ApiResult {
     let svc = PlaylistService::new(state.db().clone());
+    let music_svc = MusicService::new(state.db().clone(), state.data_dir().clone());
     let playlist = svc
         .get_playlist(&id)
         .map_err(|e| err_json(404, &e.to_string()))?;
     let tracks = svc
-        .get_tracks(&id)
+        .get_tracks_full(&id)
         .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "playlist": playlist, "tracks": tracks })))
+    let tracks_with_artwork: Vec<Value> = tracks
+        .into_iter()
+        .map(|track| {
+            let has_artwork = music_svc.get_artwork_path(&track.id).is_some();
+            let mut value = serde_json::to_value(track).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("has_artwork".to_string(), json!(has_artwork));
+            }
+            value
+        })
+        .collect();
+    Ok(Json(
+        json!({ "playlist": playlist, "tracks": tracks_with_artwork }),
+    ))
 }
 
 /// PUT /api/music/playlist/:id
