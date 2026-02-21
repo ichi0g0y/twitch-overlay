@@ -49,6 +49,7 @@ const OVERLAY_KEYS: &[&str] = &[
     "MIC_TRANSCRIPT_SPEECH_DUAL_INSTANCE_ENABLED",
     "MIC_TRANSCRIPT_SPEECH_RESTART_DELAY_MS",
     "MIC_TRANSCRIPT_BOUYOMI_ENABLED",
+    "MIC_TRANSCRIPT_BOUYOMI_URL",
     "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED",
     "MIC_TRANSCRIPT_TRANSLATION_ENABLED",
     "MIC_TRANSCRIPT_TRANSLATION_MODE",
@@ -169,10 +170,28 @@ fn build_overlay_json(state: &SharedState) -> Result<Value, (axum::http::StatusC
         let val = sm.get_setting(key).unwrap_or_default();
         // Use snake_case keys for JSON
         let json_key = key.to_lowercase();
-        map.insert(json_key, Value::String(val));
+        map.insert(json_key, smart_json_value(&val));
     }
 
     Ok(Value::Object(map))
+}
+
+fn smart_json_value(val: &str) -> Value {
+    match val {
+        "true" => Value::Bool(true),
+        "false" => Value::Bool(false),
+        _ => {
+            if let Ok(n) = val.parse::<i64>() {
+                return Value::Number(n.into());
+            }
+            if let Ok(f) = val.parse::<f64>() {
+                if let Some(n) = serde_json::Number::from_f64(f) {
+                    return Value::Number(n);
+                }
+            }
+            Value::String(val.to_string())
+        }
+    }
 }
 
 /// Broadcast overlay settings to all WebSocket clients.
@@ -186,4 +205,51 @@ fn broadcast_overlay_settings(
     });
     let _ = state.ws_sender().send(msg.to_string());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::smart_json_value;
+    use serde_json::Value;
+
+    #[test]
+    fn smart_json_value_converts_bool_true() {
+        assert_eq!(smart_json_value("true"), Value::Bool(true));
+    }
+
+    #[test]
+    fn smart_json_value_converts_bool_false() {
+        assert_eq!(smart_json_value("false"), Value::Bool(false));
+    }
+
+    #[test]
+    fn smart_json_value_converts_int() {
+        assert_eq!(smart_json_value("42"), Value::Number(42.into()));
+    }
+
+    #[test]
+    fn smart_json_value_converts_float() {
+        assert_eq!(smart_json_value("3.14"), serde_json::json!(3.14));
+    }
+
+    #[test]
+    fn smart_json_value_keeps_plain_string() {
+        assert_eq!(
+            smart_json_value("hello"),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn smart_json_value_keeps_empty_string() {
+        assert_eq!(smart_json_value(""), Value::String(String::new()));
+    }
+
+    #[test]
+    fn smart_json_value_keeps_json_like_string() {
+        assert_eq!(
+            smart_json_value("{\"a\":1}"),
+            Value::String("{\"a\":1}".to_string())
+        );
+    }
 }

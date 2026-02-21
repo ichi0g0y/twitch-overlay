@@ -1299,9 +1299,9 @@ export const OverlaySettings: React.FC = () => {
               </Label>
               <Switch
                 id="location-enabled"
-                checked={overlaySettings?.location_enabled ?? true}
+                checked={overlaySettings?.overlay_location_enabled ?? true}
                 onCheckedChange={(checked) =>
-                  updateOverlaySettings({ location_enabled: checked })
+                  updateOverlaySettings({ overlay_location_enabled: checked })
                 }
               />
             </div>
@@ -1315,9 +1315,9 @@ export const OverlaySettings: React.FC = () => {
               </Label>
               <Switch
                 id="date-enabled"
-                checked={overlaySettings?.date_enabled ?? true}
+                checked={overlaySettings?.overlay_date_enabled ?? true}
                 onCheckedChange={(checked) =>
-                  updateOverlaySettings({ date_enabled: checked })
+                  updateOverlaySettings({ overlay_date_enabled: checked })
                 }
               />
             </div>
@@ -1331,9 +1331,9 @@ export const OverlaySettings: React.FC = () => {
               </Label>
               <Switch
                 id="time-enabled"
-                checked={overlaySettings?.time_enabled ?? true}
+                checked={overlaySettings?.overlay_time_enabled ?? true}
                 onCheckedChange={(checked) =>
-                  updateOverlaySettings({ time_enabled: checked })
+                  updateOverlaySettings({ overlay_time_enabled: checked })
                 }
               />
             </div>

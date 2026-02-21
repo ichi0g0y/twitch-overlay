@@ -1,6 +1,7 @@
 use axum::{
-    Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, patch, post, put},
+    Router,
 };
 use tower_http::cors::CorsLayer;
 
@@ -9,7 +10,16 @@ use crate::app::SharedState;
 
 /// Create the axum router with all routes.
 pub fn create_router(state: SharedState) -> Router {
+    let upload_routes = Router::new()
+        .route(
+            "/api/settings/font",
+            post(api::font::upload_font).delete(api::font::delete_font),
+        )
+        .route("/api/music/upload", post(api::music::upload_track))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024));
+
     Router::new()
+        .merge(upload_routes)
         // --- Core ---
         .route("/status", get(status_handler))
         .route("/ws", get(websocket::ws_handler))
@@ -31,10 +41,6 @@ pub fn create_router(state: SharedState) -> Router {
         )
         .route("/api/settings/auth/status", get(api::twitch::auth_status))
         // --- Font ---
-        .route(
-            "/api/settings/font",
-            post(api::font::upload_font).delete(api::font::delete_font),
-        )
         .route("/api/settings/font/file", get(api::font::get_font_data))
         .route("/api/settings/font/preview", post(api::font::preview_font))
         .route("/api/font/data", get(api::font::get_font_data))
@@ -45,7 +51,6 @@ pub fn create_router(state: SharedState) -> Router {
         )
         .route("/api/overlay/refresh", post(api::overlay::refresh_overlay))
         // --- Music tracks ---
-        .route("/api/music/upload", post(api::music::upload_track))
         .route("/api/music/tracks", get(api::music::get_tracks))
         .route(
             "/api/music/track/all",

@@ -3,8 +3,9 @@ import { defineConfig } from 'vite';
 import path from 'path';
 
 // 環境変数からポートを取得
-const BACKEND_PORT = process.env.VITE_BACKEND_PORT || '8080';
+const BACKEND_PORT = process.env.VITE_BACKEND_PORT || process.env.SERVER_PORT || '8080';
 const FRONTEND_PORT = process.env.VITE_FRONTEND_PORT ? parseInt(process.env.VITE_FRONTEND_PORT) : 5174;
+console.log(`[vite] API proxy target: http://localhost:${BACKEND_PORT}`);
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({

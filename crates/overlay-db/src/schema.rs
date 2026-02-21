@@ -6,7 +6,49 @@ use crate::DbError;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), DbError> {
     conn.execute_batch(SCHEMA)?;
+    migrate_legacy_tables(conn)?;
     Ok(())
+}
+
+/// Go版からの既存テーブルをRust版スキーマに合わせるマイグレーション
+fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
+    migrate_tracks_table(conn)?;
+    migrate_playlist_tracks_table(conn)?;
+    Ok(())
+}
+
+/// tracks テーブル: Go版(filename, has_artwork, created_at) → Rust版(file_path, added_at)
+fn migrate_tracks_table(conn: &Connection) -> Result<(), DbError> {
+    if !column_exists(conn, "tracks", "filename")? {
+        return Ok(());
+    }
+    tracing::info!("Migrating tracks table from legacy schema");
+    conn.execute_batch(
+        "ALTER TABLE tracks RENAME COLUMN filename TO file_path;
+         ALTER TABLE tracks RENAME COLUMN created_at TO added_at;",
+    )?;
+    if column_exists(conn, "tracks", "has_artwork")? {
+        conn.execute_batch("ALTER TABLE tracks DROP COLUMN has_artwork;")?;
+    }
+    Ok(())
+}
+
+/// playlist_tracks テーブル: added_at カラムが無ければ追加
+fn migrate_playlist_tracks_table(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "playlist_tracks", "added_at")? {
+        return Ok(());
+    }
+    tracing::info!("Adding added_at column to playlist_tracks");
+    conn.execute_batch("ALTER TABLE playlist_tracks ADD COLUMN added_at TIMESTAMP;")?;
+    Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, DbError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .any(|name| name.as_deref() == Ok(column));
+    Ok(exists)
 }
 
 const SCHEMA: &str = r#"

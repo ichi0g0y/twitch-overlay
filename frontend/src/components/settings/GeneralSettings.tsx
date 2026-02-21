@@ -196,54 +196,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 </AlertDescription>
               </Alert>
 
-              <div className="space-y-2">
-                <Label htmlFor="notification_display_duration">通知表示時間（秒）</Label>
-                <div className="flex items-center space-x-2">
-                  <Input
-                    id="notification_display_duration"
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={getSettingValue('NOTIFICATION_DISPLAY_DURATION')}
-                    onChange={(e) => handleSettingChange('NOTIFICATION_DISPLAY_DURATION', e.target.value)}
-                    className="w-24"
-                  />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    通知を表示する秒数（1〜60秒）
-                  </p>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  複数の通知がある場合は、キューに入れて順番に表示されます
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notification_font_size">文字サイズ</Label>
-                <div className="flex items-center space-x-2">
-                  <Select
-                    value={getSettingValue('NOTIFICATION_FONT_SIZE') || '14'}
-                    onValueChange={(value) => handleSettingChange('NOTIFICATION_FONT_SIZE', value)}
-                  >
-                    <SelectTrigger className="w-32">
-                      <SelectValue placeholder="サイズを選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10px（小）</SelectItem>
-                      <SelectItem value="12">12px</SelectItem>
-                      <SelectItem value="14">14px（標準）</SelectItem>
-                      <SelectItem value="16">16px</SelectItem>
-                      <SelectItem value="18">18px（大）</SelectItem>
-                      <SelectItem value="20">20px</SelectItem>
-                      <SelectItem value="22">22px</SelectItem>
-                      <SelectItem value="24">24px（特大）</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    通知ウインドウの文字サイズ（エモートも連動）
-                  </p>
-                </div>
-              </div>
-
               <div>
                 <Button
                   onClick={handleTestNotification}

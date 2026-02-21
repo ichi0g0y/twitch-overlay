@@ -53,6 +53,27 @@ pub struct TwitchUser {
     pub profile_image_url: String,
 }
 
+/// Nested setting for max redemptions per stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaxPerStreamSetting {
+    pub is_enabled: bool,
+    pub max_per_stream: u64,
+}
+
+/// Nested setting for max redemptions per user per stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaxPerUserPerStreamSetting {
+    pub is_enabled: bool,
+    pub max_per_user_per_stream: u64,
+}
+
+/// Nested setting for global cooldown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalCooldownSetting {
+    pub is_enabled: bool,
+    pub global_cooldown_seconds: u64,
+}
+
 /// Custom channel point reward.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomReward {
@@ -64,6 +85,16 @@ pub struct CustomReward {
     pub is_in_stock: bool,
     pub prompt: Option<String>,
     pub background_color: Option<String>,
+    #[serde(default)]
+    pub is_user_input_required: bool,
+    #[serde(default)]
+    pub max_per_stream_setting: Option<MaxPerStreamSetting>,
+    #[serde(default)]
+    pub max_per_user_per_stream_setting: Option<MaxPerUserPerStreamSetting>,
+    #[serde(default)]
+    pub global_cooldown_setting: Option<GlobalCooldownSetting>,
+    #[serde(default)]
+    pub redemptions_redeemed_current_stream: Option<u64>,
 }
 
 /// Request body for creating a custom reward.

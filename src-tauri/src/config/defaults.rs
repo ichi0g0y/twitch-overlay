@@ -179,6 +179,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         "Screen index where window is located",
     ),
+    (
+        "WINDOW_STATE_JSON",
+        "",
+        false,
+        false,
+        "Window state as JSON",
+    ),
     // --- Music ---
     (
         "MUSIC_ENABLED",
@@ -401,6 +408,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         false,
         "Enable BouyomiChan",
+    ),
+    (
+        "MIC_TRANSCRIPT_BOUYOMI_URL",
+        "http://localhost:50080",
+        false,
+        false,
+        "BouyomiChan HTTP API URL",
     ),
     (
         "MIC_TRANSCRIPT_ANTI_SEXUAL_ENABLED",

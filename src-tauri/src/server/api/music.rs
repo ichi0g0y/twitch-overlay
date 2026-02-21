@@ -1,10 +1,10 @@
 //! Music track management API.
 
-use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, State};
-use axum::http::{StatusCode, header};
-use serde_json::{Value, json};
+use axum::http::{header, StatusCode};
+use axum::Json;
+use serde_json::{json, Value};
 
 use crate::app::SharedState;
 use crate::services::music::MusicService;
@@ -68,7 +68,21 @@ pub async fn get_tracks(
     let tracks = svc
         .get_all_tracks()
         .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "tracks": tracks, "count": tracks.len() })))
+    let tracks_with_artwork: Vec<Value> = tracks
+        .into_iter()
+        .map(|track| {
+            let has_artwork = svc.get_artwork_path(&track.id).is_some();
+            let mut value = serde_json::to_value(track).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("has_artwork".to_string(), json!(has_artwork));
+            }
+            value
+        })
+        .collect();
+    Ok(Json(json!({
+        "tracks": tracks_with_artwork,
+        "count": tracks_with_artwork.len()
+    })))
 }
 
 /// GET /api/music/track/:id
