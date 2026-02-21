@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 use twitch_client::Token;
 use twitch_client::api::TwitchApiClient;
 use twitch_client::auth::TwitchAuth;
@@ -12,10 +13,22 @@ use crate::app::SharedState;
 use crate::events;
 use crate::services::printer;
 
+async fn sleep_or_cancel(token: &CancellationToken, duration: Duration) -> bool {
+    tokio::select! {
+        _ = token.cancelled() => true,
+        _ = sleep(duration) => false,
+    }
+}
+
 /// Periodic BLE printer KeepAlive reconnection.
 pub async fn printer_keepalive_loop(state: SharedState) {
+    let shutdown_token = state.shutdown_token().clone();
+
     // Wait for initial startup
-    sleep(Duration::from_secs(30)).await;
+    if sleep_or_cancel(&shutdown_token, Duration::from_secs(30)).await {
+        tracing::info!("Printer KeepAlive loop stopped (shutdown)");
+        return;
+    }
 
     loop {
         let (enabled, interval, printer_type, address) = {
@@ -29,11 +42,17 @@ pub async fn printer_keepalive_loop(state: SharedState) {
         };
 
         if !enabled || printer_type != "bluetooth" || address.is_empty() {
-            sleep(Duration::from_secs(60)).await;
+            if sleep_or_cancel(&shutdown_token, Duration::from_secs(60)).await {
+                tracing::info!("Printer KeepAlive loop stopped (shutdown)");
+                return;
+            }
             continue;
         }
 
-        sleep(Duration::from_secs(interval)).await;
+        if sleep_or_cancel(&shutdown_token, Duration::from_secs(interval)).await {
+            tracing::info!("Printer KeepAlive loop stopped (shutdown)");
+            return;
+        }
 
         tracing::debug!("Printer KeepAlive: reconnecting to {address}");
         if let Err(e) = printer::reconnect_bluetooth(&address).await {
@@ -51,14 +70,22 @@ pub async fn printer_keepalive_loop(state: SharedState) {
 /// This mirrors the legacy startup behavior where stream status is checked
 /// even before EventSub stream online/offline events arrive.
 pub async fn stream_status_sync_loop(state: SharedState) {
+    let shutdown_token = state.shutdown_token().clone();
+
     // Wait for initial startup
-    sleep(Duration::from_secs(5)).await;
+    if sleep_or_cancel(&shutdown_token, Duration::from_secs(5)).await {
+        tracing::info!("Stream status sync loop stopped (shutdown)");
+        return;
+    }
 
     loop {
         if let Err(e) = sync_stream_status_once(&state).await {
             tracing::debug!("Stream status sync skipped/failed: {e}");
         }
-        sleep(Duration::from_secs(60)).await;
+        if sleep_or_cancel(&shutdown_token, Duration::from_secs(60)).await {
+            tracing::info!("Stream status sync loop stopped (shutdown)");
+            return;
+        }
     }
 }
 
@@ -158,9 +185,13 @@ pub async fn token_refresh_loop(state: SharedState) {
     const CHECK_INTERVAL_SECS: u64 = 30 * 60;
     const INITIAL_BACKOFF_SECS: u64 = 30;
     const MAX_BACKOFF_SECS: u64 = 30 * 60;
+    let shutdown_token = state.shutdown_token().clone();
 
     // Wait for initial startup
-    sleep(Duration::from_secs(10)).await;
+    if sleep_or_cancel(&shutdown_token, Duration::from_secs(10)).await {
+        tracing::info!("Token refresh loop stopped (shutdown)");
+        return;
+    }
     let mut failure_backoff_secs = INITIAL_BACKOFF_SECS;
 
     loop {
@@ -168,7 +199,11 @@ pub async fn token_refresh_loop(state: SharedState) {
             Ok(Some(t)) => t,
             _ => {
                 failure_backoff_secs = INITIAL_BACKOFF_SECS;
-                sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+                if sleep_or_cancel(&shutdown_token, Duration::from_secs(CHECK_INTERVAL_SECS)).await
+                {
+                    tracing::info!("Token refresh loop stopped (shutdown)");
+                    return;
+                }
                 continue;
             }
         };
@@ -185,7 +220,11 @@ pub async fn token_refresh_loop(state: SharedState) {
             let config = state.config().await;
             if config.client_id.is_empty() || config.client_secret.is_empty() {
                 failure_backoff_secs = INITIAL_BACKOFF_SECS;
-                sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+                if sleep_or_cancel(&shutdown_token, Duration::from_secs(CHECK_INTERVAL_SECS)).await
+                {
+                    tracing::info!("Token refresh loop stopped (shutdown)");
+                    return;
+                }
                 continue;
             }
 
@@ -211,7 +250,15 @@ pub async fn token_refresh_loop(state: SharedState) {
                             retry_after_secs = failure_backoff_secs,
                             "Retrying token refresh with exponential backoff"
                         );
-                        sleep(Duration::from_secs(failure_backoff_secs)).await;
+                        if sleep_or_cancel(
+                            &shutdown_token,
+                            Duration::from_secs(failure_backoff_secs),
+                        )
+                        .await
+                        {
+                            tracing::info!("Token refresh loop stopped (shutdown)");
+                            return;
+                        }
                         failure_backoff_secs = (failure_backoff_secs * 2).min(MAX_BACKOFF_SECS);
                         continue;
                     } else {
@@ -227,7 +274,12 @@ pub async fn token_refresh_loop(state: SharedState) {
                         retry_after_secs = failure_backoff_secs,
                         "Retrying token refresh with exponential backoff"
                     );
-                    sleep(Duration::from_secs(failure_backoff_secs)).await;
+                    if sleep_or_cancel(&shutdown_token, Duration::from_secs(failure_backoff_secs))
+                        .await
+                    {
+                        tracing::info!("Token refresh loop stopped (shutdown)");
+                        return;
+                    }
                     failure_backoff_secs = (failure_backoff_secs * 2).min(MAX_BACKOFF_SECS);
                     continue;
                 }
@@ -235,6 +287,9 @@ pub async fn token_refresh_loop(state: SharedState) {
         }
 
         failure_backoff_secs = INITIAL_BACKOFF_SECS;
-        sleep(Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+        if sleep_or_cancel(&shutdown_token, Duration::from_secs(CHECK_INTERVAL_SECS)).await {
+            tracing::info!("Token refresh loop stopped (shutdown)");
+            return;
+        }
     }
 }

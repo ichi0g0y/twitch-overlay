@@ -71,6 +71,12 @@ pub async fn enqueue(job: PrintJob) -> Result<(), String> {
     Ok(())
 }
 
+/// Close the queue sender to stop the worker loop.
+pub async fn close() {
+    let mut slot = JOB_TX.write().await;
+    *slot = None;
+}
+
 /// Get the current queue status.
 pub async fn queue_status() -> (usize, u64) {
     let qs = QUEUE_STATE.read().await;

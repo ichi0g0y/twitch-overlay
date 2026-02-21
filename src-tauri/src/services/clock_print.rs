@@ -12,6 +12,7 @@ use chrono_tz::Tz;
 use image::{DynamicImage, ImageFormat};
 use image_engine::clock::BitsLeaderEntry;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 use crate::app::SharedState;
 use crate::services::clock_bits;
@@ -24,9 +25,25 @@ const CLOCK_LOOP_INTERVAL_SECS: u64 = 1;
 const MONO_THRESHOLD: u8 = 128;
 const MAX_BITS_LEADERS: u32 = 5;
 
+async fn sleep_or_cancel(token: &CancellationToken, duration: Duration) -> bool {
+    tokio::select! {
+        _ = token.cancelled() => true,
+        _ = sleep(duration) => false,
+    }
+}
+
 /// Periodically enqueue a clock print on each hour.
 pub async fn clock_routine_loop(state: SharedState) {
-    sleep(Duration::from_secs(CLOCK_LOOP_START_DELAY_SECS)).await;
+    let shutdown_token = state.shutdown_token().clone();
+    if sleep_or_cancel(
+        &shutdown_token,
+        Duration::from_secs(CLOCK_LOOP_START_DELAY_SECS),
+    )
+    .await
+    {
+        tracing::info!("Clock routine loop stopped (shutdown)");
+        return;
+    }
     let mut last_printed_minute: Option<String> = None;
 
     loop {
@@ -53,7 +70,15 @@ pub async fn clock_routine_loop(state: SharedState) {
             }
         }
 
-        sleep(Duration::from_secs(CLOCK_LOOP_INTERVAL_SECS)).await;
+        if sleep_or_cancel(
+            &shutdown_token,
+            Duration::from_secs(CLOCK_LOOP_INTERVAL_SECS),
+        )
+        .await
+        {
+            tracing::info!("Clock routine loop stopped (shutdown)");
+            return;
+        }
     }
 }
 
@@ -160,7 +185,9 @@ fn generate_clock_stats_color_image(
     let font_data = load_clock_font_data(state)?;
     let font = FontRef::try_from_slice(&font_data)
         .map_err(|_| "failed to parse clock font data (TTF/OTF)".to_string())?;
-    Ok(image_engine::clock::generate_time_image_with_stats_color(time_str, leaders, &font))
+    Ok(image_engine::clock::generate_time_image_with_stats_color(
+        time_str, leaders, &font,
+    ))
 }
 
 fn now_in_timezone(name: &str) -> chrono::DateTime<Tz> {

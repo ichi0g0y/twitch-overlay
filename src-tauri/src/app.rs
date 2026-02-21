@@ -4,7 +4,8 @@ use std::sync::{Arc, OnceLock};
 use overlay_db::Database;
 use serde::Serialize;
 use tauri::Emitter;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use crate::config::{AppConfig, SettingsManager};
 
@@ -29,6 +30,10 @@ struct SharedStateInner {
     stream_live: RwLock<Option<bool>>,
     /// OAuth state used to protect /callback from CSRF.
     oauth_state: RwLock<Option<String>>,
+    /// Global cancellation token used to stop background loops.
+    shutdown_token: CancellationToken,
+    /// EventSub shutdown sender for graceful disconnect.
+    eventsub_shutdown_tx: RwLock<Option<mpsc::Sender<()>>>,
 }
 
 impl SharedState {
@@ -45,6 +50,8 @@ impl SharedState {
                 app_handle: OnceLock::new(),
                 stream_live: RwLock::new(None),
                 oauth_state: RwLock::new(None),
+                shutdown_token: CancellationToken::new(),
+                eventsub_shutdown_tx: RwLock::new(None),
             }),
         }
     }
@@ -127,5 +134,22 @@ impl SharedState {
     pub async fn take_oauth_state(&self) -> Option<String> {
         let mut oauth_state = self.inner.oauth_state.write().await;
         oauth_state.take()
+    }
+
+    /// Global cancellation token for graceful shutdown.
+    pub fn shutdown_token(&self) -> &CancellationToken {
+        &self.inner.shutdown_token
+    }
+
+    /// Store EventSub shutdown sender for graceful shutdown.
+    pub async fn set_eventsub_shutdown(&self, tx: mpsc::Sender<()>) {
+        let mut slot = self.inner.eventsub_shutdown_tx.write().await;
+        *slot = Some(tx);
+    }
+
+    /// Take EventSub shutdown sender during graceful shutdown.
+    pub async fn take_eventsub_shutdown(&self) -> Option<mpsc::Sender<()>> {
+        let mut slot = self.inner.eventsub_shutdown_tx.write().await;
+        slot.take()
     }
 }

@@ -8,10 +8,18 @@ use std::time::Duration;
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 use twitch_client::eventsub::{EventSubClient, EventSubConfig, EventSubEvent};
 
 use crate::app::SharedState;
 use crate::events;
+
+async fn sleep_or_cancel(token: &CancellationToken, duration: Duration) -> bool {
+    tokio::select! {
+        _ = token.cancelled() => true,
+        _ = sleep(duration) => false,
+    }
+}
 
 /// Start the EventSub handler loop.
 ///
@@ -19,8 +27,13 @@ use crate::events;
 /// to EventSub and processes events. Reconnects automatically
 /// if the token changes or the connection drops.
 pub async fn run(state: SharedState) {
+    let shutdown_token = state.shutdown_token().clone();
+
     // Wait for startup to complete
-    sleep(Duration::from_secs(15)).await;
+    if sleep_or_cancel(&shutdown_token, Duration::from_secs(15)).await {
+        tracing::info!("EventSub loop stopped (shutdown)");
+        return;
+    }
 
     loop {
         // Wait for a valid token
@@ -31,7 +44,10 @@ pub async fn run(state: SharedState) {
             drop(config);
 
             if cid.is_empty() || bid.is_empty() {
-                sleep(Duration::from_secs(30)).await;
+                if sleep_or_cancel(&shutdown_token, Duration::from_secs(30)).await {
+                    tracing::info!("EventSub loop stopped (shutdown)");
+                    return;
+                }
                 continue;
             }
 
@@ -40,7 +56,10 @@ pub async fn run(state: SharedState) {
                     break (cid, t.access_token, bid);
                 }
                 _ => {
-                    sleep(Duration::from_secs(30)).await;
+                    if sleep_or_cancel(&shutdown_token, Duration::from_secs(30)).await {
+                        tracing::info!("EventSub loop stopped (shutdown)");
+                        return;
+                    }
                     continue;
                 }
             }
@@ -51,8 +70,9 @@ pub async fn run(state: SharedState) {
         let config = EventSubConfig::with_all_events(client_id, access_token, broadcaster_id);
 
         match EventSubClient::connect(config).await {
-            Ok((event_rx, _shutdown_tx)) => {
-                process_events(&state, event_rx).await;
+            Ok((event_rx, shutdown_tx)) => {
+                state.set_eventsub_shutdown(shutdown_tx).await;
+                process_events(&state, event_rx, &shutdown_token).await;
                 tracing::warn!("EventSub event stream ended, will reconnect");
             }
             Err(e) => {
@@ -60,13 +80,28 @@ pub async fn run(state: SharedState) {
             }
         }
 
-        sleep(Duration::from_secs(5)).await;
+        if sleep_or_cancel(&shutdown_token, Duration::from_secs(5)).await {
+            tracing::info!("EventSub loop stopped (shutdown)");
+            return;
+        }
     }
 }
 
 /// Process events from the EventSub channel until it closes.
-async fn process_events(state: &SharedState, mut events: mpsc::Receiver<EventSubEvent>) {
-    while let Some(event) = events.recv().await {
+async fn process_events(
+    state: &SharedState,
+    mut events: mpsc::Receiver<EventSubEvent>,
+    shutdown_token: &CancellationToken,
+) {
+    loop {
+        let event = tokio::select! {
+            _ = shutdown_token.cancelled() => return,
+            event = events.recv() => event,
+        };
+        let Some(event) = event else {
+            return;
+        };
+
         // Always broadcast to WS clients
         let payload = json!({
             "type": "eventsub_event",
