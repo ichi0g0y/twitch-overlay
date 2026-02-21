@@ -16,6 +16,7 @@ mod eventsub_support;
 mod notification;
 pub mod server;
 pub mod services;
+mod shutdown;
 mod window;
 
 use std::path::PathBuf;
@@ -203,12 +204,14 @@ pub fn run() {
     let (db, config, dir) = init_foundation().expect("Failed to initialize");
     let shared_state = app::SharedState::new(db, config, dir);
     let db_for_window = shared_state.db().clone();
+    let setup_state = shared_state.clone();
+    let shutdown_state = shared_state.clone();
 
-    tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(shared_state.clone())
         .setup(move |app| {
-            spawn_background_tasks(app, shared_state);
+            spawn_background_tasks(app, setup_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![get_server_port, get_version])
@@ -224,6 +227,17 @@ pub fn run() {
                 _ => {}
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    let mut shutdown_started = false;
+    app.run(move |_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            if shutdown_started {
+                return;
+            }
+            shutdown_started = true;
+            tauri::async_runtime::block_on(shutdown::graceful_shutdown(&shutdown_state));
+        }
+    });
 }

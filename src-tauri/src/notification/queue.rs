@@ -47,6 +47,12 @@ pub async fn enqueue(notification: ChatNotification) -> Result<(), String> {
     Ok(())
 }
 
+/// Close the queue sender to stop the worker loop.
+pub async fn close() {
+    let mut slot = NOTIF_TX.write().await;
+    *slot = None;
+}
+
 /// Worker loop — processes notifications based on display mode.
 async fn worker_loop(state: SharedState, mut rx: mpsc::Receiver<ChatNotification>) {
     while let Some(notif) = rx.recv().await {
