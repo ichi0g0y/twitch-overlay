@@ -28,20 +28,24 @@
 # プロジェクト構成
 
 ## ディレクトリ構成
-- **`web/`** - オーバーレイ用フロントエンド
+- **`src-tauri/`** - Tauriアプリ本体（Rust）
+  - Tauriの設定、コマンド定義、エントリーポイント
+
+- **`crates/`** - Rustワークスペースクレート
+  - `catprinter` - サーマルプリンター制御
+  - `image-processor` - 画像処理
+  - `overlay-db` - データベース管理
+  - `twitch-client` - Twitch連携
+  - `word-filter` - ワードフィルター
+
+- **`web/`** - OBSオーバーレイ用フロントエンド
   - ビルドして`dist/`に出力される
-  - Wailsの埋め込みアセットとして配信
+  - Tauriに組み込んで配信
   - `.env`のポート設定（3456）は**単体デバッグ用のみ**
-  - 通常はビルド後にWailsから配信される
+  - 通常はビルド後にTauriから配信される
 
-- **`frontend/`** - Wails Settings画面用フロントエンド
-  - Wailsアプリのメインフロントエンド（設定画面）
-  - `GetServerPort()`でGoから動的にバックエンドポートを取得
-  - APIアクセス時は必ず動的ポート取得を使用
-
-- **`internal/`** - Goバックエンド
-  - Webサーバー、API、プリンター制御など
-  - ポートは設定から動的に決定（デフォルト: 8080）
+- **`frontend/`** - Settings画面用フロントエンド（Dashboard）
+  - Tauriアプリのメインフロントエンド（設定画面）
 
 ## 開発フロー
 
@@ -49,7 +53,7 @@
 1. **変更時のビルドと確認**
    ```bash
    cd web && bun run build  # オーバーレイをビルド
-   task dev                 # Wailsで統合動作確認
+   task dev                 # Tauriで統合動作確認
    ```
 
 2. **単体デバッグ（特殊な場合のみ）**
@@ -60,33 +64,30 @@
 
 ### Settings画面の開発
 ```bash
-task dev  # Wailsアプリとして起動して確認
+task dev  # Tauriアプリとして起動して確認
 ```
 
 ## 重要な注意事項
 - **オーバーレイ（web/）は単体では正常動作しない**
-  - 必ずビルドしてWailsに組み込んで動作確認する
+  - 必ずビルドしてTauriに組み込んで動作確認する
   - `bun run dev`での単体起動はデバッグ目的のみ
 
 - **APIポートの扱い**
-  - frontend/: `GetServerPort()`で動的取得（必須）
-  - web/: Wails経由で配信されるため相対パス使用
-  - 直接8080を指定しない
+  - web/: Tauri経由で配信されるため相対パス使用
+  - 直接ポート番号を指定しない
 
 # プロジェクトガイドライン
 
 ## プロジェクトの経緯と参照情報
-- このプロジェクトは `../twitch-overlay` をベースにWails化されたものです
-- 元プロジェクト（`../twitch-overlay`）はGoとフロントエンドが分離された構成でした
-- Wails化により、GoとフロントエンドがWailsフレームワークで統合されています
-- **重要**: 動作確認や機能実装の際は、元プロジェクトのコードも参考にすること
-  - 特にプリンター関連の処理やTwitch連携の動作は元プロジェクトの実装を参照
-  - 元プロジェクトのディレクトリ: `/Users/toka/Abyss/twitch-overlay/`
+- このプロジェクトは元々Go + Wails構成で、現在はTauri 2（Rust）に移行済み
+- バックエンドはRust（`src-tauri/` + `crates/`）で実装されている
+- Go/Wailsのレガシーコード（`internal/`、`main.go`等）はまだリポジトリに残存しているが、実行には使用されない
+- 元プロジェクトのディレクトリ: `/Users/toka/Abyss/twitch-overlay/`
 
 ## テスト実行時の注意事項
 - テストを実行する際は必ず `DRY_RUN_MODE=true` 環境変数を設定する
 - これにより実際のプリンターへの印刷を防ぐ
-- 例: `DRY_RUN_MODE=true go test ./...`
+- 例: `DRY_RUN_MODE=true cargo test`
 
 ## 環境変数
 ### プリンター関連
@@ -175,7 +176,7 @@ task service:install
 
 ## ビルド時の注意事項
 - ビルドテストが完了したら、生成されたバイナリファイルは削除する
-- 例: `go build ./cmd/twitch-overlay && rm twitch-overlay`
+- `src-tauri/target/` はgitignore済みだが、不要なビルド成果物は `task clean` で削除する
 - リポジトリにバイナリファイルをコミットしない
 
 ## heimdallサーバーへのデプロイ
