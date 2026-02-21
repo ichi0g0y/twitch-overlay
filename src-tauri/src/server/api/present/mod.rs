@@ -73,3 +73,45 @@ fn display_name_or_fallback(p: &LotteryParticipant) -> String {
     }
     p.user_id.clone()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_numeric_user_id() {
+        assert!(is_numeric_user_id("12345"));
+        assert!(!is_numeric_user_id(""));
+        assert!(!is_numeric_user_id("abc"));
+        assert!(!is_numeric_user_id("123abc"));
+    }
+
+    #[test]
+    fn test_display_name_or_fallback() {
+        let with_display_name = LotteryParticipant {
+            user_id: "u1".to_string(),
+            username: "alice".to_string(),
+            display_name: "Alice".to_string(),
+            avatar_url: String::new(),
+            redeemed_at: String::new(),
+            is_subscriber: false,
+            subscribed_months: 0,
+            subscriber_tier: String::new(),
+            entry_count: 1,
+            assigned_color: String::new(),
+        };
+        assert_eq!(display_name_or_fallback(&with_display_name), "Alice");
+
+        let with_username = LotteryParticipant {
+            display_name: String::new(),
+            ..with_display_name.clone()
+        };
+        assert_eq!(display_name_or_fallback(&with_username), "alice");
+
+        let with_user_id = LotteryParticipant {
+            username: String::new(),
+            ..with_username
+        };
+        assert_eq!(display_name_or_fallback(&with_user_id), "u1");
+    }
+}

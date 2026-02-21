@@ -175,4 +175,62 @@ mod tests {
         assert!(validate_setting("BLACK_POINT", "1.1").is_err());
         assert!(validate_setting("BLACK_POINT", "-0.1").is_err());
     }
+
+    #[test]
+    fn test_printer_type() {
+        assert!(validate_setting("PRINTER_TYPE", "bluetooth").is_ok());
+        assert!(validate_setting("PRINTER_TYPE", "usb").is_ok());
+        assert!(validate_setting("PRINTER_TYPE", "invalid").is_err());
+    }
+
+    #[test]
+    fn test_keep_alive_interval() {
+        assert!(validate_setting("KEEP_ALIVE_INTERVAL", "10").is_ok());
+        assert!(validate_setting("KEEP_ALIVE_INTERVAL", "3600").is_ok());
+        assert!(validate_setting("KEEP_ALIVE_INTERVAL", "9").is_err());
+        assert!(validate_setting("KEEP_ALIVE_INTERVAL", "3601").is_err());
+    }
+
+    #[test]
+    fn test_notification_display_duration() {
+        assert!(validate_setting("NOTIFICATION_DISPLAY_DURATION", "1").is_ok());
+        assert!(validate_setting("NOTIFICATION_DISPLAY_DURATION", "60").is_ok());
+        assert!(validate_setting("NOTIFICATION_DISPLAY_DURATION", "0").is_err());
+        assert!(validate_setting("NOTIFICATION_DISPLAY_DURATION", "61").is_err());
+    }
+
+    #[test]
+    fn test_reward_count_position() {
+        assert!(validate_setting("REWARD_COUNT_POSITION", "left").is_ok());
+        assert!(validate_setting("REWARD_COUNT_POSITION", "right").is_ok());
+        assert!(validate_setting("REWARD_COUNT_POSITION", "center").is_err());
+    }
+
+    #[test]
+    fn test_lottery_display_duration() {
+        assert!(validate_setting("LOTTERY_DISPLAY_DURATION", "3").is_ok());
+        assert!(validate_setting("LOTTERY_DISPLAY_DURATION", "15").is_ok());
+        assert!(validate_setting("LOTTERY_DISPLAY_DURATION", "2").is_err());
+        assert!(validate_setting("LOTTERY_DISPLAY_DURATION", "16").is_err());
+    }
+
+    #[test]
+    fn test_lottery_animation_speed() {
+        assert!(validate_setting("LOTTERY_ANIMATION_SPEED", "0.5").is_ok());
+        assert!(validate_setting("LOTTERY_ANIMATION_SPEED", "2.0").is_ok());
+        assert!(validate_setting("LOTTERY_ANIMATION_SPEED", "0.4").is_err());
+        assert!(validate_setting("LOTTERY_ANIMATION_SPEED", "2.1").is_err());
+    }
+
+    #[test]
+    fn test_unknown_key_passes() {
+        assert!(validate_setting("UNKNOWN_SETTING_KEY", "anything").is_ok());
+    }
+
+    #[test]
+    fn test_mic_transcript_translation_mode() {
+        assert!(validate_setting("MIC_TRANSCRIPT_TRANSLATION_MODE", "off").is_ok());
+        assert!(validate_setting("MIC_TRANSCRIPT_TRANSLATION_MODE", "chrome").is_ok());
+        assert!(validate_setting("MIC_TRANSCRIPT_TRANSLATION_MODE", "invalid").is_err());
+    }
 }

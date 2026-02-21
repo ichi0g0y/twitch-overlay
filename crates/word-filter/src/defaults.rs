@@ -110,3 +110,39 @@ pub const WORD_LISTS: &[EmbeddedWordList] = &[
         good_words: include_str!("../defaults/zh/GoodList.txt"),
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::WORD_LISTS;
+
+    #[test]
+    fn test_word_lists_count() {
+        assert_eq!(WORD_LISTS.len(), 20);
+    }
+
+    #[test]
+    fn test_each_language_has_bad_words() {
+        for list in WORD_LISTS {
+            assert!(
+                !list.bad_words.trim().is_empty(),
+                "bad words should not be empty: {}",
+                list.language
+            );
+        }
+    }
+
+    #[test]
+    fn test_unique_language_codes() {
+        let mut unique = HashSet::new();
+        for list in WORD_LISTS {
+            assert!(
+                unique.insert(list.language),
+                "duplicate language code found: {}",
+                list.language
+            );
+        }
+        assert_eq!(unique.len(), WORD_LISTS.len());
+    }
+}
