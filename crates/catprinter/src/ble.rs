@@ -12,6 +12,7 @@ use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
 use uuid::Uuid;
 
+use crate::ble_init::{self, is_central_manager_transient, wrap_ble_init_error};
 use crate::{CatPrinterError, Result};
 
 /// Default BLE scan timeout in seconds.
@@ -44,6 +45,28 @@ impl BleConnection {
     ///
     /// Initializes the platform BLE adapter (first available).
     pub async fn new() -> Result<Self> {
+        let mut last_err = None;
+        for attempt in 0..ble_init::RETRY_COUNT {
+            match Self::try_new().await {
+                Ok(conn) => return Ok(conn),
+                Err(err) => {
+                    let retryable = is_central_manager_transient(&err);
+                    last_err = Some(err);
+                    if retryable && attempt + 1 < ble_init::RETRY_COUNT {
+                        tokio::time::sleep(ble_init::RETRY_DELAY).await;
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+
+        Err(wrap_ble_init_error(last_err.unwrap_or_else(|| {
+            CatPrinterError::BleConnection("No BLE adapter found".to_string())
+        })))
+    }
+
+    async fn try_new() -> Result<Self> {
         let manager = Manager::new()
             .await
             .map_err(|e| CatPrinterError::BleConnection(e.to_string()))?;

@@ -3,16 +3,17 @@
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use catprinter::ble::{BleConnection, DiscoveredDevice};
+use catprinter::ble::BleConnection;
 use catprinter::keepalive::KeepAliveManager;
-use catprinter::protocol::gb::{GbProtocol, SERVICE_UUID_MACOS};
+use catprinter::protocol::gb::GbProtocol;
 use catprinter::{CatPrinterError, PrinterProtocol};
 use serde::Serialize;
 use tokio::process::Command;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
-const GB_SERVICE_UUID_STANDARD: Uuid = Uuid::from_u128(0x0000_ae30_0000_1000_8000_0080_5f9b_34fb);
+use super::printer_helpers::{
+    cat_error, ensure_bluetooth_safe_to_use, find_target_device, scan_uuids,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DiscoveredPrinter {
@@ -179,47 +180,6 @@ async fn connect_target(
     conn.connect(&device, protocol.tx_characteristic()).await
 }
 
-fn find_target_device(devices: Vec<DiscoveredDevice>, target: &str) -> Option<DiscoveredDevice> {
-    let normalized_target = normalize_device_id(target);
-    devices.into_iter().find(|d| {
-        d.id.eq_ignore_ascii_case(target)
-            || normalize_device_id(&d.id) == normalized_target
-            || (!d.name.is_empty() && d.name.eq_ignore_ascii_case(target))
-    })
-}
-
-fn scan_uuids(protocol: &GbProtocol) -> (Uuid, Option<Uuid>) {
-    let service_uuid = protocol.service_uuid();
-    let fallback_uuid = if service_uuid == SERVICE_UUID_MACOS {
-        Some(GB_SERVICE_UUID_STANDARD)
-    } else {
-        Some(SERVICE_UUID_MACOS)
-    };
-    (service_uuid, fallback_uuid)
-}
-
-fn normalize_device_id(raw: &str) -> String {
-    raw.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_lowercase())
-        .collect()
-}
-
-fn ensure_bluetooth_safe_to_use() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let exe = std::env::current_exe()
-            .map_err(|e| format!("failed to resolve executable path: {e}"))?;
-        let exe_path = exe.to_string_lossy();
-        if !exe_path.contains(".app/Contents/MacOS/") {
-            return Err(
-                "macOSのBluetooth機能は .app から起動しないと abort trap で落ちることがあるだす（`task dev:tauri` で起動するだす）".to_string()
-            );
-        }
-    }
-    Ok(())
-}
-
 /// Print image data via USB/CUPS using the `lpr` command.
 pub async fn print_via_usb(
     printer_name: &str,
@@ -255,10 +215,6 @@ pub async fn print_via_usb(
 
     let _ = tokio::fs::remove_file(&tmp_file).await;
     Ok(())
-}
-
-fn cat_error(err: CatPrinterError) -> String {
-    err.to_string()
 }
 
 fn parse_lpstat_output(stdout: &str) -> Vec<SystemPrinter> {
@@ -309,15 +265,6 @@ mod tests {
         assert_eq!(
             printers[1].status,
             "disabled. since Thu 01 Jan 00:00:00 1970"
-        );
-    }
-
-    #[test]
-    fn normalize_device_id_removes_separators() {
-        assert_eq!(normalize_device_id("AA:BB:CC:DD:EE:FF"), "aabbccddeeff");
-        assert_eq!(
-            normalize_device_id("12345678-1234-1234-1234-123456789abc"),
-            "12345678123412341234123456789abc"
         );
     }
 }

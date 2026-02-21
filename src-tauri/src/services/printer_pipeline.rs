@@ -5,12 +5,15 @@
 
 use std::time::Duration;
 
-use catprinter::ble::{BleConnection, DiscoveredDevice};
-use catprinter::protocol::gb::{GbProtocol, SERVICE_UUID_MACOS};
+use catprinter::ble::BleConnection;
+use catprinter::protocol::gb::GbProtocol;
 use catprinter::{CatPrinterError, PrinterProtocol};
-use uuid::Uuid;
 
-const GB_SERVICE_UUID_STANDARD: Uuid = Uuid::from_u128(0x0000_ae30_0000_1000_8000_0080_5f9b_34fb);
+use super::printer_helpers::{
+    cat_error, ensure_bluetooth_safe_to_use, find_target_device, scan_uuids,
+};
+
+const POST_CONNECT_DELAY: Duration = Duration::from_millis(1000);
 const TEST_IMAGE_HEIGHT: usize = 144;
 
 /// Build a simple monochrome test bitmap (384px width).
@@ -68,11 +71,17 @@ pub async fn print_bitmap_bluetooth(
     conn.connect(&target, protocol.tx_characteristic())
         .await
         .map_err(cat_error)?;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(POST_CONNECT_DELAY).await;
 
     let send_result = send_bitmap_over_ble(&conn, &protocol, &print_bitmap, width)
         .await
         .map_err(cat_error);
+    if send_result.is_ok() {
+        let rows = print_bitmap.len() / (width as usize);
+        let wait_secs = (2 + rows / 60).max(3) as u64;
+        tracing::info!(wait_secs, rows, "印刷完了待機中");
+        tokio::time::sleep(Duration::from_secs(wait_secs)).await;
+    }
     let disconnect_result = conn.disconnect().await.map_err(cat_error);
     finalize_ble_results(send_result, disconnect_result)
 }
@@ -173,51 +182,6 @@ fn rotate_bitmap_180(bitmap: &[u8], width: u16) -> Vec<u8> {
         }
     }
     out
-}
-
-fn find_target_device(devices: Vec<DiscoveredDevice>, target: &str) -> Option<DiscoveredDevice> {
-    let normalized_target = normalize_device_id(target);
-    devices.into_iter().find(|d| {
-        d.id.eq_ignore_ascii_case(target)
-            || normalize_device_id(&d.id) == normalized_target
-            || (!d.name.is_empty() && d.name.eq_ignore_ascii_case(target))
-    })
-}
-
-fn scan_uuids(protocol: &GbProtocol) -> (Uuid, Option<Uuid>) {
-    let service_uuid = protocol.service_uuid();
-    let fallback_uuid = if service_uuid == SERVICE_UUID_MACOS {
-        Some(GB_SERVICE_UUID_STANDARD)
-    } else {
-        Some(SERVICE_UUID_MACOS)
-    };
-    (service_uuid, fallback_uuid)
-}
-
-fn normalize_device_id(raw: &str) -> String {
-    raw.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_lowercase())
-        .collect()
-}
-
-fn ensure_bluetooth_safe_to_use() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let exe = std::env::current_exe()
-            .map_err(|e| format!("failed to resolve executable path: {e}"))?;
-        let exe_path = exe.to_string_lossy();
-        if !exe_path.contains(".app/Contents/MacOS/") {
-            return Err(
-                "macOSのBluetooth機能は .app から起動しないと abort trap で落ちることがあるだす（`task dev:tauri` で起動するだす）".to_string()
-            );
-        }
-    }
-    Ok(())
-}
-
-fn cat_error(err: CatPrinterError) -> String {
-    err.to_string()
 }
 
 fn finalize_ble_results(

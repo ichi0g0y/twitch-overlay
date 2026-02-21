@@ -13,5 +13,6 @@ pub mod music;
 pub mod music_playlist;
 pub mod print_queue;
 pub mod printer;
+mod printer_helpers;
 pub mod printer_pipeline;
 pub mod status;
