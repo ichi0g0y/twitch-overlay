@@ -11,6 +11,9 @@ use serde::Serialize;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
+use crate::app::SharedState;
+use crate::events;
+
 use super::printer_helpers::{
     cat_error, ensure_bluetooth_safe_to_use, find_target_device, scan_uuids,
 };
@@ -43,18 +46,30 @@ pub async fn get_runtime_state() -> PrinterRuntimeState {
     PRINTER_RUNTIME.read().await.clone()
 }
 
-pub async fn mark_connected(printer_type: &str, target: &str) {
+pub async fn mark_connected(state: &SharedState, printer_type: &str, target: &str) {
     let mut rt = PRINTER_RUNTIME.write().await;
     rt.connected = true;
     rt.connected_type = Some(printer_type.to_string());
     rt.connected_target = Some(target.to_string());
     rt.last_error = None;
+
+    state.emit_event(
+        events::PRINTER_CONNECTED,
+        events::PrinterStatusPayload {
+            connected: true,
+            printer_type: printer_type.to_string(),
+            target: target.to_string(),
+        },
+    );
 }
 
-pub async fn mark_error(err: impl Into<String>) {
+pub async fn mark_error(state: &SharedState, err: impl Into<String>) {
+    let message = err.into();
     let mut rt = PRINTER_RUNTIME.write().await;
     rt.connected = false;
-    rt.last_error = Some(err.into());
+    rt.last_error = Some(message.clone());
+
+    state.emit_event(events::PRINTER_ERROR, events::ErrorPayload { message });
 }
 
 pub async fn scan_bluetooth_printers() -> Result<Vec<DiscoveredPrinter>, String> {

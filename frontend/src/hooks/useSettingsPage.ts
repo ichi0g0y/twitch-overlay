@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { useSettings } from '../contexts/SettingsContext';
 import {
@@ -668,6 +669,7 @@ export const useSettingsPage = () => {
     let unsubscribePrinterConnected: (() => void) | undefined;
     let unsubscribePrinterDisconnected: (() => void) | undefined;
     let unsubscribeChatNotification: (() => void) | undefined;
+    const tauriUnlisteners: Promise<UnlistenFn>[] = [];
     try {
       const ws = getWebSocketClient();
       ws.connect().catch(() => {
@@ -698,6 +700,35 @@ export const useSettingsPage = () => {
           console.error('[SettingsPage] Failed to show browser notification:', error);
         }
       });
+
+      const isTauriRuntime = typeof window !== 'undefined'
+        && (
+          typeof (window as any).__TAURI__ !== 'undefined'
+          || typeof (window as any).__TAURI_INTERNALS__ !== 'undefined'
+        );
+      if (isTauriRuntime) {
+        tauriUnlisteners.push(listen('printer_connected', () => {
+          fetchPrinterStatus();
+          toast.success('プリンターが接続されました');
+        }));
+        tauriUnlisteners.push(listen<{ message: string }>('printer_error', (event) => {
+          fetchPrinterStatus();
+          toast.error(`プリンターエラー: ${event.payload.message}`);
+        }));
+        tauriUnlisteners.push(listen<{ message: string; dry_run: boolean }>('print_success', (event) => {
+          toast.success(event.payload.dry_run ? '印刷完了 (dry run)' : '印刷完了');
+        }));
+        tauriUnlisteners.push(listen<{ message: string; dry_run: boolean }>('print_error', (event) => {
+          toast.error(`印刷エラー: ${event.payload.message}`);
+        }));
+        tauriUnlisteners.push(listen('auth_success', () => {
+          fetchAuthStatus();
+          toast.success('Twitch認証が完了しました');
+        }));
+        tauriUnlisteners.push(listen('settings_updated', () => {
+          fetchAllSettings();
+        }));
+      }
     } catch {
       // ignore
     }
@@ -706,6 +737,9 @@ export const useSettingsPage = () => {
       unsubscribePrinterConnected?.();
       unsubscribePrinterDisconnected?.();
       unsubscribeChatNotification?.();
+      tauriUnlisteners.forEach((promise) => {
+        promise.then((unlisten) => unlisten()).catch(() => undefined);
+      });
     };
   }, []);
 

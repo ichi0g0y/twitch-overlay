@@ -11,6 +11,7 @@ use std::collections::HashMap;
 
 use crate::app::SharedState;
 use crate::config::SettingsManager;
+use crate::events;
 use crate::services::font::FontService;
 
 use super::err_json;
@@ -70,6 +71,13 @@ pub async fn update_settings(
         .reload_config()
         .await
         .map_err(|e| err_json(500, &format!("Failed to reload config: {e}")))?;
+    state.emit_event(
+        events::SETTINGS_UPDATED,
+        events::SettingsUpdatedPayload {
+            source: "api".to_string(),
+            count: updated,
+        },
+    );
 
     let status = sm
         .check_feature_status()
@@ -139,6 +147,13 @@ pub async fn reset_settings(
         .reload_config()
         .await
         .map_err(|e| err_json(500, &format!("Failed to reload config: {e}")))?;
+    state.emit_event(
+        events::SETTINGS_UPDATED,
+        events::SettingsUpdatedPayload {
+            source: "reset".to_string(),
+            count: reset_count,
+        },
+    );
 
     Ok(Json(json!({
         "success": true,

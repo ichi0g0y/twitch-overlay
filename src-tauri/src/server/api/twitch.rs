@@ -15,6 +15,7 @@ use twitch_client::api::{CreateRewardRequest, TwitchApiClient, UpdateRewardReque
 use twitch_client::auth::TwitchAuth;
 
 use crate::app::SharedState;
+use crate::events;
 
 use super::err_json;
 
@@ -274,6 +275,12 @@ pub async fn callback(
     let _ = state
         .ws_sender()
         .send(json!({"type":"auth_success","data":{"authenticated":true}}).to_string());
+    state.emit_event(
+        events::AUTH_SUCCESS,
+        events::AuthSuccessPayload {
+            authenticated: true,
+        },
+    );
 
     Ok(Html(
         r#"<!DOCTYPE html><html><body>

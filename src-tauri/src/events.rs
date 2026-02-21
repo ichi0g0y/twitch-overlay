@@ -42,6 +42,23 @@ pub struct ErrorPayload {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct PrintResultPayload {
+    pub message: String,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthSuccessPayload {
+    pub authenticated: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingsUpdatedPayload {
+    pub source: String,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ServerStartedPayload {
     pub port: u16,
 }

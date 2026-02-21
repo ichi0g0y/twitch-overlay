@@ -13,21 +13,21 @@ type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 use super::err_json;
 
 /// POST /api/printer/scan – Scan for BLE printers
-pub async fn scan_printers(State(_state): State<SharedState>) -> ApiResult {
+pub async fn scan_printers(State(state): State<SharedState>) -> ApiResult {
     match printer::scan_bluetooth_printers().await {
         Ok(devices) => Ok(Json(json!({
             "devices": devices,
             "status": "success",
         }))),
         Err(err) => {
-            printer::mark_error(err.clone()).await;
+            printer::mark_error(&state, err.clone()).await;
             Err(err_json(500, &err))
         }
     }
 }
 
 /// POST /api/printer/test – Test printer connection
-pub async fn test_printer(State(_state): State<SharedState>, Json(body): Json<Value>) -> ApiResult {
+pub async fn test_printer(State(state): State<SharedState>, Json(body): Json<Value>) -> ApiResult {
     let printer_type = body["printer_type"].as_str().unwrap_or("bluetooth");
 
     match printer_type {
@@ -42,13 +42,13 @@ pub async fn test_printer(State(_state): State<SharedState>, Json(body): Json<Va
 
             match printer::test_bluetooth_connection(address).await {
                 Ok(()) => {
-                    printer::mark_connected("bluetooth", address).await;
+                    printer::mark_connected(&state, "bluetooth", address).await;
                     Ok(Json(
                         json!({ "success": true, "message": "Connection successful" }),
                     ))
                 }
                 Err(err) => {
-                    printer::mark_error(err.clone()).await;
+                    printer::mark_error(&state, err.clone()).await;
                     Err(err_json(500, &err))
                 }
             }
@@ -65,7 +65,7 @@ pub async fn test_printer(State(_state): State<SharedState>, Json(body): Json<Va
 
             match printer::is_usb_printer_available(printer_name).await {
                 Ok(true) => {
-                    printer::mark_connected("usb", printer_name).await;
+                    printer::mark_connected(&state, "usb", printer_name).await;
                     Ok(Json(json!({
                         "success": true,
                         "message": format!("Printer found: {printer_name}"),
@@ -73,11 +73,11 @@ pub async fn test_printer(State(_state): State<SharedState>, Json(body): Json<Va
                 }
                 Ok(false) => {
                     let msg = format!("printer '{printer_name}' not found in system");
-                    printer::mark_error(msg.clone()).await;
+                    printer::mark_error(&state, msg.clone()).await;
                     Err(err_json(404, &msg))
                 }
                 Err(err) => {
-                    printer::mark_error(err.clone()).await;
+                    printer::mark_error(&state, err.clone()).await;
                     Err(err_json(500, &err))
                 }
             }
@@ -159,7 +159,7 @@ pub async fn reconnect_printer(State(state): State<SharedState>) -> ApiResult {
 
     match printer::reconnect_bluetooth(&printer_address).await {
         Ok(()) => {
-            printer::mark_connected("bluetooth", &printer_address).await;
+            printer::mark_connected(&state, "bluetooth", &printer_address).await;
             Ok(Json(json!({
                 "success": true,
                 "connected": true,
@@ -168,7 +168,7 @@ pub async fn reconnect_printer(State(state): State<SharedState>) -> ApiResult {
             })))
         }
         Err(err) => {
-            printer::mark_error(err.clone()).await;
+            printer::mark_error(&state, err.clone()).await;
             Err(err_json(500, &err))
         }
     }
@@ -230,14 +230,14 @@ pub async fn test_print(State(state): State<SharedState>, Json(_body): Json<Valu
             "printer_type": printer_type,
         }))),
         Err(err) => {
-            printer::mark_error(err.clone()).await;
+            printer::mark_error(&state, err.clone()).await;
             Err(err_json(500, &err))
         }
     }
 }
 
 /// GET /api/printer/system-printers
-pub async fn list_system_printers(State(_state): State<SharedState>) -> ApiResult {
+pub async fn list_system_printers(State(state): State<SharedState>) -> ApiResult {
     match printer::list_system_printers().await {
         Ok(printers) => Ok(Json(json!({
             "printers": printers,
@@ -245,7 +245,7 @@ pub async fn list_system_printers(State(_state): State<SharedState>) -> ApiResul
             "status": "success",
         }))),
         Err(err) => {
-            printer::mark_error(err.clone()).await;
+            printer::mark_error(&state, err.clone()).await;
             Err(err_json(500, &err))
         }
     }

@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 import { buildApiUrl } from '../../utils/api';
@@ -629,6 +630,7 @@ export const OverlaySettings: React.FC = () => {
 
     // WebSocketでのリアルタイム更新（直接WebSocketに接続）
     let unsubscribe: (() => void) | null = null;
+    const tauriUnlisteners: Promise<UnlistenFn>[] = [];
 
     const setupWebSocket = async () => {
       try {
@@ -648,6 +650,22 @@ export const OverlaySettings: React.FC = () => {
           };
           context.setMusicStatus?.(mergedStatus);
         });
+
+        const isTauriRuntime = typeof window !== 'undefined'
+          && (
+            typeof (window as any).__TAURI__ !== 'undefined'
+            || typeof (window as any).__TAURI_INTERNALS__ !== 'undefined'
+          );
+        if (isTauriRuntime) {
+          tauriUnlisteners.push(listen<any>('music_status_update', (event) => {
+            const payload = event.payload ?? {};
+            const mergedStatus = {
+              ...payload,
+              volume: payload.volume !== undefined ? payload.volume : (overlaySettings?.music_volume ?? 100)
+            };
+            context.setMusicStatus?.(mergedStatus);
+          }));
+        }
       } catch (error) {
         console.error('Failed to setup WebSocket:', error);
       }
@@ -659,6 +677,9 @@ export const OverlaySettings: React.FC = () => {
       if (unsubscribe) {
         unsubscribe();
       }
+      tauriUnlisteners.forEach((promise) => {
+        promise.then((unlisten) => unlisten()).catch(() => undefined);
+      });
     };
   }, []);
 

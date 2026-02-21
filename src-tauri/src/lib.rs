@@ -139,8 +139,14 @@ fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
     );
     let s = state.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = server::start_server(s).await {
+        if let Err(e) = server::start_server(s.clone()).await {
             tracing::error!("Server failed: {e}");
+            s.emit_event(
+                events::WEBSERVER_ERROR,
+                events::ErrorPayload {
+                    message: e.to_string(),
+                },
+            );
         }
     });
 

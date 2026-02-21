@@ -9,6 +9,7 @@ use serde_json::json;
 use tokio::sync::{RwLock, mpsc};
 
 use crate::app::SharedState;
+use crate::events;
 use crate::services::printer_pipeline;
 
 /// Maximum number of queued print jobs.
@@ -89,15 +90,36 @@ async fn worker_loop(state: SharedState, mut rx: mpsc::Receiver<PrintJob>) {
         if should_dry_run {
             tracing::info!(desc = %job.description, "Print job (dry run)");
             broadcast_print_event(&state, "print_success", &job.description, true);
+            state.emit_event(
+                events::PRINT_SUCCESS,
+                events::PrintResultPayload {
+                    message: job.description.clone(),
+                    dry_run: true,
+                },
+            );
         } else {
             match execute_print(&state, &job).await {
                 Ok(()) => {
                     tracing::info!(desc = %job.description, "Print job completed");
                     broadcast_print_event(&state, "print_success", &job.description, false);
+                    state.emit_event(
+                        events::PRINT_SUCCESS,
+                        events::PrintResultPayload {
+                            message: job.description.clone(),
+                            dry_run: false,
+                        },
+                    );
                 }
                 Err(e) => {
                     tracing::error!(desc = %job.description, error = %e, "Print job failed");
                     broadcast_print_event(&state, "print_error", &e, false);
+                    state.emit_event(
+                        events::PRINT_ERROR,
+                        events::PrintResultPayload {
+                            message: e.clone(),
+                            dry_run: false,
+                        },
+                    );
                     // Wait before retrying next job
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
