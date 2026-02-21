@@ -17,6 +17,7 @@ mod notification;
 pub mod server;
 pub mod services;
 mod shutdown;
+mod tray;
 mod window;
 
 use std::path::PathBuf;
@@ -37,6 +38,19 @@ fn get_server_port(state: tauri::State<'_, app::SharedState>) -> u16 {
 #[tauri::command]
 fn get_version() -> &'static str {
     "1.0.0"
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+async fn restart_server(state: tauri::State<'_, app::SharedState>) -> Result<u16, String> {
+    state
+        .restart_server()
+        .await
+        .map_err(|e| format!("Failed to restart server: {e}"))
 }
 
 /// Determine the data directory for the application.
@@ -249,16 +263,28 @@ pub fn run() {
         .manage(shared_state.clone())
         .setup(move |app| {
             spawn_background_tasks(app, setup_state);
+            if let Err(e) = tray::setup_tray(app.handle()) {
+                tracing::error!("Failed to initialize tray icon: {e}");
+            }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_port, get_version])
+        .invoke_handler(tauri::generate_handler![
+            get_server_port,
+            get_version,
+            quit_app,
+            restart_server
+        ])
         .on_window_event(move |win, event| {
             use tauri::WindowEvent;
             match event {
-                WindowEvent::Moved(_) => {
+                WindowEvent::CloseRequested { api, .. } if win.label() == "main" => {
+                    api.prevent_close();
+                    let _ = win.hide();
+                }
+                WindowEvent::Moved(_) if win.label() == "main" => {
                     window::position::on_window_moved(win, &db_for_window);
                 }
-                WindowEvent::Resized(_) => {
+                WindowEvent::Resized(_) if win.label() == "main" => {
                     window::position::on_window_resized(win, &db_for_window);
                 }
                 _ => {}

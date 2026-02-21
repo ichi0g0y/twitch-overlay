@@ -166,16 +166,18 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
           const history: ChatMessage[] = rawMessages.map((item: any) => ({
             id: item.id ? String(item.id) : `${item.timestamp || Date.now()}-${Math.random().toString(36).slice(2)}`,
-            messageId: item.messageId,
-            userId: item.userId,
+            messageId: item.messageId ?? item.message_id,
+            userId: item.userId ?? item.user_id,
             username: item.username,
             message: item.message,
             fragments: item.fragments,
-            avatarUrl: item.avatarUrl,
-            translation: item.translation,
-            translationStatus: item.translationStatus,
-            translationLang: item.translationLang,
-            timestamp: item.timestamp,
+            avatarUrl: item.avatarUrl ?? item.avatar_url,
+            translation: item.translation ?? item.translation_text,
+            translationStatus: item.translationStatus ?? item.translation_status,
+            translationLang: item.translationLang ?? item.translation_lang,
+            timestamp: item.timestamp ?? (typeof item.created_at === 'number'
+              ? new Date(item.created_at * 1000).toISOString()
+              : undefined),
           }));
 
           if (!cancelled) {

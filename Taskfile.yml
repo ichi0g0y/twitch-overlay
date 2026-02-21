@@ -27,7 +27,7 @@ tasks:
   dev:quick:
     desc: クイック開発モード（フロントエンドは事前ビルド前提）
     cmds:
-      - cargo run -p cairo-overlay --bin cairo-overlay-server
+      - cargo run -p twitch-overlay --bin twitch-overlay-server
 
   # Tauriアプリとして起動（ウインドウ付き）
   dev:tauri:

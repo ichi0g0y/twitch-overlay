@@ -13,8 +13,6 @@ interface GeneralSettingsProps {
   getSettingValue: (key: string) => string;
   handleSettingChange: (key: string, value: string | boolean) => void;
   getBooleanValue: (key: string) => boolean;
-  webServerError: { error: string; port: number } | null;
-  webServerPort: number;
   streamStatus: StreamStatus | null;
   fileInputRef: React.RefObject<HTMLInputElement>;
   uploadingFont: boolean;
@@ -32,8 +30,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   getSettingValue,
   handleSettingChange,
   getBooleanValue,
-  webServerError,
-  webServerPort,
   streamStatus,
   fileInputRef,
   uploadingFont,
@@ -72,36 +68,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 <SelectItem value="UTC">UTC</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="server_port">Webサーバーポート</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="server_port"
-                type="number"
-                min="1024"
-                max="65535"
-                value={getSettingValue('SERVER_PORT')}
-                onChange={(e) => handleSettingChange('SERVER_PORT', e.target.value)}
-                className="w-32"
-              />
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                OBSオーバーレイ用のWebサーバーポート（変更後はアプリ再起動が必要）
-              </p>
-            </div>
-            {webServerError && (
-              <Alert className="mt-2">
-                <AlertDescription className="text-red-600">
-                  ポート {webServerError.port} の起動に失敗しました: {webServerError.error}
-                </AlertDescription>
-              </Alert>
-            )}
-            {getSettingValue('SERVER_PORT') !== String(webServerPort) && (
-              <p className="text-sm text-orange-600 dark:text-orange-400 mt-2">
-                ⚠️ ポート変更を反映するにはアプリを再起動してください
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

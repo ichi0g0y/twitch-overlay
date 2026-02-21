@@ -10,6 +10,7 @@ use anyhow::Result;
 pub async fn start_server(state: SharedState) -> Result<()> {
     let port = state.server_port();
     let shutdown_token = state.shutdown_token().clone();
+    let server_shutdown_token = state.server_shutdown_token().await;
     let app = router::create_router(state);
 
     let addr = format!("0.0.0.0:{}", port);
@@ -18,7 +19,10 @@ pub async fn start_server(state: SharedState) -> Result<()> {
 
     axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(async move {
-            shutdown_token.cancelled().await;
+            tokio::select! {
+                _ = shutdown_token.cancelled() => {}
+                _ = server_shutdown_token.cancelled() => {}
+            }
         })
         .await?;
 

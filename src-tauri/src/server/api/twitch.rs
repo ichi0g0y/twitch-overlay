@@ -596,7 +596,10 @@ mod tests {
     fn token_refresh_failed_maps_to_401() {
         let (status, body) = map_twitch_error(TwitchError::TokenRefreshFailed("invalid".into()));
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
-        assert_eq!(body.0["error"], "Token refresh failed, please re-authenticate");
+        assert_eq!(
+            body.0["error"],
+            "Token refresh failed, please re-authenticate"
+        );
     }
 
     #[test]

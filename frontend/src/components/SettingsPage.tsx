@@ -63,7 +63,6 @@ export const SettingsPage: React.FC = () => {
     testingPrinter,
     testingNotification,
     verifyingTwitch,
-    webServerError,
     webServerPort,
     uploadingFont,
     previewImage,
@@ -223,8 +222,6 @@ export const SettingsPage: React.FC = () => {
                   getSettingValue={getSettingValue}
                   handleSettingChange={handleSettingChange}
                   getBooleanValue={getBooleanValue}
-                  webServerError={webServerError}
-                  webServerPort={webServerPort}
                   streamStatus={streamStatus}
                   fileInputRef={fileInputRef}
                   uploadingFont={uploadingFont}

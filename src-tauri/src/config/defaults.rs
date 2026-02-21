@@ -135,7 +135,7 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         "8080",
         false,
         false,
-        "Web server port for OBS overlay",
+        "Web server port for WebUI and OBS overlay",
     ),
     // --- Font ---
     ("FONT_FILENAME", "", false, false, "Uploaded font file name"),
@@ -185,6 +185,34 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         false,
         "Window state as JSON",
+    ),
+    (
+        "TRAY_SETTINGS_WINDOW_X",
+        "",
+        false,
+        false,
+        "Tray settings window X position",
+    ),
+    (
+        "TRAY_SETTINGS_WINDOW_Y",
+        "",
+        false,
+        false,
+        "Tray settings window Y position",
+    ),
+    (
+        "TRAY_SETTINGS_WINDOW_WIDTH",
+        "460",
+        false,
+        false,
+        "Tray settings window width",
+    ),
+    (
+        "TRAY_SETTINGS_WINDOW_HEIGHT",
+        "320",
+        false,
+        false,
+        "Tray settings window height",
     ),
     // --- Music ---
     (

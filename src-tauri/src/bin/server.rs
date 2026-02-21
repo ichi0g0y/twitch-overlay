@@ -5,10 +5,10 @@
 
 use tracing_subscriber::EnvFilter;
 
-use cairo_overlay_lib::app::SharedState;
-use cairo_overlay_lib::background;
-use cairo_overlay_lib::server;
-use cairo_overlay_lib::services;
+use twitch_overlay_lib::app::SharedState;
+use twitch_overlay_lib::background;
+use twitch_overlay_lib::server;
+use twitch_overlay_lib::services;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Starting Helsinki Overlay (headless mode)");
 
     // Steps 2-5: Foundation
-    let (db, config, dir) = cairo_overlay_lib::init_foundation()?;
+    let (db, config, dir) = twitch_overlay_lib::init_foundation()?;
     let state = SharedState::new(db, config, dir);
 
     // Step 15: Web server
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Step 13: EventSub
     let s = state.clone();
-    tokio::spawn(async move { cairo_overlay_lib::run_eventsub_handler(s).await });
+    tokio::spawn(async move { twitch_overlay_lib::run_eventsub_handler(s).await });
 
     // Step 10: Printer KeepAlive
     let s = state.clone();
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Step 14: Notification
     let s = state.clone();
-    tokio::spawn(async move { cairo_overlay_lib::init_notification_system(s).await });
+    tokio::spawn(async move { twitch_overlay_lib::init_notification_system(s).await });
 
     tracing::info!(
         port = state.server_port(),

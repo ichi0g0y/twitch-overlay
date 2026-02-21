@@ -152,6 +152,8 @@ mod tests {
     #[test]
     fn test_chat_messages() {
         let db = test_db();
+        db.upsert_chat_user_profile("user1", "alice", "", 900)
+            .unwrap();
         let msg = chat::ChatMessage {
             id: 0,
             message_id: "msg1".into(),
@@ -159,7 +161,7 @@ mod tests {
             username: "alice".into(),
             message: "hello".into(),
             fragments_json: "[]".into(),
-            avatar_url: "https://example.com/avatar.png".into(),
+            avatar_url: String::new(),
             translation_text: String::new(),
             translation_status: String::new(),
             translation_lang: String::new(),
@@ -172,12 +174,29 @@ mod tests {
         let msgs = db.get_chat_messages_since(0, None).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].username, "alice");
+        assert_eq!(msgs[0].avatar_url, "");
 
         assert!(db.chat_message_exists("msg1").unwrap());
         assert!(!db.chat_message_exists("msg2").unwrap());
 
-        let avatar = db.get_latest_chat_avatar("user1").unwrap();
-        assert_eq!(avatar, Some("https://example.com/avatar.png".into()));
+        db.upsert_chat_user_profile(
+            "user1",
+            "alice_renamed",
+            "https://example.com/avatar.png",
+            1200,
+        )
+        .unwrap();
+        let profile = db.get_chat_user_profile("user1").unwrap().unwrap();
+        assert_eq!(profile.username, "alice_renamed");
+        assert_eq!(profile.avatar_url, "https://example.com/avatar.png");
+
+        let avatar = db.get_latest_chat_avatar("user1").unwrap().unwrap();
+        assert_eq!(avatar, "https://example.com/avatar.png");
+
+        let hydrated = db.get_chat_messages_since(0, None).unwrap();
+        assert_eq!(hydrated.len(), 1);
+        assert_eq!(hydrated[0].username, "alice_renamed");
+        assert_eq!(hydrated[0].avatar_url, "https://example.com/avatar.png");
     }
 
     #[test]

@@ -18,21 +18,27 @@ pub struct ChatMessage {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatUserProfile {
+    pub user_id: String,
+    pub username: String,
+    pub avatar_url: String,
+    pub updated_at: i64,
+}
+
 impl Database {
     pub fn add_chat_message(&self, msg: &ChatMessage) -> Result<bool, DbError> {
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO chat_messages
-                    (message_id, user_id, username, message, fragments_json, avatar_url,
+                    (message_id, user_id, message, fragments_json,
                      translation_text, translation_status, translation_lang, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     msg.message_id,
                     msg.user_id,
-                    msg.username,
                     msg.message,
                     msg.fragments_json,
-                    msg.avatar_url,
                     msg.translation_text,
                     msg.translation_status,
                     msg.translation_lang,
@@ -51,16 +57,43 @@ impl Database {
         self.with_conn(|conn| {
             let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match limit {
                 Some(l) => (
-                    "SELECT id, message_id, user_id, username, message, fragments_json, avatar_url,
-                            translation_text, translation_status, translation_lang, created_at
-                     FROM chat_messages WHERE created_at >= ?1 ORDER BY created_at ASC LIMIT ?2"
+                    "SELECT
+                        m.id,
+                        m.message_id,
+                        m.user_id,
+                        COALESCE(u.username, '') AS username,
+                        m.message,
+                        m.fragments_json,
+                        COALESCE(u.avatar_url, '') AS avatar_url,
+                        m.translation_text,
+                        m.translation_status,
+                        m.translation_lang,
+                        m.created_at
+                     FROM chat_messages m
+                     LEFT JOIN chat_users u ON u.user_id = m.user_id
+                     WHERE m.created_at >= ?1
+                     ORDER BY m.created_at ASC
+                     LIMIT ?2"
                         .to_string(),
                     vec![Box::new(since_unix), Box::new(l)],
                 ),
                 None => (
-                    "SELECT id, message_id, user_id, username, message, fragments_json, avatar_url,
-                            translation_text, translation_status, translation_lang, created_at
-                     FROM chat_messages WHERE created_at >= ?1 ORDER BY created_at ASC"
+                    "SELECT
+                        m.id,
+                        m.message_id,
+                        m.user_id,
+                        COALESCE(u.username, '') AS username,
+                        m.message,
+                        m.fragments_json,
+                        COALESCE(u.avatar_url, '') AS avatar_url,
+                        m.translation_text,
+                        m.translation_status,
+                        m.translation_lang,
+                        m.created_at
+                     FROM chat_messages m
+                     LEFT JOIN chat_users u ON u.user_id = m.user_id
+                     WHERE m.created_at >= ?1
+                     ORDER BY m.created_at ASC"
                         .to_string(),
                     vec![Box::new(since_unix)],
                 ),
@@ -96,15 +129,76 @@ impl Database {
         })
     }
 
-    pub fn get_latest_chat_avatar(&self, user_id: &str) -> Result<Option<String>, DbError> {
+    pub fn upsert_chat_user_profile(
+        &self,
+        user_id: &str,
+        username: &str,
+        avatar_url: &str,
+        updated_at: i64,
+    ) -> Result<(), DbError> {
+        if user_id.trim().is_empty() {
+            return Ok(());
+        }
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO chat_users (user_id, username, avatar_url, updated_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(user_id) DO UPDATE SET
+                    username = CASE
+                        WHEN excluded.username != '' AND excluded.updated_at >= chat_users.updated_at
+                        THEN excluded.username
+                        ELSE chat_users.username
+                    END,
+                    avatar_url = CASE
+                        WHEN excluded.avatar_url != ''
+                             AND (chat_users.avatar_url = '' OR excluded.updated_at >= chat_users.updated_at)
+                        THEN excluded.avatar_url
+                        ELSE chat_users.avatar_url
+                    END,
+                    updated_at = CASE
+                        WHEN excluded.updated_at > chat_users.updated_at
+                        THEN excluded.updated_at
+                        ELSE chat_users.updated_at
+                    END",
+                rusqlite::params![user_id, username, avatar_url, updated_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_chat_user_profile(&self, user_id: &str) -> Result<Option<ChatUserProfile>, DbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT avatar_url FROM chat_messages WHERE user_id = ?1 AND avatar_url != '' ORDER BY created_at DESC LIMIT 1",
+                "SELECT user_id, username, avatar_url, updated_at
+                 FROM chat_users
+                 WHERE user_id = ?1",
             )?;
-            let url = stmt
+            let profile = stmt
+                .query_row([user_id], |row| {
+                    Ok(ChatUserProfile {
+                        user_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                    })
+                })
+                .optional()?;
+            Ok(profile)
+        })
+    }
+
+    pub fn get_latest_chat_avatar(&self, user_id: &str) -> Result<Option<String>, DbError> {
+        self.with_conn(|conn| {
+            let mut user_stmt = conn.prepare(
+                "SELECT avatar_url
+                 FROM chat_users
+                 WHERE user_id = ?1 AND avatar_url != ''
+                 LIMIT 1",
+            )?;
+            let user_url = user_stmt
                 .query_row([user_id], |row| row.get::<_, String>(0))
                 .optional()?;
-            Ok(url)
+            Ok(user_url)
         })
     }
 
