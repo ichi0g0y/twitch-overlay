@@ -95,3 +95,56 @@ async fn fetch_twitch_chat_color(state: &SharedState, user_id: &str) -> Option<S
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use overlay_db::lottery::LotteryParticipant;
+
+    use super::*;
+
+    #[test]
+    fn test_first_unused_palette_color_empty() {
+        assert_eq!(first_unused_palette_color(&[]), Some(COLOR_PALETTE[0]));
+    }
+
+    #[test]
+    fn test_first_unused_palette_color_all_used() {
+        let participants: Vec<LotteryParticipant> = COLOR_PALETTE
+            .iter()
+            .enumerate()
+            .map(|(index, color)| participant_with_color(&format!("u{index}"), color))
+            .collect();
+
+        assert_eq!(first_unused_palette_color(&participants), None);
+    }
+
+    #[test]
+    fn test_palette_color_for_user_id_deterministic() {
+        let user_id = "12345";
+        let first = palette_color_for_user_id(user_id);
+        let second = palette_color_for_user_id(user_id);
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn test_palette_color_for_user_id_different() {
+        let first = palette_color_for_user_id("12345");
+        let second = palette_color_for_user_id("12346");
+        assert_ne!(first, second);
+    }
+
+    fn participant_with_color(user_id: &str, assigned_color: &str) -> LotteryParticipant {
+        LotteryParticipant {
+            user_id: user_id.to_string(),
+            username: format!("user_{user_id}"),
+            display_name: format!("User {user_id}"),
+            avatar_url: String::new(),
+            redeemed_at: String::new(),
+            is_subscriber: false,
+            subscribed_months: 0,
+            subscriber_tier: String::new(),
+            entry_count: 1,
+            assigned_color: assigned_color.to_string(),
+        }
+    }
+}

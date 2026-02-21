@@ -72,3 +72,125 @@ pub enum SeedError {
     #[error("Database error: {0}")]
     Db(overlay_db::DbError),
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn test_seed_fresh_db() {
+        let db = Database::open_in_memory().expect("failed to open in-memory db");
+
+        seed_default_words(&db).expect("failed to seed words");
+
+        assert_eq!(
+            db.get_word_filter_seed_version()
+                .expect("failed to read seed version"),
+            Some(SEED_VERSION.to_string())
+        );
+        assert_eq!(
+            db.get_word_filter_languages()
+                .expect("failed to read languages")
+                .len(),
+            20
+        );
+        assert!(
+            !db.get_word_filter_words("en")
+                .expect("failed to read english words")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_seed_idempotent() {
+        let db = Database::open_in_memory().expect("failed to open in-memory db");
+        seed_default_words(&db).expect("failed to seed words");
+
+        db.add_word_filter_word("en", "smoke-custom-word", "bad")
+            .expect("failed to add custom word");
+        let before = total_word_count(&db);
+
+        seed_default_words(&db).expect("failed to re-seed words");
+        let after = total_word_count(&db);
+
+        assert_eq!(before, after);
+        assert!(
+            db.get_word_filter_words("en")
+                .expect("failed to read english words")
+                .iter()
+                .any(|w| w.word == "smoke-custom-word")
+        );
+    }
+
+    #[test]
+    fn test_seed_version_upgrade() {
+        let db = Database::open_in_memory().expect("failed to open in-memory db");
+        seed_default_words(&db).expect("failed to seed words");
+
+        db.add_word_filter_word("en", "upgrade-custom-word", "bad")
+            .expect("failed to add custom word");
+        db.set_word_filter_seed_version("v1")
+            .expect("failed to set old seed version");
+
+        seed_default_words(&db).expect("failed to apply upgraded seed");
+
+        assert_eq!(
+            db.get_word_filter_seed_version()
+                .expect("failed to read seed version"),
+            Some(SEED_VERSION.to_string())
+        );
+        assert!(
+            !db.get_word_filter_words("en")
+                .expect("failed to read english words")
+                .iter()
+                .any(|w| w.word == "upgrade-custom-word")
+        );
+    }
+
+    #[test]
+    fn test_parse_lines_basic() {
+        let mut out = Vec::new();
+        parse_lines(" alpha\n\nbeta \n   \n gamma\t", "en", "bad", &mut out);
+
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].word, "alpha");
+        assert_eq!(out[1].word, "beta");
+        assert_eq!(out[2].word, "gamma");
+        assert!(out.iter().all(|w| w.language == "en"));
+        assert!(out.iter().all(|w| w.word_type == "bad"));
+    }
+
+    #[test]
+    fn test_parse_lines_empty() {
+        let mut out = Vec::new();
+        parse_lines("", "en", "bad", &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn test_load_embedded_words_nonempty() {
+        let words = load_embedded_words();
+        assert!(!words.is_empty());
+    }
+
+    #[test]
+    fn test_load_embedded_words_all_languages() {
+        let words = load_embedded_words();
+        let languages: HashSet<String> = words.iter().map(|word| word.language.clone()).collect();
+
+        assert_eq!(languages.len(), 20);
+    }
+
+    fn total_word_count(db: &Database) -> usize {
+        WORD_LISTS
+            .iter()
+            .map(|list| {
+                db.get_word_filter_words(list.language)
+                    .expect("failed to read words")
+                    .len()
+            })
+            .sum()
+    }
+}
