@@ -207,7 +207,7 @@ pub fn run() {
     let setup_state = shared_state.clone();
     let shutdown_state = shared_state.clone();
 
-    let mut app = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(shared_state.clone())
         .setup(move |app| {
