@@ -2,17 +2,11 @@
 //!   GET  /api/settings/overlay         – get overlay settings
 //!   POST /api/settings/overlay         – update overlay settings (partial)
 //!   POST /api/overlay/refresh          – re-broadcast settings to all WS clients
-//!   GET  /api/settings/overlay/events  – SSE stream of overlay setting changes
 
 use axum::Json;
 use axum::extract::State;
-use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::stream::Stream;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::convert::Infallible;
-use tokio_stream::StreamExt as _;
-use tokio_stream::wrappers::BroadcastStream;
 
 use crate::app::SharedState;
 use crate::config::SettingsManager;
@@ -179,28 +173,6 @@ fn build_overlay_json(state: &SharedState) -> Result<Value, (axum::http::StatusC
     }
 
     Ok(Value::Object(map))
-}
-
-/// GET /api/settings/overlay/events – SSE stream of overlay setting changes
-pub async fn overlay_events(
-    State(state): State<SharedState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.subscribe_ws();
-    let stream = BroadcastStream::new(rx).filter_map(|result| match result {
-        Ok(msg) => {
-            // Only forward "settings" type messages
-            if let Ok(parsed) = serde_json::from_str::<Value>(&msg) {
-                if parsed.get("type").and_then(|t| t.as_str()) == Some("settings") {
-                    let data = parsed.get("data").unwrap_or(&Value::Null).to_string();
-                    return Some(Ok(Event::default().event("settings").data(data)));
-                }
-            }
-            None
-        }
-        Err(_) => None,
-    });
-
-    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 /// Broadcast overlay settings to all WebSocket clients.

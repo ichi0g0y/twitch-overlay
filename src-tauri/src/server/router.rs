@@ -44,10 +44,6 @@ pub fn create_router(state: SharedState) -> Router {
             get(api::overlay::get_overlay_settings).post(api::overlay::update_overlay_settings),
         )
         .route("/api/overlay/refresh", post(api::overlay::refresh_overlay))
-        .route(
-            "/api/settings/overlay/events",
-            get(api::overlay::overlay_events),
-        )
         // --- Music tracks ---
         .route("/api/music/upload", post(api::music::upload_track))
         .route("/api/music/tracks", get(api::music::get_tracks))
