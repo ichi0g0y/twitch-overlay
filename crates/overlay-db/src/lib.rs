@@ -3,6 +3,9 @@
 pub mod cache;
 pub mod chat;
 pub mod lottery;
+pub mod lottery_engine;
+pub mod lottery_history;
+pub mod lottery_settings;
 pub mod music;
 pub mod rewards;
 pub mod schema;
@@ -187,6 +190,7 @@ mod tests {
             avatar_url: String::new(),
             redeemed_at: "2024-01-01".into(),
             is_subscriber: false,
+            subscribed_months: 0,
             subscriber_tier: String::new(),
             entry_count: 1,
             assigned_color: "#ff0000".into(),
