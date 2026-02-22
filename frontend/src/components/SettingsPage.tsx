@@ -48,6 +48,7 @@ const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
 const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
+const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
 const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
 type BaseWorkspaceCardKind =
@@ -132,6 +133,7 @@ type StoredWorkspaceFlowPayload = {
 type WorkspaceRenderContextValue = {
   removeCard: (id: string) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
+  snapCardSize: (id: string, width: number, height: number) => void;
   renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
   resolvePreviewHeader: (kind: WorkspaceCardKind) => {
     channelLogin: string;
@@ -558,6 +560,9 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
         isVisible={selected}
         lineClassName="!border-transparent"
         handleClassName="!h-3.5 !w-3.5 !rounded-sm !border-none !bg-transparent !opacity-0"
+        onResizeEnd={(_event, params) => {
+          renderContext.snapCardSize(id, params.width, params.height);
+        }}
       />
       {cardAsNode ? (
         <div className="settings-node-card-shell h-full min-h-0">
@@ -1891,6 +1896,26 @@ export const SettingsPage: React.FC = () => {
     setNodes((current) => current.filter((node) => node.id !== id));
   }, [setNodes]);
 
+  const snapWorkspaceCardSize = useCallback((id: string, width: number, height: number) => {
+    setNodes((current) => current.map((node) => {
+      if (node.id !== id) return node;
+      const minSize = resolveWorkspaceCardMinSize(node.data.kind);
+      const snappedWidth = Math.max(minSize.minWidth, Math.round(width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0]);
+      const snappedHeight = Math.max(minSize.minHeight, Math.round(height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1]);
+      if (node.width === snappedWidth && node.height === snappedHeight) return node;
+      return {
+        ...node,
+        width: snappedWidth,
+        height: snappedHeight,
+        style: {
+          ...(node.style ?? {}),
+          width: snappedWidth,
+          height: snappedHeight,
+        },
+      };
+    }));
+  }, [setNodes]);
+
   const refreshPreview = useCallback((kind: WorkspaceCardKind) => {
     if (!isPreviewCardKind(kind)) return;
     setPreviewReloadNonceByKind((current) => ({
@@ -2065,9 +2090,10 @@ export const SettingsPage: React.FC = () => {
   const workspaceRenderContext = useMemo<WorkspaceRenderContextValue>(() => ({
     removeCard: removeWorkspaceCard,
     refreshPreview,
+    snapCardSize: snapWorkspaceCardSize,
     renderCard: renderWorkspaceCard,
     resolvePreviewHeader,
-  }), [removeWorkspaceCard, refreshPreview, renderWorkspaceCard, resolvePreviewHeader]);
+  }), [removeWorkspaceCard, refreshPreview, snapWorkspaceCardSize, renderWorkspaceCard, resolvePreviewHeader]);
 
   useEffect(() => {
     writeWorkspaceFlow(nodes, workspaceViewport);
@@ -2098,12 +2124,14 @@ export const SettingsPage: React.FC = () => {
             nodeTypes={WORKSPACE_NODE_TYPES}
             minZoom={WORKSPACE_FLOW_MIN_ZOOM}
             maxZoom={WORKSPACE_FLOW_MAX_ZOOM}
+            snapToGrid
+            snapGrid={WORKSPACE_SNAP_GRID}
             defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
             className="settings-workspace-flow bg-slate-950"
             colorMode="dark"
             proOptions={{ hideAttribution: true }}
           >
-            <Background color="#334155" gap={24} size={1} />
+            <Background color="#334155" gap={WORKSPACE_SNAP_GRID[0]} size={1} />
             <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100" />
           </ReactFlow>
         </div>
