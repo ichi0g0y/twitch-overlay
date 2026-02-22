@@ -375,16 +375,6 @@ const resolveWorkspaceCardMinSize = (kind: WorkspaceCardKind) => {
 const isCollapsibleCardNodeKind = (kind: WorkspaceCardKind) => {
   if (isPreviewCardKind(kind)) return false;
   if (kind === 'logs') return false;
-  if (
-    kind === 'overlay-music-player' ||
-    kind === 'overlay-fax' ||
-    kind === 'overlay-clock' ||
-    kind === 'overlay-mic-transcript' ||
-    kind === 'overlay-reward-count' ||
-    kind === 'overlay-lottery'
-  ) {
-    return false;
-  }
   return true;
 };
 

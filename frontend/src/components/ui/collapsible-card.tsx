@@ -19,6 +19,7 @@ type CollapsibleCardProps = {
   defaultOpen?: boolean;
   className?: string;
   headerClassName?: string;
+  headerProps?: Omit<React.HTMLAttributes<HTMLDivElement>, 'children' | 'className'>;
   contentClassName?: string;
   children: React.ReactNode;
 };
@@ -31,6 +32,7 @@ export function CollapsibleCard({
   defaultOpen: _defaultOpen = true,
   className,
   headerClassName,
+  headerProps,
   contentClassName,
   children,
 }: CollapsibleCardProps) {
@@ -57,6 +59,7 @@ export function CollapsibleCard({
     >
       <CardHeader
         data-workspace-node-drag-handle={workspaceUi?.nodeMode ? 'true' : undefined}
+        {...headerProps}
         className={cn(
           'p-4 pb-3',
           workspaceUi?.nodeMode ? 'workspace-node-drag-handle cursor-grab active:cursor-grabbing' : '',
