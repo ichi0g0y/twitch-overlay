@@ -3,7 +3,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import {
   Background,
   Controls,
-  MiniMap,
   NodeResizer,
   ReactFlow,
   useNodesState,
@@ -1845,7 +1844,13 @@ export const SettingsPage: React.FC = () => {
         />
       </div>
       <WORKSPACE_RENDER_CONTEXT.Provider value={workspaceRenderContext}>
-        <div className="fixed inset-0 z-0">
+        <div
+          className="fixed inset-0 z-0 top-12 xl:left-[var(--rf-flow-left)] xl:right-[var(--rf-flow-right)]"
+          style={{
+            '--rf-flow-left': `${topBarOffsets.left}px`,
+            '--rf-flow-right': `${topBarOffsets.right}px`,
+          } as React.CSSProperties}
+        >
           <ReactFlow
             nodes={nodes}
             onNodesChange={onNodesChange}
@@ -1860,11 +1865,6 @@ export const SettingsPage: React.FC = () => {
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#334155" gap={24} size={1} />
-            <MiniMap
-              className="!border !border-gray-700 !bg-gray-900/90"
-              pannable
-              zoomable
-            />
             <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100" />
           </ReactFlow>
         </div>
