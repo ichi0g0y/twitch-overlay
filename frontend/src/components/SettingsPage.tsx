@@ -518,7 +518,9 @@ type PreviewEmbedProps = {
 };
 
 const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce }) => {
-  const parentDomain = typeof window !== 'undefined' ? (window.location.hostname || 'localhost') : 'localhost';
+  const parentDomain = typeof window !== 'undefined'
+    ? (window.location.hostname?.replace(/^tauri\./, '') || 'localhost')
+    : 'localhost';
   const streamUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channelLogin)}&parent=${encodeURIComponent(parentDomain)}&autoplay=true&muted=true&controls=true&refresh=${reloadNonce}`;
 
   return (
@@ -584,29 +586,41 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ c
 const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected }) => {
   const renderContext = useContext(WORKSPACE_RENDER_CONTEXT);
   if (!renderContext) return null;
+  const [isHovered, setIsHovered] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const cardAsNode = isCollapsibleCardNodeKind(data.kind);
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = resolveWorkspaceCardMinSize(data.kind);
+  const showResizeHandles = selected || isHovered || isResizing;
+  const nodeInteractionClassName = isResizing ? 'pointer-events-none select-none' : '';
   return (
-    <div className={`relative h-full min-h-0 min-w-0 ${cardAsNode ? '' : 'overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20'}`}>
+    <div
+      className="relative h-full min-h-0 min-w-0"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <NodeResizer
         minWidth={minSize.minWidth}
         minHeight={minSize.minHeight}
-        isVisible={selected}
+        isVisible={showResizeHandles}
         lineClassName="!border-transparent"
         handleClassName="!h-3.5 !w-3.5 !rounded-sm !border-none !bg-transparent !opacity-0"
+        onResizeStart={() => {
+          setIsResizing(true);
+        }}
         onResizeEnd={(_event, params) => {
+          setIsResizing(false);
           renderContext.snapCardSize(id, params.width, params.height);
         }}
       />
       {cardAsNode ? (
-        <div className="settings-node-card-shell h-full min-h-0">
+        <div className={`settings-node-card-shell h-full min-h-0 ${nodeInteractionClassName}`}>
           <WorkspaceCardUiContext.Provider value={{ onClose: () => renderContext.removeCard(id), nodeMode: true }}>
             {renderContext.renderCard(data.kind)}
           </WorkspaceCardUiContext.Provider>
         </div>
       ) : (
-        <>
+        <div className={`h-full min-h-0 overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20 ${nodeInteractionClassName}`}>
           <div className="workspace-node-drag-handle flex h-9 items-center border-b border-gray-800/80 bg-gray-900/85 px-3">
             {previewHeader ? (
               <>
@@ -647,7 +661,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
           <div className="nodrag h-[calc(100%-2.25rem)] overflow-auto">
             {renderContext.renderCard(data.kind)}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
