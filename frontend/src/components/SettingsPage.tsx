@@ -46,6 +46,7 @@ const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
 const FOLLOWED_RAIL_WIDTH_PX = 48;
 const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
+const WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY = 'settings.workspace.reactflow.last_positions.v1';
 const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
 const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
@@ -129,6 +130,8 @@ type StoredWorkspaceFlowPayload = {
     zoom: number;
   };
 };
+
+type StoredWorkspaceCardLastPositionsPayload = Record<string, { x: number; y: number }>;
 
 type WorkspaceRenderContextValue = {
   removeCard: (id: string) => void;
@@ -297,6 +300,41 @@ const normalizeWorkspaceCardKind = (kind: string): WorkspaceCardKind | null => {
     return LEGACY_WORKSPACE_CARD_KIND_MAP[kind as LegacyWorkspaceCardKind];
   }
   return null;
+};
+
+const readWorkspaceCardLastPositions = (): Partial<Record<WorkspaceCardKind, { x: number; y: number }>> => {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as StoredWorkspaceCardLastPositionsPayload;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: Partial<Record<WorkspaceCardKind, { x: number; y: number }>> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!isWorkspaceCardKind(key)) continue;
+      if (!value || typeof value !== 'object') continue;
+      const x = toFiniteNumber((value as { x?: unknown }).x, Number.NaN);
+      const y = toFiniteNumber((value as { y?: unknown }).y, Number.NaN);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      result[key] = { x, y };
+    }
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+const writeWorkspaceCardLastPositions = (positions: Partial<Record<WorkspaceCardKind, { x: number; y: number }>>) => {
+  if (typeof window === 'undefined') return;
+  const payload: StoredWorkspaceCardLastPositionsPayload = {};
+  for (const [key, position] of Object.entries(positions)) {
+    if (!position || !isWorkspaceCardKind(key)) continue;
+    payload[key] = {
+      x: toFiniteNumber(position.x, 0),
+      y: toFiniteNumber(position.y, 0),
+    };
+  }
+  window.localStorage.setItem(WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY, JSON.stringify(payload));
 };
 
 const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
@@ -1605,6 +1643,7 @@ export const SettingsPage: React.FC = () => {
     return Math.min(SIDEBAR_MAX_FONT_SIZE, Math.max(SIDEBAR_MIN_FONT_SIZE, parsed));
   });
   const initialWorkspaceFlow = useMemo(() => readWorkspaceFlow(), []);
+  const initialWorkspaceCardLastPositions = useMemo(() => readWorkspaceCardLastPositions(), []);
   const initialWorkspace = useMemo(() => {
     if (initialWorkspaceFlow && initialWorkspaceFlow.nodes.length > 0) return initialWorkspaceFlow.nodes;
     return [
@@ -1616,6 +1655,9 @@ export const SettingsPage: React.FC = () => {
   const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
   const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
   const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
+  const workspaceFlowInstanceRef = useRef<ReactFlowInstance<WorkspaceCardNode> | null>(null);
+  const lastWorkspaceCardPositionRef =
+    useRef<Partial<Record<WorkspaceCardKind, { x: number; y: number }>>>(initialWorkspaceCardLastPositions);
 
   const {
     featureStatus,
@@ -1675,12 +1717,46 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
+    workspaceFlowInstanceRef.current = instance;
     if (!shouldFitWorkspaceOnInitRef.current) return;
     shouldFitWorkspaceOnInitRef.current = false;
     window.requestAnimationFrame(() => {
       // Twitch autoplay requires a visible minimum area; avoid initial zoom-out below 1x.
       void instance.fitView({ minZoom: 1, maxZoom: 1 });
     });
+  }, []);
+
+  const resolveWorkspaceCardSpawnPosition = useCallback((kind: WorkspaceCardKind, existingCount: number) => {
+    const remembered = lastWorkspaceCardPositionRef.current[kind];
+    if (remembered) {
+      return remembered;
+    }
+
+    const offset = existingCount * 36;
+    const fallback = {
+      x: 160 + (offset % 720),
+      y: 120 + Math.floor(offset / 6) * 52,
+    };
+
+    const instance = workspaceFlowInstanceRef.current;
+    if (!instance || typeof window === 'undefined') {
+      return fallback;
+    }
+
+    try {
+      const base = instance.screenToFlowPosition({
+        x: Math.max(0, Math.floor(window.innerWidth / 2)),
+        y: Math.max(0, Math.floor(window.innerHeight / 2)),
+      });
+      const size = resolveWorkspaceCardSize(kind);
+      const shift = (existingCount % 6) * 24;
+      return {
+        x: base.x - (size.width / 2) + shift,
+        y: base.y - (size.height / 2) + Math.floor(existingCount / 6) * 24,
+      };
+    } catch {
+      return fallback;
+    }
   }, []);
 
   const connectIrcChannel = useCallback((channelLogin: string) => {
@@ -1699,12 +1775,10 @@ export const SettingsPage: React.FC = () => {
     const previewKind = `preview-irc:${normalized}` as WorkspaceCardKind;
     setNodes((existing) => {
       if (existing.some((node) => node.data.kind === previewKind)) return existing;
-      const offset = existing.length * 36;
-      const x = 160 + (offset % 720);
-      const y = 120 + Math.floor(offset / 6) * 52;
-      return [...existing, createWorkspaceNode(previewKind, { x, y })];
+      const position = resolveWorkspaceCardSpawnPosition(previewKind, existing.length);
+      return [...existing, createWorkspaceNode(previewKind, position)];
     });
-  }, [connectIrcChannel, setNodes]);
+  }, [connectIrcChannel, resolveWorkspaceCardSpawnPosition, setNodes]);
 
   const startRaidToChannel = async (channel: FollowedChannelRailItem) => {
     if (!streamStatus?.is_live) {
@@ -1881,19 +1955,31 @@ export const SettingsPage: React.FC = () => {
       if (current.some((node) => node.data.kind === kind)) {
         return current;
       }
-      const offset = current.length * 36;
-      const x = 160 + (offset % 720);
-      const y = 120 + Math.floor(offset / 6) * 52;
-      return [...current, createWorkspaceNode(kind, { x, y })];
+      const position = resolveWorkspaceCardSpawnPosition(kind, current.length);
+      return [...current, createWorkspaceNode(kind, position)];
     });
-  }, [setNodes]);
+  }, [resolveWorkspaceCardSpawnPosition, setNodes]);
 
   const canAddCard = useCallback((kind: WorkspaceCardKind) => {
     return !nodes.some((node) => node.data.kind === kind);
   }, [nodes]);
 
   const removeWorkspaceCard = useCallback((id: string) => {
-    setNodes((current) => current.filter((node) => node.id !== id));
+    setNodes((current) => {
+      const target = current.find((node) => node.id === id);
+      if (target) {
+        const nextPositions = {
+          ...lastWorkspaceCardPositionRef.current,
+          [target.data.kind]: {
+            x: target.position.x,
+            y: target.position.y,
+          },
+        };
+        lastWorkspaceCardPositionRef.current = nextPositions;
+        writeWorkspaceCardLastPositions(nextPositions);
+      }
+      return current.filter((node) => node.id !== id);
+    });
   }, [setNodes]);
 
   const snapWorkspaceCardSize = useCallback((id: string, width: number, height: number) => {
