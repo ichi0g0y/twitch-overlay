@@ -1,17 +1,15 @@
 import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 
 export const ApiTab: React.FC = () => {
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Music API エンドポイント一覧</CardTitle>
-          <CardDescription>
-            音楽機能で利用可能なAPIエンドポイントの一覧です
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <CollapsibleCard
+        panelId="settings.api.music-endpoints"
+        title="Music API エンドポイント一覧"
+        description="音楽機能で利用可能なAPIエンドポイントの一覧です"
+        contentClassName="space-y-6"
+      >
           {/* Track管理API */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold dark:text-white">Track管理</h3>
@@ -192,8 +190,7 @@ export const ApiTab: React.FC = () => {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     </div>
   );
 };

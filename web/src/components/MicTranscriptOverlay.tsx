@@ -44,6 +44,16 @@ function normalizeLang(code: string | undefined | null): string {
   return base;
 }
 
+function resolveTranslationMode(
+  mode: string | undefined | null,
+  legacyEnabled: boolean | undefined,
+): 'off' | 'chrome' {
+  const raw = (mode || '').trim();
+  if (raw === 'chrome') return 'chrome';
+  if (raw === 'off') return 'off';
+  return legacyEnabled ? 'chrome' : 'off';
+}
+
 type TranscriptLine = {
   id: string;
   text: string;
@@ -65,7 +75,11 @@ export const MicTranscriptOverlay: React.FC = () => {
 
   const maxLines = settings?.mic_transcript_max_lines ?? 3;
   const enabled = settings?.mic_transcript_enabled ?? false;
-  const translationEnabled = settings?.mic_transcript_translation_enabled ?? false;
+  const translationMode = resolveTranslationMode(
+    settings?.mic_transcript_translation_mode,
+    settings?.mic_transcript_translation_enabled,
+  );
+  const translationEnabled = translationMode !== 'off';
   const position = settings?.mic_transcript_position || 'bottom-left';
   const vAlign = (settings?.mic_transcript_v_align || '').trim() || 'bottom';
   const frameHeightPx = settings?.mic_transcript_frame_height_px ?? 0;
@@ -121,12 +135,21 @@ export const MicTranscriptOverlay: React.FC = () => {
   const effectiveWhiteSpace = whiteSpaceSetting || undefined;
 
   const translationSlots = useMemo(
-    () => [
-      normalizeLang(settings?.mic_transcript_translation_language),
-      normalizeLang(settings?.mic_transcript_translation2_language),
-      normalizeLang(settings?.mic_transcript_translation3_language),
+    () => {
+      const primary = normalizeLang(settings?.mic_transcript_translation_language);
+      const fallbackPrimary = translationEnabled ? (primary || 'en') : primary;
+      return [
+        fallbackPrimary,
+        normalizeLang(settings?.mic_transcript_translation2_language),
+        normalizeLang(settings?.mic_transcript_translation3_language),
+      ];
+    },
+    [
+      settings?.mic_transcript_translation_language,
+      settings?.mic_transcript_translation2_language,
+      settings?.mic_transcript_translation3_language,
+      translationEnabled,
     ],
-    [settings?.mic_transcript_translation_language, settings?.mic_transcript_translation2_language, settings?.mic_transcript_translation3_language],
   );
 
   const slotStyles: TranslationSlotStyle[] = useMemo(() => [
@@ -382,6 +405,7 @@ export const MicTranscriptOverlay: React.FC = () => {
 
   const baseContainerStyle: React.CSSProperties = {
     fontSize: `${fontSize}px`,
+    width: baseMaxWidth > 0 ? `${baseMaxWidth}px` : undefined,
     maxWidth: baseMaxWidth > 0 ? `${baseMaxWidth}px` : undefined,
     textAlign: derivedTextAlign as any,
     ...(frameHeightPx > 0 ? { height: `${frameHeightPx}px`, overflow: 'hidden' } : {}),
@@ -393,8 +417,12 @@ export const MicTranscriptOverlay: React.FC = () => {
         className={`fixed z-[20] flex flex-col pointer-events-none ${verticalJustifyClass} ${positionClass}`}
         style={baseContainerStyle}
       >
-        {visibleLines.map((line) => (
-          <div key={line.id} className={line.isInterim ? 'opacity-80' : ''}>
+        {visibleLines.map((line, index) => (
+          <div
+            key={line.id}
+            className={line.isInterim ? 'opacity-80' : ''}
+            style={index > 0 && lineSpacing1Px !== 0 ? { marginTop: `${lineSpacing1Px}px` } : undefined}
+          >
             {renderOutlinedText({
               text: line.text,
               fontSizePx: fontSize,
@@ -420,6 +448,7 @@ export const MicTranscriptOverlay: React.FC = () => {
           className={`fixed z-[19] flex flex-col pointer-events-none ${verticalJustifyClass} ${translationPositionClass}`}
           style={{
             textAlign: derivedTextAlign as any,
+            width: translationMaxWidthPx > 0 ? `${translationMaxWidthPx}px` : undefined,
             maxWidth: translationMaxWidthPx > 0 ? `${translationMaxWidthPx}px` : undefined,
             ...(frameHeightPx > 0 ? { height: `${frameHeightPx}px`, overflow: 'hidden' } : {}),
           }}

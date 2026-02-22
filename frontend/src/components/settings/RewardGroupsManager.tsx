@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Loader2, AlertCircle } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -190,45 +190,36 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>リワードグループ管理</CardTitle>
-          <CardDescription>
-            カスタムリワードをグループ化して一括でオン/オフできます
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleCard
+        panelId="settings.twitch.reward-groups"
+        title="リワードグループ管理"
+        description="カスタムリワードをグループ化して一括でオン/オフできます"
+      >
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
             <span className="ml-2 text-gray-500">読み込み中...</span>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>リワードグループ管理</CardTitle>
-            <CardDescription>
-              カスタムリワードをグループ化して一括でオン/オフできます
-            </CardDescription>
-          </div>
-          <Button
-            onClick={() => setShowNewGroupInput(!showNewGroupInput)}
-            variant="default"
-            size="sm"
-            disabled={creatingGroup}
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            新規グループ作成
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <CollapsibleCard
+      panelId="settings.twitch.reward-groups"
+      title="リワードグループ管理"
+      description="カスタムリワードをグループ化して一括でオン/オフできます"
+      actions={(
+        <Button
+          onClick={() => setShowNewGroupInput(!showNewGroupInput)}
+          variant="default"
+          size="sm"
+          disabled={creatingGroup}
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          新規グループ作成
+        </Button>
+      )}
+    >
         {error && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center">
             <AlertCircle className="w-4 h-4 text-red-500 mr-2 flex-shrink-0" />
@@ -374,7 +365,6 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CollapsibleCard>
   );
 };

@@ -341,8 +341,17 @@ export const useSettingsPage = () => {
       setTwitchUserInfo(data);
       if (data.verified) {
         toast.success(`Twitch連携確認: ${data.display_name}`);
+      } else if (data.error) {
+        toast.error(`Twitch連携エラー: ${data.error}`);
       }
-    } catch (err) {
+    } catch (err: any) {
+      setTwitchUserInfo({
+        id: '',
+        login: '',
+        display_name: '',
+        verified: false,
+        error: err?.message || 'Twitch連携の検証に失敗しました',
+      });
       toast.error('Twitch連携の検証に失敗しました');
     } finally {
       setVerifyingTwitch(false);
@@ -383,17 +392,21 @@ export const useSettingsPage = () => {
   const handleTestNotification = async () => {
     setTestingNotification(true);
     try {
-      if (!('Notification' in window)) {
-        throw new Error('このブラウザは通知APIに対応していません');
-      }
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        throw new Error('通知が許可されていません');
-      }
-      new Notification('Twitch Overlay', {
-        body: 'テスト通知だす',
+      const response = await fetch(buildApiUrl('/api/chat/post'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'WebUI',
+          user_id: 'webui-local',
+          message: 'テスト通知',
+        }),
       });
-      toast.success('ブラウザ通知を送信しました');
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      toast.success('通知ウィンドウのテスト通知を送信しました');
     } catch (err: any) {
       toast.error(`テスト通知エラー: ${err.message}`);
     } finally {
@@ -475,15 +488,20 @@ export const useSettingsPage = () => {
     return `http://localhost:${webServerPort}`;
   }, [webServerPort]);
 
-	  const openExternal = useCallback((path: string) => {
-	    try {
-	      const base = resolveExternalBaseUrl();
-	      const url = new URL(path, base).toString();
-	      window.open(url, '_blank', 'noopener,noreferrer');
-	    } catch (error) {
-	      console.error('[openExternal] Failed:', error);
-	    }
-	  }, [resolveExternalBaseUrl]);
+  const openExternal = useCallback((path: string) => {
+    try {
+      let base = resolveExternalBaseUrl();
+      let targetPath = path;
+      if (import.meta.env.DEV && path.startsWith('/overlay')) {
+        base = import.meta.env.VITE_OVERLAY_DEV_ORIGIN || 'http://localhost:5174';
+        targetPath = path.replace(/^\/overlay(?=\/|$)/, '') || '/';
+      }
+      const url = new URL(targetPath, base).toString();
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[openExternal] Failed:', error);
+    }
+  }, [resolveExternalBaseUrl]);
 
 	  const handleOpenPresent = async () => {
 	    openExternal('/overlay/present');
@@ -640,14 +658,20 @@ export const useSettingsPage = () => {
     try {
       setIsControlDisabled(true);
       const url = buildApiUrl(`/api/music/control/${command}`);
+      const payload = data ?? {};
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: data ? JSON.stringify(data) : undefined
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`Control command failed: ${response.status}`);
+        const detail = await response.text().catch(() => '');
+        throw new Error(
+          detail
+            ? `Control command failed: ${response.status} (${detail})`
+            : `Control command failed: ${response.status}`,
+        );
       }
     } catch (error) {
       console.error('Music control error:', error);

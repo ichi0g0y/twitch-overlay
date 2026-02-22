@@ -67,10 +67,14 @@ pub async fn music_control(
     body: Option<Json<Value>>,
 ) -> ApiResult {
     let body_val = body.map(|b| b.0).unwrap_or(json!({}));
+    let ws_data = json!({
+        "action": action,
+        "data": body_val.clone(),
+    });
     let msg = json!({
         "type": "music_control",
         "action": action,
-        "data": body_val,
+        "data": ws_data,
     });
     let _ = state.ws_sender().send(msg.to_string());
     state.emit_event(events::MUSIC_CONTROL_COMMAND, msg.clone());

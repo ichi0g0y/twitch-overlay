@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicosolo/tauri-schema/refs/heads/master/tauri.conf.json",
-  "productName": "Cairo Overlay",
+  "productName": "Twitch Overlay",
   "version": "1.0.0",
-  "identifier": "com.cairo.overlay",
+  "identifier": "com.twitch.overlay",
   "build": {
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "cd ../frontend && bun run dev",
@@ -11,6 +11,7 @@
   },
   "app": {
     "windows": [],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }

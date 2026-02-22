@@ -456,13 +456,15 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
     if (!state.currentTrack || !audioRef.current) return;
     
     try {
+      const position = Number.isFinite(audioRef.current.currentTime) ? audioRef.current.currentTime : 0;
+      const duration = Number.isFinite(audioRef.current.duration) ? audioRef.current.duration : 0;
       await fetch(buildApiUrl('/api/music/state/update'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           track_id: state.currentTrack.id,
-          position: audioRef.current.currentTime,
-          duration: audioRef.current.duration,
+          position,
+          duration,
           playback_status: state.playbackStatus,
           is_playing: state.isPlaying, // 互換性のため
           volume: state.volume,

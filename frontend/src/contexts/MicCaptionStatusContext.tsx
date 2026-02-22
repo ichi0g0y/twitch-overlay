@@ -12,6 +12,7 @@ export type MicCaptionStatus = {
   speechLang: string;
   lastInterimText: string;
   lastFinalText: string;
+  lastTranslationText: string;
   lastUpdatedAtMs: number | null;
   dualInstanceEnabled: boolean;
   translationEnabled: boolean;
@@ -31,6 +32,7 @@ const DEFAULT_STATUS: MicCaptionStatus = {
   speechLang: 'ja',
   lastInterimText: '',
   lastFinalText: '',
+  lastTranslationText: '',
   lastUpdatedAtMs: null,
   dualInstanceEnabled: true,
   translationEnabled: false,
@@ -92,7 +94,7 @@ export const MicCaptionStatusProvider: React.FC<{ children: React.ReactNode }> =
       // Translation receipt is a good signal that mic pipeline is alive; clear stale errors.
       const translation = String(data?.translation || '').trim();
       if (!translation) return;
-      updateStatus({ lastUpdatedAtMs: Date.now(), error: null });
+      updateStatus({ lastTranslationText: translation, lastUpdatedAtMs: Date.now(), error: null });
     });
 
     return () => {

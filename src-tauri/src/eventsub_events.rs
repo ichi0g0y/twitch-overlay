@@ -10,7 +10,7 @@ use crate::eventsub_support::{
     str_field, to_legacy_fragments, to_notification_fragments,
 };
 use crate::notification::types::NotificationType;
-use crate::services::channel_points_emote_cache;
+use crate::services::{channel_points_assets, channel_points_emote_cache};
 
 pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value) {
     match event_type {
@@ -49,6 +49,14 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         tracing::debug!(learned, "Learned chat emotes for channel points parsing");
     }
     let fragments_json = message_fragments.to_string();
+    let avatar_url = resolve_chat_avatar_url(state, &user_id).await;
+    let now = chrono::Utc::now().timestamp();
+    if let Err(e) = state
+        .db()
+        .upsert_chat_user_profile(&user_id, &username, &avatar_url, now)
+    {
+        tracing::warn!(user_id, "Failed to upsert chat user profile: {e}");
+    }
 
     let msg = overlay_db::chat::ChatMessage {
         id: 0,
@@ -61,7 +69,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         translation_text: String::new(),
         translation_status: String::new(),
         translation_lang: String::new(),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: now,
     };
 
     match state.db().add_chat_message(&msg) {
@@ -81,7 +89,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         "messageId": message_id,
         "message": message_text,
         "fragments": to_legacy_fragments(&message_fragments),
-        "avatarUrl": "",
+        "avatarUrl": avatar_url,
         "translation": "",
         "translationStatus": "",
         "translationLang": "",
@@ -97,6 +105,20 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         NotificationType::Chat,
     )
     .await;
+}
+
+async fn resolve_chat_avatar_url(state: &SharedState, user_id: &str) -> String {
+    if user_id.trim().is_empty() {
+        return String::new();
+    }
+
+    match state.db().get_latest_chat_avatar(user_id) {
+        Ok(Some(url)) if !url.trim().is_empty() => return url,
+        Ok(_) => {}
+        Err(e) => tracing::warn!(user_id, "Failed to load cached chat avatar: {e}"),
+    }
+
+    channel_points_assets::fetch_reward_avatar_url(state, user_id).await
 }
 
 async fn handle_stream_online(state: &SharedState, payload: &Value) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, Trash2, Play, Pause } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { CollapsibleCard } from './ui/collapsible-card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -151,37 +151,33 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
   };
 
   const containerClass = embedded ? '' : 'container mx-auto p-4';
+  const panelId = embedded ? 'settings.logs.viewer' : 'logs.viewer';
 
   return (
     <div className={containerClass}>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>ログビューアー</CardTitle>
-              <CardDescription>
-                システムログの表示とダウンロード
-              </CardDescription>
-            </div>
-            <div className="flex space-x-2">
-              {isStreaming ? (
-                <Button onClick={stopStreaming} variant="outline" size="sm">
-                  <Pause className="h-4 w-4 mr-2" />
-                  停止
-                </Button>
-              ) : (
-                <Button onClick={startStreaming} variant="outline" size="sm">
-                  <Play className="h-4 w-4 mr-2" />
-                  リアルタイム
-                </Button>
-              )}
-              <Button onClick={fetchLogs} variant="outline" size="sm">
-                更新
+      <CollapsibleCard
+        panelId={panelId}
+        title="ログビューアー"
+        description="システムログの表示とダウンロード"
+        actions={(
+          <div className="flex space-x-2">
+            {isStreaming ? (
+              <Button onClick={stopStreaming} variant="outline" size="sm">
+                <Pause className="h-4 w-4 mr-2" />
+                停止
               </Button>
-            </div>
+            ) : (
+              <Button onClick={startStreaming} variant="outline" size="sm">
+                <Play className="h-4 w-4 mr-2" />
+                リアルタイム
+              </Button>
+            )}
+            <Button onClick={fetchLogs} variant="outline" size="sm">
+              更新
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
+        )}
+      >
           {/* フィルター */}
           <div className="flex space-x-2 mb-4">
             <div className="flex-1">
@@ -257,8 +253,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ embedded = false }) => {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     </div>
   );
 };

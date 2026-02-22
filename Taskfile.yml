@@ -12,22 +12,32 @@ tasks:
           export SERVER_PORT="${DB_PORT:-8080}"
         fi
         export VITE_BACKEND_PORT="$SERVER_PORT"
+        export VITE_OVERLAY_DEV_ORIGIN="http://localhost:5174"
         echo "📦 web/dist を準備中..."
         (cd web && bun run build)
+        echo "📦 frontend/dist を準備中..."
+        (cd frontend && bun run build)
+        echo "🔁 web/dist の watch build を起動中..."
+        (cd web && bun run build -- --watch) &
+        WEB_BUILD_WATCH_PID=$!
+        echo "🔁 frontend/dist の watch build を起動中..."
+        (cd frontend && bun run build -- --watch) &
+        FRONTEND_BUILD_WATCH_PID=$!
         echo "🔥 Overlay開発サーバーを起動中... (port 5174)"
-        (cd web && bun run dev) &
+        (cd web && bun run dev -- --strictPort) &
         WEB_PID=$!
-        trap "kill $WEB_PID 2>/dev/null" EXIT
+        trap "kill $WEB_PID $WEB_BUILD_WATCH_PID $FRONTEND_BUILD_WATCH_PID 2>/dev/null" EXIT
         echo "🚀 cargo tauri dev を起動中..."
         echo "   Backend:       http://localhost:$SERVER_PORT"
         echo "   Dashboard HMR: http://localhost:5173"
         echo "   Overlay HMR:   http://localhost:5174"
+        echo "   Hosted UI:     http://localhost:$SERVER_PORT (watch build同期)"
         cargo tauri dev
 
   dev:quick:
     desc: クイック開発モード（フロントエンドは事前ビルド前提）
     cmds:
-      - cargo run -p cairo-overlay --bin cairo-overlay-server
+      - cargo run -p twitch-overlay --bin twitch-overlay-server
 
   # Tauriアプリとして起動（ウインドウ付き）
   dev:tauri:

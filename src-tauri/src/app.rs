@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use overlay_db::Database;
 use serde::Serialize;
@@ -32,6 +33,8 @@ struct SharedStateInner {
     oauth_state: RwLock<Option<String>>,
     /// Global cancellation token used to stop background loops.
     shutdown_token: CancellationToken,
+    /// Cancellation token used to restart only the HTTP server.
+    server_shutdown_token: RwLock<CancellationToken>,
     /// EventSub shutdown sender for graceful disconnect.
     eventsub_shutdown_tx: RwLock<Option<mpsc::Sender<()>>>,
 }
@@ -51,6 +54,7 @@ impl SharedState {
                 stream_live: RwLock::new(None),
                 oauth_state: RwLock::new(None),
                 shutdown_token: CancellationToken::new(),
+                server_shutdown_token: RwLock::new(CancellationToken::new()),
                 eventsub_shutdown_tx: RwLock::new(None),
             }),
         }
@@ -139,6 +143,45 @@ impl SharedState {
     /// Global cancellation token for graceful shutdown.
     pub fn shutdown_token(&self) -> &CancellationToken {
         &self.inner.shutdown_token
+    }
+
+    /// Server-only cancellation token for HTTP server restart.
+    pub async fn server_shutdown_token(&self) -> CancellationToken {
+        self.inner.server_shutdown_token.read().await.clone()
+    }
+
+    /// Restart only the HTTP server with the latest settings.
+    pub async fn restart_server(&self) -> Result<u16, anyhow::Error> {
+        let old_server_token = self.server_shutdown_token().await;
+        old_server_token.cancel();
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        self.reload_config().await?;
+
+        {
+            let mut token = self.inner.server_shutdown_token.write().await;
+            *token = CancellationToken::new();
+        }
+
+        let server_state = self.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = crate::server::start_server(server_state.clone()).await {
+                tracing::error!("Server restart failed: {e}");
+                server_state.emit_event(
+                    crate::events::WEBSERVER_ERROR,
+                    crate::events::ErrorPayload {
+                        message: e.to_string(),
+                    },
+                );
+            }
+        });
+
+        let port = self.server_port();
+        self.emit_event(
+            crate::events::WEBSERVER_STARTED,
+            crate::events::ServerStartedPayload { port },
+        );
+        Ok(port)
     }
 
     /// Store EventSub shutdown sender for graceful shutdown.

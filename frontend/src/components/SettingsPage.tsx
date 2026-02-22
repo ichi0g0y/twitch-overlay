@@ -1,25 +1,39 @@
-import { Bluetooth, Bug, FileText, Gift, HardDrive, Layers, Mic, Music, Settings2, Wifi } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Background,
+  Controls,
+  MiniMap,
+  NodeResizer,
+  ReactFlow,
+  useNodesState,
+  type Node as FlowNode,
+  type NodeProps,
+  type NodeTypes,
+  type ReactFlowInstance,
+  type Viewport,
+} from '@xyflow/react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
-import { SystemStatusCard } from './SystemStatusCard';
-import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-
-// Import tab components
+import { buildApiUrl } from '../utils/api';
+import { useMicCaptionStatus } from '../contexts/MicCaptionStatusContext';
+import type { AuthStatus, FeatureStatus, PrinterStatusInfo, StreamStatus, TwitchUserInfo } from '../types';
+import type { OverlaySettings as OverlaySettingsState } from '../contexts/SettingsContext';
+import { WorkspaceCardUiContext } from './ui/collapsible-card';
+import { Switch } from './ui/switch';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { MusicSettings } from './settings/MusicSettings';
 import { LogsTab } from './settings/LogsTab';
 import { TwitchSettings } from './settings/TwitchSettings';
 import { PrinterSettings } from './settings/PrinterSettings';
-import { OverlaySettings } from './settings/OverlaySettings';
+import { OverlaySettings, type OverlayCardKey } from './settings/OverlaySettings';
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
 import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
 import { ChatSidebar } from './ChatSidebar';
-import { MicStatusCard } from './MicStatusCard';
+import { MicCaptionSender } from './mic/MicCaptionSender';
+import { readIrcChannels, subscribeIrcChannels, writeIrcChannels } from '../utils/chatChannels';
+import '@xyflow/react/dist/style.css';
 
-const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'chat_sidebar_width';
 const SIDEBAR_FONT_SIZE_STORAGE_KEY = 'chat_sidebar_font_size';
 const SIDEBAR_MIN_WIDTH = 220;
@@ -28,14 +42,1324 @@ const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_FONT_SIZE = 12;
 const SIDEBAR_MAX_FONT_SIZE = 40;
 const SIDEBAR_DEFAULT_FONT_SIZE = 14;
+const FOLLOWED_RAIL_SIDE_STORAGE_KEY = 'settings.followed_channels.side';
+const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
+const FOLLOWED_RAIL_WIDTH_PX = 48;
+const FOLLOWED_RAIL_FETCH_LIMIT = 50;
+const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
+const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
+const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
+const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+
+type BaseWorkspaceCardKind =
+  | 'preview-main'
+  | 'general-basic'
+  | 'general-notification'
+  | 'general-font'
+  | 'mic-speech'
+  | 'mic-overlay-display'
+  | 'twitch-api'
+  | 'twitch-reward-groups'
+  | 'twitch-custom-rewards'
+  | 'printer-type'
+  | 'printer-bluetooth'
+  | 'printer-usb'
+  | 'printer-print'
+  | 'printer-clock'
+  | 'music-manager'
+  | 'overlay-music-player'
+  | 'overlay-fax'
+  | 'overlay-clock'
+  | 'overlay-mic-transcript'
+  | 'overlay-reward-count'
+  | 'overlay-lottery'
+  | 'logs'
+  | 'cache-stats'
+  | 'cache-config'
+  | 'cache-actions'
+  | 'api';
+
+type LegacyWorkspaceCardKind =
+  | 'general'
+  | 'mic'
+  | 'twitch'
+  | 'printer'
+  | 'music'
+  | 'overlay'
+  | 'cache';
+
+type WorkspaceCardKind = BaseWorkspaceCardKind | `preview-irc:${string}`;
+
+type WorkspaceCardMenuItem = {
+  kind: WorkspaceCardKind;
+  label: string;
+  description: string;
+};
+
+type WorkspaceCardNodeData = {
+  kind: WorkspaceCardKind;
+  title: string;
+};
+
+type WorkspaceCardNode = FlowNode<WorkspaceCardNodeData, 'workspace-card'>;
+
+type StoredWorkspaceFlowPayload = {
+  nodes?: Array<{
+    id: string;
+    kind: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
+  viewport?: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+};
+
+type WorkspaceRenderContextValue = {
+  removeCard: (id: string) => void;
+  refreshPreview: (kind: WorkspaceCardKind) => void;
+  renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
+  resolvePreviewHeader: (kind: WorkspaceCardKind) => {
+    channelLogin: string;
+    statusLabel: string;
+    statusClassName: string;
+  } | null;
+};
+
+const BASE_CARD_KIND_SET = new Set<BaseWorkspaceCardKind>([
+  'preview-main',
+  'general-basic',
+  'general-notification',
+  'general-font',
+  'mic-speech',
+  'mic-overlay-display',
+  'twitch-api',
+  'twitch-reward-groups',
+  'twitch-custom-rewards',
+  'printer-type',
+  'printer-bluetooth',
+  'printer-usb',
+  'printer-print',
+  'printer-clock',
+  'music-manager',
+  'overlay-music-player',
+  'overlay-fax',
+  'overlay-clock',
+  'overlay-mic-transcript',
+  'overlay-reward-count',
+  'overlay-lottery',
+  'logs',
+  'cache-stats',
+  'cache-config',
+  'cache-actions',
+  'api',
+]);
+
+const BASE_WORKSPACE_MENU: WorkspaceCardMenuItem[] = [
+  { kind: 'preview-main', label: '配信プレビュー', description: '現在の配信状態と埋め込みプレビュー' },
+  { kind: 'general-basic', label: '一般: 基本設定', description: 'タイムゾーンと基本動作' },
+  { kind: 'general-notification', label: '一般: 通知設定', description: '通知ウィンドウ表示設定' },
+  { kind: 'general-font', label: '一般: フォント設定', description: 'フォントアップロードとプレビュー' },
+  { kind: 'mic-speech', label: 'マイク: 音声認識', description: 'Web Speech認識設定' },
+  { kind: 'mic-overlay-display', label: 'マイク: 表示設定', description: '文字起こしオーバーレイ表示設定' },
+  { kind: 'twitch-api', label: 'Twitch: API設定', description: '認証とAPIキー設定' },
+  { kind: 'twitch-reward-groups', label: 'Twitch: リワードグループ', description: 'リワードグループ管理' },
+  { kind: 'twitch-custom-rewards', label: 'Twitch: カスタムリワード', description: 'カスタムリワード一覧' },
+  { kind: 'printer-type', label: 'プリンター: 種類', description: 'プリンター種別選択' },
+  { kind: 'printer-bluetooth', label: 'プリンター: Bluetooth', description: 'Bluetooth接続設定' },
+  { kind: 'printer-usb', label: 'プリンター: USB', description: 'USBプリンター設定' },
+  { kind: 'printer-print', label: 'プリンター: 印刷設定', description: '品質と印刷動作設定' },
+  { kind: 'printer-clock', label: 'プリンター: 時計印刷', description: '毎時印刷設定' },
+  { kind: 'music-manager', label: '音楽: 管理', description: 'プレイリストと再生制御' },
+  { kind: 'overlay-music-player', label: 'Overlay: 音楽プレイヤー', description: '音楽表示カード設定' },
+  { kind: 'overlay-fax', label: 'Overlay: FAX', description: 'FAX表示カード設定' },
+  { kind: 'overlay-clock', label: 'Overlay: 時計', description: '時計表示カード設定' },
+  { kind: 'overlay-mic-transcript', label: 'Overlay: 文字起こし', description: '字幕表示カード設定' },
+  { kind: 'overlay-reward-count', label: 'Overlay: リワード集計', description: 'リワード表示カード設定' },
+  { kind: 'overlay-lottery', label: 'Overlay: 抽選', description: '抽選表示カード設定' },
+  { kind: 'logs', label: 'ログ', description: '各種ログの確認' },
+  { kind: 'cache-stats', label: 'キャッシュ: 統計', description: 'キャッシュ使用状況' },
+  { kind: 'cache-config', label: 'キャッシュ: 設定', description: '保存上限と期限設定' },
+  { kind: 'cache-actions', label: 'キャッシュ: 管理操作', description: '手動削除とクリーンアップ' },
+  { kind: 'api', label: 'API', description: 'API関連の状態確認' },
+];
+
+const LEGACY_WORKSPACE_CARD_KIND_MAP: Record<LegacyWorkspaceCardKind, WorkspaceCardKind> = {
+  general: 'general-basic',
+  mic: 'mic-speech',
+  twitch: 'twitch-api',
+  printer: 'printer-type',
+  music: 'music-manager',
+  overlay: 'overlay-music-player',
+  cache: 'cache-stats',
+};
+
+const WORKSPACE_RENDER_CONTEXT = createContext<WorkspaceRenderContextValue | null>(null);
+
+const truncateText = (input: string, max = 80) => {
+  const normalized = (input || '').trim();
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max)}...`;
+};
+
+const toFiniteNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+};
+
+const clampWorkspaceZoom = (value: unknown, fallback: number) => {
+  const parsed = toFiniteNumber(value, fallback);
+  return Math.min(WORKSPACE_FLOW_MAX_ZOOM, Math.max(WORKSPACE_FLOW_MIN_ZOOM, parsed));
+};
+
+const normalizeWorkspaceViewport = (viewport: { x: unknown; y: unknown; zoom: unknown }): Viewport => ({
+  x: toFiniteNumber(viewport.x, DEFAULT_WORKSPACE_VIEWPORT.x),
+  y: toFiniteNumber(viewport.y, DEFAULT_WORKSPACE_VIEWPORT.y),
+  zoom: clampWorkspaceZoom(viewport.zoom, DEFAULT_WORKSPACE_VIEWPORT.zoom),
+});
+
+const readStoredWorkspaceViewport = (value: unknown): Viewport | null => {
+  if (!value || typeof value !== 'object') return null;
+  const viewport = value as Record<string, unknown>;
+  if (!Number.isFinite(Number(viewport.zoom))) return null;
+  return normalizeWorkspaceViewport({
+    x: viewport.x,
+    y: viewport.y,
+    zoom: viewport.zoom,
+  });
+};
+
+const isPreviewIrcKind = (kind: string): kind is `preview-irc:${string}` =>
+  kind.startsWith('preview-irc:') && kind.length > 'preview-irc:'.length;
+
+const isPreviewCardKind = (kind: WorkspaceCardKind) =>
+  kind === 'preview-main' || isPreviewIrcKind(kind);
+
+const isWorkspaceCardKind = (kind: string): kind is WorkspaceCardKind =>
+  BASE_CARD_KIND_SET.has(kind as BaseWorkspaceCardKind) || isPreviewIrcKind(kind);
+
+const normalizeWorkspaceCardKind = (kind: string): WorkspaceCardKind | null => {
+  if (isWorkspaceCardKind(kind)) return kind;
+  if (kind in LEGACY_WORKSPACE_CARD_KIND_MAP) {
+    return LEGACY_WORKSPACE_CARD_KIND_MAP[kind as LegacyWorkspaceCardKind];
+  }
+  return null;
+};
+
+const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
+  const staticItem = BASE_WORKSPACE_MENU.find((item) => item.kind === kind);
+  if (staticItem) return staticItem.label;
+  if (isPreviewIrcKind(kind)) {
+    const channel = kind.slice('preview-irc:'.length);
+    return `IRCプレビュー: ${channel}`;
+  }
+  return kind;
+};
+
+const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
+  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return { width: 640, height: 420 };
+  if (kind === 'twitch-custom-rewards') return { width: 960, height: 640 };
+  if (
+    kind === 'overlay-music-player' ||
+    kind === 'overlay-fax' ||
+    kind === 'overlay-clock' ||
+    kind === 'overlay-mic-transcript' ||
+    kind === 'overlay-reward-count' ||
+    kind === 'overlay-lottery'
+  ) {
+    return { width: 820, height: 620 };
+  }
+  if (kind === 'logs' || kind === 'api') return { width: 760, height: 560 };
+  return { width: 640, height: 520 };
+};
+
+const resolveWorkspaceCardMinSize = (kind: WorkspaceCardKind) => {
+  if (isPreviewCardKind(kind)) {
+    // Twitch iframe autoplay requires at least 400x300; node header consumes 36px height.
+    return { minWidth: 400, minHeight: 336 };
+  }
+  return { minWidth: 320, minHeight: 220 };
+};
+
+const isCollapsibleCardNodeKind = (kind: WorkspaceCardKind) => {
+  if (isPreviewCardKind(kind)) return false;
+  if (kind === 'logs') return false;
+  if (
+    kind === 'overlay-music-player' ||
+    kind === 'overlay-fax' ||
+    kind === 'overlay-clock' ||
+    kind === 'overlay-mic-transcript' ||
+    kind === 'overlay-reward-count' ||
+    kind === 'overlay-lottery'
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const createWorkspaceNodeId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const createWorkspaceNode = (
+  kind: WorkspaceCardKind,
+  position: { x: number; y: number },
+  options: { id?: string; width?: number; height?: number } = {},
+): WorkspaceCardNode => {
+  const defaults = resolveWorkspaceCardSize(kind);
+  const mins = resolveWorkspaceCardMinSize(kind);
+  const width = Math.max(mins.minWidth, toFiniteNumber(options.width, defaults.width));
+  const height = Math.max(mins.minHeight, toFiniteNumber(options.height, defaults.height));
+  return {
+    id: options.id ?? createWorkspaceNodeId(),
+    type: 'workspace-card',
+    position: { x: toFiniteNumber(position.x, 0), y: toFiniteNumber(position.y, 0) },
+    dragHandle: '.workspace-node-drag-handle,[data-workspace-node-drag-handle="true"]',
+    data: {
+      kind,
+      title: resolveWorkspaceCardTitle(kind),
+    },
+    width,
+    height,
+  };
+};
+
+const readWorkspaceFlow = (): { nodes: WorkspaceCardNode[]; viewport: Viewport | null } | null => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(WORKSPACE_FLOW_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredWorkspaceFlowPayload;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const parsedNodes = Array.isArray(parsed.nodes)
+      ? parsed.nodes
+        .map((node) => {
+          if (!node || typeof node !== 'object') return null;
+          const normalizedKind = normalizeWorkspaceCardKind(node.kind);
+          if (typeof node.id !== 'string' || !normalizedKind) return null;
+          return createWorkspaceNode(
+            normalizedKind,
+            { x: toFiniteNumber(node.x, 0), y: toFiniteNumber(node.y, 0) },
+            {
+              id: node.id,
+              width: toFiniteNumber(node.width, resolveWorkspaceCardSize(normalizedKind).width),
+              height: toFiniteNumber(node.height, resolveWorkspaceCardSize(normalizedKind).height),
+            },
+          );
+        })
+        .filter((node): node is WorkspaceCardNode => node !== null)
+      : [];
+    const dedupedNodes: WorkspaceCardNode[] = [];
+    const seenKinds = new Set<WorkspaceCardKind>();
+    for (const node of parsedNodes) {
+      if (seenKinds.has(node.data.kind)) {
+        continue;
+      }
+      seenKinds.add(node.data.kind);
+      dedupedNodes.push(node);
+    }
+
+    return {
+      nodes: dedupedNodes,
+      viewport: readStoredWorkspaceViewport(parsed.viewport),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeWorkspaceFlow = (nodes: WorkspaceCardNode[], viewport: Viewport | null) => {
+  if (typeof window === 'undefined') return;
+  const payload: StoredWorkspaceFlowPayload = {
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      kind: node.data.kind,
+      x: node.position.x,
+      y: node.position.y,
+      width: toFiniteNumber(
+        node.width,
+        toFiniteNumber(
+          node.measured?.width,
+          toFiniteNumber((node.style as Record<string, unknown> | undefined)?.width, resolveWorkspaceCardSize(node.data.kind).width),
+        ),
+      ),
+      height: toFiniteNumber(
+        node.height,
+        toFiniteNumber(
+          node.measured?.height,
+          toFiniteNumber((node.style as Record<string, unknown> | undefined)?.height, resolveWorkspaceCardSize(node.data.kind).height),
+        ),
+      ),
+    })),
+  };
+  if (viewport) {
+    payload.viewport = normalizeWorkspaceViewport(viewport);
+  }
+  window.localStorage.setItem(WORKSPACE_FLOW_STORAGE_KEY, JSON.stringify(payload));
+};
+
+type TwitchStreamPreviewProps = {
+  isTwitchConfigured: boolean;
+  isAuthenticated: boolean;
+  channelLogin: string;
+  reloadNonce: number;
+};
+
+type CompactPreviewFrameProps = {
+  panelId: string;
+  children: React.ReactNode;
+};
+
+const CompactPreviewFrame: React.FC<CompactPreviewFrameProps> = ({
+  panelId: _panelId,
+  children,
+}) => {
+  return (
+    <div className="h-full min-h-0 overflow-hidden bg-gray-900/20">
+      <div className="min-h-0 h-full">{children}</div>
+    </div>
+  );
+};
+
+type PreviewEmbedProps = {
+  channelLogin: string;
+  reloadNonce: number;
+};
+
+const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce }) => {
+  const parentDomain = typeof window !== 'undefined' ? (window.location.hostname || 'localhost') : 'localhost';
+  const streamUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channelLogin)}&parent=${encodeURIComponent(parentDomain)}&autoplay=true&muted=true&controls=true&refresh=${reloadNonce}`;
+
+  return (
+    <div className="nodrag nopan nowheel h-full min-h-0 overflow-hidden bg-black">
+      <iframe
+        key={`${channelLogin}-${parentDomain}-${reloadNonce}`}
+        src={streamUrl}
+        title={`Twitch Stream Preview - ${channelLogin}`}
+        className="h-full w-full border-0"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowFullScreen
+        scrolling="no"
+      />
+    </div>
+  );
+};
+
+const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
+  isTwitchConfigured,
+  isAuthenticated,
+  channelLogin,
+  reloadNonce,
+}) => {
+  const canEmbed = Boolean(channelLogin);
+
+  return (
+    <CompactPreviewFrame panelId="settings.twitch.stream-preview">
+      {!isTwitchConfigured && (
+        <div className="flex h-full items-center justify-center p-4">
+          <p className="text-sm text-gray-400">Twitch設定が未完了です。</p>
+        </div>
+      )}
+      {isTwitchConfigured && !isAuthenticated && (
+        <div className="flex h-full items-center justify-center p-4">
+          <p className="text-sm text-gray-400">Twitch認証後にプレビューを表示します。</p>
+        </div>
+      )}
+      {isTwitchConfigured && isAuthenticated && !canEmbed && (
+        <div className="flex h-full items-center justify-center p-4">
+          <p className="text-sm text-gray-400">ユーザー情報を検証中です。少し待つか、Twitch設定で再検証してください。</p>
+        </div>
+      )}
+      {isTwitchConfigured && isAuthenticated && canEmbed && (
+        <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} />
+      )}
+    </CompactPreviewFrame>
+  );
+};
+
+type AddedChannelStreamPreviewProps = {
+  channelLogin: string;
+  reloadNonce: number;
+};
+
+const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ channelLogin, reloadNonce }) => {
+  return (
+    <CompactPreviewFrame panelId={`settings.twitch.stream-preview.irc.${channelLogin}`}>
+      <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} />
+    </CompactPreviewFrame>
+  );
+};
+
+const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected }) => {
+  const renderContext = useContext(WORKSPACE_RENDER_CONTEXT);
+  if (!renderContext) return null;
+  const cardAsNode = isCollapsibleCardNodeKind(data.kind);
+  const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
+  const minSize = resolveWorkspaceCardMinSize(data.kind);
+  return (
+    <div className={`relative h-full min-h-0 min-w-0 ${cardAsNode ? '' : 'overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20'}`}>
+      <NodeResizer
+        minWidth={minSize.minWidth}
+        minHeight={minSize.minHeight}
+        isVisible={selected}
+        lineClassName="!border-transparent"
+        handleClassName="!h-3.5 !w-3.5 !rounded-sm !border-none !bg-transparent !opacity-0"
+      />
+      {cardAsNode ? (
+        <div className="settings-node-card-shell h-full min-h-0">
+          <WorkspaceCardUiContext.Provider value={{ onClose: () => renderContext.removeCard(id), nodeMode: true }}>
+            {renderContext.renderCard(data.kind)}
+          </WorkspaceCardUiContext.Provider>
+        </div>
+      ) : (
+        <>
+          <div className="workspace-node-drag-handle flex h-9 items-center border-b border-gray-800/80 bg-gray-900/85 px-3">
+            {previewHeader ? (
+              <>
+                <span className="truncate font-mono text-xs text-gray-200">channel: {previewHeader.channelLogin || '-'}</span>
+                <span className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}>{previewHeader.statusLabel}</span>
+                <button
+                  type="button"
+                  onClick={() => renderContext.refreshPreview(data.kind)}
+                  className="nodrag ml-2 inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                  aria-label="プレビューを更新"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+                {previewHeader.channelLogin && (
+                  <a
+                    href={`https://www.twitch.tv/${encodeURIComponent(previewHeader.channelLogin)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="nodrag ml-2 inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                    aria-label={`${previewHeader.channelLogin} を開く`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </>
+            ) : (
+              <span className="truncate text-xs font-semibold text-gray-200">{data.title}</span>
+            )}
+            <button
+              type="button"
+              className="nodrag ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+              onClick={() => renderContext.removeCard(id)}
+              aria-label="カードを削除"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="nodrag h-[calc(100%-2.25rem)] overflow-auto">
+            {renderContext.renderCard(data.kind)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const WORKSPACE_NODE_TYPES: NodeTypes = {
+  'workspace-card': WorkspaceCardNodeView,
+};
+
+type FollowedChannelRailItem = {
+  broadcaster_id: string;
+  broadcaster_login: string;
+  broadcaster_name: string;
+  profile_image_url: string;
+  followed_at?: string;
+  is_live: boolean;
+  viewer_count: number;
+  title?: string | null;
+  started_at?: string | null;
+};
+
+type FollowedChannelsRailProps = {
+  side: 'left' | 'right';
+  channels: FollowedChannelRailItem[];
+  loading: boolean;
+  error: string;
+  chatWidth: number;
+  chatPanel: React.ReactNode;
+  onSideChange: (side: 'left' | 'right') => void;
+  onOpenOverlay: () => void;
+  onOpenOverlayDebug: () => void;
+  onOpenPresent: () => void;
+  onOpenPresentDebug: () => void;
+  onAddIrcPreview: (channelLogin: string) => void;
+  onStartRaid: (channel: FollowedChannelRailItem) => Promise<void>;
+};
+
+const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
+  side,
+  channels,
+  loading,
+  error,
+  chatWidth,
+  chatPanel,
+  onSideChange,
+  onOpenOverlay,
+  onOpenOverlayDebug,
+  onOpenPresent,
+  onOpenPresentDebug,
+  onAddIrcPreview,
+  onStartRaid,
+}) => {
+  const [railMenuOpen, setRailMenuOpen] = useState(false);
+  const [openChannelId, setOpenChannelId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
+  const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    if (openChannelId && !channels.some((item) => item.broadcaster_id === openChannelId)) {
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+    }
+  }, [channels, openChannelId]);
+
+  useEffect(() => {
+    if (!openChannelId) {
+      setMenuAnchor(null);
+      return;
+    }
+
+    const closeMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-followed-menu="true"]')) return;
+      if (target.closest('[data-followed-trigger="true"]')) return;
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+      setActionError('');
+    };
+
+    const closeByResize = () => {
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+      setActionError('');
+    };
+
+    window.addEventListener('mousedown', closeMenu);
+    window.addEventListener('resize', closeByResize);
+    return () => {
+      window.removeEventListener('mousedown', closeMenu);
+      window.removeEventListener('resize', closeByResize);
+    };
+  }, [openChannelId]);
+
+  useEffect(() => {
+    if (!railMenuOpen) return;
+
+    const closeMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-rail-menu="true"]')) return;
+      if (target.closest('[data-rail-trigger="true"]')) return;
+      setRailMenuOpen(false);
+    };
+
+    const closeByEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setRailMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', closeMenu);
+    window.addEventListener('keydown', closeByEscape);
+    return () => {
+      window.removeEventListener('mousedown', closeMenu);
+      window.removeEventListener('keydown', closeByEscape);
+    };
+  }, [railMenuOpen]);
+
+  const tooltipSideClass = side === 'left' ? 'left-full ml-2' : 'right-full mr-2';
+  const toggleLabel = side === 'left' ? '右側へ移動' : '左側へ移動';
+
+  return (
+    <div
+      className={`hidden xl:flex fixed inset-y-0 z-40 bg-gray-900 ${side === 'left' ? 'left-0 flex-row' : 'right-0 flex-row-reverse'}`}
+      style={{ width: `${FOLLOWED_RAIL_WIDTH_PX + chatWidth}px` }}
+    >
+      <div className={`w-12 shrink-0 border-gray-700 ${side === 'left' ? 'border-r' : 'border-l'}`}>
+        <div className="flex h-full flex-col items-center py-2">
+          <div className="relative mb-2">
+            <button
+              type="button"
+              data-rail-trigger="true"
+              onClick={() => setRailMenuOpen((prev) => !prev)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+              aria-label="クイック操作メニュー"
+              aria-expanded={railMenuOpen}
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            {railMenuOpen && (
+              <div
+                data-rail-menu="true"
+                className={`absolute top-0 z-50 w-56 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl ${
+                  side === 'left' ? 'left-full ml-2' : 'right-full mr-2'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSideChange(side === 'left' ? 'right' : 'left');
+                    setRailMenuOpen(false);
+                  }}
+                  className="mb-1 inline-flex h-8 w-full items-center rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+                >
+                  {toggleLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenOverlay();
+                    setRailMenuOpen(false);
+                  }}
+                  className="mb-1 inline-flex h-8 w-full items-center gap-2 rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+                >
+                  <Layers className="h-3.5 w-3.5 text-gray-300" />
+                  <span>オーバーレイ表示</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenOverlayDebug();
+                    setRailMenuOpen(false);
+                  }}
+                  className="mb-1 inline-flex h-8 w-full items-center gap-2 rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+                >
+                  <Layers className="h-3.5 w-3.5 text-gray-300" />
+                  <span>オーバーレイ表示(デバッグ)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenPresent();
+                    setRailMenuOpen(false);
+                  }}
+                  className="mb-1 inline-flex h-8 w-full items-center gap-2 rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+                >
+                  <Gift className="h-3.5 w-3.5 text-gray-300" />
+                  <span>プレゼントルーレット</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenPresentDebug();
+                    setRailMenuOpen(false);
+                  }}
+                  className="inline-flex h-8 w-full items-center gap-2 rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+                >
+                  <Gift className="h-3.5 w-3.5 text-gray-300" />
+                  <span>プレゼント(デバッグ)</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="mb-2 h-px w-8 bg-gray-700" />
+          <div className="flex-1 overflow-y-auto space-y-2 px-1">
+            {loading && (
+              <div className="flex w-full justify-center py-1 text-[10px] text-gray-400">...</div>
+            )}
+            {!loading && channels.length === 0 && (
+              <div className="flex w-full justify-center py-1 text-[10px] text-gray-500">--</div>
+            )}
+            {channels.map((channel) => {
+              const selected = openChannelId === channel.broadcaster_id;
+              return (
+                <div key={channel.broadcaster_id} className="group relative flex justify-center">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      const nextOpen = openChannelId !== channel.broadcaster_id;
+                      setActionError('');
+                      setRaidConfirmChannelId(null);
+                      setOpenChannelId(nextOpen ? channel.broadcaster_id : null);
+                      if (!nextOpen) {
+                        setMenuAnchor(null);
+                        return;
+                      }
+                      const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      const menuWidth = 192;
+                      const menuHeight = 170;
+                      const top = Math.max(
+                        12,
+                        Math.min(window.innerHeight - menuHeight - 12, rect.top + (rect.height / 2) - (menuHeight / 2)),
+                      );
+                      const left = side === 'left'
+                        ? Math.min(window.innerWidth - menuWidth - 12, rect.right + 8)
+                        : Math.max(12, rect.left - menuWidth - 8);
+                      setMenuAnchor({ top, left });
+                    }}
+                    className={`relative h-9 w-9 rounded-full border transition ${
+                      selected
+                        ? 'border-blue-400 ring-1 ring-blue-400/60'
+                        : 'border-gray-700 hover:border-gray-500'
+                    }`}
+                    aria-label={`${channel.broadcaster_name} の操作を開く`}
+                    data-followed-trigger="true"
+                  >
+                    <span className="block h-full w-full overflow-hidden rounded-full">
+                      {channel.profile_image_url ? (
+                        <img
+                          src={channel.profile_image_url}
+                          alt={channel.broadcaster_name}
+                          className={`h-full w-full object-cover ${channel.is_live ? '' : 'grayscale opacity-70'}`}
+                        />
+                      ) : (
+                        <span className={`flex h-full w-full items-center justify-center bg-gray-700 text-xs font-semibold ${channel.is_live ? 'text-white' : 'text-gray-300'}`}>
+                          {(channel.broadcaster_name || channel.broadcaster_login || '?').slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                    </span>
+                    {channel.is_live && (
+                      <span className="absolute -right-1 -top-1 z-10 inline-flex h-3.5 w-3.5 rounded-full border border-gray-900 bg-red-500 shadow" />
+                    )}
+                  </button>
+                  <div
+                    className={`pointer-events-none absolute ${tooltipSideClass} top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 opacity-0 shadow transition group-hover:opacity-100`}
+                  >
+                    {channel.broadcaster_name}
+                    {channel.is_live ? ` (LIVE ${channel.viewer_count})` : ' (OFFLINE)'}
+                  </div>
+                  {selected && menuAnchor && (
+                    <div
+                      data-followed-menu="true"
+                      className="fixed z-50 w-48 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+                      style={{ left: `${menuAnchor.left}px`, top: `${menuAnchor.top}px` }}
+                    >
+                      <div className="mb-1 text-xs font-semibold text-gray-100">#{channel.broadcaster_login}</div>
+                      <div className="mb-2 text-[11px] text-gray-400 truncate">
+                        {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onAddIrcPreview(channel.broadcaster_login);
+                          setOpenChannelId(null);
+                          setMenuAnchor(null);
+                          setRaidConfirmChannelId(null);
+                        }}
+                        className="mb-1 inline-flex h-8 w-full items-center justify-center rounded border border-emerald-600/60 text-xs text-emerald-300 hover:bg-emerald-700/20"
+                      >
+                        コメント欄に接続
+                      </button>
+                      <button
+                        type="button"
+                        disabled={raidingChannelId === channel.broadcaster_id}
+                        onClick={async () => {
+                          if (raidConfirmChannelId !== channel.broadcaster_id) {
+                            setRaidConfirmChannelId(channel.broadcaster_id);
+                            setActionError('');
+                            return;
+                          }
+                          setActionError('');
+                          setRaidingChannelId(channel.broadcaster_id);
+                          try {
+                            await onStartRaid(channel);
+                            setOpenChannelId(null);
+                            setMenuAnchor(null);
+                            setRaidConfirmChannelId(null);
+                          } catch (error: any) {
+                            setActionError(error?.message || 'レイド開始に失敗しました');
+                          } finally {
+                            setRaidingChannelId(null);
+                          }
+                        }}
+                        className={`inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                          raidConfirmChannelId === channel.broadcaster_id
+                            ? 'border-red-500/80 text-red-200 hover:bg-red-700/20'
+                            : 'border-gray-600 text-gray-200 hover:bg-gray-800'
+                        } disabled:opacity-60`}
+                      >
+                        {raidingChannelId === channel.broadcaster_id
+                          ? 'レイド中...'
+                          : raidConfirmChannelId === channel.broadcaster_id
+                            ? 'レイド確定'
+                            : 'レイド'}
+                      </button>
+                      {raidConfirmChannelId === channel.broadcaster_id && (
+                        <button
+                          type="button"
+                          onClick={() => setRaidConfirmChannelId(null)}
+                          className="mt-1 inline-flex h-7 w-full items-center justify-center rounded border border-gray-700 text-[11px] text-gray-300 hover:bg-gray-800"
+                        >
+                          キャンセル
+                        </button>
+                      )}
+                      {actionError && <p className="mt-1 text-[11px] text-red-300">{actionError}</p>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!!error && (
+            <div className="mt-2 w-full px-1 text-center text-[10px] leading-tight text-red-300">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        {chatPanel}
+      </div>
+    </div>
+  );
+};
+
+type StatusTopBarProps = {
+  leftOffset: number;
+  rightOffset: number;
+  featureStatus: FeatureStatus | null;
+  authStatus: AuthStatus | null;
+  streamStatus: StreamStatus | null;
+  twitchUserInfo: TwitchUserInfo | null;
+  printerStatusInfo: PrinterStatusInfo | null;
+  webServerPort?: number;
+  refreshingStreamStatus: boolean;
+  reconnectingPrinter: boolean;
+  testingPrinter: boolean;
+  verifyingTwitch: boolean;
+  onTwitchAuth: () => void;
+  onRefreshStreamStatus: () => void;
+  onVerifyTwitchConfig: () => void;
+  onPrinterReconnect: () => void;
+  onTestPrint: () => void;
+  overlaySettings: OverlaySettingsState | null;
+  updateOverlaySettings: (updates: Partial<OverlaySettingsState>) => Promise<void>;
+  cardMenuItems: WorkspaceCardMenuItem[];
+  onAddCard: (kind: WorkspaceCardKind) => void;
+  onAddIrcPreview: (channelLogin: string) => void;
+  canAddCard: (kind: WorkspaceCardKind) => boolean;
+};
+
+const StatusTopBar: React.FC<StatusTopBarProps> = ({
+  leftOffset,
+  rightOffset,
+  featureStatus,
+  authStatus,
+  streamStatus,
+  twitchUserInfo,
+  printerStatusInfo,
+  webServerPort,
+  refreshingStreamStatus,
+  reconnectingPrinter,
+  testingPrinter,
+  verifyingTwitch,
+  onTwitchAuth,
+  onRefreshStreamStatus,
+  onVerifyTwitchConfig,
+  onPrinterReconnect,
+  onTestPrint,
+  overlaySettings,
+  updateOverlaySettings,
+  cardMenuItems,
+  onAddCard,
+  onAddIrcPreview,
+  canAddCard,
+}) => {
+  const { status: micStatus } = useMicCaptionStatus();
+  const [openPanel, setOpenPanel] = useState<'system' | 'mic' | null>(null);
+  const [cardMenuOpen, setCardMenuOpen] = useState(false);
+  const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
+  const systemTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const micTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const cardMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const systemPanelRef = useRef<HTMLDivElement | null>(null);
+  const micPanelRef = useRef<HTMLDivElement | null>(null);
+  const cardMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const warningCount = featureStatus?.warnings?.length ?? 0;
+  const interim = truncateText(micStatus.lastInterimText, 120);
+  const finalText = truncateText(micStatus.lastFinalText, 120);
+  const translatedText = truncateText(micStatus.lastTranslationText, 120);
+  const resolvedWebServerPort = useMemo(() => {
+    if (typeof webServerPort === 'number' && webServerPort > 0) return webServerPort;
+    if (typeof window === 'undefined') return undefined;
+    const port = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
+    return Number.isNaN(port) ? undefined : port;
+  }, [webServerPort]);
+
+  useEffect(() => {
+    if (!openPanel) return;
+
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (systemTriggerRef.current?.contains(target)) return;
+      if (micTriggerRef.current?.contains(target)) return;
+      if (cardMenuTriggerRef.current?.contains(target)) return;
+      if (systemPanelRef.current?.contains(target)) return;
+      if (micPanelRef.current?.contains(target)) return;
+      if (cardMenuPanelRef.current?.contains(target)) return;
+      setOpenPanel(null);
+      setCardMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenPanel(null);
+        setCardMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [openPanel]);
+
+  useEffect(() => {
+    if (!cardMenuOpen) return;
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (cardMenuTriggerRef.current?.contains(target)) return;
+      if (cardMenuPanelRef.current?.contains(target)) return;
+      setCardMenuOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setCardMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [cardMenuOpen]);
+
+  useEffect(() => {
+    return subscribeIrcChannels((channels) => {
+      setIrcConnectedChannels(channels);
+    });
+  }, []);
+
+  const micStateLabel = !micStatus.speechSupported
+    ? '非対応'
+    : micStatus.recState === 'running'
+      ? '実行中'
+      : micStatus.recState === 'starting'
+        ? '起動中'
+        : '停止';
+
+  return (
+    <div
+      className="fixed left-0 right-0 top-0 z-30 h-12 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm xl:left-[var(--settings-topbar-left)] xl:right-[var(--settings-topbar-right)]"
+      style={{
+        '--settings-topbar-left': `${leftOffset}px`,
+        '--settings-topbar-right': `${rightOffset}px`,
+      } as React.CSSProperties}
+    >
+      <div className="flex h-full items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              ref={systemTriggerRef}
+              type="button"
+              onClick={() => setOpenPanel((prev) => (prev === 'system' ? null : 'system'))}
+              className="inline-flex h-8 items-center gap-3 rounded-md border border-gray-700 bg-gray-900/70 px-3 hover:bg-gray-800"
+              aria-expanded={openPanel === 'system'}
+              aria-label="システム状態を表示"
+            >
+              <span className="text-[11px] font-semibold text-gray-200">System</span>
+              <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={featureStatus?.twitch_configured ? (authStatus?.authenticated ? 'Twitch認証済み' : 'Twitch認証待ち') : 'Twitch未設定'}>
+                <Wifi className={`h-3.5 w-3.5 ${!featureStatus?.twitch_configured ? 'text-red-400' : authStatus?.authenticated ? 'text-emerald-400' : 'text-amber-400'}`} />
+                Twitch
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={streamStatus?.is_live ? `配信中 (${streamStatus.viewer_count ?? 0})` : 'オフライン'}>
+                <Radio className={`h-3.5 w-3.5 ${streamStatus?.is_live ? 'text-red-400 animate-pulse' : 'text-gray-500'}`} />
+                Live
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={!featureStatus?.printer_configured ? 'プリンター未設定' : printerStatusInfo?.connected ? 'プリンター接続中' : 'プリンター未接続'}>
+                <Server className={`h-3.5 w-3.5 ${!featureStatus?.printer_configured ? 'text-red-400' : printerStatusInfo?.connected ? 'text-emerald-400' : 'text-amber-400'}`} />
+                Printer
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={warningCount > 0 ? `${warningCount}件の警告` : '警告なし'}>
+                <AlertTriangle className={`h-3.5 w-3.5 ${warningCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+                Warn
+              </span>
+            </button>
+            {openPanel === 'system' && (
+              <div
+                ref={systemPanelRef}
+                className="absolute left-0 top-full z-40 mt-2 w-[440px] rounded-md border border-gray-700 bg-gray-900/95 p-3 text-xs text-gray-100 shadow-xl"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold">システム状態</span>
+                  <span className="text-[11px] text-gray-400">Web: {resolvedWebServerPort ?? '-'}</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="rounded border border-gray-700 bg-black/20 p-2">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-medium">Twitch</span>
+                      <span className={`text-[11px] ${featureStatus?.twitch_configured ? 'text-emerald-300' : 'text-red-300'}`}>
+                        {featureStatus?.twitch_configured ? '設定済み' : '未設定'}
+                      </span>
+                    </div>
+                    {featureStatus?.twitch_configured && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-gray-300">
+                            配信: {streamStatus?.is_live ? `LIVE (${streamStatus.viewer_count ?? 0})` : 'OFFLINE'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={onRefreshStreamStatus}
+                            disabled={refreshingStreamStatus}
+                            className="inline-flex h-6 items-center gap-1 rounded border border-gray-600 px-2 text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-60"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${refreshingStreamStatus ? 'animate-spin' : ''}`} />
+                            更新
+                          </button>
+                        </div>
+                        {!authStatus?.authenticated && (
+                          <button
+                            type="button"
+                            onClick={onTwitchAuth}
+                            className="inline-flex h-6 items-center rounded border border-amber-600/70 px-2 text-[11px] text-amber-200 hover:bg-amber-700/20"
+                          >
+                            Twitchで認証
+                          </button>
+                        )}
+                        {authStatus?.authenticated && (
+                          <div className="flex items-center justify-between">
+                            <span className="truncate text-[11px] text-gray-300">
+                              {twitchUserInfo?.verified
+                                ? `${twitchUserInfo.login} (${twitchUserInfo.display_name})`
+                                : (twitchUserInfo?.error || '検証未完了')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={onVerifyTwitchConfig}
+                              disabled={verifyingTwitch}
+                              className="ml-2 inline-flex h-6 items-center rounded border border-gray-600 px-2 text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-60"
+                            >
+                              {verifyingTwitch ? '検証中...' : '検証'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded border border-gray-700 bg-black/20 p-2">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-medium">プリンター</span>
+                      <span className={`text-[11px] ${featureStatus?.printer_configured ? (printerStatusInfo?.connected ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}`}>
+                        {featureStatus?.printer_configured ? (printerStatusInfo?.connected ? '接続中' : '未接続') : '未設定'}
+                      </span>
+                    </div>
+                    {featureStatus?.printer_configured && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onPrinterReconnect}
+                          disabled={reconnectingPrinter}
+                          className="inline-flex h-6 items-center rounded border border-gray-600 px-2 text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-60"
+                        >
+                          {reconnectingPrinter ? '再接続中...' : '再接続'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onTestPrint}
+                          disabled={testingPrinter}
+                          className="inline-flex h-6 items-center rounded border border-gray-600 px-2 text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-60"
+                        >
+                          {testingPrinter ? 'テスト中...' : 'テスト'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {warningCount > 0 && (
+                    <div className="rounded border border-amber-700/60 bg-amber-900/20 p-2">
+                      <div className="mb-1 font-medium text-amber-200">警告</div>
+                      <div className="space-y-1">
+                        {(featureStatus?.warnings ?? []).map((warning: string, index: number) => (
+                          <div key={`${warning}-${index}`} className="text-[11px] text-amber-100">
+                            {warning}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              ref={cardMenuTriggerRef}
+              type="button"
+              onClick={() => setCardMenuOpen((prev) => !prev)}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 text-xs text-gray-200 hover:bg-gray-800"
+              aria-expanded={cardMenuOpen}
+              aria-label="設定カードを追加"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              カード追加
+            </button>
+            {cardMenuOpen && (
+              <div
+                ref={cardMenuPanelRef}
+                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+              >
+                <div className="mb-1 px-1 text-[11px] text-gray-400">作業領域へ追加</div>
+                <div className="space-y-1">
+                  {cardMenuItems.map((item) => (
+                    <button
+                      key={item.kind}
+                      type="button"
+                      disabled={!canAddCard(item.kind)}
+                      onClick={() => {
+                        if (!canAddCard(item.kind)) return;
+                        onAddCard(item.kind);
+                        setCardMenuOpen(false);
+                      }}
+                      className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <div>
+                        <div className="text-xs text-gray-100">
+                          {item.label}
+                          {!canAddCard(item.kind) ? ' (配置済み)' : ''}
+                        </div>
+                        <div className="text-[11px] text-gray-400">{item.description}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 border-t border-gray-700 pt-2">
+                  <div className="mb-1 px-1 text-[11px] text-gray-400">コメント欄接続中から追加</div>
+                  <div className="space-y-1">
+                    {ircConnectedChannels.length === 0 && (
+                      <div className="px-1 text-[11px] text-gray-500">接続中のIRCチャンネルはありません</div>
+                    )}
+                    {ircConnectedChannels.map((channel) => {
+                      const kind = `preview-irc:${channel}` as WorkspaceCardKind;
+                      const disabled = !canAddCard(kind);
+                      return (
+                        <button
+                          key={channel}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            if (disabled) return;
+                            onAddIrcPreview(channel);
+                            setCardMenuOpen(false);
+                          }}
+                          className="flex h-8 w-full items-center justify-between rounded border border-gray-700 px-2 text-xs text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <span className="truncate text-left">#{channel}</span>
+                          <span className="text-[11px] text-gray-400">{disabled ? '配置済み' : '追加'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        <div className="relative flex items-center gap-2">
+          <button
+            ref={micTriggerRef}
+            type="button"
+            onClick={() => setOpenPanel((prev) => (prev === 'mic' ? null : 'mic'))}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 hover:bg-gray-800"
+            aria-expanded={openPanel === 'mic'}
+            aria-label="マイク状態を表示"
+          >
+            <Mic className={`h-4 w-4 ${micStatus.capturing ? 'text-emerald-400' : micStatus.speechSupported ? 'text-amber-400' : 'text-gray-500'}`} />
+            <span className="text-xs text-gray-200">{micStateLabel}</span>
+            <Languages className={`h-3.5 w-3.5 ${micStatus.translationEnabled ? 'text-sky-400' : 'text-gray-500'}`} />
+            <span className="text-[11px] text-gray-300">
+              {micStatus.translationEnabled ? (micStatus.translationTargets.join(', ') || '-') : 'off'}
+            </span>
+          </button>
+
+          {openPanel === 'mic' && (
+            <div
+              ref={micPanelRef}
+              className="absolute right-0 top-full z-40 mt-2 w-[360px] rounded-md border border-gray-700 bg-gray-900/95 p-2 text-xs text-gray-100 shadow-xl"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-semibold">マイク詳細</span>
+                <div className="inline-flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">
+                    WS: {micStatus.wsConnected ? '接続中' : '未接続'}
+                  </span>
+                  <Switch
+                    aria-label="マイク"
+                    checked={overlaySettings?.mic_transcript_speech_enabled ?? false}
+                    onCheckedChange={(enabled) => {
+                      void updateOverlaySettings({ mic_transcript_speech_enabled: enabled });
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="mb-1 text-[11px] text-gray-300">
+                翻訳: {micStatus.translationEnabled ? `on (${micStatus.translationTargets.join(', ') || '-'})` : 'off'}
+              </div>
+              <div className="rounded border border-gray-700 bg-black/20 p-2">
+                <div className="text-[11px] text-gray-400">認識中</div>
+                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                  {interim || '...'}
+                </div>
+              </div>
+              <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
+                <div className="text-[11px] text-gray-400">確定</div>
+                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                  {finalText || '...'}
+                </div>
+              </div>
+              <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
+                <div className="text-[11px] text-gray-400">翻訳</div>
+                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                  {translatedText || '...'}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const SettingsPage: React.FC = () => {
   const contextValue = useSettingsPage();
-  const [chatSidebarSide, setChatSidebarSide] = useState<'left' | 'right'>(() => {
-    if (typeof window === 'undefined') return 'left';
-    const stored = window.localStorage.getItem(SIDEBAR_SIDE_STORAGE_KEY);
-    return stored === 'right' ? 'right' : 'left';
+  const autoVerifyTriggeredRef = useRef(false);
+  const [followedRailSide, setFollowedRailSide] = useState<'left' | 'right'>(() => {
+    if (typeof window === 'undefined') return 'right';
+    const stored = window.localStorage.getItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY);
+    return stored === 'left' ? 'left' : 'right';
   });
+  const [followedChannels, setFollowedChannels] = useState<FollowedChannelRailItem[]>([]);
+  const [followedChannelsLoading, setFollowedChannelsLoading] = useState(false);
+  const [followedChannelsError, setFollowedChannelsError] = useState('');
   const [chatSidebarWidth, setChatSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
     const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
@@ -50,9 +1374,20 @@ export const SettingsPage: React.FC = () => {
     if (Number.isNaN(parsed)) return SIDEBAR_DEFAULT_FONT_SIZE;
     return Math.min(SIDEBAR_MAX_FONT_SIZE, Math.max(SIDEBAR_MIN_FONT_SIZE, parsed));
   });
+  const initialWorkspaceFlow = useMemo(() => readWorkspaceFlow(), []);
+  const initialWorkspace = useMemo(() => {
+    if (initialWorkspaceFlow && initialWorkspaceFlow.nodes.length > 0) return initialWorkspaceFlow.nodes;
+    return [
+      createWorkspaceNode('preview-main', { x: 140, y: 120 }),
+      createWorkspaceNode('general-basic', { x: 860, y: 120 }),
+    ];
+  }, [initialWorkspaceFlow]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkspaceCardNode>(initialWorkspace);
+  const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
+  const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
+  const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
+
   const {
-    activeTab,
-    setActiveTab,
     featureStatus,
     authStatus,
     streamStatus,
@@ -63,7 +1398,6 @@ export const SettingsPage: React.FC = () => {
     testingPrinter,
     testingNotification,
     verifyingTwitch,
-    webServerError,
     webServerPort,
     uploadingFont,
     previewImage,
@@ -88,14 +1422,7 @@ export const SettingsPage: React.FC = () => {
     handleOpenOverlayDebug,
     overlaySettings,
     updateOverlaySettings,
-	  } = contextValue;
-
-  const handleChatSidebarSideChange = (side: 'left' | 'right') => {
-    setChatSidebarSide(side);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(SIDEBAR_SIDE_STORAGE_KEY, side);
-    }
-  };
+		  } = contextValue;
 
   const handleChatSidebarWidthChange = (nextWidth: number) => {
     const clamped = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, nextWidth));
@@ -113,11 +1440,69 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const layoutOrders = useMemo(() => {
-    return chatSidebarSide === 'left'
-      ? { sidebar: 'order-1 lg:order-1', content: 'order-2 lg:order-2' }
-      : { sidebar: 'order-1 lg:order-2', content: 'order-2 lg:order-1' };
-  }, [chatSidebarSide]);
+  const handleWorkspaceMoveEnd = useCallback((_: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+    setWorkspaceViewport(normalizeWorkspaceViewport(viewport));
+  }, []);
+
+  const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
+    if (!shouldFitWorkspaceOnInitRef.current) return;
+    shouldFitWorkspaceOnInitRef.current = false;
+    window.requestAnimationFrame(() => {
+      // Twitch autoplay requires a visible minimum area; avoid initial zoom-out below 1x.
+      void instance.fitView({ minZoom: 1, maxZoom: 1 });
+    });
+  }, []);
+
+  const connectIrcChannel = useCallback((channelLogin: string) => {
+    const normalized = (channelLogin || '').trim().toLowerCase();
+    if (!normalized) return;
+    const current = readIrcChannels();
+    if (!current.includes(normalized)) {
+      writeIrcChannels([...current, normalized]);
+    }
+  }, []);
+
+  const addIrcPreviewCard = useCallback((channelLogin: string) => {
+    const normalized = (channelLogin || '').trim().toLowerCase();
+    if (!normalized) return;
+    connectIrcChannel(normalized);
+    const previewKind = `preview-irc:${normalized}` as WorkspaceCardKind;
+    setNodes((existing) => {
+      if (existing.some((node) => node.data.kind === previewKind)) return existing;
+      const offset = existing.length * 36;
+      const x = 160 + (offset % 720);
+      const y = 120 + Math.floor(offset / 6) * 52;
+      return [...existing, createWorkspaceNode(previewKind, { x, y })];
+    });
+  }, [connectIrcChannel, setNodes]);
+
+  const startRaidToChannel = async (channel: FollowedChannelRailItem) => {
+    const ownChannelLogin = (twitchUserInfo?.login || '').trim().toLowerCase();
+    if (!ownChannelLogin) {
+      throw new Error('Twitchユーザーが未設定です');
+    }
+
+    const response = await fetch(buildApiUrl('/api/chat/post'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: ownChannelLogin,
+        message: `/raid ${channel.broadcaster_login}`,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+  };
+
+  const cardMenuItems = useMemo<WorkspaceCardMenuItem[]>(() => BASE_WORKSPACE_MENU, []);
+  const railReservedWidth = FOLLOWED_RAIL_WIDTH_PX + chatSidebarWidth;
+  const topBarOffsets = useMemo(() => ({
+    left: followedRailSide === 'left' ? railReservedWidth : 0,
+    right: followedRailSide === 'right' ? railReservedWidth : 0,
+  }), [followedRailSide, railReservedWidth]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -126,16 +1511,376 @@ export const SettingsPage: React.FC = () => {
     localStorage.setItem('theme', 'dark');
   }, []);
 
+  useEffect(() => {
+    const shouldVerify =
+      Boolean(featureStatus?.twitch_configured) &&
+      Boolean(authStatus?.authenticated) &&
+      !twitchUserInfo &&
+      !verifyingTwitch;
+
+    if (!shouldVerify) {
+      if (!featureStatus?.twitch_configured || !authStatus?.authenticated) {
+        autoVerifyTriggeredRef.current = false;
+      }
+      return;
+    }
+
+    if (autoVerifyTriggeredRef.current) {
+      return;
+    }
+
+    autoVerifyTriggeredRef.current = true;
+    void verifyTwitchConfig();
+  }, [
+    featureStatus?.twitch_configured,
+    authStatus?.authenticated,
+    twitchUserInfo,
+    verifyingTwitch,
+    verifyTwitchConfig,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY, followedRailSide);
+  }, [followedRailSide]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const canFetch = Boolean(featureStatus?.twitch_configured) && Boolean(authStatus?.authenticated);
+    if (!canFetch) {
+      setFollowedChannels([]);
+      setFollowedChannelsError('');
+      setFollowedChannelsLoading(false);
+      return () => {};
+    }
+
+    const loadFollowedChannels = async (showLoading: boolean) => {
+      if (showLoading) {
+        setFollowedChannelsLoading(true);
+      }
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/twitch/followed-channels?limit=${FOLLOWED_RAIL_FETCH_LIMIT}&_ts=${Date.now()}`),
+          {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              Pragma: 'no-cache',
+            },
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        const normalized: FollowedChannelRailItem[] = data.map((item: any) => {
+          const viewerCount = Number(item.viewer_count ?? item.viewerCount ?? 0) || 0;
+          const startedAt = typeof item.started_at === 'string'
+            ? item.started_at
+            : typeof item.startedAt === 'string'
+              ? item.startedAt
+              : undefined;
+          const liveFlag = item.is_live ?? item.isLive;
+          const isLive = typeof liveFlag === 'boolean'
+            ? liveFlag
+            : viewerCount > 0 || Boolean(startedAt);
+          return {
+            broadcaster_id: String(item.broadcaster_id ?? item.id ?? ''),
+            broadcaster_login: String(item.broadcaster_login ?? item.login ?? ''),
+            broadcaster_name: String(item.broadcaster_name ?? item.display_name ?? item.login ?? ''),
+            profile_image_url: String(item.profile_image_url ?? ''),
+            followed_at: typeof item.followed_at === 'string' ? item.followed_at : undefined,
+            is_live: isLive,
+            viewer_count: viewerCount,
+            title: typeof item.title === 'string' ? item.title : undefined,
+            started_at: startedAt,
+          };
+        }).filter((item) => item.broadcaster_id && item.broadcaster_login);
+
+        normalized.sort((a, b) => {
+          if (a.is_live !== b.is_live) return a.is_live ? -1 : 1;
+          if (a.viewer_count !== b.viewer_count) return b.viewer_count - a.viewer_count;
+          return a.broadcaster_name.localeCompare(b.broadcaster_name, 'ja');
+        });
+        if (!cancelled) {
+          setFollowedChannels(normalized);
+          setFollowedChannelsError('');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFollowedChannelsError('取得失敗');
+        }
+      } finally {
+        if (!cancelled) {
+          setFollowedChannelsLoading(false);
+        }
+      }
+    };
+
+    void loadFollowedChannels(true);
+    timer = window.setInterval(() => {
+      void loadFollowedChannels(false);
+    }, FOLLOWED_RAIL_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [authStatus?.authenticated, featureStatus?.twitch_configured]);
+
+  const addWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
+    setNodes((current) => {
+      if (current.some((node) => node.data.kind === kind)) {
+        return current;
+      }
+      const offset = current.length * 36;
+      const x = 160 + (offset % 720);
+      const y = 120 + Math.floor(offset / 6) * 52;
+      return [...current, createWorkspaceNode(kind, { x, y })];
+    });
+  }, [setNodes]);
+
+  const canAddCard = useCallback((kind: WorkspaceCardKind) => {
+    return !nodes.some((node) => node.data.kind === kind);
+  }, [nodes]);
+
+  const removeWorkspaceCard = useCallback((id: string) => {
+    setNodes((current) => current.filter((node) => node.id !== id));
+  }, [setNodes]);
+
+  const refreshPreview = useCallback((kind: WorkspaceCardKind) => {
+    if (!isPreviewCardKind(kind)) return;
+    setPreviewReloadNonceByKind((current) => ({
+      ...current,
+      [kind]: (current[kind] ?? 0) + 1,
+    }));
+  }, []);
+
+  const renderWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
+    const reloadNonce = previewReloadNonceByKind[kind] ?? 0;
+    if (kind === 'preview-main') {
+      return (
+        <TwitchStreamPreview
+          isTwitchConfigured={Boolean(featureStatus?.twitch_configured)}
+          isAuthenticated={Boolean(authStatus?.authenticated)}
+          channelLogin={twitchUserInfo?.login ?? ''}
+          reloadNonce={reloadNonce}
+        />
+      );
+    }
+    if (isPreviewIrcKind(kind)) {
+      const channelLogin = kind.slice('preview-irc:'.length);
+      return <AddedChannelStreamPreview channelLogin={channelLogin} reloadNonce={reloadNonce} />;
+    }
+    if (kind === 'general-basic' || kind === 'general-notification' || kind === 'general-font') {
+      const section = kind === 'general-basic'
+        ? 'basic'
+        : kind === 'general-notification'
+          ? 'notification'
+          : 'font';
+      return (
+        <GeneralSettings
+          getSettingValue={getSettingValue}
+          handleSettingChange={handleSettingChange}
+          getBooleanValue={getBooleanValue}
+          streamStatus={streamStatus}
+          fileInputRef={fileInputRef}
+          uploadingFont={uploadingFont}
+          handleFontUpload={handleFontUpload}
+          previewText={previewText}
+          setPreviewText={setPreviewText}
+          previewImage={previewImage}
+          handleFontPreview={handleFontPreview}
+          handleDeleteFont={handleDeleteFont}
+          handleTestNotification={handleTestNotification}
+          testingNotification={testingNotification}
+          sections={[section]}
+        />
+      );
+    }
+    if (kind === 'music-manager') return <MusicSettings />;
+    if (kind === 'logs') return <LogsTab />;
+    if (kind === 'cache-stats' || kind === 'cache-config' || kind === 'cache-actions') {
+      const section = kind === 'cache-stats'
+        ? 'stats'
+        : kind === 'cache-config'
+          ? 'config'
+          : 'actions';
+      return <CacheSettings sections={[section]} />;
+    }
+    if (kind === 'api') return <ApiTab />;
+    if (kind === 'mic-speech' || kind === 'mic-overlay-display') {
+      const section = kind === 'mic-speech' ? 'speech' : 'overlayDisplay';
+      return (
+        <SettingsPageContext.Provider value={contextValue}>
+          <MicTranscriptionSettings sections={[section]} />
+        </SettingsPageContext.Provider>
+      );
+    }
+    if (kind === 'twitch-api' || kind === 'twitch-reward-groups' || kind === 'twitch-custom-rewards') {
+      const section = kind === 'twitch-api'
+        ? 'api'
+        : kind === 'twitch-reward-groups'
+          ? 'rewardGroups'
+          : 'customRewards';
+      return (
+        <SettingsPageContext.Provider value={contextValue}>
+          <TwitchSettings sections={[section]} />
+        </SettingsPageContext.Provider>
+      );
+    }
+    if (
+      kind === 'printer-type' ||
+      kind === 'printer-bluetooth' ||
+      kind === 'printer-usb' ||
+      kind === 'printer-print' ||
+      kind === 'printer-clock'
+    ) {
+      const section = kind === 'printer-type'
+        ? 'type'
+        : kind === 'printer-bluetooth'
+          ? 'bluetooth'
+          : kind === 'printer-usb'
+            ? 'usb'
+            : kind === 'printer-print'
+              ? 'print'
+              : 'clock';
+      return (
+        <SettingsPageContext.Provider value={contextValue}>
+          <PrinterSettings sections={[section]} />
+        </SettingsPageContext.Provider>
+      );
+    }
+    if (
+      kind === 'overlay-music-player' ||
+      kind === 'overlay-fax' ||
+      kind === 'overlay-clock' ||
+      kind === 'overlay-mic-transcript' ||
+      kind === 'overlay-reward-count' ||
+      kind === 'overlay-lottery'
+    ) {
+      const focusCard: OverlayCardKey = kind === 'overlay-music-player'
+        ? 'musicPlayer'
+        : kind === 'overlay-fax'
+          ? 'fax'
+          : kind === 'overlay-clock'
+            ? 'clock'
+            : kind === 'overlay-mic-transcript'
+              ? 'micTranscript'
+              : kind === 'overlay-reward-count'
+                ? 'rewardCount'
+                : 'lottery';
+      return (
+        <SettingsPageContext.Provider value={contextValue}>
+          <OverlaySettings focusCard={focusCard} />
+        </SettingsPageContext.Provider>
+      );
+    }
+    return <div className="text-xs text-gray-400">未対応カード</div>;
+  }, [
+    authStatus?.authenticated,
+    contextValue,
+    featureStatus?.twitch_configured,
+    fileInputRef,
+    getBooleanValue,
+    getSettingValue,
+    handleDeleteFont,
+    handleFontPreview,
+    handleFontUpload,
+    handleSettingChange,
+    handleTestNotification,
+    previewImage,
+    previewText,
+    setPreviewText,
+    streamStatus,
+    testingNotification,
+    twitchUserInfo?.login,
+    uploadingFont,
+    previewReloadNonceByKind,
+  ]);
+
+  const resolvePreviewHeader = useCallback((kind: WorkspaceCardKind) => {
+    if (kind === 'preview-main') {
+      const channelLogin = twitchUserInfo?.login ?? '';
+      const isLive = Boolean(streamStatus?.is_live);
+      return {
+        channelLogin,
+        statusLabel: isLive ? `LIVE (${streamStatus?.viewer_count ?? 0})` : 'OFFLINE',
+        statusClassName: isLive ? 'text-red-400' : 'text-gray-400',
+      };
+    }
+    if (isPreviewIrcKind(kind)) {
+      return {
+        channelLogin: kind.slice('preview-irc:'.length),
+        statusLabel: 'IRC',
+        statusClassName: 'text-emerald-400',
+      };
+    }
+    return null;
+  }, [streamStatus?.is_live, streamStatus?.viewer_count, twitchUserInfo?.login]);
+
+  const workspaceRenderContext = useMemo<WorkspaceRenderContextValue>(() => ({
+    removeCard: removeWorkspaceCard,
+    refreshPreview,
+    renderCard: renderWorkspaceCard,
+    resolvePreviewHeader,
+  }), [removeWorkspaceCard, refreshPreview, renderWorkspaceCard, resolvePreviewHeader]);
+
+  useEffect(() => {
+    writeWorkspaceFlow(nodes, workspaceViewport);
+  }, [nodes, workspaceViewport]);
+
   return (
     <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      <div className="w-full px-4 py-6">
-        <div className="flex flex-col gap-4 lg:flex-row">
-          <div className={layoutOrders.sidebar}>
+      <div className="hidden" aria-hidden="true">
+        <MicCaptionSender
+          variant="switch_only"
+          overlaySettings={overlaySettings ?? null}
+          webServerPort={webServerPort}
+        />
+      </div>
+      <WORKSPACE_RENDER_CONTEXT.Provider value={workspaceRenderContext}>
+        <div className="fixed inset-0 z-0">
+          <ReactFlow
+            nodes={nodes}
+            onNodesChange={onNodesChange}
+            onMoveEnd={handleWorkspaceMoveEnd}
+            onInit={handleWorkspaceFlowInit}
+            nodeTypes={WORKSPACE_NODE_TYPES}
+            minZoom={WORKSPACE_FLOW_MIN_ZOOM}
+            maxZoom={WORKSPACE_FLOW_MAX_ZOOM}
+            defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
+            className="settings-workspace-flow bg-slate-950"
+            colorMode="dark"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="#334155" gap={24} size={1} />
+            <MiniMap
+              className="!border !border-gray-700 !bg-gray-900/90"
+              pannable
+              zoomable
+            />
+            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100" />
+          </ReactFlow>
+        </div>
+
+        <FollowedChannelsRail
+          side={followedRailSide}
+          channels={followedChannels}
+          loading={followedChannelsLoading}
+          error={followedChannelsError}
+          chatWidth={chatSidebarWidth}
+          chatPanel={(
             <ChatSidebar
-              side={chatSidebarSide}
-              onSideChange={handleChatSidebarSideChange}
+              side={followedRailSide}
               width={chatSidebarWidth}
               onWidthChange={handleChatSidebarWidthChange}
+              embedded
               fontSize={chatSidebarFontSize}
               onFontSizeChange={handleChatSidebarFontSizeChange}
               translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}
@@ -144,129 +1889,42 @@ export const SettingsPage: React.FC = () => {
               onNotificationModeToggle={(enabled) =>
                 handleSettingChange('NOTIFICATION_DISPLAY_MODE', enabled ? 'overwrite' : 'queue')}
             />
-          </div>
-          <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings2 className="w-5 h-5 text-gray-400" />
-                  クイック操作
-                </CardTitle>
-              </CardHeader>
-			  <CardContent>
-				<div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline"
-            onClick={handleOpenOverlay}
-            className="flex items-center space-x-1">
-            <Layers className="w-3 h-3" />
-            <span>オーバーレイ表示</span>
-          </Button>
-          <Button size="sm" variant="outline"
-            onClick={handleOpenOverlayDebug}
-            className="flex items-center space-x-1">
-            <Layers className="w-3 h-3" />
-            <span>オーバーレイ表示(デバッグ)</span>
-          </Button>
-				  <Button size="sm" variant="outline"
-					onClick={handleOpenPresent}
-					className="flex items-center space-x-1">
-					<Gift className="w-3 h-3" />
-                    <span>プレゼントルーレット</span>
-                  </Button>
-                  <Button size="sm" variant="outline"
-                    onClick={handleOpenPresentDebug}
-                    className="flex items-center space-x-1">
-                    <Gift className="w-3 h-3" />
-                    <span>プレゼント(デバッグ)</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <SystemStatusCard
-              featureStatus={featureStatus}
-              authStatus={authStatus}
-              streamStatus={streamStatus}
-              twitchUserInfo={twitchUserInfo}
-              printerStatusInfo={printerStatusInfo}
-              webServerPort={webServerPort}
-              refreshingStreamStatus={refreshingStreamStatus}
-              reconnectingPrinter={reconnectingPrinter}
-              testingPrinter={testingPrinter}
-              verifyingTwitch={verifyingTwitch}
-              onTwitchAuth={handleTwitchAuth}
-              onRefreshStreamStatus={handleRefreshStreamStatus}
-              onVerifyTwitchConfig={verifyTwitchConfig}
-              onPrinterReconnect={handlePrinterReconnect}
-              onTestPrint={handleTestPrint}
-            />
-            <MicStatusCard
-              overlaySettings={overlaySettings ?? null}
-              updateOverlaySettings={updateOverlaySettings}
-              webServerPort={webServerPort}
-            />
+          )}
+          onSideChange={setFollowedRailSide}
+          onOpenOverlay={handleOpenOverlay}
+          onOpenOverlayDebug={handleOpenOverlayDebug}
+          onOpenPresent={handleOpenPresent}
+          onOpenPresentDebug={handleOpenPresentDebug}
+          onAddIrcPreview={addIrcPreviewCard}
+          onStartRaid={startRaidToChannel}
+        />
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-9 mb-6">
-                <TabsTrigger value="general"><Settings2 className="w-4 h-4 mr-1" />一般</TabsTrigger>
-                <TabsTrigger value="mic"><Mic className="w-4 h-4 mr-1" />マイク</TabsTrigger>
-                <TabsTrigger value="twitch"><Wifi className="w-4 h-4 mr-1" />Twitch</TabsTrigger>
-                <TabsTrigger value="printer"><Bluetooth className="w-4 h-4 mr-1" />プリンター</TabsTrigger>
-                <TabsTrigger value="music"><Music className="w-4 h-4 mr-1" />音楽</TabsTrigger>
-                <TabsTrigger value="overlay"><Layers className="w-4 h-4 mr-1" />オーバーレイ</TabsTrigger>
-                <TabsTrigger value="logs"><FileText className="w-4 h-4 mr-1" />ログ</TabsTrigger>
-                <TabsTrigger value="cache"><HardDrive className="w-4 h-4 mr-1" />キャッシュ</TabsTrigger>
-                <TabsTrigger value="api"><Bug className="w-4 h-4 mr-1" />API</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="general">
-                <GeneralSettings
-                  getSettingValue={getSettingValue}
-                  handleSettingChange={handleSettingChange}
-                  getBooleanValue={getBooleanValue}
-                  webServerError={webServerError}
-                  webServerPort={webServerPort}
-                  streamStatus={streamStatus}
-                  fileInputRef={fileInputRef}
-                  uploadingFont={uploadingFont}
-                  handleFontUpload={handleFontUpload}
-                  previewText={previewText}
-                  setPreviewText={setPreviewText}
-                  previewImage={previewImage}
-                  handleFontPreview={handleFontPreview}
-                  handleDeleteFont={handleDeleteFont}
-                  handleTestNotification={handleTestNotification}
-                  testingNotification={testingNotification}
-                />
-              </TabsContent>
-              <TabsContent value="mic">
-                <SettingsPageContext.Provider value={contextValue}>
-                  <MicTranscriptionSettings />
-                </SettingsPageContext.Provider>
-              </TabsContent>
-              <TabsContent value="twitch">
-                <SettingsPageContext.Provider value={contextValue}>
-                  <TwitchSettings />
-                </SettingsPageContext.Provider>
-              </TabsContent>
-              <TabsContent value="printer">
-                <SettingsPageContext.Provider value={contextValue}>
-                  <PrinterSettings />
-                </SettingsPageContext.Provider>
-              </TabsContent>
-              <TabsContent value="music"><MusicSettings /></TabsContent>
-              <TabsContent value="overlay">
-                <SettingsPageContext.Provider value={contextValue}>
-                  <OverlaySettings />
-                </SettingsPageContext.Provider>
-              </TabsContent>
-              <TabsContent value="logs"><LogsTab /></TabsContent>
-              <TabsContent value="cache"><CacheSettings /></TabsContent>
-              <TabsContent value="api"><ApiTab /></TabsContent>
-            </Tabs>
-          </div>
-
-        </div>
-      </div>
+        <StatusTopBar
+          leftOffset={topBarOffsets.left}
+          rightOffset={topBarOffsets.right}
+          featureStatus={featureStatus}
+          authStatus={authStatus}
+          streamStatus={streamStatus}
+          twitchUserInfo={twitchUserInfo}
+          printerStatusInfo={printerStatusInfo}
+          webServerPort={webServerPort}
+          refreshingStreamStatus={refreshingStreamStatus}
+          reconnectingPrinter={reconnectingPrinter}
+          testingPrinter={testingPrinter}
+          verifyingTwitch={verifyingTwitch}
+          onTwitchAuth={handleTwitchAuth}
+          onRefreshStreamStatus={handleRefreshStreamStatus}
+          onVerifyTwitchConfig={verifyTwitchConfig}
+          onPrinterReconnect={handlePrinterReconnect}
+          onTestPrint={handleTestPrint}
+          overlaySettings={overlaySettings ?? null}
+          updateOverlaySettings={updateOverlaySettings}
+          cardMenuItems={cardMenuItems}
+          onAddCard={addWorkspaceCard}
+          onAddIrcPreview={addIrcPreviewCard}
+          canAddCard={canAddCard}
+        />
+      </WORKSPACE_RENDER_CONTEXT.Provider>
     </div>
   );
 };

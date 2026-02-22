@@ -3,7 +3,7 @@ import { Bell, RefreshCw, Upload, X } from 'lucide-react';
 import React from 'react';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -13,8 +13,6 @@ interface GeneralSettingsProps {
   getSettingValue: (key: string) => string;
   handleSettingChange: (key: string, value: string | boolean) => void;
   getBooleanValue: (key: string) => boolean;
-  webServerError: { error: string; port: number } | null;
-  webServerPort: number;
   streamStatus: StreamStatus | null;
   fileInputRef: React.RefObject<HTMLInputElement>;
   uploadingFont: boolean;
@@ -26,14 +24,13 @@ interface GeneralSettingsProps {
   handleDeleteFont: () => void;
   handleTestNotification: () => void;
   testingNotification: boolean;
+  sections?: Array<'basic' | 'notification' | 'font'>;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   getSettingValue,
   handleSettingChange,
   getBooleanValue,
-  webServerError,
-  webServerPort,
   streamStatus,
   fileInputRef,
   uploadingFont,
@@ -45,17 +42,19 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleDeleteFont,
   handleTestNotification,
   testingNotification,
+  sections,
 }) => {
+  const visibleSections = new Set(sections ?? ['basic', 'notification', 'font']);
+
   return (
     <div className="space-y-6 focus:outline-none">
-      <Card>
-        <CardHeader>
-          <CardTitle>基本設定</CardTitle>
-          <CardDescription>
-            アプリケーションの基本的な動作を設定します
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {visibleSections.has('basic') && (
+        <CollapsibleCard
+          panelId="settings.general.basic"
+          title="基本設定"
+          description="アプリケーションの基本的な動作を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="space-y-2">
             <Label htmlFor="timezone">タイムゾーン</Label>
             <Select
@@ -72,36 +71,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 <SelectItem value="UTC">UTC</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="server_port">Webサーバーポート</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="server_port"
-                type="number"
-                min="1024"
-                max="65535"
-                value={getSettingValue('SERVER_PORT')}
-                onChange={(e) => handleSettingChange('SERVER_PORT', e.target.value)}
-                className="w-32"
-              />
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                OBSオーバーレイ用のWebサーバーポート（変更後はアプリ再起動が必要）
-              </p>
-            </div>
-            {webServerError && (
-              <Alert className="mt-2">
-                <AlertDescription className="text-red-600">
-                  ポート {webServerError.port} の起動に失敗しました: {webServerError.error}
-                </AlertDescription>
-              </Alert>
-            )}
-            {getSettingValue('SERVER_PORT') !== String(webServerPort) && (
-              <p className="text-sm text-orange-600 dark:text-orange-400 mt-2">
-                ⚠️ ポート変更を反映するにはアプリを再起動してください
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -162,23 +131,22 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
             />
           </div>
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
 
       {/* 通知設定カード */}
-      <Card>
-        <CardHeader>
-          <CardTitle>通知設定</CardTitle>
-          <CardDescription>
-            Twitchチャット受信時の通知をブラウザ通知で受け取ります
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {visibleSections.has('notification') && (
+        <CollapsibleCard
+          panelId="settings.general.notification"
+          title="通知設定"
+          description="Twitchチャット受信時の通知ウィンドウ表示を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>チャット通知を有効化</Label>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Twitchチャットを受信したときにブラウザ通知を表示します
+                Twitchチャットを受信したときに通知ウィンドウを表示します
               </p>
             </div>
             <Switch
@@ -189,10 +157,80 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 
           {getBooleanValue('NOTIFICATION_ENABLED') && (
             <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="notification-mode">表示モード</Label>
+                  <Select
+                    value={getSettingValue('NOTIFICATION_DISPLAY_MODE') || 'queue'}
+                    onValueChange={(value) => handleSettingChange('NOTIFICATION_DISPLAY_MODE', value)}
+                  >
+                    <SelectTrigger id="notification-mode">
+                      <SelectValue placeholder="表示モードを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="queue">キュー表示（順番に表示）</SelectItem>
+                      <SelectItem value="overwrite">上書き表示（最新のみ）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notification-duration">表示時間（秒）</Label>
+                  <Input
+                    id="notification-duration"
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={getSettingValue('NOTIFICATION_DISPLAY_DURATION') || '5'}
+                    onChange={(e) => handleSettingChange('NOTIFICATION_DISPLAY_DURATION', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notification-font-size">通知文字サイズ</Label>
+                  <Input
+                    id="notification-font-size"
+                    type="number"
+                    min={10}
+                    max={48}
+                    value={getSettingValue('NOTIFICATION_FONT_SIZE') || '14'}
+                    onChange={(e) => handleSettingChange('NOTIFICATION_FONT_SIZE', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>通知ウィンドウを移動可能にする</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      通知上部のドラッグバーで移動できます
+                    </p>
+                  </div>
+                  <Switch
+                    checked={getBooleanValue('NOTIFICATION_WINDOW_MOVABLE')}
+                    onCheckedChange={(checked) => handleSettingChange('NOTIFICATION_WINDOW_MOVABLE', checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>通知ウィンドウをサイズ変更可能にする</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      右下ハンドルをドラッグしてサイズ変更できます
+                    </p>
+                  </div>
+                  <Switch
+                    checked={getBooleanValue('NOTIFICATION_WINDOW_RESIZABLE')}
+                    onCheckedChange={(checked) => handleSettingChange('NOTIFICATION_WINDOW_RESIZABLE', checked)}
+                    disabled={!getBooleanValue('NOTIFICATION_WINDOW_MOVABLE')}
+                  />
+                </div>
+              </div>
+
               <Alert>
                 <Bell className="h-4 w-4" />
                 <AlertDescription>
-                  通知が有効です。Twitchチャットを受信すると、ブラウザの通知として表示されます（ブラウザ側で通知の許可が必要です）。
+                  通知が有効です。Twitchチャットを受信すると通知ウィンドウに表示されます。
                 </AlertDescription>
               </Alert>
 
@@ -216,23 +254,22 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                   )}
                 </Button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  ブラウザ通知が表示されます（許可が必要です）。
+                  通知ウィンドウにテスト通知を表示します。
                 </p>
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
 
       {/* フォント設定カード */}
-      <Card>
-        <CardHeader>
-          <CardTitle>フォント設定（必須）</CardTitle>
-          <CardDescription>
-            FAXと時計機能を使用するためにフォントのアップロードが必要です
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {visibleSections.has('font') && (
+        <CollapsibleCard
+          panelId="settings.general.font"
+          title="フォント設定（必須）"
+          description="FAXと時計機能を使用するためにフォントのアップロードが必要です"
+          contentClassName="space-y-6"
+        >
           {!getSettingValue('FONT_FILENAME') && (
             <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
               <AlertDescription className="text-yellow-700 dark:text-yellow-200">
@@ -321,8 +358,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
     </div>
   );
 };

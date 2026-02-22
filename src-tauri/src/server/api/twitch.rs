@@ -1,18 +1,23 @@
 //! Twitch API endpoints (OAuth, verification, custom rewards, stream status).
 
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use twitch_client::TwitchError;
-use twitch_client::api::{CreateRewardRequest, TwitchApiClient, UpdateRewardRequest};
+use twitch_client::api::{
+    CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient, TwitchUser,
+    UpdateRewardRequest,
+};
 use twitch_client::auth::TwitchAuth;
+use twitch_client::TwitchError;
 
 use crate::app::SharedState;
 use crate::events;
@@ -21,6 +26,9 @@ use super::err_json;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 static TOKEN_REFRESH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const FOLLOWED_CHANNELS_PAGE_SIZE: u32 = 100;
+const FOLLOWED_CHANNELS_SCAN_LIMIT: usize = 1000;
+const FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE: usize = 100;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,6 +110,10 @@ fn is_unauthorized_error(err: &TwitchError) -> bool {
     matches!(err, TwitchError::ApiError { status: 401, .. })
 }
 
+fn is_not_found_error(err: &TwitchError) -> bool {
+    matches!(err, TwitchError::ApiError { status: 404, .. })
+}
+
 fn is_rotated_refresh_token(current: &twitch_client::Token, latest: &twitch_client::Token) -> bool {
     latest.refresh_token != current.refresh_token
 }
@@ -132,6 +144,33 @@ fn stream_status_payload(status: &twitch_client::api::StreamStatus) -> Value {
         "title": title,
         "startedAt": started_at,
         "info": status.info
+    })
+}
+
+fn verify_twitch_success_payload(user: &TwitchUser) -> Value {
+    json!({
+        "verified": true,
+        "has_token": true,
+        "id": user.id,
+        "login": user.login,
+        "display_name": user.display_name,
+        "profile_image_url": user.profile_image_url
+    })
+}
+
+fn verify_twitch_error_payload(
+    twitch_user_id: &str,
+    has_token: bool,
+    error: impl Into<String>,
+) -> Value {
+    json!({
+        "verified": false,
+        "has_token": has_token,
+        "id": twitch_user_id,
+        "login": "",
+        "display_name": "",
+        "profile_image_url": null,
+        "error": error.into()
     })
 }
 
@@ -176,23 +215,83 @@ async fn force_refresh_token(
 /// GET /api/twitch/verify
 pub async fn verify_twitch(State(state): State<SharedState>) -> ApiResult {
     let config = state.config().await;
+    let twitch_user_id = config.twitch_user_id.clone();
     let configured = !config.client_id.is_empty()
         && !config.client_secret.is_empty()
-        && !config.twitch_user_id.is_empty();
+        && !twitch_user_id.is_empty();
+
     if !configured {
-        return Ok(Json(
-            json!({ "verified": false, "error": "Twitch credentials not configured" }),
-        ));
+        return Ok(Json(verify_twitch_error_payload(
+            &twitch_user_id,
+            false,
+            "Twitch credentials not configured",
+        )));
     }
-    let token = state
-        .db()
-        .get_latest_token()
-        .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({
-        "verified": token.is_some(),
-        "has_token": token.is_some(),
-        "id": config.twitch_user_id
-    })))
+
+    let token = match get_valid_token(&state).await {
+        Ok(token) => token,
+        Err((StatusCode::UNAUTHORIZED, body)) => {
+            let message = body.0["error"]
+                .as_str()
+                .unwrap_or("Authentication required");
+            return Ok(Json(verify_twitch_error_payload(
+                &twitch_user_id,
+                false,
+                message,
+            )));
+        }
+        Err(err) => return Err(err),
+    };
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let user = match client.get_user(&token, &twitch_user_id).await {
+        Ok(user) => user,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("verify_twitch got 401, refreshing token and retrying");
+            let refreshed = match force_refresh_token(&state, &token).await {
+                Ok(token) => token,
+                Err((StatusCode::UNAUTHORIZED, body)) => {
+                    let message = body.0["error"]
+                        .as_str()
+                        .unwrap_or("Token refresh failed, please re-authenticate");
+                    return Ok(Json(verify_twitch_error_payload(
+                        &twitch_user_id,
+                        false,
+                        message,
+                    )));
+                }
+                Err(err) => return Err(err),
+            };
+
+            match client.get_user(&refreshed, &twitch_user_id).await {
+                Ok(user) => user,
+                Err(err) => {
+                    let (_, body) = map_twitch_error(err);
+                    let message = body.0["error"]
+                        .as_str()
+                        .unwrap_or("Failed to fetch Twitch user");
+                    return Ok(Json(verify_twitch_error_payload(
+                        &twitch_user_id,
+                        true,
+                        message,
+                    )));
+                }
+            }
+        }
+        Err(err) => {
+            let (_, body) = map_twitch_error(err);
+            let message = body.0["error"]
+                .as_str()
+                .unwrap_or("Failed to fetch Twitch user");
+            return Ok(Json(verify_twitch_error_payload(
+                &twitch_user_id,
+                true,
+                message,
+            )));
+        }
+    };
+
+    Ok(Json(verify_twitch_success_payload(&user)))
 }
 
 /// GET /api/settings/auth/status
@@ -335,6 +434,276 @@ pub async fn stream_status(State(state): State<SharedState>) -> ApiResult {
     };
     state.set_stream_live(status.is_live).await;
     Ok(Json(stream_status_payload(&status)))
+}
+
+/// GET /api/twitch/stream-status-by-login?login=...
+pub async fn stream_status_by_login(
+    State(state): State<SharedState>,
+    Query(q): Query<StreamStatusByLoginQuery>,
+) -> ApiResult {
+    let login = q
+        .login
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .ok_or_else(|| err_json(400, "login is required"))?;
+
+    let mut token = match get_valid_token(&state).await {
+        Ok(token) => token,
+        Err(_) => return Ok(Json(offline_stream_status_payload())),
+    };
+    let client_id = state.config().await.client_id.clone();
+    let client = TwitchApiClient::new(client_id);
+
+    let user = match client.get_user_by_login(&token, &login).await {
+        Ok(user) => user,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!(
+                "stream_status_by_login(get_user_by_login) got 401, refreshing token and retrying"
+            );
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .get_user_by_login(&token, &login)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) if is_not_found_error(&err) => return Ok(Json(offline_stream_status_payload())),
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    let status = match client.get_stream_info(&token, &user.id).await {
+        Ok(status) => status,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!(
+                "stream_status_by_login(get_stream_info) got 401, refreshing token and retrying"
+            );
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .get_stream_info(&token, &user.id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+    Ok(Json(stream_status_payload(&status)))
+}
+
+/// GET /api/twitch/followed-channels
+pub async fn followed_channels(
+    State(state): State<SharedState>,
+    Query(q): Query<FollowedChannelsQuery>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    if config.twitch_user_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+
+    let limit = q.limit.unwrap_or(50).clamp(1, 100) as usize;
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let mut followed: Vec<FollowedChannel> = Vec::new();
+    let mut after: Option<String> = None;
+    loop {
+        let (mut page_rows, next_cursor): (Vec<FollowedChannel>, Option<String>) = match client
+            .get_followed_channels_page(
+                &token,
+                &config.twitch_user_id,
+                FOLLOWED_CHANNELS_PAGE_SIZE,
+                after.as_deref(),
+            )
+            .await
+        {
+            Ok(rows) => rows,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("followed_channels got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_followed_channels_page(
+                        &token,
+                        &config.twitch_user_id,
+                        FOLLOWED_CHANNELS_PAGE_SIZE,
+                        after.as_deref(),
+                    )
+                    .await
+                    .map_err(map_twitch_error)?
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        };
+        followed.append(&mut page_rows);
+        if followed.len() >= FOLLOWED_CHANNELS_SCAN_LIMIT {
+            break;
+        }
+        let Some(cursor) = next_cursor.filter(|cursor| !cursor.is_empty()) else {
+            break;
+        };
+        after = Some(cursor);
+    }
+
+    let user_ids: Vec<String> = followed
+        .iter()
+        .map(|row| row.broadcaster_id.clone())
+        .collect();
+    let users: Vec<TwitchUser> = if user_ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut all_users: Vec<TwitchUser> = Vec::new();
+        for chunk in user_ids.chunks(FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE) {
+            let mut rows = match client.get_users_by_ids(&token, chunk).await {
+                Ok(rows) => rows,
+                Err(err) if is_unauthorized_error(&err) => {
+                    tracing::warn!(
+                        "followed_channels(users) got 401, refreshing token and retrying"
+                    );
+                    let refreshed = force_refresh_token(&state, &token).await?;
+                    token = refreshed.clone();
+                    client
+                        .get_users_by_ids(&token, chunk)
+                        .await
+                        .map_err(map_twitch_error)?
+                }
+                Err(err) => return Err(map_twitch_error(err)),
+            };
+            all_users.append(&mut rows);
+        }
+        all_users
+    };
+    let streams: Vec<StreamInfo> = if user_ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut all_streams: Vec<StreamInfo> = Vec::new();
+        for chunk in user_ids.chunks(FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE) {
+            let mut rows = match client.get_streams_by_user_ids(&token, chunk).await {
+                Ok(rows) => rows,
+                Err(err) if is_unauthorized_error(&err) => {
+                    tracing::warn!(
+                        "followed_channels(streams) got 401, refreshing token and retrying"
+                    );
+                    let refreshed = force_refresh_token(&state, &token).await?;
+                    token = refreshed.clone();
+                    client
+                        .get_streams_by_user_ids(&token, chunk)
+                        .await
+                        .map_err(map_twitch_error)?
+                }
+                Err(err) => return Err(map_twitch_error(err)),
+            };
+            all_streams.append(&mut rows);
+        }
+        all_streams
+    };
+
+    let user_map: HashMap<String, TwitchUser> =
+        users.into_iter().map(|u| (u.id.clone(), u)).collect();
+    let stream_map: HashMap<String, StreamInfo> = streams
+        .into_iter()
+        .map(|s| (s.user_id.clone(), s))
+        .collect();
+
+    let mut rows: Vec<FollowedChannelStatus> = followed
+        .into_iter()
+        .map(|item| {
+            let stream = stream_map.get(&item.broadcaster_id);
+            let user = user_map.get(&item.broadcaster_id);
+            FollowedChannelStatus {
+                broadcaster_id: item.broadcaster_id,
+                broadcaster_login: item.broadcaster_login,
+                broadcaster_name: item.broadcaster_name,
+                profile_image_url: user
+                    .map(|u| u.profile_image_url.clone())
+                    .unwrap_or_default(),
+                followed_at: item.followed_at,
+                is_live: stream.is_some(),
+                viewer_count: stream.map(|s| s.viewer_count).unwrap_or(0),
+                title: stream.map(|s| s.title.clone()),
+                started_at: stream.and_then(|s| s.started_at.clone()),
+            }
+        })
+        .collect();
+    sort_followed_channel_status(&mut rows);
+    if rows.len() > limit {
+        rows.truncate(limit);
+    }
+
+    Ok(Json(json!({ "data": rows, "count": rows.len() })))
+}
+
+/// POST /api/twitch/raid/start
+pub async fn start_raid(
+    State(state): State<SharedState>,
+    Json(body): Json<StartRaidBody>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    let from_broadcaster_id = config.twitch_user_id.clone();
+    if from_broadcaster_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let to_broadcaster_id = if let Some(id) = body
+        .to_broadcaster_id
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        id
+    } else if let Some(login) = body
+        .to_channel_login
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        match client.get_user_by_login(&token, &login).await {
+            Ok(user) => user.id,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!(
+                    "start_raid(get_user_by_login) got 401, refreshing token and retrying"
+                );
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_user_by_login(&token, &login)
+                    .await
+                    .map_err(map_twitch_error)?
+                    .id
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    } else {
+        return Err(err_json(400, "target channel is required"));
+    };
+
+    if to_broadcaster_id == from_broadcaster_id {
+        return Err(err_json(400, "cannot raid your own channel"));
+    }
+
+    let raid_info: Option<RaidInfo> = match client
+        .start_raid(&token, &from_broadcaster_id, &to_broadcaster_id)
+        .await
+    {
+        Ok(info) => info,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("start_raid got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .start_raid(&token, &from_broadcaster_id, &to_broadcaster_id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "from_broadcaster_id": from_broadcaster_id,
+        "to_broadcaster_id": to_broadcaster_id,
+        "data": raid_info,
+    })))
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +924,48 @@ pub struct RewardGroupByRewardQuery {
     pub reward_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FollowedChannelsQuery {
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreamStatusByLoginQuery {
+    pub login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartRaidBody {
+    pub to_broadcaster_id: Option<String>,
+    pub to_channel_login: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FollowedChannelStatus {
+    broadcaster_id: String,
+    broadcaster_login: String,
+    broadcaster_name: String,
+    profile_image_url: String,
+    followed_at: String,
+    is_live: bool,
+    viewer_count: u64,
+    title: Option<String>,
+    started_at: Option<String>,
+}
+
+fn sort_followed_channel_status(items: &mut [FollowedChannelStatus]) {
+    items.sort_by(|a, b| {
+        b.is_live
+            .cmp(&a.is_live)
+            .then_with(|| b.viewer_count.cmp(&a.viewer_count))
+            .then_with(|| {
+                a.broadcaster_name
+                    .to_ascii_lowercase()
+                    .cmp(&b.broadcaster_name.to_ascii_lowercase())
+            })
+    });
+}
+
 /// GET /api/twitch/reward-groups/by-reward
 pub async fn reward_groups_by_reward(
     State(state): State<SharedState>,
@@ -596,7 +1007,10 @@ mod tests {
     fn token_refresh_failed_maps_to_401() {
         let (status, body) = map_twitch_error(TwitchError::TokenRefreshFailed("invalid".into()));
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
-        assert_eq!(body.0["error"], "Token refresh failed, please re-authenticate");
+        assert_eq!(
+            body.0["error"],
+            "Token refresh failed, please re-authenticate"
+        );
     }
 
     #[test]

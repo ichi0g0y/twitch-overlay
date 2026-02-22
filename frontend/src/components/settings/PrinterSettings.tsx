@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { Bluetooth, Printer, RefreshCw, Wifi } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -9,7 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Alert, AlertDescription } from '../ui/alert';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 
-export const PrinterSettings: React.FC = () => {
+interface PrinterSettingsProps {
+  sections?: Array<'type' | 'bluetooth' | 'usb' | 'print' | 'clock'>;
+}
+
+export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) => {
   const context = useContext(SettingsPageContext);
   if (!context) {
     throw new Error('PrinterSettings must be used within SettingsPageProvider');
@@ -30,18 +34,17 @@ export const PrinterSettings: React.FC = () => {
   } = context;
 
   const printerType = getSettingValue('PRINTER_TYPE') || 'bluetooth';
+  const visibleSections = new Set(sections ?? ['type', 'bluetooth', 'usb', 'print', 'clock']);
 
   return (
     <div className="space-y-6">
       {/* 1. プリンター種類選択カード */}
-      <Card>
-        <CardHeader>
-          <CardTitle>プリンター種類</CardTitle>
-          <CardDescription>
-            使用するプリンターの種類を選択してください
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      {visibleSections.has('type') && (
+        <CollapsibleCard
+          panelId="settings.printer.type"
+          title="プリンター種類"
+          description="使用するプリンターの種類を選択してください"
+        >
           <div className="space-y-4">
             <Label>プリンター種類</Label>
             <Select
@@ -67,19 +70,17 @@ export const PrinterSettings: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
 
       {/* 2. Bluetooth設定カード（条件付き表示）*/}
-      {printerType === 'bluetooth' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>プリンター接続設定</CardTitle>
-            <CardDescription>
-              CatPrinterのBluetooth接続を設定します
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+      {visibleSections.has('bluetooth') && printerType === 'bluetooth' && (
+        <CollapsibleCard
+          panelId="settings.printer.bluetooth"
+          title="プリンター接続設定"
+          description="CatPrinterのBluetooth接続を設定します"
+          contentClassName="space-y-6"
+        >
             {/* Bluetooth デバイススキャン */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -205,20 +206,17 @@ export const PrinterSettings: React.FC = () => {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+        </CollapsibleCard>
       )}
 
       {/* 3. USB設定カード（条件付き表示）*/}
-      {printerType === 'usb' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>USBプリンター設定</CardTitle>
-            <CardDescription>
-              システムに登録されているプリンターから選択します
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {visibleSections.has('usb') && printerType === 'usb' && (
+        <CollapsibleCard
+          panelId="settings.printer.usb"
+          title="USBプリンター設定"
+          description="システムに登録されているプリンターから選択します"
+          contentClassName="space-y-4"
+        >
             <div className="flex items-center justify-between">
               <Label>システムプリンター</Label>
               <Button
@@ -301,21 +299,21 @@ export const PrinterSettings: React.FC = () => {
                 </AlertDescription>
               </Alert>
             )}
-          </CardContent>
-        </Card>
+        </CollapsibleCard>
       )}
 
       {/* 4. 印刷設定カード（共通 + Bluetooth固有）*/}
-      <Card>
-        <CardHeader>
-          <CardTitle>印刷設定</CardTitle>
-          <CardDescription>
-            {printerType === 'bluetooth'
+      {visibleSections.has('print') && (
+        <CollapsibleCard
+          panelId="settings.printer.print"
+          title="印刷設定"
+          description={
+            printerType === 'bluetooth'
               ? 'Bluetoothプリンターの印刷品質と動作を設定します'
-              : 'プリンターの印刷設定'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+              : 'プリンターの印刷設定'
+          }
+          contentClassName="space-y-6"
+        >
           {/* Bluetooth固有設定（条件付き表示）*/}
           {printerType === 'bluetooth' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -400,18 +398,17 @@ export const PrinterSettings: React.FC = () => {
               onCheckedChange={(checked) => handleSettingChange('ROTATE_PRINT', checked)}
             />
           </div>
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
 
       {/* 5. 時計印刷設定カード（既存のまま）*/}
-      <Card>
-        <CardHeader>
-          <CardTitle>時計印刷設定</CardTitle>
-          <CardDescription>
-            毎時0分の自動印刷を設定します
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {visibleSections.has('clock') && (
+        <CollapsibleCard
+          panelId="settings.printer.clock"
+          title="時計印刷設定"
+          description="毎時0分の自動印刷を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>時計印刷を有効化</Label>
@@ -434,8 +431,8 @@ export const PrinterSettings: React.FC = () => {
               </AlertDescription>
             </Alert>
           )}
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
     </div>
   );
 };

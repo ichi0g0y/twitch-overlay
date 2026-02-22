@@ -21,6 +21,19 @@ pub struct HelixResponse<T> {
     pub data: Vec<T>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct HelixPagination {
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HelixPaginatedResponse<T> {
+    pub data: Vec<T>,
+    #[serde(default)]
+    pub pagination: Option<HelixPagination>,
+}
+
 /// Stream information from GET /helix/streams.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamInfo {
@@ -51,6 +64,25 @@ pub struct TwitchUser {
     pub login: String,
     pub display_name: String,
     pub profile_image_url: String,
+}
+
+/// Followed channel entry from GET /helix/channels/followed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowedChannel {
+    pub broadcaster_id: String,
+    pub broadcaster_login: String,
+    pub broadcaster_name: String,
+    #[serde(default)]
+    pub followed_at: String,
+}
+
+/// Raid information from POST /helix/raids.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaidInfo {
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub is_mature: Option<bool>,
 }
 
 /// Nested setting for max redemptions per stream.
@@ -274,6 +306,24 @@ impl TwitchApiClient {
         Ok(resp_body)
     }
 
+    /// Execute a POST request with auth headers and no body.
+    async fn authenticated_post_no_body(&self, url: &str, token: &Token) -> Result<String, TwitchError> {
+        let headers = self.auth_headers(token);
+        let resp = self.http.post(url).headers(headers).send().await?;
+
+        let status = resp.status();
+        let resp_body = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(TwitchError::ApiError {
+                status: status.as_u16(),
+                message: resp_body,
+            });
+        }
+
+        Ok(resp_body)
+    }
+
     /// Execute a DELETE request with auth headers.
     async fn authenticated_delete(&self, url: &str, token: &Token) -> Result<(), TwitchError> {
         let headers = self.auth_headers(token);
@@ -337,6 +387,127 @@ impl TwitchApiClient {
                 status: 404,
                 message: "User not found".into(),
             })
+    }
+
+    /// Get user profile by user ID.
+    pub async fn get_user(&self, token: &Token, user_id: &str) -> Result<TwitchUser, TwitchError> {
+        let url = format!("{HELIX_BASE}/users?id={user_id}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "User not found".into(),
+            })
+    }
+
+    /// Get user profile by login name.
+    pub async fn get_user_by_login(
+        &self,
+        token: &Token,
+        login: &str,
+    ) -> Result<TwitchUser, TwitchError> {
+        let url = format!("{HELIX_BASE}/users?login={login}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "User not found".into(),
+            })
+    }
+
+    /// Get users by user IDs (up to 100).
+    pub async fn get_users_by_ids(
+        &self,
+        token: &Token,
+        user_ids: &[String],
+    ) -> Result<Vec<TwitchUser>, TwitchError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = user_ids
+            .iter()
+            .take(100)
+            .map(|id| format!("id={id}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{HELIX_BASE}/users?{query}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+        Ok(resp.data)
+    }
+
+    /// Get channels followed by the specified user.
+    pub async fn get_followed_channels(
+        &self,
+        token: &Token,
+        user_id: &str,
+        first: u32,
+    ) -> Result<Vec<FollowedChannel>, TwitchError> {
+        let (rows, _next_cursor) = self
+            .get_followed_channels_page(token, user_id, first, None)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Get one page of channels followed by the specified user.
+    pub async fn get_followed_channels_page(
+        &self,
+        token: &Token,
+        user_id: &str,
+        first: u32,
+        after: Option<&str>,
+    ) -> Result<(Vec<FollowedChannel>, Option<String>), TwitchError> {
+        let clamped = first.clamp(1, 100);
+        let mut url = format!("{HELIX_BASE}/channels/followed?user_id={user_id}&first={clamped}");
+        if let Some(cursor) = after.filter(|v| !v.is_empty()) {
+            url.push_str("&after=");
+            url.push_str(cursor);
+        }
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixPaginatedResponse<FollowedChannel> = serde_json::from_str(&body)?;
+        let next_cursor = resp.pagination.and_then(|p| p.cursor);
+        Ok((resp.data, next_cursor))
+    }
+
+    /// Get stream info for multiple broadcasters (up to 100 user IDs).
+    pub async fn get_streams_by_user_ids(
+        &self,
+        token: &Token,
+        user_ids: &[String],
+    ) -> Result<Vec<StreamInfo>, TwitchError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = build_streams_query(user_ids);
+        let url = format!("{HELIX_BASE}/streams?{query}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<StreamInfo> = serde_json::from_str(&body)?;
+        Ok(resp.data)
+    }
+
+    /// Start a raid to another broadcaster.
+    pub async fn start_raid(
+        &self,
+        token: &Token,
+        from_broadcaster_id: &str,
+        to_broadcaster_id: &str,
+    ) -> Result<Option<RaidInfo>, TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/raids?from_broadcaster_id={from_broadcaster_id}&to_broadcaster_id={to_broadcaster_id}"
+        );
+        let body = self.authenticated_post_no_body(&url, token).await?;
+        let resp: HelixResponse<RaidInfo> = serde_json::from_str(&body)?;
+        Ok(resp.data.into_iter().next())
     }
 
     /// Get all custom channel point rewards for a broadcaster.
@@ -491,9 +662,20 @@ impl TwitchApiClient {
     }
 }
 
+fn build_streams_query(user_ids: &[String]) -> String {
+    let limited: Vec<&String> = user_ids.iter().take(100).collect();
+    let first = limited.len().clamp(1, 100);
+    let users = limited
+        .into_iter()
+        .map(|id| format!("user_id={id}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("first={first}&{users}")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HelixResponse, StreamInfo};
+    use super::{HelixResponse, StreamInfo, build_streams_query};
 
     #[test]
     fn stream_info_deserializes_started_at() {
@@ -532,5 +714,26 @@ mod tests {
         let parsed: HelixResponse<StreamInfo> = serde_json::from_str(body).unwrap();
         let stream = &parsed.data[0];
         assert_eq!(stream.started_at, None);
+    }
+
+    #[test]
+    fn build_streams_query_sets_first_to_user_count() {
+        let ids = vec!["u1".to_string(), "u2".to_string(), "u3".to_string()];
+        let query = build_streams_query(&ids);
+
+        assert!(query.starts_with("first=3&"));
+        assert!(query.contains("user_id=u1"));
+        assert!(query.contains("user_id=u2"));
+        assert!(query.contains("user_id=u3"));
+    }
+
+    #[test]
+    fn build_streams_query_caps_first_at_100() {
+        let ids = (1..=120).map(|i| format!("u{i}")).collect::<Vec<_>>();
+        let query = build_streams_query(&ids);
+
+        assert!(query.starts_with("first=100&"));
+        assert!(query.contains("user_id=u100"));
+        assert!(!query.contains("user_id=u101"));
     }
 }

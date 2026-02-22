@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { SettingsPageContext } from '../../../hooks/useSettingsPage';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
+import { CollapsibleCard } from '../../ui/collapsible-card';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
@@ -19,12 +19,12 @@ export const MicOverlayDisplaySettingsCard: React.FC = () => {
   const whiteSpaceValue = (overlaySettings?.mic_transcript_white_space || '').trim() || '__auto__';
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>オーバーレイ表示（/overlay/）</CardTitle>
-        <CardDescription>表示位置や幅、フォントなどを調整するだす</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <CollapsibleCard
+      panelId="settings.mic.overlay-display"
+      title="オーバーレイ表示（/overlay/）"
+      description="表示位置や幅、フォントなどを調整するだす"
+      contentClassName="space-y-4"
+    >
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label>表示を有効化</Label>
@@ -187,7 +187,6 @@ export const MicOverlayDisplaySettingsCard: React.FC = () => {
             </div>
           </div>
         </details>
-      </CardContent>
-    </Card>
+    </CollapsibleCard>
   );
 };

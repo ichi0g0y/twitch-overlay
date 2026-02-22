@@ -1,6 +1,6 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Eye, EyeOff, RefreshCw, Wifi } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -16,7 +16,11 @@ interface CustomReward {
   is_enabled: boolean;
 }
 
-export const TwitchSettings: React.FC = () => {
+interface TwitchSettingsProps {
+  sections?: Array<'api' | 'rewardGroups' | 'customRewards'>;
+}
+
+export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
   const context = useContext(SettingsPageContext);
   if (!context) {
     throw new Error('TwitchSettings must be used within SettingsPageProvider');
@@ -38,6 +42,7 @@ export const TwitchSettings: React.FC = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [rewards, setRewards] = useState<CustomReward[]>([]);
   const [loadingRewards, setLoadingRewards] = useState(false);
+  const visibleSections = new Set(sections ?? ['api', 'rewardGroups', 'customRewards']);
 
   // カスタムリワードを取得
   useEffect(() => {
@@ -64,14 +69,13 @@ export const TwitchSettings: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Twitch API設定</CardTitle>
-          <CardDescription>
-            Twitch Developersで取得したAPI情報を設定してください
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {visibleSections.has('api') && (
+        <CollapsibleCard
+          panelId="settings.twitch.api"
+          title="Twitch API設定"
+          description="Twitch Developersで取得したAPI情報を設定してください"
+          contentClassName="space-y-6"
+        >
           {/* 認証状態の表示 */}
           {authStatus && (
             <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
@@ -238,19 +242,23 @@ export const TwitchSettings: React.FC = () => {
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </CollapsibleCard>
+      )}
 
       {/* リワードグループ管理 */}
-      <RewardGroupsManager
-        onGroupsChanged={() => setRefreshTrigger(prev => prev + 1)}
-        availableRewardIds={rewards.map(r => r.id)}
-      />
+      {visibleSections.has('rewardGroups') && (
+        <RewardGroupsManager
+          onGroupsChanged={() => setRefreshTrigger(prev => prev + 1)}
+          availableRewardIds={rewards.map(r => r.id)}
+        />
+      )}
 
       {/* Custom Rewards一覧 */}
-      <CustomRewardsList
-        refreshTrigger={refreshTrigger}
-      />
+      {visibleSections.has('customRewards') && (
+        <CustomRewardsList
+          refreshTrigger={refreshTrigger}
+        />
+      )}
     </div>
   );
 };

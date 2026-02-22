@@ -20,6 +20,23 @@ interface MusicPlayerContextValue extends MusicPlayerState {
 
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const toPlaylistName = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  }
+  return undefined;
+};
+
 export const MusicPlayerProvider = ({ children }: { children: React.ReactNode }) => {
   const { settings } = useSettings();
   const player = useMusicPlayer(settings?.music_volume);
@@ -30,9 +47,22 @@ export const MusicPlayerProvider = ({ children }: { children: React.ReactNode })
     
     // 音楽制御コマンドを処理
     const unsubMusicControl = wsClient.on('music_control', (command) => {
-      // console.log('Music control command received via WebSocket:', command); // デバッグ用ログ
-      
-      switch (command.type) {
+      // 新形式: { action, data } / 旧形式: { type, value, time, playlist }
+      const action = typeof command?.action === 'string'
+        ? command.action
+        : typeof command?.type === 'string'
+          ? command.type
+          : undefined;
+
+      if (!action) {
+        return;
+      }
+
+      const payload = (command?.data && typeof command.data === 'object')
+        ? command.data as Record<string, unknown>
+        : (command ?? {}) as Record<string, unknown>;
+
+      switch (action) {
         case 'play':
           player.play();
           break;
@@ -49,18 +79,25 @@ export const MusicPlayerProvider = ({ children }: { children: React.ReactNode })
           player.previous();
           break;
         case 'volume':
-          if (typeof command.value === 'number') {
-            player.setVolume(command.value);
+          {
+            const volume = toNumber(payload.volume ?? payload.value ?? command?.value);
+            if (volume !== undefined) {
+              player.setVolume(volume);
+            }
           }
           break;
+        case 'load':
         case 'load_playlist':
-          if (command.playlist) {
-            player.loadPlaylist(command.playlist);
-          }
+          player.loadPlaylist(toPlaylistName(payload.playlist ?? command?.playlist));
           break;
         case 'seek':
-          if (typeof command.time === 'number') {
-            player.seek(command.time);
+          {
+            const position = toNumber(
+              payload.position ?? payload.time ?? command?.position ?? command?.time,
+            );
+            if (position !== undefined) {
+              player.seek(position);
+            }
           }
           break;
       }

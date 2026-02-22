@@ -55,9 +55,11 @@ pub enum TwitchError {
 /// OAuth scopes required by this application.
 pub const SCOPES: &[&str] = &[
     "user:read:chat",
+    "user:read:follows",
     "channel:read:subscriptions",
     "bits:read",
     "channel:read:redemptions",
+    "channel:manage:raids",
     "chat:read",
     "chat:edit",
     "moderator:read:followers",

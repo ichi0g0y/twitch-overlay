@@ -14,6 +14,8 @@ pub fn run_migrations(conn: &Connection) -> Result<(), DbError> {
 fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
     migrate_tracks_table(conn)?;
     migrate_playlist_tracks_table(conn)?;
+    migrate_chat_user_profiles(conn)?;
+    migrate_chat_messages_user_columns(conn)?;
     Ok(())
 }
 
@@ -40,6 +42,104 @@ fn migrate_playlist_tracks_table(conn: &Connection) -> Result<(), DbError> {
     }
     tracing::info!("Adding added_at column to playlist_tracks");
     conn.execute_batch("ALTER TABLE playlist_tracks ADD COLUMN added_at TIMESTAMP;")?;
+    Ok(())
+}
+
+/// chat_messages に埋め込まれたユーザー情報を chat_users に集約
+fn migrate_chat_user_profiles(conn: &Connection) -> Result<(), DbError> {
+    let has_username = column_exists(conn, "chat_messages", "username")?;
+    let has_avatar_url = column_exists(conn, "chat_messages", "avatar_url")?;
+    if !has_username && !has_avatar_url {
+        return Ok(());
+    }
+
+    let username_expr = if has_username {
+        "COALESCE(username, '')"
+    } else {
+        "''"
+    };
+    let avatar_expr = if has_avatar_url {
+        "COALESCE(avatar_url, '')"
+    } else {
+        "''"
+    };
+
+    let sql = format!(
+        "INSERT INTO chat_users (user_id, username, avatar_url, updated_at)
+         SELECT
+             user_id,
+             {username_expr},
+             {avatar_expr},
+             COALESCE(created_at, 0)
+         FROM chat_messages
+         WHERE user_id IS NOT NULL AND user_id != ''
+         ON CONFLICT(user_id) DO UPDATE SET
+             username = CASE
+                 WHEN excluded.username != '' AND excluded.updated_at >= chat_users.updated_at
+                 THEN excluded.username
+                 ELSE chat_users.username
+             END,
+             avatar_url = CASE
+                 WHEN excluded.avatar_url != ''
+                      AND (chat_users.avatar_url = '' OR excluded.updated_at >= chat_users.updated_at)
+                 THEN excluded.avatar_url
+                 ELSE chat_users.avatar_url
+             END,
+             updated_at = CASE
+                 WHEN excluded.updated_at > chat_users.updated_at
+                 THEN excluded.updated_at
+                 ELSE chat_users.updated_at
+             END;"
+    );
+
+    conn.execute_batch(&sql)?;
+    Ok(())
+}
+
+/// chat_messages から username/avatar_url カラムを除去
+fn migrate_chat_messages_user_columns(conn: &Connection) -> Result<(), DbError> {
+    let has_username = column_exists(conn, "chat_messages", "username")?;
+    let has_avatar_url = column_exists(conn, "chat_messages", "avatar_url")?;
+    if !has_username && !has_avatar_url {
+        return Ok(());
+    }
+
+    tracing::info!("Migrating chat_messages to remove embedded user columns");
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chat_messages_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT,
+            user_id TEXT,
+            message TEXT NOT NULL,
+            fragments_json TEXT,
+            translation_text TEXT DEFAULT '',
+            translation_status TEXT DEFAULT '',
+            translation_lang TEXT DEFAULT '',
+            created_at INTEGER NOT NULL
+        );
+
+        INSERT INTO chat_messages_new (
+            id, message_id, user_id, message, fragments_json,
+            translation_text, translation_status, translation_lang, created_at
+        )
+        SELECT
+            id, message_id, user_id, message, fragments_json,
+            translation_text, translation_status, translation_lang, created_at
+        FROM chat_messages;
+
+        DROP TABLE chat_messages;
+        ALTER TABLE chat_messages_new RENAME TO chat_messages;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_message_id
+            ON chat_messages(message_id)
+            WHERE message_id IS NOT NULL AND message_id != '';
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
+            ON chat_messages(created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
+            ON chat_messages(user_id);",
+    )?;
     Ok(())
 }
 
@@ -162,10 +262,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT,
     user_id TEXT,
-    username TEXT NOT NULL,
     message TEXT NOT NULL,
     fragments_json TEXT,
-    avatar_url TEXT DEFAULT '',
     translation_text TEXT DEFAULT '',
     translation_status TEXT DEFAULT '',
     translation_lang TEXT DEFAULT '',
@@ -181,6 +279,39 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
     ON chat_messages(user_id);
+
+CREATE TABLE IF NOT EXISTS chat_users (
+    user_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL DEFAULT '',
+    avatar_url TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_users_updated_at
+    ON chat_users(updated_at);
+
+CREATE TABLE IF NOT EXISTS irc_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_login TEXT NOT NULL,
+    message_id TEXT,
+    user_id TEXT,
+    message TEXT NOT NULL,
+    fragments_json TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_irc_chat_messages_channel_message_id
+    ON irc_chat_messages(channel_login, message_id)
+    WHERE message_id IS NOT NULL AND message_id != '';
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_created_at
+    ON irc_chat_messages(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel
+    ON irc_chat_messages(channel_login);
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_user_id
+    ON irc_chat_messages(user_id);
 
 CREATE TABLE IF NOT EXISTS lottery_participants (
     user_id TEXT PRIMARY KEY,

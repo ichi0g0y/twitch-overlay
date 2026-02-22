@@ -76,7 +76,7 @@ pub async fn download_logs(Query(q): Query<LogDownloadQuery>) -> Response {
             .into_response();
     }
 
-    let mut body = format!("# cairo-overlay logs\n# generated_at={now}\n");
+    let mut body = format!("# twitch-overlay logs\n# generated_at={now}\n");
     for log in logs {
         if log.fields.is_empty() {
             body.push_str(&format!(
