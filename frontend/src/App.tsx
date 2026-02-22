@@ -29,7 +29,7 @@ function App() {
         {/* Settings Page Route */}
         <Route
           path="/"
-          element={
+          element={(
             <SettingsProvider>
               <MicCaptionStatusProvider>
                 <div className="min-h-screen bg-gray-900">
@@ -37,12 +37,15 @@ function App() {
                 </div>
               </MicCaptionStatusProvider>
             </SettingsProvider>
-          }
+          )}
+        />
+        <Route
+          path="/tray-settings"
+          element={<TraySettingsWindow />}
         />
 
         {/* Notification Window Route */}
         <Route path="/notification" element={<NotificationWindow />} />
-        <Route path="/tray-settings" element={<TraySettingsWindow />} />
       </Routes>
       <Toaster position="top-right" richColors expand={true} duration={3000} />
     </>

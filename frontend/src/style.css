@@ -33,77 +33,48 @@ body {
     text-align: left;
 }
 
-.settings-preview-grid {
-    min-height: 100%;
+.settings-workspace-flow .react-flow__controls {
+    border: 1px solid rgba(55, 65, 81, 0.95);
+    background: rgba(17, 24, 39, 0.92);
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
 }
 
-.settings-preview-grid .react-grid-item {
-    transition: none;
+.settings-workspace-flow .react-flow__controls-button {
+    border-bottom: 1px solid rgba(55, 65, 81, 0.95);
+    background: transparent;
+    color: rgb(229, 231, 235);
 }
 
-.settings-preview-grid .react-grid-item > div {
-    height: 100%;
+.settings-workspace-flow .react-flow__controls-button:last-child {
+    border-bottom: none;
 }
 
-.settings-preview-grid .react-grid-placeholder {
-    background: rgba(59, 130, 246, 0.2);
-    border: 1px dashed rgba(96, 165, 250, 0.9);
+.settings-workspace-flow .react-flow__controls-button:hover {
+    background: rgba(31, 41, 55, 0.95);
 }
 
-.settings-preview-grid .react-resizable-handle::after {
-    border-right-color: rgba(147, 197, 253, 0.9);
-    border-bottom-color: rgba(147, 197, 253, 0.9);
+.settings-workspace-flow .react-flow__controls-button svg {
+    fill: currentColor;
 }
 
-.settings-preview-grid .react-resizable-handle {
-    opacity: 0;
-    transition: opacity 120ms ease;
+.settings-workspace-flow .react-flow__minimap {
+    border: 1px solid rgba(55, 65, 81, 0.95);
+    background: rgba(17, 24, 39, 0.92);
 }
 
-.settings-preview-grid .react-grid-item:hover .react-resizable-handle,
-.settings-preview-grid .react-grid-item.react-grid-placeholder + .react-resizable-handle {
-    opacity: 1;
+.settings-workspace-flow .react-flow__node.selected,
+.settings-workspace-flow .react-flow__node:focus,
+.settings-workspace-flow .react-flow__node:focus-visible {
+    outline: none;
+    box-shadow: none;
 }
 
-.settings-preview-grid .react-resizable-handle-e,
-.settings-preview-grid .react-resizable-handle-w {
-    top: 0;
-    width: 8px;
-    height: 100%;
+.settings-workspace-flow .react-flow__resize-control.line {
+    border-color: transparent !important;
 }
 
-.settings-preview-grid .react-resizable-handle-e {
-    right: -4px;
-    cursor: ew-resize;
-}
-
-.settings-preview-grid .react-resizable-handle-w {
-    left: -4px;
-    cursor: ew-resize;
-}
-
-.settings-preview-grid .react-resizable-handle-n,
-.settings-preview-grid .react-resizable-handle-s {
-    left: 0;
+.settings-workspace-flow .settings-node-card-shell > * {
     width: 100%;
-    height: 8px;
-}
-
-.settings-preview-grid .react-resizable-handle-n {
-    top: -4px;
-    cursor: ns-resize;
-}
-
-.settings-preview-grid .react-resizable-handle-s {
-    bottom: -4px;
-    cursor: ns-resize;
-}
-
-.settings-preview-grid .react-resizable-handle-ne,
-.settings-preview-grid .react-resizable-handle-nw,
-.settings-preview-grid .react-resizable-handle-se,
-.settings-preview-grid .react-resizable-handle-sw {
-    width: 12px;
-    height: 12px;
-    opacity: 0.9;
+    height: 100%;
+    min-height: 0;
 }

@@ -2,8 +2,12 @@
 
 use axum::Json;
 use axum::extract::{Query, State};
+use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use tokio::time::{Duration, Instant, timeout};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 use twitch_client::TwitchError;
 use twitch_client::api::{TwitchApiClient, TwitchUser};
 
@@ -15,6 +19,14 @@ use super::err_json;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 const IRC_RETENTION_SECONDS: i64 = 24 * 60 * 60;
+const TWITCH_IRC_WS_ENDPOINT: &str = "wss://irc-ws.chat.twitch.tv:443";
+const TWITCH_IRC_SEND_TIMEOUT_SECS: u64 = 8;
+
+struct TwitchIrcIdentity {
+    token: twitch_client::Token,
+    sender_user: TwitchUser,
+    nick: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ChatQuery {
@@ -171,6 +183,45 @@ async fn fetch_twitch_user_profile(state: &SharedState, user_id: &str) -> Option
     client.get_user(&token, user_id).await.ok()
 }
 
+async fn resolve_twitch_irc_identity(
+    state: &SharedState,
+) -> Result<TwitchIrcIdentity, (axum::http::StatusCode, Json<Value>)> {
+    let config = state.config().await;
+    if config.client_id.trim().is_empty() || config.twitch_user_id.trim().is_empty() {
+        return Err(err_json(401, "Twitch credentials not configured"));
+    }
+
+    let db_token = state
+        .db()
+        .get_latest_token()
+        .map_err(|e| err_json(500, &e.to_string()))?
+        .ok_or_else(|| err_json(401, "No Twitch token stored"))?;
+
+    let token = twitch_client::Token {
+        access_token: db_token.access_token,
+        refresh_token: db_token.refresh_token,
+        scope: db_token.scope,
+        expires_at: db_token.expires_at,
+    };
+
+    let api = TwitchApiClient::new(config.client_id.clone());
+    let sender_user = api
+        .get_user(&token, &config.twitch_user_id)
+        .await
+        .map_err(map_twitch_error)?;
+
+    let nick = sender_user.login.trim().to_lowercase();
+    if nick.is_empty() {
+        return Err(err_json(500, "Failed to resolve Twitch username"));
+    }
+
+    Ok(TwitchIrcIdentity {
+        token,
+        sender_user,
+        nick,
+    })
+}
+
 async fn resolve_chat_user_profile(
     state: &SharedState,
     user_id: &str,
@@ -292,120 +343,166 @@ async fn save_irc_chat_message(
     }))
 }
 
-async fn post_twitch_chat_to_channel(
+async fn post_twitch_chat_via_irc_channel(
     state: &SharedState,
     raw_channel_login: &str,
-    message: &str,
+    raw_message: &str,
 ) -> Result<Value, (axum::http::StatusCode, Json<Value>)> {
-    let channel_login =
-        normalize_channel_login(raw_channel_login).ok_or_else(|| err_json(400, "invalid channel"))?;
-
-    let config = state.config().await;
-    if config.client_id.trim().is_empty() || config.twitch_user_id.trim().is_empty() {
-        return Err(err_json(401, "Twitch credentials not configured"));
+    let channel_login = normalize_channel_login(raw_channel_login)
+        .ok_or_else(|| err_json(400, "invalid channel"))?;
+    let message = raw_message.replace(['\r', '\n'], " ").trim().to_string();
+    if message.is_empty() {
+        return Err(err_json(400, "message is required"));
     }
 
-    let db_token = state
-        .db()
-        .get_latest_token()
-        .map_err(|e| err_json(500, &e.to_string()))?
-        .ok_or_else(|| err_json(401, "No Twitch token stored"))?;
+    let identity = resolve_twitch_irc_identity(state).await?;
 
-    let token = twitch_client::Token {
-        access_token: db_token.access_token,
-        refresh_token: db_token.refresh_token,
-        scope: db_token.scope,
-        expires_at: db_token.expires_at,
-    };
+    let (mut ws, _) = connect_async(TWITCH_IRC_WS_ENDPOINT)
+        .await
+        .map_err(|e| err_json(502, &format!("Failed to connect Twitch IRC: {e}")))?;
 
-    let api = TwitchApiClient::new(config.client_id.clone());
-    let sender_user = api
-        .get_user(&token, &config.twitch_user_id)
+    ws.send(WsMessage::Text(
+        format!("PASS oauth:{}", identity.token.access_token).into(),
+    ))
+    .await
+    .map_err(|e| err_json(502, &format!("Failed to authenticate Twitch IRC: {e}")))?;
+    ws.send(WsMessage::Text(format!("NICK {}", identity.nick).into()))
         .await
-        .map_err(map_twitch_error)?;
-    let broadcaster_user = api
-        .get_user_by_login(&token, &channel_login)
+        .map_err(|e| err_json(502, &format!("Failed to set Twitch IRC nickname: {e}")))?;
+    ws.send(WsMessage::Text(
+        "CAP REQ :twitch.tv/tags twitch.tv/commands"
+            .to_string()
+            .into(),
+    ))
+    .await
+    .map_err(|e| {
+        err_json(
+            502,
+            &format!("Failed to request Twitch IRC capabilities: {e}"),
+        )
+    })?;
+    ws.send(WsMessage::Text(format!("JOIN #{channel_login}").into()))
         .await
-        .map_err(map_twitch_error)?;
+        .map_err(|e| err_json(502, &format!("Failed to join Twitch IRC channel: {e}")))?;
 
-    let request_body = json!({
-        "broadcaster_id": broadcaster_user.id,
-        "sender_id": sender_user.id,
-        "message": message,
-    });
-    let response = reqwest::Client::new()
-        .post("https://api.twitch.tv/helix/chat/messages")
-        .header("Authorization", format!("Bearer {}", token.access_token))
-        .header("Client-Id", config.client_id.clone())
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| err_json(500, &e.to_string()))?;
+    let privmsg = format!("PRIVMSG #{channel_login} :{message}");
+    let deadline = Instant::now() + Duration::from_secs(TWITCH_IRC_SEND_TIMEOUT_SECS);
+    let mut join_confirmed = false;
+    let mut message_sent = false;
 
-    let status = response.status();
-    let response_text = response
-        .text()
-        .await
-        .unwrap_or_else(|_| "unknown error".to_string());
-    if !status.is_success() {
-        return Err(err_json(
-            status.as_u16(),
-            &format!("Failed to send message to #{channel_login}: {response_text}"),
-        ));
+    while Instant::now() < deadline && !message_sent {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let next_frame = match timeout(remaining, ws.next()).await {
+            Ok(frame) => frame,
+            Err(_) => break,
+        };
+
+        let Some(frame) = next_frame else {
+            break;
+        };
+
+        match frame.map_err(|e| err_json(502, &format!("Twitch IRC receive error: {e}")))? {
+            WsMessage::Ping(payload) => {
+                ws.send(WsMessage::Pong(payload))
+                    .await
+                    .map_err(|e| err_json(502, &format!("Failed to send Twitch IRC pong: {e}")))?;
+            }
+            WsMessage::Text(text) => {
+                for line in text.lines().filter(|line| !line.is_empty()) {
+                    if let Some(payload) = line.strip_prefix("PING ") {
+                        ws.send(WsMessage::Text(format!("PONG {payload}").into()))
+                            .await
+                            .map_err(|e| {
+                                err_json(502, &format!("Failed to reply Twitch IRC ping: {e}"))
+                            })?;
+                        continue;
+                    }
+
+                    if line.contains("Login authentication failed") {
+                        return Err(err_json(
+                            401,
+                            "Twitch IRC authentication failed. Twitch再認証を実行してください。",
+                        ));
+                    }
+
+                    if !join_confirmed
+                        && (line.contains(&format!(" JOIN #{channel_login}"))
+                            || line.contains(&format!(" 366 {} #{channel_login} :", identity.nick)))
+                    {
+                        join_confirmed = true;
+                    }
+                }
+
+                if join_confirmed {
+                    ws.send(WsMessage::Text(privmsg.clone().into()))
+                        .await
+                        .map_err(|e| {
+                            err_json(502, &format!("Failed to send Twitch IRC message: {e}"))
+                        })?;
+                    message_sent = true;
+                }
+            }
+            _ => {}
+        }
     }
 
-    let parsed_response: Value =
-        serde_json::from_str(&response_text).unwrap_or_else(|_| json!({ "raw": response_text }));
-    let is_sent = parsed_response
-        .get("data")
-        .and_then(|d| d.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|entry| entry.get("is_sent"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-    if !is_sent {
-        let reason = parsed_response
-            .get("data")
-            .and_then(|d| d.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|entry| entry.get("drop_reason"))
-            .and_then(|v| v.get("message"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown reason");
-        return Err(err_json(
-            400,
-            &format!("Failed to send message to #{channel_login}: {reason}"),
-        ));
+    if !message_sent {
+        ws.send(WsMessage::Text(privmsg.into()))
+            .await
+            .map_err(|e| err_json(502, &format!("Failed to send Twitch IRC message: {e}")))?;
     }
 
-    let sender_username = if sender_user.display_name.trim().is_empty() {
-        sender_user.login
-    } else {
-        sender_user.display_name
-    };
+    let _ = ws.close(None).await;
+
     let now = chrono::Utc::now();
-    let message_id = parsed_response
-        .get("data")
-        .and_then(|d| d.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|entry| entry.get("message_id"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("irc-local-{}", now.timestamp_micros()));
-    let fragments = json!([{ "type": "text", "text": message }]);
+    let sender_username = if identity.sender_user.display_name.trim().is_empty() {
+        identity.sender_user.login.clone()
+    } else {
+        identity.sender_user.display_name.clone()
+    };
+    let message_id = format!("irc-local-{}", now.timestamp_micros());
     save_irc_chat_message(
         state,
         &channel_login,
         &message_id,
-        &sender_user.id,
+        &identity.sender_user.id,
         Some(&sender_username),
-        message,
-        fragments,
+        &message,
+        json!([{ "type": "text", "text": message }]),
         now.timestamp(),
     )
     .await
+}
+
+/// GET /api/chat/irc/credentials
+pub async fn get_irc_credentials(State(state): State<SharedState>) -> ApiResult {
+    match resolve_twitch_irc_identity(&state).await {
+        Ok(identity) => Ok(Json(json!({
+            "authenticated": true,
+            "nick": identity.nick,
+            "pass": format!("oauth:{}", identity.token.access_token),
+            "user_id": identity.sender_user.id,
+            "login": identity.sender_user.login,
+            "display_name": if identity.sender_user.display_name.trim().is_empty() {
+                identity.sender_user.login
+            } else {
+                identity.sender_user.display_name
+            },
+        }))),
+        Err((_, payload)) => {
+            let reason = payload
+                .0
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            Ok(Json(json!({
+                "authenticated": false,
+                "nick": "",
+                "pass": "",
+                "reason": reason,
+            })))
+        }
+    }
 }
 
 /// GET /api/chat/messages
@@ -454,8 +551,8 @@ pub async fn get_irc_history(
     Query(q): Query<ChatQuery>,
 ) -> ApiResult {
     let channel = q.channel.unwrap_or_default();
-    let channel_login = normalize_channel_login(&channel)
-        .ok_or_else(|| err_json(400, "channel is required"))?;
+    let channel_login =
+        normalize_channel_login(&channel).ok_or_else(|| err_json(400, "channel is required"))?;
     let now = chrono::Utc::now().timestamp();
     let since_requested = q
         .since
@@ -474,7 +571,9 @@ pub async fn get_irc_history(
         .db()
         .get_irc_chat_messages_since(&channel_login, since, q.limit)
         .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({ "channel": channel_login, "messages": messages })))
+    Ok(Json(
+        json!({ "channel": channel_login, "messages": messages }),
+    ))
 }
 
 /// POST /api/chat/irc/message
@@ -482,8 +581,8 @@ pub async fn post_irc_message(
     State(state): State<SharedState>,
     Json(body): Json<IrcChatMessageBody>,
 ) -> ApiResult {
-    let channel_login = normalize_channel_login(&body.channel)
-        .ok_or_else(|| err_json(400, "invalid channel"))?;
+    let channel_login =
+        normalize_channel_login(&body.channel).ok_or_else(|| err_json(400, "invalid channel"))?;
     let message = body.message.trim().to_string();
     if message.is_empty() {
         return Err(err_json(400, "message is required"));
@@ -533,7 +632,7 @@ pub async fn post_chat_message(
     }
 
     if let Some(channel) = body.channel.as_deref().filter(|s| !s.trim().is_empty()) {
-        let ws_payload = post_twitch_chat_to_channel(&state, channel, &message).await?;
+        let ws_payload = post_twitch_chat_via_irc_channel(&state, channel, &message).await?;
         return Ok(Json(json!({ "status": "ok", "message": ws_payload })));
     }
 
@@ -641,7 +740,8 @@ pub async fn upsert_user_profile(
         return Err(err_json(400, "user_id is required"));
     }
 
-    let (username, avatar_url) = resolve_chat_user_profile(&state, user_id, body.username.as_deref()).await?;
+    let (username, avatar_url) =
+        resolve_chat_user_profile(&state, user_id, body.username.as_deref()).await?;
     Ok(Json(json!({
         "user_id": user_id,
         "username": username,

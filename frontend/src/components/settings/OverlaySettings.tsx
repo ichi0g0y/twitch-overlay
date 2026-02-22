@@ -14,26 +14,26 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 
-type CardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
+export type OverlayCardKey = 'musicPlayer' | 'fax' | 'clock' | 'micTranscript' | 'rewardCount' | 'lottery';
 type ColumnKey = 'left' | 'right';
-type CardsLayout = { left: CardKey[]; right: CardKey[] };
+type CardsLayout = { left: OverlayCardKey[]; right: OverlayCardKey[] };
 
-const CARD_KEYS: CardKey[] = ['musicPlayer', 'fax', 'clock', 'micTranscript', 'rewardCount', 'lottery'];
+const CARD_KEYS: OverlayCardKey[] = ['musicPlayer', 'fax', 'clock', 'micTranscript', 'rewardCount', 'lottery'];
 const DEFAULT_CARDS_LAYOUT: CardsLayout = {
   left: ['musicPlayer', 'fax', 'clock', 'micTranscript'],
   right: ['rewardCount', 'lottery'],
 };
 
-const isCardKey = (value: string): value is CardKey => CARD_KEYS.includes(value as CardKey);
+const isCardKey = (value: string): value is OverlayCardKey => CARD_KEYS.includes(value as OverlayCardKey);
 
 const normalizeCardsLayout = (layout?: Partial<CardsLayout> | null): CardsLayout => {
   const leftCandidate = layout?.left;
   const rightCandidate = layout?.right;
   const rawLeft = Array.isArray(leftCandidate) ? leftCandidate : [];
   const rawRight = Array.isArray(rightCandidate) ? rightCandidate : [];
-  const used = new Set<CardKey>();
+  const used = new Set<OverlayCardKey>();
   const pick = (items: unknown[]) => {
-    const result: CardKey[] = [];
+    const result: OverlayCardKey[] = [];
     for (const item of items) {
       if (typeof item !== 'string') continue;
       if (!isCardKey(item)) continue;
@@ -65,7 +65,11 @@ const parseCardsLayout = (value?: string): CardsLayout => {
   }
 };
 
-export const OverlaySettings: React.FC = () => {
+interface OverlaySettingsProps {
+  focusCard?: OverlayCardKey;
+}
+
+export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) => {
   const context = useContext(SettingsPageContext);
   if (!context) {
     throw new Error('OverlaySettings must be used within SettingsPageProvider');
@@ -140,7 +144,7 @@ export const OverlaySettings: React.FC = () => {
   const [cardsLayout, setCardsLayout] = useState<CardsLayout>(() =>
     parseCardsLayout(overlaySettings?.overlay_cards_layout)
   );
-  const [draggingCard, setDraggingCard] = useState<CardKey | null>(null);
+  const [draggingCard, setDraggingCard] = useState<OverlayCardKey | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<{ column: ColumnKey; index: number } | null>(null);
   const [draggingCardExpanded, setDraggingCardExpanded] = useState<boolean | null>(null);
 
@@ -700,7 +704,7 @@ export const OverlaySettings: React.FC = () => {
     updateArtworkUrl();
   }, [musicStatus.current_track]);
 
-  const getCardKeyFromDragEvent = (event: React.DragEvent): CardKey | null => {
+  const getCardKeyFromDragEvent = (event: React.DragEvent): OverlayCardKey | null => {
     const rawKey = event.dataTransfer.getData('text/plain');
     if (rawKey && isCardKey(rawKey)) {
       return rawKey;
@@ -708,7 +712,7 @@ export const OverlaySettings: React.FC = () => {
     return null;
   };
 
-  const moveCard = (cardKey: CardKey, targetColumn: ColumnKey, targetIndex: number | null) => {
+  const moveCard = (cardKey: OverlayCardKey, targetColumn: ColumnKey, targetIndex: number | null) => {
     setCardsLayout(prev => {
       const sourceColumn: ColumnKey = prev.left.includes(cardKey) ? 'left' : 'right';
       const sourceIndex = sourceColumn === 'left' ? prev.left.indexOf(cardKey) : prev.right.indexOf(cardKey);
@@ -741,7 +745,7 @@ export const OverlaySettings: React.FC = () => {
     });
   };
 
-  const handleDragStart = (cardKey: CardKey, column: ColumnKey) => (event: React.DragEvent) => {
+  const handleDragStart = (cardKey: OverlayCardKey, column: ColumnKey) => (event: React.DragEvent) => {
     event.dataTransfer.setData('text/plain', cardKey);
     event.dataTransfer.setData('application/x-card-column', column);
     event.dataTransfer.effectAllowed = 'move';
@@ -1878,7 +1882,7 @@ export const OverlaySettings: React.FC = () => {
     );
   };
 
-  const renderCard = (cardKey: CardKey, column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
+  const renderCard = (cardKey: OverlayCardKey, column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
     switch (cardKey) {
       case 'musicPlayer':
         return renderMusicPlayerCard(column, options);
@@ -1896,7 +1900,7 @@ export const OverlaySettings: React.FC = () => {
         return null;
     }
   };
-  const renderCardPreview = (cardKey: CardKey, column: ColumnKey) =>
+  const renderCardPreview = (cardKey: OverlayCardKey, column: ColumnKey) =>
     renderCard(cardKey, column, {
       preview: true,
       previewExpanded: draggingCard === cardKey ? draggingCardExpanded ?? expandedCards[cardKey] : expandedCards[cardKey],
@@ -1923,6 +1927,14 @@ export const OverlaySettings: React.FC = () => {
       </div>
     );
   };
+
+  if (focusCard) {
+    return (
+      <div className="space-y-4 [&:focus]:outline-none [&:focus-visible]:outline-none">
+        {renderCard(focusCard, 'left')}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 [&:focus]:outline-none [&:focus-visible]:outline-none">

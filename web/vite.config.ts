@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: FRONTEND_PORT,
+    strictPort: true,
     fs: {
       allow: [
         path.resolve(__dirname, '..'),

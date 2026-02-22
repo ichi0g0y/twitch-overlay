@@ -1,23 +1,23 @@
 //! Twitch API endpoints (OAuth, verification, custom rewards, stream status).
 
-use std::sync::LazyLock;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
+use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use twitch_client::TwitchError;
 use twitch_client::api::{
     CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient, TwitchUser,
     UpdateRewardRequest,
 };
 use twitch_client::auth::TwitchAuth;
+use twitch_client::TwitchError;
 
 use crate::app::SharedState;
 use crate::events;
@@ -26,6 +26,9 @@ use super::err_json;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 static TOKEN_REFRESH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const FOLLOWED_CHANNELS_PAGE_SIZE: u32 = 100;
+const FOLLOWED_CHANNELS_SCAN_LIMIT: usize = 1000;
+const FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE: usize = 100;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,6 +108,10 @@ async fn get_valid_token(
 
 fn is_unauthorized_error(err: &TwitchError) -> bool {
     matches!(err, TwitchError::ApiError { status: 401, .. })
+}
+
+fn is_not_found_error(err: &TwitchError) -> bool {
+    matches!(err, TwitchError::ApiError { status: 404, .. })
 }
 
 fn is_rotated_refresh_token(current: &twitch_client::Token, latest: &twitch_client::Token) -> bool {
@@ -429,6 +436,61 @@ pub async fn stream_status(State(state): State<SharedState>) -> ApiResult {
     Ok(Json(stream_status_payload(&status)))
 }
 
+/// GET /api/twitch/stream-status-by-login?login=...
+pub async fn stream_status_by_login(
+    State(state): State<SharedState>,
+    Query(q): Query<StreamStatusByLoginQuery>,
+) -> ApiResult {
+    let login = q
+        .login
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .ok_or_else(|| err_json(400, "login is required"))?;
+
+    let mut token = match get_valid_token(&state).await {
+        Ok(token) => token,
+        Err(_) => return Ok(Json(offline_stream_status_payload())),
+    };
+    let client_id = state.config().await.client_id.clone();
+    let client = TwitchApiClient::new(client_id);
+
+    let user = match client.get_user_by_login(&token, &login).await {
+        Ok(user) => user,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!(
+                "stream_status_by_login(get_user_by_login) got 401, refreshing token and retrying"
+            );
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .get_user_by_login(&token, &login)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) if is_not_found_error(&err) => return Ok(Json(offline_stream_status_payload())),
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    let status = match client.get_stream_info(&token, &user.id).await {
+        Ok(status) => status,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!(
+                "stream_status_by_login(get_stream_info) got 401, refreshing token and retrying"
+            );
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .get_stream_info(&token, &user.id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+    Ok(Json(stream_status_payload(&status)))
+}
+
 /// GET /api/twitch/followed-channels
 pub async fn followed_channels(
     State(state): State<SharedState>,
@@ -440,65 +502,102 @@ pub async fn followed_channels(
         return Err(err_json(401, "TWITCH_USER_ID is not configured"));
     }
 
-    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+    let limit = q.limit.unwrap_or(50).clamp(1, 100) as usize;
     let client = TwitchApiClient::new(config.client_id.clone());
-    let followed: Vec<FollowedChannel> = match client
-        .get_followed_channels(&token, &config.twitch_user_id, limit)
-        .await
-    {
-        Ok(rows) => rows,
-        Err(err) if is_unauthorized_error(&err) => {
-            tracing::warn!("followed_channels got 401, refreshing token and retrying");
-            let refreshed = force_refresh_token(&state, &token).await?;
-            token = refreshed.clone();
-            client
-                .get_followed_channels(&token, &config.twitch_user_id, limit)
-                .await
-                .map_err(map_twitch_error)?
+    let mut followed: Vec<FollowedChannel> = Vec::new();
+    let mut after: Option<String> = None;
+    loop {
+        let (mut page_rows, next_cursor): (Vec<FollowedChannel>, Option<String>) = match client
+            .get_followed_channels_page(
+                &token,
+                &config.twitch_user_id,
+                FOLLOWED_CHANNELS_PAGE_SIZE,
+                after.as_deref(),
+            )
+            .await
+        {
+            Ok(rows) => rows,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("followed_channels got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_followed_channels_page(
+                        &token,
+                        &config.twitch_user_id,
+                        FOLLOWED_CHANNELS_PAGE_SIZE,
+                        after.as_deref(),
+                    )
+                    .await
+                    .map_err(map_twitch_error)?
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        };
+        followed.append(&mut page_rows);
+        if followed.len() >= FOLLOWED_CHANNELS_SCAN_LIMIT {
+            break;
         }
-        Err(err) => return Err(map_twitch_error(err)),
-    };
+        let Some(cursor) = next_cursor.filter(|cursor| !cursor.is_empty()) else {
+            break;
+        };
+        after = Some(cursor);
+    }
 
     let user_ids: Vec<String> = followed
         .iter()
         .map(|row| row.broadcaster_id.clone())
         .collect();
-    let users = if user_ids.is_empty() {
+    let users: Vec<TwitchUser> = if user_ids.is_empty() {
         Vec::new()
     } else {
-        match client.get_users_by_ids(&token, &user_ids).await {
-            Ok(rows) => rows,
-            Err(err) if is_unauthorized_error(&err) => {
-                tracing::warn!("followed_channels(users) got 401, refreshing token and retrying");
-                let refreshed = force_refresh_token(&state, &token).await?;
-                token = refreshed.clone();
-                client
-                    .get_users_by_ids(&token, &user_ids)
-                    .await
-                    .map_err(map_twitch_error)?
-            }
-            Err(err) => return Err(map_twitch_error(err)),
+        let mut all_users: Vec<TwitchUser> = Vec::new();
+        for chunk in user_ids.chunks(FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE) {
+            let mut rows = match client.get_users_by_ids(&token, chunk).await {
+                Ok(rows) => rows,
+                Err(err) if is_unauthorized_error(&err) => {
+                    tracing::warn!(
+                        "followed_channels(users) got 401, refreshing token and retrying"
+                    );
+                    let refreshed = force_refresh_token(&state, &token).await?;
+                    token = refreshed.clone();
+                    client
+                        .get_users_by_ids(&token, chunk)
+                        .await
+                        .map_err(map_twitch_error)?
+                }
+                Err(err) => return Err(map_twitch_error(err)),
+            };
+            all_users.append(&mut rows);
         }
+        all_users
     };
     let streams: Vec<StreamInfo> = if user_ids.is_empty() {
         Vec::new()
     } else {
-        match client.get_streams_by_user_ids(&token, &user_ids).await {
-            Ok(rows) => rows,
-            Err(err) if is_unauthorized_error(&err) => {
-                tracing::warn!("followed_channels(streams) got 401, refreshing token and retrying");
-                let refreshed = force_refresh_token(&state, &token).await?;
-                token = refreshed.clone();
-                client
-                    .get_streams_by_user_ids(&token, &user_ids)
-                    .await
-                    .map_err(map_twitch_error)?
-            }
-            Err(err) => return Err(map_twitch_error(err)),
+        let mut all_streams: Vec<StreamInfo> = Vec::new();
+        for chunk in user_ids.chunks(FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE) {
+            let mut rows = match client.get_streams_by_user_ids(&token, chunk).await {
+                Ok(rows) => rows,
+                Err(err) if is_unauthorized_error(&err) => {
+                    tracing::warn!(
+                        "followed_channels(streams) got 401, refreshing token and retrying"
+                    );
+                    let refreshed = force_refresh_token(&state, &token).await?;
+                    token = refreshed.clone();
+                    client
+                        .get_streams_by_user_ids(&token, chunk)
+                        .await
+                        .map_err(map_twitch_error)?
+                }
+                Err(err) => return Err(map_twitch_error(err)),
+            };
+            all_streams.append(&mut rows);
         }
+        all_streams
     };
 
-    let user_map: HashMap<String, TwitchUser> = users.into_iter().map(|u| (u.id.clone(), u)).collect();
+    let user_map: HashMap<String, TwitchUser> =
+        users.into_iter().map(|u| (u.id.clone(), u)).collect();
     let stream_map: HashMap<String, StreamInfo> = streams
         .into_iter()
         .map(|s| (s.user_id.clone(), s))
@@ -525,6 +624,9 @@ pub async fn followed_channels(
         })
         .collect();
     sort_followed_channel_status(&mut rows);
+    if rows.len() > limit {
+        rows.truncate(limit);
+    }
 
     Ok(Json(json!({ "data": rows, "count": rows.len() })))
 }
@@ -558,7 +660,9 @@ pub async fn start_raid(
         match client.get_user_by_login(&token, &login).await {
             Ok(user) => user.id,
             Err(err) if is_unauthorized_error(&err) => {
-                tracing::warn!("start_raid(get_user_by_login) got 401, refreshing token and retrying");
+                tracing::warn!(
+                    "start_raid(get_user_by_login) got 401, refreshing token and retrying"
+                );
                 let refreshed = force_refresh_token(&state, &token).await?;
                 token = refreshed.clone();
                 client
@@ -823,6 +927,11 @@ pub struct RewardGroupByRewardQuery {
 #[derive(Debug, Deserialize)]
 pub struct FollowedChannelsQuery {
     pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreamStatusByLoginQuery {
+    pub login: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

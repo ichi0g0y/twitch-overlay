@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getCurrentWindow, type ResizeDirection } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChatNotification } from '../../types/notification';
 import { buildApiUrl } from '../../utils/api';
 import { initWebSocket } from '../../utils/websocket';
 import { MessageContent } from './MessageContent';
+
+type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResizeDragging']>[0];
 
 /**
  * NotificationWindow component

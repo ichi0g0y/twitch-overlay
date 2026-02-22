@@ -9,7 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Alert, AlertDescription } from '../ui/alert';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
 
-export const PrinterSettings: React.FC = () => {
+interface PrinterSettingsProps {
+  sections?: Array<'type' | 'bluetooth' | 'usb' | 'print' | 'clock'>;
+}
+
+export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) => {
   const context = useContext(SettingsPageContext);
   if (!context) {
     throw new Error('PrinterSettings must be used within SettingsPageProvider');
@@ -30,15 +34,17 @@ export const PrinterSettings: React.FC = () => {
   } = context;
 
   const printerType = getSettingValue('PRINTER_TYPE') || 'bluetooth';
+  const visibleSections = new Set(sections ?? ['type', 'bluetooth', 'usb', 'print', 'clock']);
 
   return (
     <div className="space-y-6">
       {/* 1. プリンター種類選択カード */}
-      <CollapsibleCard
-        panelId="settings.printer.type"
-        title="プリンター種類"
-        description="使用するプリンターの種類を選択してください"
-      >
+      {visibleSections.has('type') && (
+        <CollapsibleCard
+          panelId="settings.printer.type"
+          title="プリンター種類"
+          description="使用するプリンターの種類を選択してください"
+        >
           <div className="space-y-4">
             <Label>プリンター種類</Label>
             <Select
@@ -64,10 +70,11 @@ export const PrinterSettings: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* 2. Bluetooth設定カード（条件付き表示）*/}
-      {printerType === 'bluetooth' && (
+      {visibleSections.has('bluetooth') && printerType === 'bluetooth' && (
         <CollapsibleCard
           panelId="settings.printer.bluetooth"
           title="プリンター接続設定"
@@ -203,7 +210,7 @@ export const PrinterSettings: React.FC = () => {
       )}
 
       {/* 3. USB設定カード（条件付き表示）*/}
-      {printerType === 'usb' && (
+      {visibleSections.has('usb') && printerType === 'usb' && (
         <CollapsibleCard
           panelId="settings.printer.usb"
           title="USBプリンター設定"
@@ -296,16 +303,17 @@ export const PrinterSettings: React.FC = () => {
       )}
 
       {/* 4. 印刷設定カード（共通 + Bluetooth固有）*/}
-      <CollapsibleCard
-        panelId="settings.printer.print"
-        title="印刷設定"
-        description={
-          printerType === 'bluetooth'
-            ? 'Bluetoothプリンターの印刷品質と動作を設定します'
-            : 'プリンターの印刷設定'
-        }
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('print') && (
+        <CollapsibleCard
+          panelId="settings.printer.print"
+          title="印刷設定"
+          description={
+            printerType === 'bluetooth'
+              ? 'Bluetoothプリンターの印刷品質と動作を設定します'
+              : 'プリンターの印刷設定'
+          }
+          contentClassName="space-y-6"
+        >
           {/* Bluetooth固有設定（条件付き表示）*/}
           {printerType === 'bluetooth' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -390,15 +398,17 @@ export const PrinterSettings: React.FC = () => {
               onCheckedChange={(checked) => handleSettingChange('ROTATE_PRINT', checked)}
             />
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* 5. 時計印刷設定カード（既存のまま）*/}
-      <CollapsibleCard
-        panelId="settings.printer.clock"
-        title="時計印刷設定"
-        description="毎時0分の自動印刷を設定します"
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('clock') && (
+        <CollapsibleCard
+          panelId="settings.printer.clock"
+          title="時計印刷設定"
+          description="毎時0分の自動印刷を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>時計印刷を有効化</Label>
@@ -421,7 +431,8 @@ export const PrinterSettings: React.FC = () => {
               </AlertDescription>
             </Alert>
           )}
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
     </div>
   );
 };

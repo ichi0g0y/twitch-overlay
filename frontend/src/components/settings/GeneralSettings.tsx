@@ -24,6 +24,7 @@ interface GeneralSettingsProps {
   handleDeleteFont: () => void;
   handleTestNotification: () => void;
   testingNotification: boolean;
+  sections?: Array<'basic' | 'notification' | 'font'>;
 }
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
@@ -41,15 +42,19 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   handleDeleteFont,
   handleTestNotification,
   testingNotification,
+  sections,
 }) => {
+  const visibleSections = new Set(sections ?? ['basic', 'notification', 'font']);
+
   return (
     <div className="space-y-6 focus:outline-none">
-      <CollapsibleCard
-        panelId="settings.general.basic"
-        title="基本設定"
-        description="アプリケーションの基本的な動作を設定します"
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('basic') && (
+        <CollapsibleCard
+          panelId="settings.general.basic"
+          title="基本設定"
+          description="アプリケーションの基本的な動作を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="space-y-2">
             <Label htmlFor="timezone">タイムゾーン</Label>
             <Select
@@ -126,15 +131,17 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               onCheckedChange={(checked) => handleSettingChange('DEBUG_OUTPUT', checked)}
             />
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* 通知設定カード */}
-      <CollapsibleCard
-        panelId="settings.general.notification"
-        title="通知設定"
-        description="Twitchチャット受信時の通知ウィンドウ表示を設定します"
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('notification') && (
+        <CollapsibleCard
+          panelId="settings.general.notification"
+          title="通知設定"
+          description="Twitchチャット受信時の通知ウィンドウ表示を設定します"
+          contentClassName="space-y-6"
+        >
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>チャット通知を有効化</Label>
@@ -252,15 +259,17 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </div>
             </div>
           )}
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* フォント設定カード */}
-      <CollapsibleCard
-        panelId="settings.general.font"
-        title="フォント設定（必須）"
-        description="FAXと時計機能を使用するためにフォントのアップロードが必要です"
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('font') && (
+        <CollapsibleCard
+          panelId="settings.general.font"
+          title="フォント設定（必須）"
+          description="FAXと時計機能を使用するためにフォントのアップロードが必要です"
+          contentClassName="space-y-6"
+        >
           {!getSettingValue('FONT_FILENAME') && (
             <Alert className="dark:bg-yellow-900/20 dark:border-yellow-700">
               <AlertDescription className="text-yellow-700 dark:text-yellow-200">
@@ -349,7 +358,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </>
             )}
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
     </div>
   );
 };

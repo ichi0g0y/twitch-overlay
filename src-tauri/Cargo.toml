@@ -39,7 +39,9 @@ rust-embed = { version = "8", features = ["compression"] }
 mime_guess = "2"
 uuid = { version = "1", features = ["v4"] }
 futures = "0.3"
+futures-util = "0.3"
 tokio-stream = "0.1"
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 ab_glyph = "0.2"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -63,3 +65,6 @@ catprinter = { path = "../crates/catprinter" }
 twitch-client = { path = "../crates/twitch-client" }
 word-filter = { path = "../crates/word-filter" }
 image-engine = { path = "../crates/image-engine" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-web-kit = "0.3.2"

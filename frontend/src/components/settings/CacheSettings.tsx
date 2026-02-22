@@ -21,7 +21,11 @@ interface CacheStats {
   oldest_file_date: string | null;
 }
 
-export const CacheSettings: React.FC = () => {
+interface CacheSettingsProps {
+  sections?: Array<'stats' | 'config' | 'actions'>;
+}
+
+export const CacheSettings: React.FC<CacheSettingsProps> = ({ sections }) => {
   const [settings, setSettings] = useState<CacheSettings>({
     expiry_days: 7,
     max_size_mb: 100,
@@ -39,6 +43,7 @@ export const CacheSettings: React.FC = () => {
   const [cleaning, setCleaning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const visibleSections = new Set(sections ?? ['stats', 'config', 'actions']);
 
   useEffect(() => {
     loadSettings();
@@ -155,16 +160,17 @@ export const CacheSettings: React.FC = () => {
       )}
 
       {/* キャッシュ統計 */}
-      <CollapsibleCard
-        panelId="settings.cache.stats"
-        title={(
-          <span className="flex items-center space-x-2">
-            <HardDrive className="w-5 h-5" />
-            <span>キャッシュ統計</span>
-          </span>
-        )}
-        description="現在のキャッシュ使用状況"
-      >
+      {visibleSections.has('stats') && (
+        <CollapsibleCard
+          panelId="settings.cache.stats"
+          title={(
+            <span className="flex items-center space-x-2">
+              <HardDrive className="w-5 h-5" />
+              <span>キャッシュ統計</span>
+            </span>
+          )}
+          description="現在のキャッシュ使用状況"
+        >
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -185,15 +191,17 @@ export const CacheSettings: React.FC = () => {
               <div className="text-sm text-gray-500">最古ファイル</div>
             </div>
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* キャッシュ設定 */}
-      <CollapsibleCard
-        panelId="settings.cache.config"
-        title="キャッシュ設定"
-        description="ダウンロードした画像のキャッシュ管理設定"
-        contentClassName="space-y-6"
-      >
+      {visibleSections.has('config') && (
+        <CollapsibleCard
+          panelId="settings.cache.config"
+          title="キャッシュ設定"
+          description="ダウンロードした画像のキャッシュ管理設定"
+          contentClassName="space-y-6"
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 有効期限設定 */}
             <div className="space-y-2">
@@ -271,19 +279,21 @@ export const CacheSettings: React.FC = () => {
               {updating ? '保存中...' : '設定を保存'}
             </Button>
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
 
       {/* キャッシュ管理 */}
-      <CollapsibleCard
-        panelId="settings.cache.actions"
-        title={(
-          <span className="flex items-center space-x-2">
-            <Trash2 className="w-5 h-5" />
-            <span>キャッシュ管理</span>
-          </span>
-        )}
-        description="キャッシュファイルの手動削除操作"
-      >
+      {visibleSections.has('actions') && (
+        <CollapsibleCard
+          panelId="settings.cache.actions"
+          title={(
+            <span className="flex items-center space-x-2">
+              <Trash2 className="w-5 h-5" />
+              <span>キャッシュ管理</span>
+            </span>
+          )}
+          description="キャッシュファイルの手動削除操作"
+        >
           <div className="flex flex-col md:flex-row gap-4">
             <Button
               variant="outline"
@@ -305,7 +315,8 @@ export const CacheSettings: React.FC = () => {
               <span>{clearing ? 'クリア中...' : 'すべてのキャッシュをクリア'}</span>
             </Button>
           </div>
-      </CollapsibleCard>
+        </CollapsibleCard>
+      )}
     </div>
   );
 };

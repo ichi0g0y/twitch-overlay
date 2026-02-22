@@ -176,12 +176,13 @@ fn migrate_legacy_settings(sm: &SettingsManager) {
 
 /// Steps 10-16: Spawn all background tasks (non-fatal).
 fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
-    state.set_app_handle(app.handle().clone());
+  state.set_app_handle(app.handle().clone());
 
-    // UI: Restore window position
-    if let Some(main_window) = app.get_webview_window("main") {
-        window::position::restore_window_state(&main_window, state.db());
-    }
+  // UI: Restore window position
+  if let Some(main_window) = app.get_webview_window("main") {
+    configure_main_window_autoplay_policy(&main_window);
+    window::position::restore_window_state(&main_window, state.db());
+  }
 
     // Step 15: Web server
     let port = state.server_port();
@@ -230,6 +231,22 @@ fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
     let s = state.clone();
     tauri::async_runtime::spawn(async move { init_notification_system(s).await });
 }
+
+#[cfg(target_os = "macos")]
+fn configure_main_window_autoplay_policy(main_window: &tauri::WebviewWindow) {
+    if let Err(error) = main_window.with_webview(|webview| unsafe {
+        let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+        let configuration = view.configuration();
+        configuration.setMediaTypesRequiringUserActionForPlayback(
+            objc2_web_kit::WKAudiovisualMediaTypes::None,
+        );
+    }) {
+        tracing::warn!("Failed to set autoplay policy on main webview: {error}");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn configure_main_window_autoplay_policy(_main_window: &tauri::WebviewWindow) {}
 
 /// Public wrapper for starting the EventSub handler loop.
 pub async fn run_eventsub_handler(state: app::SharedState) {

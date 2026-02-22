@@ -452,12 +452,30 @@ impl TwitchApiClient {
         user_id: &str,
         first: u32,
     ) -> Result<Vec<FollowedChannel>, TwitchError> {
+        let (rows, _next_cursor) = self
+            .get_followed_channels_page(token, user_id, first, None)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Get one page of channels followed by the specified user.
+    pub async fn get_followed_channels_page(
+        &self,
+        token: &Token,
+        user_id: &str,
+        first: u32,
+        after: Option<&str>,
+    ) -> Result<(Vec<FollowedChannel>, Option<String>), TwitchError> {
         let clamped = first.clamp(1, 100);
-        let url = format!("{HELIX_BASE}/channels/followed?user_id={user_id}&first={clamped}");
+        let mut url = format!("{HELIX_BASE}/channels/followed?user_id={user_id}&first={clamped}");
+        if let Some(cursor) = after.filter(|v| !v.is_empty()) {
+            url.push_str("&after=");
+            url.push_str(cursor);
+        }
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixPaginatedResponse<FollowedChannel> = serde_json::from_str(&body)?;
-        let _next_cursor = resp.pagination.and_then(|p| p.cursor);
-        Ok(resp.data)
+        let next_cursor = resp.pagination.and_then(|p| p.cursor);
+        Ok((resp.data, next_cursor))
     }
 
     /// Get stream info for multiple broadcasters (up to 100 user IDs).
@@ -470,12 +488,7 @@ impl TwitchApiClient {
             return Ok(Vec::new());
         }
 
-        let query = user_ids
-            .iter()
-            .take(100)
-            .map(|id| format!("user_id={id}"))
-            .collect::<Vec<_>>()
-            .join("&");
+        let query = build_streams_query(user_ids);
         let url = format!("{HELIX_BASE}/streams?{query}");
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<StreamInfo> = serde_json::from_str(&body)?;
@@ -649,9 +662,20 @@ impl TwitchApiClient {
     }
 }
 
+fn build_streams_query(user_ids: &[String]) -> String {
+    let limited: Vec<&String> = user_ids.iter().take(100).collect();
+    let first = limited.len().clamp(1, 100);
+    let users = limited
+        .into_iter()
+        .map(|id| format!("user_id={id}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("first={first}&{users}")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HelixResponse, StreamInfo};
+    use super::{HelixResponse, StreamInfo, build_streams_query};
 
     #[test]
     fn stream_info_deserializes_started_at() {
@@ -690,5 +714,26 @@ mod tests {
         let parsed: HelixResponse<StreamInfo> = serde_json::from_str(body).unwrap();
         let stream = &parsed.data[0];
         assert_eq!(stream.started_at, None);
+    }
+
+    #[test]
+    fn build_streams_query_sets_first_to_user_count() {
+        let ids = vec!["u1".to_string(), "u2".to_string(), "u3".to_string()];
+        let query = build_streams_query(&ids);
+
+        assert!(query.starts_with("first=3&"));
+        assert!(query.contains("user_id=u1"));
+        assert!(query.contains("user_id=u2"));
+        assert!(query.contains("user_id=u3"));
+    }
+
+    #[test]
+    fn build_streams_query_caps_first_at_100() {
+        let ids = (1..=120).map(|i| format!("u{i}")).collect::<Vec<_>>();
+        let query = build_streams_query(&ids);
+
+        assert!(query.starts_with("first=100&"));
+        assert!(query.contains("user_id=u100"));
+        assert!(!query.contains("user_id=u101"));
     }
 }

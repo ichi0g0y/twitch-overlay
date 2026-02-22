@@ -37,11 +37,24 @@ type IrcConnection = {
   reconnectAttempts: number;
   stopped: boolean;
   nick: string;
+  pass: string;
+  authenticated: boolean;
+  generation: number;
+  userId: string;
+  displayName: string;
 };
 
 type IrcUserProfile = {
   username?: string;
   avatarUrl?: string;
+};
+
+type IrcCredentialsResponse = {
+  authenticated?: boolean;
+  nick?: string;
+  pass?: string;
+  user_id?: string;
+  display_name?: string;
 };
 
 const HISTORY_DAYS = 7;
@@ -56,6 +69,7 @@ const IRC_ENDPOINT = 'wss://irc-ws.chat.twitch.tv:443';
 const IRC_RECONNECT_BASE_DELAY_MS = 2000;
 const IRC_RECONNECT_MAX_DELAY_MS = 20000;
 const IRC_HISTORY_LIMIT = 300;
+const IRC_ANONYMOUS_PASS = 'SCHMOOPIIE';
 const COLLAPSED_DESKTOP_WIDTH = 48;
 const EDGE_RAIL_OFFSET_XL_PX = 64;
 
@@ -79,15 +93,24 @@ const trimMessagesByAge = (items: ChatMessage[]) => {
 };
 
 const dedupeMessages = (items: ChatMessage[]) => {
-  const nextSet = new Set<string>();
+  const idSet = new Set<string>();
+  const signatureSet = new Set<string>();
   const next: ChatMessage[] = [];
   for (const item of items) {
-    if (item.messageId) {
-      if (nextSet.has(item.messageId)) {
-        continue;
-      }
-      nextSet.add(item.messageId);
+    const messageId = (item.messageId || '').trim();
+    // IDベースの重複チェック（irc-以外のmessageIdがある場合）
+    if (messageId !== '' && !messageId.startsWith('irc-')) {
+      if (idSet.has(messageId)) continue;
+      idSet.add(messageId);
     }
+    // 署名ベースの重複チェック（常に適用 — 異なるmessageIdフォーマット間の重複を検出）
+    const actor = (item.username || item.userId || '').trim().toLowerCase();
+    const body = (item.message || '').trim().replace(/\s+/g, ' ');
+    const parsedTs = item.timestamp ? new Date(item.timestamp).getTime() : Number.NaN;
+    const timeBucket = Number.isNaN(parsedTs) ? '' : String(Math.floor(parsedTs / 1000));
+    const signature = `${actor}|${body}|${timeBucket}`;
+    if (actor !== '' && body !== '' && signatureSet.has(signature)) continue;
+    if (actor !== '' && body !== '') signatureSet.add(signature);
     next.push(item);
   }
   return next;
@@ -243,6 +266,14 @@ const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage 
 
 const createAnonymousNick = () => `justinfan${Math.floor(10000 + Math.random() * 90000)}`;
 
+const createAnonymousCredentials = (nick?: string) => ({
+  authenticated: false,
+  nick: nick && nick.trim() !== '' ? nick : createAnonymousNick(),
+  pass: IRC_ANONYMOUS_PASS,
+});
+
+const sanitizeIrcMessage = (raw: string) => raw.replace(/\r?\n/g, ' ').trim();
+
 const readStoredActiveTab = (): string => {
   if (typeof window === 'undefined') return PRIMARY_CHAT_TAB_ID;
   const stored = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
@@ -285,9 +316,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   const [draftMessage, setDraftMessage] = useState('');
   const [postingMessage, setPostingMessage] = useState(false);
+  const [postError, setPostError] = useState('');
   const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
   const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
+  const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
+  const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
 
   const handleToggle = () => {
     if (embedded) return;
@@ -325,6 +359,51 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       const next = dedupeMessages(trimMessagesByAge([...current, mergedMessage]));
       return { ...prev, [channel]: next };
     });
+  }, []);
+
+  const shouldIgnoreDuplicateIrcLine = useCallback((line: string) => {
+    const now = Date.now();
+    const ttlMs = 2500;
+    const recent = ircRecentRawLinesRef.current;
+    for (const [key, timestamp] of recent.entries()) {
+      if (now - timestamp > ttlMs) {
+        recent.delete(key);
+      }
+    }
+    const lastSeen = recent.get(line);
+    recent.set(line, now);
+    return typeof lastSeen === 'number' && (now - lastSeen) < ttlMs;
+  }, []);
+
+  const shouldIgnoreDuplicateIrcMessage = useCallback((channel: string, message: ChatMessage) => {
+    const now = Date.now();
+    const ttlMs = 3000;
+    const recent = ircRecentMessageKeysRef.current;
+    for (const [key, timestamp] of recent.entries()) {
+      if (now - timestamp > ttlMs) {
+        recent.delete(key);
+      }
+    }
+
+    const msgId = (message.messageId || '').trim();
+    let key = '';
+    if (msgId !== '' && !msgId.startsWith('irc-')) {
+      key = `id|${channel}|${msgId}`;
+    } else {
+      const actor = (message.username || message.userId || '').trim().toLowerCase();
+      const body = message.message.trim().replace(/\s+/g, ' ');
+      if (actor === '' || body === '') {
+        return false;
+      }
+      key = `fallback|${channel}|${actor}|${body}`;
+    }
+
+    if (key === '') {
+      return false;
+    }
+    const lastSeen = recent.get(key);
+    recent.set(key, now);
+    return typeof lastSeen === 'number' && (now - lastSeen) < ttlMs;
   }, []);
 
   const persistIrcMessage = useCallback(async (channel: string, message: ChatMessage) => {
@@ -416,60 +495,125 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   }, [applyIrcUserProfile]);
 
+  const resolveIrcCredentials = useCallback(async (fallbackNick?: string) => {
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/irc/credentials'));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload: IrcCredentialsResponse | null = await response.json().catch(() => null);
+      const authenticated = payload?.authenticated === true;
+      const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
+      const pass = typeof payload?.pass === 'string' ? payload.pass.trim() : '';
+      if (authenticated && nick !== '' && pass !== '') {
+        return {
+          authenticated: true,
+          nick,
+          pass,
+          userId: typeof payload?.user_id === 'string' ? payload.user_id.trim() : '',
+          displayName: typeof payload?.display_name === 'string' ? payload.display_name.trim() : nick,
+        };
+      }
+    } catch (error) {
+      console.warn('[ChatSidebar] Failed to resolve IRC credentials. Falling back to anonymous:', error);
+    }
+    return { ...createAnonymousCredentials(fallbackNick), userId: '', displayName: '' };
+  }, []);
+
   const attachIrcSocket = useCallback((connection: IrcConnection) => {
     if (connection.stopped) return;
 
+    connection.generation += 1;
+    const currentGeneration = connection.generation;
     setChannelConnecting(connection.channel, true);
-    const ws = new WebSocket(IRC_ENDPOINT);
-    connection.ws = ws;
-
-    ws.onopen = () => {
-      if (connection.stopped) return;
-      connection.reconnectAttempts = 0;
-      setChannelConnecting(connection.channel, false);
-      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-      ws.send('PASS SCHMOOPIIE');
-      ws.send(`NICK ${connection.nick}`);
-      ws.send(`JOIN #${connection.channel}`);
-    };
-
-    ws.onmessage = (event) => {
-      const raw = typeof event.data === 'string' ? event.data : '';
-      if (!raw) return;
-      for (const line of raw.split('\r\n')) {
-        if (!line) continue;
-        if (line.startsWith('PING')) {
-          ws.send(line.replace(/^PING/, 'PONG'));
-          continue;
-        }
-
-        const parsed = parseIrcPrivmsg(line);
-        if (!parsed || parsed.channel !== connection.channel) continue;
-        appendIrcMessage(connection.channel, parsed.message);
-        void hydrateIrcUserProfile(parsed.message.userId, parsed.message.username);
-        void persistIrcMessage(connection.channel, parsed.message);
+    const connect = async () => {
+      const credentials = await resolveIrcCredentials(connection.nick);
+      if (connection.stopped) {
+        setChannelConnecting(connection.channel, false);
+        return;
       }
+      if (currentGeneration !== connection.generation) {
+        return;
+      }
+      connection.authenticated = credentials.authenticated;
+      connection.nick = credentials.nick;
+      connection.pass = credentials.pass;
+      connection.userId = credentials.userId;
+      connection.displayName = credentials.displayName;
+
+      if (connection.ws && connection.ws.readyState === WebSocket.OPEN) {
+        connection.ws.close();
+      }
+      const ws = new WebSocket(IRC_ENDPOINT);
+      connection.ws = ws;
+
+      ws.onopen = () => {
+        if (connection.stopped || connection.ws !== ws || currentGeneration !== connection.generation) return;
+        connection.reconnectAttempts = 0;
+        setChannelConnecting(connection.channel, false);
+        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+        ws.send(`PASS ${connection.pass}`);
+        ws.send(`NICK ${connection.nick}`);
+        ws.send(`JOIN #${connection.channel}`);
+      };
+
+      ws.onmessage = (event) => {
+        if (connection.stopped || connection.ws !== ws || currentGeneration !== connection.generation) return;
+        const raw = typeof event.data === 'string' ? event.data : '';
+        if (!raw) return;
+        for (const line of raw.split('\r\n')) {
+          if (!line) continue;
+          if (line.startsWith('PING')) {
+            ws.send(line.replace(/^PING/, 'PONG'));
+            continue;
+          }
+          if (shouldIgnoreDuplicateIrcLine(line)) {
+            continue;
+          }
+
+          const parsed = parseIrcPrivmsg(line);
+          if (!parsed || parsed.channel !== connection.channel) continue;
+          if (shouldIgnoreDuplicateIrcMessage(connection.channel, parsed.message)) {
+            continue;
+          }
+          appendIrcMessage(connection.channel, parsed.message);
+          void hydrateIrcUserProfile(parsed.message.userId, parsed.message.username);
+          void persistIrcMessage(connection.channel, parsed.message);
+        }
+      };
+
+      ws.onclose = () => {
+        if (connection.stopped || connection.ws !== ws || currentGeneration !== connection.generation) return;
+        connection.ws = null;
+
+        setChannelConnecting(connection.channel, true);
+        const delay = Math.min(
+          IRC_RECONNECT_BASE_DELAY_MS * (2 ** connection.reconnectAttempts),
+          IRC_RECONNECT_MAX_DELAY_MS,
+        );
+        connection.reconnectAttempts += 1;
+
+        connection.reconnectTimer = setTimeout(() => {
+          attachIrcSocket(connection);
+        }, delay);
+      };
+
+      ws.onerror = () => {
+        // onclose handler takes care of reconnect.
+      };
     };
 
-    ws.onclose = () => {
-      if (connection.stopped) return;
-
-      setChannelConnecting(connection.channel, true);
-      const delay = Math.min(
-        IRC_RECONNECT_BASE_DELAY_MS * (2 ** connection.reconnectAttempts),
-        IRC_RECONNECT_MAX_DELAY_MS,
-      );
-      connection.reconnectAttempts += 1;
-
-      connection.reconnectTimer = setTimeout(() => {
-        attachIrcSocket(connection);
-      }, delay);
-    };
-
-    ws.onerror = () => {
-      // onclose handler takes care of reconnect.
-    };
-  }, [appendIrcMessage, hydrateIrcUserProfile, persistIrcMessage, setChannelConnecting]);
+    void connect();
+  }, [
+    appendIrcMessage,
+    hydrateIrcUserProfile,
+    persistIrcMessage,
+    resolveIrcCredentials,
+    setChannelConnecting,
+    shouldIgnoreDuplicateIrcLine,
+    shouldIgnoreDuplicateIrcMessage,
+  ]);
 
   const stopIrcConnection = useCallback((channel: string) => {
     const connection = ircConnectionsRef.current.get(channel);
@@ -485,6 +629,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       connection.ws.close();
       connection.ws = null;
     }
+    connection.generation += 1;
 
     ircConnectionsRef.current.delete(channel);
     setConnectingChannels((prev) => {
@@ -505,6 +650,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       reconnectAttempts: 0,
       stopped: false,
       nick: createAnonymousNick(),
+      pass: IRC_ANONYMOUS_PASS,
+      authenticated: false,
+      generation: 0,
+      userId: '',
+      displayName: '',
     };
 
     ircConnectionsRef.current.set(channel, connection);
@@ -843,8 +993,39 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       return;
     }
 
+    setPostError('');
     setPostingMessage(true);
     try {
+      if (!isPrimaryTab) {
+        const connection = ircConnectionsRef.current.get(activeTab);
+        if (connection?.ws && connection.ws.readyState === WebSocket.OPEN) {
+          if (!connection.authenticated) {
+            throw new Error('IRCが匿名接続です。Twitch認証を確認してください。');
+          }
+          const ircText = sanitizeIrcMessage(text);
+          if (!ircText) {
+            throw new Error('投稿メッセージが空です');
+          }
+          connection.ws.send(`PRIVMSG #${activeTab} :${ircText}`);
+          // オプティミスティック表示：送信メッセージを即座にローカル表示
+          const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const optimisticMessage: ChatMessage = {
+            id: optimisticId,
+            messageId: optimisticId,
+            userId: connection.userId || undefined,
+            username: connection.displayName || connection.nick,
+            message: ircText,
+            fragments: [{ type: 'text', text: ircText }],
+            timestamp: new Date().toISOString(),
+          };
+          appendIrcMessage(activeTab, optimisticMessage);
+          // 署名を登録してTwitchエコー到着時に重複排除
+          shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
+          setDraftMessage('');
+          return;
+        }
+      }
+
       const targetChannel = isPrimaryTab ? undefined : activeTab;
       const response = await fetch(buildApiUrl('/api/chat/post'), {
         method: 'POST',
@@ -855,12 +1036,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         }),
       });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json().catch(() => null);
+        const detail = payload?.error || payload?.message || `HTTP ${response.status}`;
+        throw new Error(String(detail));
       }
 
       const payload = await response.json().catch(() => null);
       const posted = payload?.message;
-      if (posted && typeof posted === 'object') {
+      if (posted && typeof posted === 'object' && isPrimaryTab) {
         const nextMessage: ChatMessage = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
           messageId: posted.messageId,
@@ -874,21 +1057,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           translationLang: posted.translationLang,
           timestamp: posted.timestamp,
         };
-        if (isPrimaryTab) {
-          setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
-        } else {
-          setIrcMessagesByChannel((prev) => {
-            const current = prev[activeTab] ?? [];
-            return {
-              ...prev,
-              [activeTab]: dedupeMessages(trimMessagesByAge([...current, nextMessage])),
-            };
-          });
-        }
+        setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
       }
 
       setDraftMessage('');
     } catch (error) {
+      const message = error instanceof Error ? error.message : '投稿に失敗しました';
+      setPostError(message);
       console.error('[ChatSidebar] Failed to post comment:', error);
     } finally {
       setPostingMessage(false);
@@ -1091,7 +1266,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       <p className="mt-1 text-[11px] text-red-500">{channelInputError}</p>
                     )}
                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                      Twitch IRCへ匿名接続してメッセージを受信します
+                      Twitch認証が有効ならユーザー接続し、利用できない場合は匿名接続します
                     </p>
                   </div>
                 )}
@@ -1136,7 +1311,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <input
                     type="text"
                     value={draftMessage}
-                    onChange={(event) => setDraftMessage(event.target.value)}
+                    onChange={(event) => {
+                      setDraftMessage(event.target.value);
+                      if (postError) setPostError('');
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                         event.preventDefault();
@@ -1157,6 +1335,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     投稿
                   </Button>
                 </div>
+                {postError && (
+                  <p className="mt-1 text-[11px] text-red-500 dark:text-red-300">{postError}</p>
+                )}
               </div>
             </div>
           )}

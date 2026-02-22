@@ -488,15 +488,20 @@ export const useSettingsPage = () => {
     return `http://localhost:${webServerPort}`;
   }, [webServerPort]);
 
-	  const openExternal = useCallback((path: string) => {
-	    try {
-	      const base = resolveExternalBaseUrl();
-	      const url = new URL(path, base).toString();
-	      window.open(url, '_blank', 'noopener,noreferrer');
-	    } catch (error) {
-	      console.error('[openExternal] Failed:', error);
-	    }
-	  }, [resolveExternalBaseUrl]);
+  const openExternal = useCallback((path: string) => {
+    try {
+      let base = resolveExternalBaseUrl();
+      let targetPath = path;
+      if (import.meta.env.DEV && path.startsWith('/overlay')) {
+        base = import.meta.env.VITE_OVERLAY_DEV_ORIGIN || 'http://localhost:5174';
+        targetPath = path.replace(/^\/overlay(?=\/|$)/, '') || '/';
+      }
+      const url = new URL(targetPath, base).toString();
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[openExternal] Failed:', error);
+    }
+  }, [resolveExternalBaseUrl]);
 
 	  const handleOpenPresent = async () => {
 	    openExternal('/overlay/present');
