@@ -1,18 +1,22 @@
 //! Twitch API endpoints (OAuth, verification, custom rewards, stream status).
 
 use std::sync::LazyLock;
+use std::collections::HashMap;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use twitch_client::TwitchError;
-use twitch_client::api::{CreateRewardRequest, TwitchApiClient, TwitchUser, UpdateRewardRequest};
+use twitch_client::api::{
+    CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient, TwitchUser,
+    UpdateRewardRequest,
+};
 use twitch_client::auth::TwitchAuth;
 
 use crate::app::SharedState;
@@ -425,6 +429,179 @@ pub async fn stream_status(State(state): State<SharedState>) -> ApiResult {
     Ok(Json(stream_status_payload(&status)))
 }
 
+/// GET /api/twitch/followed-channels
+pub async fn followed_channels(
+    State(state): State<SharedState>,
+    Query(q): Query<FollowedChannelsQuery>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    if config.twitch_user_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+
+    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let followed: Vec<FollowedChannel> = match client
+        .get_followed_channels(&token, &config.twitch_user_id, limit)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("followed_channels got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .get_followed_channels(&token, &config.twitch_user_id, limit)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    let user_ids: Vec<String> = followed
+        .iter()
+        .map(|row| row.broadcaster_id.clone())
+        .collect();
+    let users = if user_ids.is_empty() {
+        Vec::new()
+    } else {
+        match client.get_users_by_ids(&token, &user_ids).await {
+            Ok(rows) => rows,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("followed_channels(users) got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_users_by_ids(&token, &user_ids)
+                    .await
+                    .map_err(map_twitch_error)?
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    };
+    let streams: Vec<StreamInfo> = if user_ids.is_empty() {
+        Vec::new()
+    } else {
+        match client.get_streams_by_user_ids(&token, &user_ids).await {
+            Ok(rows) => rows,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("followed_channels(streams) got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_streams_by_user_ids(&token, &user_ids)
+                    .await
+                    .map_err(map_twitch_error)?
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    };
+
+    let user_map: HashMap<String, TwitchUser> = users.into_iter().map(|u| (u.id.clone(), u)).collect();
+    let stream_map: HashMap<String, StreamInfo> = streams
+        .into_iter()
+        .map(|s| (s.user_id.clone(), s))
+        .collect();
+
+    let mut rows: Vec<FollowedChannelStatus> = followed
+        .into_iter()
+        .map(|item| {
+            let stream = stream_map.get(&item.broadcaster_id);
+            let user = user_map.get(&item.broadcaster_id);
+            FollowedChannelStatus {
+                broadcaster_id: item.broadcaster_id,
+                broadcaster_login: item.broadcaster_login,
+                broadcaster_name: item.broadcaster_name,
+                profile_image_url: user
+                    .map(|u| u.profile_image_url.clone())
+                    .unwrap_or_default(),
+                followed_at: item.followed_at,
+                is_live: stream.is_some(),
+                viewer_count: stream.map(|s| s.viewer_count).unwrap_or(0),
+                title: stream.map(|s| s.title.clone()),
+                started_at: stream.and_then(|s| s.started_at.clone()),
+            }
+        })
+        .collect();
+    sort_followed_channel_status(&mut rows);
+
+    Ok(Json(json!({ "data": rows, "count": rows.len() })))
+}
+
+/// POST /api/twitch/raid/start
+pub async fn start_raid(
+    State(state): State<SharedState>,
+    Json(body): Json<StartRaidBody>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    let from_broadcaster_id = config.twitch_user_id.clone();
+    if from_broadcaster_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let to_broadcaster_id = if let Some(id) = body
+        .to_broadcaster_id
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        id
+    } else if let Some(login) = body
+        .to_channel_login
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        match client.get_user_by_login(&token, &login).await {
+            Ok(user) => user.id,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!("start_raid(get_user_by_login) got 401, refreshing token and retrying");
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_user_by_login(&token, &login)
+                    .await
+                    .map_err(map_twitch_error)?
+                    .id
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    } else {
+        return Err(err_json(400, "target channel is required"));
+    };
+
+    if to_broadcaster_id == from_broadcaster_id {
+        return Err(err_json(400, "cannot raid your own channel"));
+    }
+
+    let raid_info: Option<RaidInfo> = match client
+        .start_raid(&token, &from_broadcaster_id, &to_broadcaster_id)
+        .await
+    {
+        Ok(info) => info,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("start_raid got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .start_raid(&token, &from_broadcaster_id, &to_broadcaster_id)
+                .await
+                .map_err(map_twitch_error)?
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "from_broadcaster_id": from_broadcaster_id,
+        "to_broadcaster_id": to_broadcaster_id,
+        "data": raid_info,
+    })))
+}
+
 // ---------------------------------------------------------------------------
 // Custom rewards CRUD
 // ---------------------------------------------------------------------------
@@ -641,6 +818,43 @@ pub async fn delete_custom_reward(
 #[derive(Debug, Deserialize)]
 pub struct RewardGroupByRewardQuery {
     pub reward_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FollowedChannelsQuery {
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartRaidBody {
+    pub to_broadcaster_id: Option<String>,
+    pub to_channel_login: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FollowedChannelStatus {
+    broadcaster_id: String,
+    broadcaster_login: String,
+    broadcaster_name: String,
+    profile_image_url: String,
+    followed_at: String,
+    is_live: bool,
+    viewer_count: u64,
+    title: Option<String>,
+    started_at: Option<String>,
+}
+
+fn sort_followed_channel_status(items: &mut [FollowedChannelStatus]) {
+    items.sort_by(|a, b| {
+        b.is_live
+            .cmp(&a.is_live)
+            .then_with(|| b.viewer_count.cmp(&a.viewer_count))
+            .then_with(|| {
+                a.broadcaster_name
+                    .to_ascii_lowercase()
+                    .cmp(&b.broadcaster_name.to_ascii_lowercase())
+            })
+    });
 }
 
 /// GET /api/twitch/reward-groups/by-reward

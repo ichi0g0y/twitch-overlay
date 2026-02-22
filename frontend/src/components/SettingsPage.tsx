@@ -5,6 +5,7 @@ import { SystemStatusCard } from './SystemStatusCard';
 import { Button } from './ui/button';
 import { CollapsibleCard } from './ui/collapsible-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { buildApiUrl } from '../utils/api';
 
 // Import tab components
 import { GeneralSettings } from './settings/GeneralSettings';
@@ -18,7 +19,7 @@ import { CacheSettings } from './settings/CacheSettings';
 import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
 import { ChatSidebar } from './ChatSidebar';
 import { MicStatusCard } from './MicStatusCard';
-import { readIrcChannels, subscribeIrcChannels } from '../utils/chatChannels';
+import { readIrcChannels, subscribeIrcChannels, writeIrcChannels } from '../utils/chatChannels';
 
 const SIDEBAR_SIDE_STORAGE_KEY = 'chat_sidebar_side';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'chat_sidebar_width';
@@ -35,6 +36,9 @@ const PREVIEW_COLUMN_MAX_WIDTH = 760;
 const PREVIEW_COLUMN_DEFAULT_WIDTH = 420;
 const PREVIEW_MIN_HEIGHT = 120;
 const PREVIEW_MAX_HEIGHT = 540;
+const FOLLOWED_RAIL_SIDE_STORAGE_KEY = 'settings.followed_channels.side';
+const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
+const FOLLOWED_RAIL_WIDTH_PX = 48;
 
 type TwitchStreamPreviewProps = {
   isTwitchConfigured: boolean;
@@ -270,10 +274,261 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ c
   );
 };
 
+type FollowedChannelRailItem = {
+  broadcaster_id: string;
+  broadcaster_login: string;
+  broadcaster_name: string;
+  profile_image_url: string;
+  followed_at?: string;
+  is_live: boolean;
+  viewer_count: number;
+  title?: string | null;
+  started_at?: string | null;
+};
+
+type FollowedChannelsRailProps = {
+  side: 'left' | 'right';
+  channels: FollowedChannelRailItem[];
+  loading: boolean;
+  error: string;
+  onSideChange: (side: 'left' | 'right') => void;
+  onConnectIrc: (channelLogin: string) => void;
+  onStartRaid: (channel: FollowedChannelRailItem) => Promise<void>;
+};
+
+const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
+  side,
+  channels,
+  loading,
+  error,
+  onSideChange,
+  onConnectIrc,
+  onStartRaid,
+}) => {
+  const [openChannelId, setOpenChannelId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
+  const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    if (openChannelId && !channels.some((item) => item.broadcaster_id === openChannelId)) {
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+    }
+  }, [channels, openChannelId]);
+
+  useEffect(() => {
+    if (!openChannelId) {
+      setMenuAnchor(null);
+      return;
+    }
+
+    const closeMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-followed-menu="true"]')) return;
+      if (target.closest('[data-followed-trigger="true"]')) return;
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+      setActionError('');
+    };
+
+    const closeByResize = () => {
+      setOpenChannelId(null);
+      setMenuAnchor(null);
+      setRaidConfirmChannelId(null);
+      setActionError('');
+    };
+
+    window.addEventListener('mousedown', closeMenu);
+    window.addEventListener('resize', closeByResize);
+    return () => {
+      window.removeEventListener('mousedown', closeMenu);
+      window.removeEventListener('resize', closeByResize);
+    };
+  }, [openChannelId]);
+
+  const tooltipSideClass = side === 'left' ? 'left-full ml-2' : 'right-full mr-2';
+  const toggleLabel = side === 'left' ? '右側へ移動' : '左側へ移動';
+
+  return (
+    <div
+      className={`hidden xl:block fixed inset-y-0 z-40 border-gray-700 bg-gray-900 ${side === 'left' ? 'left-0 border-r' : 'right-0 border-l'}`}
+      style={{ width: `${FOLLOWED_RAIL_WIDTH_PX}px` }}
+    >
+      <div className="flex h-full flex-col items-center py-2">
+        <button
+          type="button"
+          onClick={() => onSideChange(side === 'left' ? 'right' : 'left')}
+          className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+          title={toggleLabel}
+          aria-label={toggleLabel}
+        >
+          <span className="text-xs">{side === 'left' ? '⇢' : '⇠'}</span>
+        </button>
+        <div className="h-px w-8 bg-gray-700 mb-2" />
+        <div className="flex-1 overflow-y-auto space-y-2 px-1">
+          {loading && (
+            <div className="flex w-full justify-center py-1 text-[10px] text-gray-400">...</div>
+          )}
+          {!loading && channels.length === 0 && (
+            <div className="flex w-full justify-center py-1 text-[10px] text-gray-500">--</div>
+          )}
+          {channels.map((channel) => {
+            const selected = openChannelId === channel.broadcaster_id;
+            return (
+              <div key={channel.broadcaster_id} className="group relative flex justify-center">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    const nextOpen = openChannelId !== channel.broadcaster_id;
+                    setActionError('');
+                    setRaidConfirmChannelId(null);
+                    setOpenChannelId(nextOpen ? channel.broadcaster_id : null);
+                    if (!nextOpen) {
+                      setMenuAnchor(null);
+                      return;
+                    }
+                    const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                    const menuWidth = 192;
+                    const menuHeight = 170;
+                    const top = Math.max(
+                      12,
+                      Math.min(window.innerHeight - menuHeight - 12, rect.top + (rect.height / 2) - (menuHeight / 2)),
+                    );
+                    const left = side === 'left'
+                      ? Math.min(window.innerWidth - menuWidth - 12, rect.right + 8)
+                      : Math.max(12, rect.left - menuWidth - 8);
+                    setMenuAnchor({ top, left });
+                  }}
+                  className={`relative h-9 w-9 rounded-full border transition ${
+                    selected
+                      ? 'border-blue-400 ring-1 ring-blue-400/60'
+                      : 'border-gray-700 hover:border-gray-500'
+                  }`}
+                  aria-label={`${channel.broadcaster_name} の操作を開く`}
+                  data-followed-trigger="true"
+                >
+                  <span className="block h-full w-full overflow-hidden rounded-full">
+                    {channel.profile_image_url ? (
+                      <img
+                        src={channel.profile_image_url}
+                        alt={channel.broadcaster_name}
+                        className={`h-full w-full object-cover ${channel.is_live ? '' : 'grayscale opacity-70'}`}
+                      />
+                    ) : (
+                      <span className={`flex h-full w-full items-center justify-center bg-gray-700 text-xs font-semibold ${channel.is_live ? 'text-white' : 'text-gray-300'}`}>
+                        {(channel.broadcaster_name || channel.broadcaster_login || '?').slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                  {channel.is_live && (
+                    <span className="absolute -right-1 -top-1 z-10 inline-flex h-3.5 w-3.5 rounded-full border border-gray-900 bg-red-500 shadow" />
+                  )}
+                </button>
+                <div
+                  className={`pointer-events-none absolute ${tooltipSideClass} top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 opacity-0 shadow transition group-hover:opacity-100`}
+                >
+                  {channel.broadcaster_name}
+                  {channel.is_live ? ` (LIVE ${channel.viewer_count})` : ' (OFFLINE)'}
+                </div>
+                {selected && menuAnchor && (
+                  <div
+                    data-followed-menu="true"
+                    className="fixed z-50 w-48 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+                    style={{ left: `${menuAnchor.left}px`, top: `${menuAnchor.top}px` }}
+                  >
+                    <div className="mb-1 text-xs font-semibold text-gray-100">#{channel.broadcaster_login}</div>
+                    <div className="mb-2 text-[11px] text-gray-400 truncate">
+                      {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onConnectIrc(channel.broadcaster_login);
+                        setOpenChannelId(null);
+                        setMenuAnchor(null);
+                        setRaidConfirmChannelId(null);
+                      }}
+                      className="mb-1 inline-flex h-8 w-full items-center justify-center rounded border border-emerald-600/60 text-xs text-emerald-300 hover:bg-emerald-700/20"
+                    >
+                      IRC接続
+                    </button>
+                    <button
+                      type="button"
+                      disabled={raidingChannelId === channel.broadcaster_id}
+                      onClick={async () => {
+                        if (raidConfirmChannelId !== channel.broadcaster_id) {
+                          setRaidConfirmChannelId(channel.broadcaster_id);
+                          setActionError('');
+                          return;
+                        }
+                        setActionError('');
+                        setRaidingChannelId(channel.broadcaster_id);
+                        try {
+                          await onStartRaid(channel);
+                          setOpenChannelId(null);
+                          setMenuAnchor(null);
+                          setRaidConfirmChannelId(null);
+                        } catch (error: any) {
+                          setActionError(error?.message || 'レイド開始に失敗しました');
+                        } finally {
+                          setRaidingChannelId(null);
+                        }
+                      }}
+                      className={`inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                        raidConfirmChannelId === channel.broadcaster_id
+                          ? 'border-red-500/80 text-red-200 hover:bg-red-700/20'
+                          : 'border-gray-600 text-gray-200 hover:bg-gray-800'
+                      } disabled:opacity-60`}
+                    >
+                      {raidingChannelId === channel.broadcaster_id
+                        ? 'レイド中...'
+                        : raidConfirmChannelId === channel.broadcaster_id
+                          ? 'レイド確定'
+                          : 'レイド'}
+                    </button>
+                    {raidConfirmChannelId === channel.broadcaster_id && (
+                      <button
+                        type="button"
+                        onClick={() => setRaidConfirmChannelId(null)}
+                        className="mt-1 inline-flex h-7 w-full items-center justify-center rounded border border-gray-700 text-[11px] text-gray-300 hover:bg-gray-800"
+                      >
+                        キャンセル
+                      </button>
+                    )}
+                    {actionError && <p className="mt-1 text-[11px] text-red-300">{actionError}</p>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {!!error && (
+          <div className="mt-2 w-full px-1 text-center text-[10px] leading-tight text-red-300">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const SettingsPage: React.FC = () => {
   const contextValue = useSettingsPage();
   const autoVerifyTriggeredRef = useRef(false);
   const [ircChannels, setIrcChannels] = useState<string[]>(() => readIrcChannels());
+  const [followedRailSide, setFollowedRailSide] = useState<'left' | 'right'>(() => {
+    if (typeof window === 'undefined') return 'right';
+    const stored = window.localStorage.getItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY);
+    return stored === 'left' ? 'left' : 'right';
+  });
+  const [followedChannels, setFollowedChannels] = useState<FollowedChannelRailItem[]>([]);
+  const [followedChannelsLoading, setFollowedChannelsLoading] = useState(false);
+  const [followedChannelsError, setFollowedChannelsError] = useState('');
   const [chatSidebarSide, setChatSidebarSide] = useState<'left' | 'right'>(() => {
     if (typeof window === 'undefined') return 'left';
     const stored = window.localStorage.getItem(SIDEBAR_SIDE_STORAGE_KEY);
@@ -370,6 +625,36 @@ export const SettingsPage: React.FC = () => {
     setPreviewColumnResizing(true);
   };
 
+  const connectIrcChannel = (channelLogin: string) => {
+    const normalized = (channelLogin || '').trim().toLowerCase();
+    if (!normalized) return;
+    const current = readIrcChannels();
+    if (current.includes(normalized)) return;
+    writeIrcChannels([...current, normalized]);
+    setIrcChannels(readIrcChannels());
+  };
+
+  const startRaidToChannel = async (channel: FollowedChannelRailItem) => {
+    const ownChannelLogin = (twitchUserInfo?.login || '').trim().toLowerCase();
+    if (!ownChannelLogin) {
+      throw new Error('Twitchユーザーが未設定です');
+    }
+
+    const response = await fetch(buildApiUrl('/api/chat/post'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: ownChannelLogin,
+        message: `/raid ${channel.broadcaster_login}`,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+  };
+
   const layoutOrders = useMemo(() => {
     return chatSidebarSide === 'left'
       ? { sidebar: 'order-1 lg:order-1', content: 'order-2 lg:order-2' }
@@ -426,6 +711,79 @@ export const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    window.localStorage.setItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY, followedRailSide);
+  }, [followedRailSide]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const canFetch = Boolean(featureStatus?.twitch_configured) && Boolean(authStatus?.authenticated);
+    if (!canFetch) {
+      setFollowedChannels([]);
+      setFollowedChannelsError('');
+      setFollowedChannelsLoading(false);
+      return () => {};
+    }
+
+    const loadFollowedChannels = async (showLoading: boolean) => {
+      if (showLoading) {
+        setFollowedChannelsLoading(true);
+      }
+      try {
+        const response = await fetch(buildApiUrl('/api/twitch/followed-channels?limit=50'));
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        const normalized: FollowedChannelRailItem[] = data.map((item: any) => ({
+          broadcaster_id: String(item.broadcaster_id ?? item.id ?? ''),
+          broadcaster_login: String(item.broadcaster_login ?? item.login ?? ''),
+          broadcaster_name: String(item.broadcaster_name ?? item.display_name ?? item.login ?? ''),
+          profile_image_url: String(item.profile_image_url ?? ''),
+          followed_at: typeof item.followed_at === 'string' ? item.followed_at : undefined,
+          is_live: Boolean(item.is_live),
+          viewer_count: Number(item.viewer_count ?? 0) || 0,
+          title: typeof item.title === 'string' ? item.title : undefined,
+          started_at: typeof item.started_at === 'string' ? item.started_at : undefined,
+        })).filter((item) => item.broadcaster_id && item.broadcaster_login);
+
+        normalized.sort((a, b) => {
+          if (a.is_live !== b.is_live) return a.is_live ? -1 : 1;
+          if (a.viewer_count !== b.viewer_count) return b.viewer_count - a.viewer_count;
+          return a.broadcaster_name.localeCompare(b.broadcaster_name, 'ja');
+        });
+        if (!cancelled) {
+          setFollowedChannels(normalized);
+          setFollowedChannelsError('');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFollowedChannelsError('取得失敗');
+        }
+      } finally {
+        if (!cancelled) {
+          setFollowedChannelsLoading(false);
+        }
+      }
+    };
+
+    void loadFollowedChannels(true);
+    timer = window.setInterval(() => {
+      void loadFollowedChannels(false);
+    }, FOLLOWED_RAIL_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [authStatus?.authenticated, featureStatus?.twitch_configured]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     window.localStorage.setItem(PREVIEW_COLUMN_WIDTH_STORAGE_KEY, String(previewColumnWidth));
   }, [previewColumnWidth]);
 
@@ -462,6 +820,15 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <FollowedChannelsRail
+        side={followedRailSide}
+        channels={followedChannels}
+        loading={followedChannelsLoading}
+        error={followedChannelsError}
+        onSideChange={setFollowedRailSide}
+        onConnectIrc={connectIrcChannel}
+        onStartRaid={startRaidToChannel}
+      />
       <div className="w-full px-4 py-6">
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className={layoutOrders.sidebar}>
@@ -470,6 +837,7 @@ export const SettingsPage: React.FC = () => {
               onSideChange={handleChatSidebarSideChange}
               width={chatSidebarWidth}
               onWidthChange={handleChatSidebarWidthChange}
+              avoidEdgeRail={followedRailSide === chatSidebarSide}
               fontSize={chatSidebarFontSize}
               onFontSizeChange={handleChatSidebarFontSizeChange}
               translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}

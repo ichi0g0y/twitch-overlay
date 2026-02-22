@@ -21,6 +21,19 @@ pub struct HelixResponse<T> {
     pub data: Vec<T>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct HelixPagination {
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HelixPaginatedResponse<T> {
+    pub data: Vec<T>,
+    #[serde(default)]
+    pub pagination: Option<HelixPagination>,
+}
+
 /// Stream information from GET /helix/streams.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamInfo {
@@ -51,6 +64,25 @@ pub struct TwitchUser {
     pub login: String,
     pub display_name: String,
     pub profile_image_url: String,
+}
+
+/// Followed channel entry from GET /helix/channels/followed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowedChannel {
+    pub broadcaster_id: String,
+    pub broadcaster_login: String,
+    pub broadcaster_name: String,
+    #[serde(default)]
+    pub followed_at: String,
+}
+
+/// Raid information from POST /helix/raids.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaidInfo {
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub is_mature: Option<bool>,
 }
 
 /// Nested setting for max redemptions per stream.
@@ -274,6 +306,24 @@ impl TwitchApiClient {
         Ok(resp_body)
     }
 
+    /// Execute a POST request with auth headers and no body.
+    async fn authenticated_post_no_body(&self, url: &str, token: &Token) -> Result<String, TwitchError> {
+        let headers = self.auth_headers(token);
+        let resp = self.http.post(url).headers(headers).send().await?;
+
+        let status = resp.status();
+        let resp_body = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(TwitchError::ApiError {
+                status: status.as_u16(),
+                message: resp_body,
+            });
+        }
+
+        Ok(resp_body)
+    }
+
     /// Execute a DELETE request with auth headers.
     async fn authenticated_delete(&self, url: &str, token: &Token) -> Result<(), TwitchError> {
         let headers = self.auth_headers(token);
@@ -371,6 +421,80 @@ impl TwitchApiClient {
                 status: 404,
                 message: "User not found".into(),
             })
+    }
+
+    /// Get users by user IDs (up to 100).
+    pub async fn get_users_by_ids(
+        &self,
+        token: &Token,
+        user_ids: &[String],
+    ) -> Result<Vec<TwitchUser>, TwitchError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = user_ids
+            .iter()
+            .take(100)
+            .map(|id| format!("id={id}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{HELIX_BASE}/users?{query}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+        Ok(resp.data)
+    }
+
+    /// Get channels followed by the specified user.
+    pub async fn get_followed_channels(
+        &self,
+        token: &Token,
+        user_id: &str,
+        first: u32,
+    ) -> Result<Vec<FollowedChannel>, TwitchError> {
+        let clamped = first.clamp(1, 100);
+        let url = format!("{HELIX_BASE}/channels/followed?user_id={user_id}&first={clamped}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixPaginatedResponse<FollowedChannel> = serde_json::from_str(&body)?;
+        let _next_cursor = resp.pagination.and_then(|p| p.cursor);
+        Ok(resp.data)
+    }
+
+    /// Get stream info for multiple broadcasters (up to 100 user IDs).
+    pub async fn get_streams_by_user_ids(
+        &self,
+        token: &Token,
+        user_ids: &[String],
+    ) -> Result<Vec<StreamInfo>, TwitchError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = user_ids
+            .iter()
+            .take(100)
+            .map(|id| format!("user_id={id}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{HELIX_BASE}/streams?{query}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<StreamInfo> = serde_json::from_str(&body)?;
+        Ok(resp.data)
+    }
+
+    /// Start a raid to another broadcaster.
+    pub async fn start_raid(
+        &self,
+        token: &Token,
+        from_broadcaster_id: &str,
+        to_broadcaster_id: &str,
+    ) -> Result<Option<RaidInfo>, TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/raids?from_broadcaster_id={from_broadcaster_id}&to_broadcaster_id={to_broadcaster_id}"
+        );
+        let body = self.authenticated_post_no_body(&url, token).await?;
+        let resp: HelixResponse<RaidInfo> = serde_json::from_str(&body)?;
+        Ok(resp.data.into_iter().next())
     }
 
     /// Get all custom channel point rewards for a broadcaster.

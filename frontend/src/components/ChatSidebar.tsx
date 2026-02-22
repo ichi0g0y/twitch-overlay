@@ -6,6 +6,7 @@ import {
   PRIMARY_CHAT_TAB_ID,
   normalizeTwitchChannelName,
   readIrcChannels,
+  subscribeIrcChannels,
   writeIrcChannels,
 } from '../utils/chatChannels';
 import { getWebSocketClient } from '../utils/websocket';
@@ -20,6 +21,7 @@ type ChatSidebarProps = {
   onSideChange: (side: SidebarSide) => void;
   width: number;
   onWidthChange: (width: number) => void;
+  avoidEdgeRail?: boolean;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -54,6 +56,8 @@ const IRC_ENDPOINT = 'wss://irc-ws.chat.twitch.tv:443';
 const IRC_RECONNECT_BASE_DELAY_MS = 2000;
 const IRC_RECONNECT_MAX_DELAY_MS = 20000;
 const IRC_HISTORY_LIMIT = 300;
+const COLLAPSED_DESKTOP_WIDTH = 48;
+const EDGE_RAIL_OFFSET_XL_PX = 64;
 
 const formatTime = (timestamp?: string) => {
   if (!timestamp) return '';
@@ -250,6 +254,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onSideChange,
   width,
   onWidthChange,
+  avoidEdgeRail = false,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -665,6 +670,18 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [ircChannels]);
 
   useEffect(() => {
+    const unsubscribe = subscribeIrcChannels((channels) => {
+      setIrcChannels((prev) => {
+        if (prev.length === channels.length && prev.every((item, idx) => item === channels[idx])) {
+          return prev;
+        }
+        return channels;
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadIrcHistory = async (channel: string) => {
@@ -772,18 +789,24 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   }, [activeMessages, activeTab, collapsed]);
 
-  const sidebarWidthClass = collapsed ? 'w-full lg:w-12' : 'w-full lg:w-[var(--chat-sidebar-width)]';
+  const asideWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)] xl:w-[var(--chat-sidebar-reserved-width)]';
+  const fixedWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)]';
   const collapseIcon = side === 'left' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />;
   const expandIcon = <span className="text-xs leading-none">＞</span>;
   const toggleIcon = collapsed ? expandIcon : collapseIcon;
   const resizeHandleSideClass = side === 'left' ? 'right-0' : 'left-0';
   const metaFontSize = Math.max(10, fontSize - 2);
   const translationFontSize = Math.max(10, fontSize - 2);
-  const fixedSideClass = side === 'left' ? 'lg:left-4' : 'lg:right-4';
+  const fixedSideClass = side === 'left'
+    ? (avoidEdgeRail ? 'lg:left-4 xl:left-16' : 'lg:left-4')
+    : (avoidEdgeRail ? 'lg:right-4 xl:right-16' : 'lg:right-4');
   const fixedOffsetClass = 'lg:top-6';
+  const effectiveSidebarWidth = collapsed ? COLLAPSED_DESKTOP_WIDTH : width;
+  const reservedSidebarWidth = effectiveSidebarWidth + (avoidEdgeRail ? EDGE_RAIL_OFFSET_XL_PX : 0);
   const sidebarStyle = useMemo(() => ({
-    '--chat-sidebar-width': `${width}px`,
-  } as React.CSSProperties), [width]);
+    '--chat-sidebar-width': `${effectiveSidebarWidth}px`,
+    '--chat-sidebar-reserved-width': `${reservedSidebarWidth}px`,
+  } as React.CSSProperties), [effectiveSidebarWidth, reservedSidebarWidth]);
 
   const emptyState = useMemo(() => (
     <div className="flex flex-col items-center justify-center h-full text-sm text-gray-500 dark:text-gray-400">
@@ -897,9 +920,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   };
 
   return (
-    <aside className={`transition-all duration-200 self-start ${sidebarWidthClass}`} style={sidebarStyle}>
+    <aside className={`transition-all duration-200 self-start ${asideWidthClass}`} style={sidebarStyle}>
       <div
-        className={`${sidebarWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`}
+        className={`${fixedWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`}
         style={sidebarStyle}
       >
         <div className="h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">

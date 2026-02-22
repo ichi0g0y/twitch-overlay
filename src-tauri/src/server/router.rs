@@ -261,6 +261,11 @@ pub fn create_router(state: SharedState) -> Router {
         // --- Twitch ---
         .route("/api/twitch/verify", get(api::twitch::verify_twitch))
         .route(
+            "/api/twitch/followed-channels",
+            get(api::twitch::followed_channels),
+        )
+        .route("/api/twitch/raid/start", post(api::twitch::start_raid))
+        .route(
             "/api/twitch/refresh-token",
             get(api::twitch::refresh_token).post(api::twitch::refresh_token),
         )
