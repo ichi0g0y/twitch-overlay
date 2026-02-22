@@ -1,4 +1,4 @@
-import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -619,6 +619,10 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
   const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
+  const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
+  const [hoverAnchor, setHoverAnchor] = useState<{ top: number; left: number } | null>(null);
+  const copiedResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (openChannelId && !channels.some((item) => item.broadcaster_id === openChannelId)) {
@@ -661,6 +665,14 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   }, [openChannelId]);
 
   useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current !== null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!railMenuOpen) return;
 
     const closeMenu = (event: MouseEvent) => {
@@ -685,8 +697,10 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
     };
   }, [railMenuOpen]);
 
-  const tooltipSideClass = side === 'left' ? 'left-full ml-2' : 'right-full mr-2';
   const toggleLabel = side === 'left' ? '右側へ移動' : '左側へ移動';
+  const hoveredChannel = hoveredChannelId
+    ? channels.find((item) => item.broadcaster_id === hoveredChannelId) ?? null
+    : null;
 
   return (
     <div
@@ -780,6 +794,8 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             )}
             {channels.map((channel) => {
               const selected = openChannelId === channel.broadcaster_id;
+              const channelDisplayName = channel.broadcaster_name || channel.broadcaster_login;
+              const channelLogin = channel.broadcaster_login;
               return (
                 <div key={channel.broadcaster_id} className="group relative flex justify-center">
                   <button
@@ -810,19 +826,39 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         ? 'border-blue-400 ring-1 ring-blue-400/60'
                         : 'border-gray-700 hover:border-gray-500'
                     }`}
-                    aria-label={`${channel.broadcaster_name} の操作を開く`}
+                    onMouseEnter={(event) => {
+                      const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      setHoveredChannelId(channel.broadcaster_id);
+                      setHoverAnchor({
+                        top: rect.top + (rect.height / 2),
+                        left: side === 'left' ? rect.right + 8 : rect.left - 8,
+                      });
+                    }}
+                    onMouseMove={(event) => {
+                      const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      setHoveredChannelId(channel.broadcaster_id);
+                      setHoverAnchor({
+                        top: rect.top + (rect.height / 2),
+                        left: side === 'left' ? rect.right + 8 : rect.left - 8,
+                      });
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredChannelId((current) => (current === channel.broadcaster_id ? null : current));
+                      setHoverAnchor(null);
+                    }}
+                    aria-label={`${channelDisplayName} の操作を開く`}
                     data-followed-trigger="true"
                   >
                     <span className="block h-full w-full overflow-hidden rounded-full">
                       {channel.profile_image_url ? (
                         <img
                           src={channel.profile_image_url}
-                          alt={channel.broadcaster_name}
+                          alt={channelDisplayName}
                           className={`h-full w-full object-cover ${channel.is_live ? '' : 'grayscale opacity-70'}`}
                         />
                       ) : (
                         <span className={`flex h-full w-full items-center justify-center bg-gray-700 text-xs font-semibold ${channel.is_live ? 'text-white' : 'text-gray-300'}`}>
-                          {(channel.broadcaster_name || channel.broadcaster_login || '?').slice(0, 1).toUpperCase()}
+                          {(channelDisplayName || '?').slice(0, 1).toUpperCase()}
                         </span>
                       )}
                     </span>
@@ -830,19 +866,54 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       <span className="absolute -right-1 -top-1 z-10 inline-flex h-3.5 w-3.5 rounded-full border border-gray-900 bg-red-500 shadow" />
                     )}
                   </button>
-                  <div
-                    className={`pointer-events-none absolute ${tooltipSideClass} top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 opacity-0 shadow transition group-hover:opacity-100`}
-                  >
-                    {channel.broadcaster_name}
-                    {channel.is_live ? ` (LIVE ${channel.viewer_count})` : ' (OFFLINE)'}
-                  </div>
                   {selected && menuAnchor && (
                     <div
                       data-followed-menu="true"
                       className="fixed z-50 w-48 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
                       style={{ left: `${menuAnchor.left}px`, top: `${menuAnchor.top}px` }}
                     >
-                      <div className="mb-1 text-xs font-semibold text-gray-100">#{channel.broadcaster_login}</div>
+                      <div className="text-xs font-semibold text-gray-100">{channelDisplayName}</div>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate text-[11px] text-gray-400">#{channelLogin}</div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                                await navigator.clipboard.writeText(channelLogin);
+                              } else if (typeof document !== 'undefined') {
+                                const textarea = document.createElement('textarea');
+                                textarea.value = channelLogin;
+                                textarea.style.position = 'fixed';
+                                textarea.style.opacity = '0';
+                                document.body.appendChild(textarea);
+                                textarea.focus();
+                                textarea.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(textarea);
+                              }
+                              setCopiedChannelId(channel.broadcaster_id);
+                              if (copiedResetTimerRef.current !== null) {
+                                window.clearTimeout(copiedResetTimerRef.current);
+                              }
+                              copiedResetTimerRef.current = window.setTimeout(() => {
+                                setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
+                              }, 1200);
+                            } catch {
+                              setActionError('チャンネル名のコピーに失敗しました');
+                            }
+                          }}
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                          aria-label={`${channelLogin} をコピー`}
+                          title="チャンネル名をコピー"
+                        >
+                          {copiedChannelId === channel.broadcaster_id ? (
+                            <Check className="h-3 w-3 text-emerald-300" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
                       <div className="mb-2 text-[11px] text-gray-400 truncate">
                         {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
                       </div>
@@ -907,6 +978,22 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                 </div>
               );
             })}
+            {hoveredChannel && hoverAnchor && (
+              <div
+                className={`pointer-events-none fixed z-[70] -translate-y-1/2 rounded bg-black/90 px-2 py-1 text-xs text-gray-100 shadow ${
+                  side === 'left' ? '' : '-translate-x-full'
+                }`}
+                style={{ top: `${hoverAnchor.top}px`, left: `${hoverAnchor.left}px` }}
+              >
+                <div className="font-semibold leading-tight">
+                  {hoveredChannel.broadcaster_name || hoveredChannel.broadcaster_login}
+                </div>
+                <div className="text-[10px] leading-tight text-gray-300">#{hoveredChannel.broadcaster_login}</div>
+                <div className="text-[10px] leading-tight text-gray-300">
+                  {hoveredChannel.is_live ? `LIVE ${hoveredChannel.viewer_count}` : 'OFFLINE'}
+                </div>
+              </div>
+            )}
           </div>
           {!!error && (
             <div className="mt-2 w-full px-1 text-center text-[10px] leading-tight text-red-300">
@@ -946,6 +1033,7 @@ type StatusTopBarProps = {
   onAddCard: (kind: WorkspaceCardKind) => void;
   onAddIrcPreview: (channelLogin: string) => void;
   canAddCard: (kind: WorkspaceCardKind) => boolean;
+  ircChannelDisplayNames: Record<string, string>;
 };
 
 const StatusTopBar: React.FC<StatusTopBarProps> = ({
@@ -972,6 +1060,7 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
   onAddCard,
   onAddIrcPreview,
   canAddCard,
+  ircChannelDisplayNames,
 }) => {
   const { status: micStatus } = useMicCaptionStatus();
   const [openPanel, setOpenPanel] = useState<'system' | 'mic' | null>(null);
@@ -1257,6 +1346,7 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
                     {ircConnectedChannels.map((channel) => {
                       const kind = `preview-irc:${channel}` as WorkspaceCardKind;
                       const disabled = !canAddCard(kind);
+                      const displayName = (ircChannelDisplayNames[channel] || '').trim();
                       return (
                         <button
                           key={channel}
@@ -1269,7 +1359,9 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
                           }}
                           className="flex h-8 w-full items-center justify-between rounded border border-gray-700 px-2 text-xs text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <span className="truncate text-left">#{channel}</span>
+                          <span className="truncate text-left">
+                            {displayName ? `${displayName} (#${channel})` : `#${channel}`}
+                          </span>
                           <span className="text-[11px] text-gray-400">{disabled ? '配置済み' : '追加'}</span>
                         </button>
                       );
@@ -1498,6 +1590,16 @@ export const SettingsPage: React.FC = () => {
 
   const cardMenuItems = useMemo<WorkspaceCardMenuItem[]>(() => BASE_WORKSPACE_MENU, []);
   const railReservedWidth = FOLLOWED_RAIL_WIDTH_PX + chatSidebarWidth;
+  const ircChannelDisplayNames = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const channel of followedChannels) {
+      const login = (channel.broadcaster_login || '').trim().toLowerCase();
+      const displayName = (channel.broadcaster_name || '').trim();
+      if (!login || !displayName) continue;
+      names[login] = displayName;
+    }
+    return names;
+  }, [followedChannels]);
   const topBarOffsets = useMemo(() => ({
     left: followedRailSide === 'left' ? railReservedWidth : 0,
     right: followedRailSide === 'right' ? railReservedWidth : 0,
@@ -1881,6 +1983,7 @@ export const SettingsPage: React.FC = () => {
               width={chatSidebarWidth}
               onWidthChange={handleChatSidebarWidthChange}
               embedded
+              channelDisplayNames={ircChannelDisplayNames}
               fontSize={chatSidebarFontSize}
               onFontSizeChange={handleChatSidebarFontSizeChange}
               translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}
@@ -1923,6 +2026,7 @@ export const SettingsPage: React.FC = () => {
           onAddCard={addWorkspaceCard}
           onAddIrcPreview={addIrcPreviewCard}
           canAddCard={canAddCard}
+          ircChannelDisplayNames={ircChannelDisplayNames}
         />
       </WORKSPACE_RENDER_CONTEXT.Provider>
     </div>

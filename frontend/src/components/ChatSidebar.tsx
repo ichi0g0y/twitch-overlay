@@ -22,6 +22,7 @@ type ChatSidebarProps = {
   onWidthChange: (width: number) => void;
   avoidEdgeRail?: boolean;
   embedded?: boolean;
+  channelDisplayNames?: Record<string, string>;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -286,6 +287,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onWidthChange,
   avoidEdgeRail = false,
   embedded = false,
+  channelDisplayNames = {},
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -977,13 +979,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   ), []);
 
   const tabs = useMemo(() => [
-    { id: PRIMARY_CHAT_TAB_ID, label: 'メイン', removable: false },
-    ...ircChannels.map((channel) => ({
-      id: channel,
-      label: `#${channel}`,
-      removable: true,
-    })),
-  ], [ircChannels]);
+    { id: PRIMARY_CHAT_TAB_ID, label: 'メイン', title: 'メインチャンネル', removable: false },
+    ...ircChannels.map((channel) => {
+      const displayName = (channelDisplayNames[channel] || '').trim();
+      return {
+        id: channel,
+        label: displayName || `#${channel}`,
+        title: displayName ? `${displayName} (#${channel})` : `#${channel}`,
+        removable: true,
+      };
+    }),
+  ], [channelDisplayNames, ircChannels]);
 
   const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
 
@@ -1202,6 +1208,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         key={tab.id}
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
+                        title={tab.title}
                         className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs whitespace-nowrap transition ${
                           isActive
                             ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-100'
@@ -1328,11 +1335,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <Button
                     type="button"
                     size="sm"
+                    className="h-9 w-9 px-0"
+                    aria-label="コメントを投稿"
                     onClick={() => void sendComment()}
                     disabled={postingMessage || draftMessage.trim().length === 0}
                   >
-                    <Send className="w-4 h-4 mr-1" />
-                    投稿
+                    <Send className="w-4 h-4" />
                   </Button>
                 </div>
                 {postError && (
