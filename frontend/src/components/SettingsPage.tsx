@@ -95,6 +95,17 @@ type WorkspaceCardMenuItem = {
   description: string;
 };
 
+type WorkspaceMenuCategory =
+  | 'preview'
+  | 'general'
+  | 'mic'
+  | 'twitch'
+  | 'printer'
+  | 'music'
+  | 'overlay'
+  | 'cache'
+  | 'system';
+
 type WorkspaceCardNodeData = {
   kind: WorkspaceCardKind;
   title: string;
@@ -186,6 +197,42 @@ const BASE_WORKSPACE_MENU: WorkspaceCardMenuItem[] = [
   { kind: 'cache-actions', label: 'キャッシュ: 管理操作', description: '手動削除とクリーンアップ' },
   { kind: 'api', label: 'API', description: 'API関連の状態確認' },
 ];
+
+const WORKSPACE_MENU_CATEGORY_ORDER: WorkspaceMenuCategory[] = [
+  'preview',
+  'general',
+  'mic',
+  'twitch',
+  'printer',
+  'music',
+  'overlay',
+  'cache',
+  'system',
+];
+
+const WORKSPACE_MENU_CATEGORY_LABELS: Record<WorkspaceMenuCategory, string> = {
+  preview: 'プレビュー',
+  general: '一般',
+  mic: 'マイク',
+  twitch: 'Twitch',
+  printer: 'プリンター',
+  music: '音楽',
+  overlay: 'Overlay',
+  cache: 'キャッシュ',
+  system: 'システム',
+};
+
+const resolveWorkspaceMenuCategory = (kind: WorkspaceCardKind): WorkspaceMenuCategory => {
+  if (kind.startsWith('preview-')) return 'preview';
+  if (kind.startsWith('general-')) return 'general';
+  if (kind.startsWith('mic-')) return 'mic';
+  if (kind.startsWith('twitch-')) return 'twitch';
+  if (kind.startsWith('printer-')) return 'printer';
+  if (kind.startsWith('music-')) return 'music';
+  if (kind.startsWith('overlay-')) return 'overlay';
+  if (kind.startsWith('cache-')) return 'cache';
+  return 'system';
+};
 
 const LEGACY_WORKSPACE_CARD_KIND_MAP: Record<LegacyWorkspaceCardKind, WorkspaceCardKind> = {
   general: 'general-basic',
@@ -1088,6 +1135,7 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
   const { status: micStatus } = useMicCaptionStatus();
   const [openPanel, setOpenPanel] = useState<'system' | 'mic' | null>(null);
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
+  const [cardMenuHoveredCategory, setCardMenuHoveredCategory] = useState<WorkspaceMenuCategory>('preview');
   const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
   const systemTriggerRef = useRef<HTMLButtonElement | null>(null);
   const micTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1105,6 +1153,43 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
     const port = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
     return Number.isNaN(port) ? undefined : port;
   }, [webServerPort]);
+  const cardMenuItemsByCategory = useMemo(() => {
+    const grouped: Record<WorkspaceMenuCategory, WorkspaceCardMenuItem[]> = {
+      preview: [],
+      general: [],
+      mic: [],
+      twitch: [],
+      printer: [],
+      music: [],
+      overlay: [],
+      cache: [],
+      system: [],
+    };
+    for (const item of cardMenuItems) {
+      grouped[resolveWorkspaceMenuCategory(item.kind)].push(item);
+    }
+    return WORKSPACE_MENU_CATEGORY_ORDER
+      .map((category) => ({
+        category,
+        label: WORKSPACE_MENU_CATEGORY_LABELS[category],
+        items: grouped[category],
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [cardMenuItems]);
+  const activeCardMenuGroup = useMemo(
+    () => cardMenuItemsByCategory.find((group) => group.category === cardMenuHoveredCategory) ?? cardMenuItemsByCategory[0],
+    [cardMenuHoveredCategory, cardMenuItemsByCategory],
+  );
+  const normalizeCardMenuItemLabel = useCallback((label: string) => (
+    label.replace(/^[^:：]+[:：]\s*/, '')
+  ), []);
+
+  useEffect(() => {
+    if (!cardMenuOpen) return;
+    if (cardMenuItemsByCategory.length === 0) return;
+    if (cardMenuItemsByCategory.some((group) => group.category === cardMenuHoveredCategory)) return;
+    setCardMenuHoveredCategory(cardMenuItemsByCategory[0].category);
+  }, [cardMenuHoveredCategory, cardMenuItemsByCategory, cardMenuOpen]);
 
   useEffect(() => {
     if (!openPanel) return;
@@ -1333,31 +1418,58 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
             {cardMenuOpen && (
               <div
                 ref={cardMenuPanelRef}
-                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-[34rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
               >
                 <div className="mb-1 px-1 text-[11px] text-gray-400">作業領域へ追加</div>
-                <div className="space-y-1">
-                  {cardMenuItems.map((item) => (
-                    <button
-                      key={item.kind}
-                      type="button"
-                      disabled={!canAddCard(item.kind)}
-                      onClick={() => {
-                        if (!canAddCard(item.kind)) return;
-                        onAddCard(item.kind);
-                        setCardMenuOpen(false);
-                      }}
-                      className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <div>
-                        <div className="text-xs text-gray-100">
-                          {item.label}
-                          {!canAddCard(item.kind) ? ' (配置済み)' : ''}
-                        </div>
-                        <div className="text-[11px] text-gray-400">{item.description}</div>
-                      </div>
-                    </button>
-                  ))}
+                <div className="flex gap-2">
+                  <div className="w-28 shrink-0 space-y-1">
+                    {cardMenuItemsByCategory.map((group) => {
+                      const isActive = activeCardMenuGroup?.category === group.category;
+                      return (
+                        <button
+                          key={group.category}
+                          type="button"
+                          onMouseEnter={() => setCardMenuHoveredCategory(group.category)}
+                          onFocus={() => setCardMenuHoveredCategory(group.category)}
+                          onClick={() => setCardMenuHoveredCategory(group.category)}
+                          className={`flex h-8 w-full items-center justify-between rounded border px-2 text-left text-xs transition ${
+                            isActive
+                              ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                              : 'border-gray-700 text-gray-300 hover:bg-gray-800'
+                          }`}
+                        >
+                          <span className="truncate">{group.label}</span>
+                          <span className="text-[10px] text-gray-400">▶</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="min-w-0 flex-1 rounded border border-gray-700/80 bg-black/10 p-1">
+                    <div className="mb-1 px-1 text-[11px] text-gray-400">{activeCardMenuGroup?.label ?? '-'}</div>
+                    <div className="space-y-1">
+                      {(activeCardMenuGroup?.items ?? []).map((item) => (
+                        <button
+                          key={item.kind}
+                          type="button"
+                          disabled={!canAddCard(item.kind)}
+                          onClick={() => {
+                            if (!canAddCard(item.kind)) return;
+                            onAddCard(item.kind);
+                            setCardMenuOpen(false);
+                          }}
+                          className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <div>
+                            <div className="text-xs text-gray-100">
+                              {normalizeCardMenuItemLabel(item.label)}
+                              {!canAddCard(item.kind) ? ' (配置済み)' : ''}
+                            </div>
+                            <div className="text-[11px] text-gray-400">{item.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-2 border-t border-gray-700 pt-2">
                   <div className="mb-1 px-1 text-[11px] text-gray-400">コメント欄接続中から追加</div>
