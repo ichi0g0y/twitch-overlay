@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -11,7 +12,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use twitch_client::TwitchError;
-use twitch_client::api::{CreateRewardRequest, TwitchApiClient, UpdateRewardRequest};
+use twitch_client::api::{CreateRewardRequest, TwitchApiClient, TwitchUser, UpdateRewardRequest};
 use twitch_client::auth::TwitchAuth;
 
 use crate::app::SharedState;
@@ -135,6 +136,33 @@ fn stream_status_payload(status: &twitch_client::api::StreamStatus) -> Value {
     })
 }
 
+fn verify_twitch_success_payload(user: &TwitchUser) -> Value {
+    json!({
+        "verified": true,
+        "has_token": true,
+        "id": user.id,
+        "login": user.login,
+        "display_name": user.display_name,
+        "profile_image_url": user.profile_image_url
+    })
+}
+
+fn verify_twitch_error_payload(
+    twitch_user_id: &str,
+    has_token: bool,
+    error: impl Into<String>,
+) -> Value {
+    json!({
+        "verified": false,
+        "has_token": has_token,
+        "id": twitch_user_id,
+        "login": "",
+        "display_name": "",
+        "profile_image_url": null,
+        "error": error.into()
+    })
+}
+
 async fn force_refresh_token(
     state: &SharedState,
     current: &twitch_client::Token,
@@ -176,23 +204,83 @@ async fn force_refresh_token(
 /// GET /api/twitch/verify
 pub async fn verify_twitch(State(state): State<SharedState>) -> ApiResult {
     let config = state.config().await;
+    let twitch_user_id = config.twitch_user_id.clone();
     let configured = !config.client_id.is_empty()
         && !config.client_secret.is_empty()
-        && !config.twitch_user_id.is_empty();
+        && !twitch_user_id.is_empty();
+
     if !configured {
-        return Ok(Json(
-            json!({ "verified": false, "error": "Twitch credentials not configured" }),
-        ));
+        return Ok(Json(verify_twitch_error_payload(
+            &twitch_user_id,
+            false,
+            "Twitch credentials not configured",
+        )));
     }
-    let token = state
-        .db()
-        .get_latest_token()
-        .map_err(|e| err_json(500, &e.to_string()))?;
-    Ok(Json(json!({
-        "verified": token.is_some(),
-        "has_token": token.is_some(),
-        "id": config.twitch_user_id
-    })))
+
+    let token = match get_valid_token(&state).await {
+        Ok(token) => token,
+        Err((StatusCode::UNAUTHORIZED, body)) => {
+            let message = body.0["error"]
+                .as_str()
+                .unwrap_or("Authentication required");
+            return Ok(Json(verify_twitch_error_payload(
+                &twitch_user_id,
+                false,
+                message,
+            )));
+        }
+        Err(err) => return Err(err),
+    };
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let user = match client.get_user(&token, &twitch_user_id).await {
+        Ok(user) => user,
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("verify_twitch got 401, refreshing token and retrying");
+            let refreshed = match force_refresh_token(&state, &token).await {
+                Ok(token) => token,
+                Err((StatusCode::UNAUTHORIZED, body)) => {
+                    let message = body.0["error"]
+                        .as_str()
+                        .unwrap_or("Token refresh failed, please re-authenticate");
+                    return Ok(Json(verify_twitch_error_payload(
+                        &twitch_user_id,
+                        false,
+                        message,
+                    )));
+                }
+                Err(err) => return Err(err),
+            };
+
+            match client.get_user(&refreshed, &twitch_user_id).await {
+                Ok(user) => user,
+                Err(err) => {
+                    let (_, body) = map_twitch_error(err);
+                    let message = body.0["error"]
+                        .as_str()
+                        .unwrap_or("Failed to fetch Twitch user");
+                    return Ok(Json(verify_twitch_error_payload(
+                        &twitch_user_id,
+                        true,
+                        message,
+                    )));
+                }
+            }
+        }
+        Err(err) => {
+            let (_, body) = map_twitch_error(err);
+            let message = body.0["error"]
+                .as_str()
+                .unwrap_or("Failed to fetch Twitch user");
+            return Ok(Json(verify_twitch_error_payload(
+                &twitch_user_id,
+                true,
+                message,
+            )));
+        }
+    };
+
+    Ok(Json(verify_twitch_success_payload(&user)))
 }
 
 /// GET /api/settings/auth/status

@@ -26,6 +26,19 @@ pub struct ChatUserProfile {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IrcChatMessage {
+    pub id: i64,
+    pub channel_login: String,
+    pub message_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub message: String,
+    pub fragments_json: String,
+    pub avatar_url: String,
+    pub created_at: i64,
+}
+
 impl Database {
     pub fn add_chat_message(&self, msg: &ChatMessage) -> Result<bool, DbError> {
         self.with_conn(|conn| {
@@ -224,6 +237,100 @@ impl Database {
             conn.execute(
                 "UPDATE chat_messages SET translation_text = ?1, translation_status = ?2, translation_lang = ?3 WHERE message_id = ?4",
                 rusqlite::params![translation_text, status, lang, message_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn add_irc_chat_message(&self, msg: &IrcChatMessage) -> Result<bool, DbError> {
+        self.with_conn(|conn| {
+            let changed = conn.execute(
+                "INSERT OR IGNORE INTO irc_chat_messages
+                    (channel_login, message_id, user_id, message, fragments_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    msg.channel_login,
+                    msg.message_id,
+                    msg.user_id,
+                    msg.message,
+                    msg.fragments_json,
+                    msg.created_at,
+                ],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
+    pub fn get_irc_chat_messages_since(
+        &self,
+        channel_login: &str,
+        since_unix: i64,
+        limit: Option<i64>,
+    ) -> Result<Vec<IrcChatMessage>, DbError> {
+        self.with_conn(|conn| {
+            let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match limit {
+                Some(l) => (
+                    "SELECT
+                        m.id,
+                        m.channel_login,
+                        m.message_id,
+                        m.user_id,
+                        COALESCE(u.username, '') AS username,
+                        m.message,
+                        m.fragments_json,
+                        COALESCE(u.avatar_url, '') AS avatar_url,
+                        m.created_at
+                     FROM irc_chat_messages m
+                     LEFT JOIN chat_users u ON u.user_id = m.user_id
+                     WHERE m.channel_login = ?1 AND m.created_at >= ?2
+                     ORDER BY m.created_at ASC
+                     LIMIT ?3"
+                        .to_string(),
+                    vec![Box::new(channel_login.to_string()), Box::new(since_unix), Box::new(l)],
+                ),
+                None => (
+                    "SELECT
+                        m.id,
+                        m.channel_login,
+                        m.message_id,
+                        m.user_id,
+                        COALESCE(u.username, '') AS username,
+                        m.message,
+                        m.fragments_json,
+                        COALESCE(u.avatar_url, '') AS avatar_url,
+                        m.created_at
+                     FROM irc_chat_messages m
+                     LEFT JOIN chat_users u ON u.user_id = m.user_id
+                     WHERE m.channel_login = ?1 AND m.created_at >= ?2
+                     ORDER BY m.created_at ASC"
+                        .to_string(),
+                    vec![Box::new(channel_login.to_string()), Box::new(since_unix)],
+                ),
+            };
+
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok(IrcChatMessage {
+                    id: row.get(0)?,
+                    channel_login: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    message_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    username: row.get(4)?,
+                    message: row.get(5)?,
+                    fragments_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    avatar_url: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                    created_at: row.get(8)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        })
+    }
+
+    pub fn cleanup_irc_chat_messages_before(&self, cutoff_unix: i64) -> Result<(), DbError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM irc_chat_messages WHERE created_at < ?1",
+                [cutoff_unix],
             )?;
             Ok(())
         })

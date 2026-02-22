@@ -200,6 +200,41 @@ mod tests {
     }
 
     #[test]
+    fn test_irc_chat_messages() {
+        let db = test_db();
+        db.upsert_chat_user_profile("u1", "alice", "https://example.com/a.png", 1000)
+            .unwrap();
+
+        let msg = chat::IrcChatMessage {
+            id: 0,
+            channel_login: "sample_channel".into(),
+            message_id: "irc-msg-1".into(),
+            user_id: "u1".into(),
+            username: "alice".into(),
+            message: "hello from irc".into(),
+            fragments_json: "[]".into(),
+            avatar_url: String::new(),
+            created_at: 1200,
+        };
+        assert!(db.add_irc_chat_message(&msg).unwrap());
+        assert!(!db.add_irc_chat_message(&msg).unwrap());
+
+        let rows = db
+            .get_irc_chat_messages_since("sample_channel", 0, None)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].message, "hello from irc");
+        assert_eq!(rows[0].username, "alice");
+        assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
+
+        db.cleanup_irc_chat_messages_before(1300).unwrap();
+        let rows_after = db
+            .get_irc_chat_messages_since("sample_channel", 0, None)
+            .unwrap();
+        assert!(rows_after.is_empty());
+    }
+
+    #[test]
     fn test_lottery() {
         let db = test_db();
         let p = lottery::LotteryParticipant {

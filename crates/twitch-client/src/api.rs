@@ -354,6 +354,25 @@ impl TwitchApiClient {
             })
     }
 
+    /// Get user profile by login name.
+    pub async fn get_user_by_login(
+        &self,
+        token: &Token,
+        login: &str,
+    ) -> Result<TwitchUser, TwitchError> {
+        let url = format!("{HELIX_BASE}/users?login={login}");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "User not found".into(),
+            })
+    }
+
     /// Get all custom channel point rewards for a broadcaster.
     pub async fn get_custom_rewards(
         &self,

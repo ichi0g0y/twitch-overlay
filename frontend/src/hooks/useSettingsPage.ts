@@ -341,8 +341,17 @@ export const useSettingsPage = () => {
       setTwitchUserInfo(data);
       if (data.verified) {
         toast.success(`Twitch連携確認: ${data.display_name}`);
+      } else if (data.error) {
+        toast.error(`Twitch連携エラー: ${data.error}`);
       }
-    } catch (err) {
+    } catch (err: any) {
+      setTwitchUserInfo({
+        id: '',
+        login: '',
+        display_name: '',
+        verified: false,
+        error: err?.message || 'Twitch連携の検証に失敗しました',
+      });
       toast.error('Twitch連携の検証に失敗しました');
     } finally {
       setVerifyingTwitch(false);

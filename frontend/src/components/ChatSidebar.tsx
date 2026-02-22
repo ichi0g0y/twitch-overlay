@@ -1,6 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, MessageCircle, Send, Settings } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
+
 import { buildApiUrl } from '../utils/api';
+import {
+  PRIMARY_CHAT_TAB_ID,
+  normalizeTwitchChannelName,
+  readIrcChannels,
+  writeIrcChannels,
+} from '../utils/chatChannels';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 import { Button } from './ui/button';
@@ -21,13 +28,32 @@ type ChatSidebarProps = {
   onNotificationModeToggle: (enabled: boolean) => void;
 };
 
+type IrcConnection = {
+  channel: string;
+  ws: WebSocket | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  reconnectAttempts: number;
+  stopped: boolean;
+  nick: string;
+};
+
+type IrcUserProfile = {
+  username?: string;
+  avatarUrl?: string;
+};
+
 const HISTORY_DAYS = 7;
 const COLLAPSE_STORAGE_KEY = 'chat_sidebar_collapsed';
+const ACTIVE_TAB_STORAGE_KEY = 'chat_sidebar_active_tab';
 const RESIZE_MIN_WIDTH = 220;
 const RESIZE_MAX_WIDTH = 520;
 const FONT_MIN_SIZE = 12;
 const FONT_MAX_SIZE = 40;
 const EMOTE_CDN_BASE = 'https://static-cdn.jtvnw.net/emoticons/v2';
+const IRC_ENDPOINT = 'wss://irc-ws.chat.twitch.tv:443';
+const IRC_RECONNECT_BASE_DELAY_MS = 2000;
+const IRC_RECONNECT_MAX_DELAY_MS = 20000;
+const IRC_HISTORY_LIMIT = 300;
 
 const formatTime = (timestamp?: string) => {
   if (!timestamp) return '';
@@ -37,6 +63,31 @@ const formatTime = (timestamp?: string) => {
 };
 
 const emoteUrlFromId = (id: string) => `${EMOTE_CDN_BASE}/${id}/static/light/2.0`;
+
+const trimMessagesByAge = (items: ChatMessage[]) => {
+  const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  return items.filter((msg) => {
+    if (!msg.timestamp) return true;
+    const parsed = new Date(msg.timestamp).getTime();
+    if (Number.isNaN(parsed)) return true;
+    return parsed >= cutoff;
+  });
+};
+
+const dedupeMessages = (items: ChatMessage[]) => {
+  const nextSet = new Set<string>();
+  const next: ChatMessage[] = [];
+  for (const item of items) {
+    if (item.messageId) {
+      if (nextSet.has(item.messageId)) {
+        continue;
+      }
+      nextSet.add(item.messageId);
+    }
+    next.push(item);
+  }
+  return next;
+};
 
 const normalizeFragments = (raw: any): ChatFragment[] | undefined => {
   let source = raw;
@@ -80,6 +131,120 @@ const normalizeFragments = (raw: any): ChatFragment[] | undefined => {
   return fragments.length > 0 ? fragments : undefined;
 };
 
+const decodeIrcTagValue = (value: string): string => {
+  return value
+    .replace(/\\s/g, ' ')
+    .replace(/\\:/g, ';')
+    .replace(/\\\\/g, '\\')
+    .replace(/\\r/g, '\r')
+    .replace(/\\n/g, '\n');
+};
+
+const parseIrcTags = (raw: string): Record<string, string> => {
+  if (!raw) return {};
+  const result: Record<string, string> = {};
+  for (const pair of raw.split(';')) {
+    if (!pair) continue;
+    const [key, ...rest] = pair.split('=');
+    if (!key) continue;
+    result[key] = decodeIrcTagValue(rest.join('='));
+  }
+  return result;
+};
+
+const parseEmoteFragments = (message: string, emotesTag?: string): ChatFragment[] | undefined => {
+  if (!emotesTag || !message) return undefined;
+
+  const ranges: Array<{ start: number; end: number; emoteId: string }> = [];
+  for (const emoteEntry of emotesTag.split('/')) {
+    const [emoteId, positions] = emoteEntry.split(':');
+    if (!emoteId || !positions) continue;
+
+    for (const range of positions.split(',')) {
+      const [rawStart, rawEnd] = range.split('-');
+      const start = Number.parseInt(rawStart, 10);
+      const end = Number.parseInt(rawEnd, 10);
+      if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || end < start) continue;
+      ranges.push({ start, end, emoteId });
+    }
+  }
+
+  if (ranges.length === 0) return undefined;
+  ranges.sort((a, b) => a.start - b.start);
+
+  const fragments: ChatFragment[] = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.start < cursor) {
+      continue;
+    }
+
+    if (range.start > cursor) {
+      fragments.push({
+        type: 'text',
+        text: message.slice(cursor, range.start),
+      });
+    }
+
+    const emoteText = message.slice(range.start, range.end + 1);
+    fragments.push({
+      type: 'emote',
+      text: emoteText,
+      emoteId: range.emoteId,
+      emoteUrl: emoteUrlFromId(range.emoteId),
+    });
+    cursor = range.end + 1;
+  }
+
+  if (cursor < message.length) {
+    fragments.push({ type: 'text', text: message.slice(cursor) });
+  }
+
+  return fragments.length > 0 ? fragments : undefined;
+};
+
+const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage } | null => {
+  const match = line.match(/^(?:@([^ ]+) )?(?::([^ ]+) )?PRIVMSG #([^ ]+) :(.*)$/);
+  if (!match) return null;
+
+  const [, rawTags = '', rawPrefix = '', rawChannel = '', rawMessage = ''] = match;
+  const channel = normalizeTwitchChannelName(rawChannel);
+  if (!channel) return null;
+
+  const tags = parseIrcTags(rawTags);
+  const loginFromPrefix = rawPrefix.split('!')[0] || '';
+  const username = tags['display-name'] || loginFromPrefix || channel;
+  const userId = tags['user-id'] || undefined;
+  const timestampMillis = Number.parseInt(tags['tmi-sent-ts'] || '', 10);
+  const timestamp = Number.isNaN(timestampMillis)
+    ? new Date().toISOString()
+    : new Date(timestampMillis).toISOString();
+
+  const messageId = tags.id || `irc-${channel}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const fragments = parseEmoteFragments(rawMessage, tags.emotes);
+
+  return {
+    channel,
+    message: {
+      id: messageId,
+      messageId,
+      userId,
+      username,
+      message: rawMessage,
+      fragments,
+      timestamp,
+    },
+  };
+};
+
+const createAnonymousNick = () => `justinfan${Math.floor(10000 + Math.random() * 90000)}`;
+
+const readStoredActiveTab = (): string => {
+  if (typeof window === 'undefined') return PRIMARY_CHAT_TAB_ID;
+  const stored = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+  return stored && stored.trim() !== '' ? stored : PRIMARY_CHAT_TAB_ID;
+};
+
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   side,
   onSideChange,
@@ -96,43 +261,30 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true';
   });
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [primaryMessages, setPrimaryMessages] = useState<ChatMessage[]>([]);
+  const [ircChannels, setIrcChannels] = useState<string[]>(() => readIrcChannels());
+  const [activeTab, setActiveTab] = useState<string>(() => readStoredActiveTab());
+  const [ircMessagesByChannel, setIrcMessagesByChannel] = useState<Record<string, ChatMessage[]>>({});
+  const [connectingChannels, setConnectingChannels] = useState<Record<string, boolean>>({});
+
   const listRef = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
+  const [channelEditorOpen, setChannelEditorOpen] = useState(false);
+  const [channelInput, setChannelInput] = useState('');
+  const [channelInputError, setChannelInputError] = useState('');
+
   const [draftMessage, setDraftMessage] = useState('');
   const [postingMessage, setPostingMessage] = useState(false);
-
-  const trimMessagesByAge = (items: ChatMessage[]) => {
-    const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
-    return items.filter((msg) => {
-      if (!msg.timestamp) return true;
-      const parsed = new Date(msg.timestamp).getTime();
-      if (Number.isNaN(parsed)) return true;
-      return parsed >= cutoff;
-    });
-  };
-
-  const dedupeMessages = (items: ChatMessage[]) => {
-    const nextSet = new Set<string>();
-    const next: ChatMessage[] = [];
-    for (const item of items) {
-      if (item.messageId) {
-        if (nextSet.has(item.messageId)) {
-          continue;
-        }
-        nextSet.add(item.messageId);
-      }
-      next.push(item);
-    }
-    return next;
-  };
+  const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
+  const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
+  const ircProfileInFlightRef = useRef<Set<string>>(new Set());
 
   const handleToggle = () => {
-    setCollapsed(prev => {
+    setCollapsed((prev) => {
       const next = !prev;
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(next));
@@ -147,6 +299,210 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     resizeStateRef.current = { startX: event.clientX, startWidth: width };
     setResizing(true);
   };
+
+  const setChannelConnecting = useCallback((channel: string, connecting: boolean) => {
+    setConnectingChannels((prev) => ({ ...prev, [channel]: connecting }));
+  }, []);
+
+  const appendIrcMessage = useCallback((channel: string, message: ChatMessage) => {
+    const profile = message.userId ? ircUserProfilesRef.current[message.userId] : undefined;
+    const mergedMessage: ChatMessage = profile
+      ? {
+        ...message,
+        username: profile.username || message.username,
+        avatarUrl: profile.avatarUrl || message.avatarUrl,
+      }
+      : message;
+    setIrcMessagesByChannel((prev) => {
+      const current = prev[channel] ?? [];
+      const next = dedupeMessages(trimMessagesByAge([...current, mergedMessage]));
+      return { ...prev, [channel]: next };
+    });
+  }, []);
+
+  const persistIrcMessage = useCallback(async (channel: string, message: ChatMessage) => {
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/irc/message'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel,
+          message_id: message.messageId,
+          user_id: message.userId,
+          username: message.username,
+          message: message.message,
+          fragments: message.fragments ?? [{ type: 'text', text: message.message }],
+          timestamp: message.timestamp,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('[ChatSidebar] Failed to persist IRC message:', error);
+    }
+  }, []);
+
+  const applyIrcUserProfile = useCallback((userId: string, profile: IrcUserProfile) => {
+    if (!userId) return;
+    setIrcMessagesByChannel((prev) => {
+      let updated = false;
+      const next: Record<string, ChatMessage[]> = {};
+
+      for (const [channel, messages] of Object.entries(prev)) {
+        let channelUpdated = false;
+        const nextMessages = messages.map((message) => {
+          if (message.userId !== userId) return message;
+          channelUpdated = true;
+          return {
+            ...message,
+            username: profile.username || message.username,
+            avatarUrl: profile.avatarUrl || message.avatarUrl,
+          };
+        });
+        next[channel] = nextMessages;
+        if (channelUpdated) {
+          updated = true;
+        }
+      }
+
+      return updated ? next : prev;
+    });
+  }, []);
+
+  const hydrateIrcUserProfile = useCallback(async (userId?: string, usernameHint?: string) => {
+    if (!userId || userId.trim() === '') return;
+    if (ircProfileInFlightRef.current.has(userId)) return;
+
+    const cached = ircUserProfilesRef.current[userId];
+    if (cached?.avatarUrl && cached.avatarUrl.trim() !== '') {
+      return;
+    }
+
+    ircProfileInFlightRef.current.add(userId);
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/user-profile'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          username: usernameHint || undefined,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json().catch(() => null);
+      const username = typeof payload?.username === 'string' ? payload.username : usernameHint;
+      const avatarUrl = typeof payload?.avatar_url === 'string' ? payload.avatar_url : '';
+      const profile: IrcUserProfile = {
+        username: username || undefined,
+        avatarUrl: avatarUrl || undefined,
+      };
+      ircUserProfilesRef.current[userId] = profile;
+      applyIrcUserProfile(userId, profile);
+    } catch (error) {
+      console.error('[ChatSidebar] Failed to hydrate IRC user profile:', error);
+    } finally {
+      ircProfileInFlightRef.current.delete(userId);
+    }
+  }, [applyIrcUserProfile]);
+
+  const attachIrcSocket = useCallback((connection: IrcConnection) => {
+    if (connection.stopped) return;
+
+    setChannelConnecting(connection.channel, true);
+    const ws = new WebSocket(IRC_ENDPOINT);
+    connection.ws = ws;
+
+    ws.onopen = () => {
+      if (connection.stopped) return;
+      connection.reconnectAttempts = 0;
+      setChannelConnecting(connection.channel, false);
+      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+      ws.send('PASS SCHMOOPIIE');
+      ws.send(`NICK ${connection.nick}`);
+      ws.send(`JOIN #${connection.channel}`);
+    };
+
+    ws.onmessage = (event) => {
+      const raw = typeof event.data === 'string' ? event.data : '';
+      if (!raw) return;
+      for (const line of raw.split('\r\n')) {
+        if (!line) continue;
+        if (line.startsWith('PING')) {
+          ws.send(line.replace(/^PING/, 'PONG'));
+          continue;
+        }
+
+        const parsed = parseIrcPrivmsg(line);
+        if (!parsed || parsed.channel !== connection.channel) continue;
+        appendIrcMessage(connection.channel, parsed.message);
+        void hydrateIrcUserProfile(parsed.message.userId, parsed.message.username);
+        void persistIrcMessage(connection.channel, parsed.message);
+      }
+    };
+
+    ws.onclose = () => {
+      if (connection.stopped) return;
+
+      setChannelConnecting(connection.channel, true);
+      const delay = Math.min(
+        IRC_RECONNECT_BASE_DELAY_MS * (2 ** connection.reconnectAttempts),
+        IRC_RECONNECT_MAX_DELAY_MS,
+      );
+      connection.reconnectAttempts += 1;
+
+      connection.reconnectTimer = setTimeout(() => {
+        attachIrcSocket(connection);
+      }, delay);
+    };
+
+    ws.onerror = () => {
+      // onclose handler takes care of reconnect.
+    };
+  }, [appendIrcMessage, hydrateIrcUserProfile, persistIrcMessage, setChannelConnecting]);
+
+  const stopIrcConnection = useCallback((channel: string) => {
+    const connection = ircConnectionsRef.current.get(channel);
+    if (!connection) return;
+
+    connection.stopped = true;
+    if (connection.reconnectTimer) {
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
+    }
+
+    if (connection.ws) {
+      connection.ws.close();
+      connection.ws = null;
+    }
+
+    ircConnectionsRef.current.delete(channel);
+    setConnectingChannels((prev) => {
+      if (!(channel in prev)) return prev;
+      const next = { ...prev };
+      delete next[channel];
+      return next;
+    });
+  }, []);
+
+  const startIrcConnection = useCallback((channel: string) => {
+    if (ircConnectionsRef.current.has(channel)) return;
+
+    const connection: IrcConnection = {
+      channel,
+      ws: null,
+      reconnectTimer: null,
+      reconnectAttempts: 0,
+      stopped: false,
+      nick: createAnonymousNick(),
+    };
+
+    ircConnectionsRef.current.set(channel, connection);
+    attachIrcSocket(connection);
+  }, [attachIrcSocket]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -181,6 +537,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   useEffect(() => {
     if (!settingsOpen) return;
+
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -188,6 +545,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       if (settingsButtonRef.current?.contains(target)) return;
       setSettingsOpen(false);
     };
+
     window.addEventListener('mousedown', handleClick);
     return () => {
       window.removeEventListener('mousedown', handleClick);
@@ -198,7 +556,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     let cancelled = false;
 
     const loadHistory = async () => {
-          const maxAttempts = 5;
+      const maxAttempts = 5;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try {
           const url = buildApiUrl(`/api/chat/history?days=${HISTORY_DAYS}`);
@@ -229,7 +587,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           }));
 
           if (!cancelled) {
-            setMessages(dedupeMessages(trimMessagesByAge(history)));
+            setPrimaryMessages(dedupeMessages(trimMessagesByAge(history)));
           }
           return;
         } catch (error) {
@@ -237,7 +595,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             console.error('[ChatSidebar] Failed to load history:', error);
             return;
           }
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
         }
       }
     };
@@ -271,7 +629,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             translationLang: data.translationLang,
             timestamp: data.timestamp,
           };
-          setMessages(prev => {
+          setPrimaryMessages((prev) => {
             const next = [...prev, nextMessage];
             return dedupeMessages(trimMessagesByAge(next));
           });
@@ -279,7 +637,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
         const translationUnsubscribe = wsClient.on('chat-translation', (data: any) => {
           if (!data || !data.messageId) return;
-          setMessages(prev => prev.map((msg) => (
+          setPrimaryMessages((prev) => prev.map((msg) => (
             msg.messageId === data.messageId
               ? { ...msg, translation: data.translation, translationStatus: data.translationStatus, translationLang: data.translationLang }
               : msg
@@ -303,12 +661,116 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, []);
 
   useEffect(() => {
+    writeIrcChannels(ircChannels);
+  }, [ircChannels]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadIrcHistory = async (channel: string) => {
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/chat/irc/history?channel=${encodeURIComponent(channel)}&limit=${IRC_HISTORY_LIMIT}`),
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const rawMessages = Array.isArray(payload) ? payload : payload?.messages;
+        if (!Array.isArray(rawMessages) || cancelled) return;
+
+        const history: ChatMessage[] = rawMessages
+          .map((item: any) => ({
+            id: item.id ? String(item.id) : `${channel}-${item.message_id || item.messageId || Date.now()}`,
+            messageId: item.messageId ?? item.message_id,
+            userId: item.userId ?? item.user_id,
+            username: item.username || '',
+            message: item.message || '',
+            fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
+            avatarUrl: item.avatarUrl ?? item.avatar_url,
+            timestamp: item.timestamp ?? (typeof item.created_at === 'number'
+              ? new Date(item.created_at * 1000).toISOString()
+              : undefined),
+          }))
+          .filter((item) => item.message.trim() !== '');
+
+        setIrcMessagesByChannel((prev) => {
+          const current = prev[channel] ?? [];
+          return {
+            ...prev,
+            [channel]: dedupeMessages(trimMessagesByAge([...history, ...current])),
+          };
+        });
+
+        for (const item of history) {
+          if (item.userId) {
+            void hydrateIrcUserProfile(item.userId, item.username);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(`[ChatSidebar] Failed to load IRC history (#${channel}):`, error);
+        }
+      }
+    };
+
+    for (const channel of ircChannels) {
+      void loadIrcHistory(channel);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateIrcUserProfile, ircChannels]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === PRIMARY_CHAT_TAB_ID) return;
+    if (ircChannels.includes(activeTab)) return;
+    setActiveTab(PRIMARY_CHAT_TAB_ID);
+  }, [activeTab, ircChannels]);
+
+  useEffect(() => {
+    const expected = new Set(ircChannels);
+    for (const channel of ircChannels) {
+      if (!ircConnectionsRef.current.has(channel)) {
+        startIrcConnection(channel);
+      }
+    }
+
+    for (const channel of Array.from(ircConnectionsRef.current.keys())) {
+      if (!expected.has(channel)) {
+        stopIrcConnection(channel);
+      }
+    }
+  }, [ircChannels, startIrcConnection, stopIrcConnection]);
+
+  useEffect(() => {
+    return () => {
+      for (const channel of Array.from(ircConnectionsRef.current.keys())) {
+        stopIrcConnection(channel);
+      }
+    };
+  }, [stopIrcConnection]);
+
+  const activeMessages = useMemo(() => {
+    if (activeTab === PRIMARY_CHAT_TAB_ID) {
+      return primaryMessages;
+    }
+    return ircMessagesByChannel[activeTab] ?? [];
+  }, [activeTab, ircMessagesByChannel, primaryMessages]);
+
+  useEffect(() => {
     if (collapsed) return;
     const container = listRef.current;
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages, collapsed]);
+  }, [activeMessages, activeTab, collapsed]);
 
   const sidebarWidthClass = collapsed ? 'w-full lg:w-12' : 'w-full lg:w-[var(--chat-sidebar-width)]';
   const collapseIcon = side === 'left' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />;
@@ -330,6 +792,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     </div>
   ), []);
 
+  const tabs = useMemo(() => [
+    { id: PRIMARY_CHAT_TAB_ID, label: 'メイン', removable: false },
+    ...ircChannels.map((channel) => ({
+      id: channel,
+      label: `#${channel}`,
+      removable: true,
+    })),
+  ], [ircChannels]);
+
+  const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
+
   const sendComment = async () => {
     const text = draftMessage.trim();
     if (!text || postingMessage) {
@@ -338,10 +811,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     setPostingMessage(true);
     try {
+      const targetChannel = isPrimaryTab ? undefined : activeTab;
       const response = await fetch(buildApiUrl('/api/chat/post'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({
+          message: text,
+          channel: targetChannel,
+        }),
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -363,7 +840,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           translationLang: posted.translationLang,
           timestamp: posted.timestamp,
         };
-        setMessages(prev => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
+        if (isPrimaryTab) {
+          setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
+        } else {
+          setIrcMessagesByChannel((prev) => {
+            const current = prev[activeTab] ?? [];
+            return {
+              ...prev,
+              [activeTab]: dedupeMessages(trimMessagesByAge([...current, nextMessage])),
+            };
+          });
+        }
       }
 
       setDraftMessage('');
@@ -374,6 +861,41 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   };
 
+  const handleAddChannel = () => {
+    const normalized = normalizeTwitchChannelName(channelInput);
+    if (!normalized) {
+      setChannelInputError('チャンネル名は英数字/アンダースコア (3-25文字) で入力してください');
+      return;
+    }
+
+    if (ircChannels.includes(normalized)) {
+      setActiveTab(normalized);
+      setChannelEditorOpen(false);
+      setChannelInput('');
+      setChannelInputError('');
+      return;
+    }
+
+    setIrcChannels((prev) => [...prev, normalized]);
+    setActiveTab(normalized);
+    setChannelEditorOpen(false);
+    setChannelInput('');
+    setChannelInputError('');
+  };
+
+  const handleRemoveChannel = (channel: string) => {
+    setIrcChannels((prev) => prev.filter((item) => item !== channel));
+    setIrcMessagesByChannel((prev) => {
+      if (!(channel in prev)) return prev;
+      const next = { ...prev };
+      delete next[channel];
+      return next;
+    });
+    if (activeTab === channel) {
+      setActiveTab(PRIMARY_CHAT_TAB_ID);
+    }
+  };
+
   return (
     <aside className={`transition-all duration-200 self-start ${sidebarWidthClass}`} style={sidebarStyle}>
       <div
@@ -381,165 +903,257 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         style={sidebarStyle}
       >
         <div className="h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">
-        {!collapsed && (
-          <>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="コメント欄の幅を調整"
-              onPointerDown={handleResizeStart}
-              className={`absolute top-0 ${resizeHandleSideClass} h-full w-1 cursor-col-resize touch-none`}
-            >
-              <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
-            </div>
-            <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">コメント欄</span>
+          {!collapsed && (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="コメント欄の幅を調整"
+                onPointerDown={handleResizeStart}
+                className={`absolute top-0 ${resizeHandleSideClass} h-full w-1 cursor-col-resize touch-none`}
+              >
+                <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSettingsOpen(prev => !prev)}
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-                  aria-label="コメント欄の設定を開く"
-                  aria-expanded={settingsOpen}
-                  ref={settingsButtonRef}
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleToggle}
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-                  aria-label="コメント欄を閉じる"
-                  aria-expanded={!collapsed}
-                >
-                  {toggleIcon}
-                </button>
-              </div>
-              {settingsOpen && (
-                <div
-                  ref={settingsPanelRef}
-                  className="absolute right-2 top-10 z-20 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-sm"
-                >
-                  <div className="space-y-3">
-                    <div>
-                      <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={FONT_MIN_SIZE}
-                          max={FONT_MAX_SIZE}
-                          value={fontSize}
-                          onChange={(event) => onFontSizeChange(Number(event.target.value))}
-                          className="flex-1"
-                        />
-                        <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
+              <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">コメント欄</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChannelEditorOpen((prev) => !prev);
+                      setChannelInputError('');
+                    }}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                    aria-label="IRCチャンネルを追加"
+                    aria-expanded={channelEditorOpen}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen((prev) => !prev)}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                    aria-label="コメント欄の設定を開く"
+                    aria-expanded={settingsOpen}
+                    ref={settingsButtonRef}
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToggle}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                    aria-label="コメント欄を閉じる"
+                    aria-expanded={!collapsed}
+                  >
+                    {toggleIcon}
+                  </button>
+                </div>
+                {settingsOpen && (
+                  <div
+                    ref={settingsPanelRef}
+                    className="absolute right-2 top-10 z-20 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-sm"
+                  >
+                    <div className="space-y-3">
+                      <div>
+                        <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={FONT_MIN_SIZE}
+                            max={FONT_MAX_SIZE}
+                            value={fontSize}
+                            onChange={(event) => onFontSizeChange(Number(event.target.value))}
+                            className="flex-1"
+                          />
+                          <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onSideChange('left')}
-                          className={`h-8 rounded-md border text-sm transition ${
-                            side === 'left'
-                              ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                          }`}
-                        >
-                          左
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onSideChange('right')}
-                          className={`h-8 rounded-md border text-sm transition ${
-                            side === 'right'
-                              ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                          }`}
-                        >
-                          右
-                        </button>
+                      <div>
+                        <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onSideChange('left')}
+                            className={`h-8 rounded-md border text-sm transition ${
+                              side === 'left'
+                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            左
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSideChange('right')}
+                            className={`h-8 rounded-md border text-sm transition ${
+                              side === 'right'
+                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            右
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
-                      <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
-                      <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</div>
+                        <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</div>
+                        <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
+                      </div>
                     </div>
                   </div>
+                )}
+              </div>
+              <div className="border-b dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 px-2 py-1">
+                <div className="flex items-center gap-1 overflow-x-auto">
+                  {tabs.map((tab) => {
+                    const isActive = tab.id === activeTab;
+                    const isConnecting = tab.id !== PRIMARY_CHAT_TAB_ID && connectingChannels[tab.id];
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs whitespace-nowrap transition ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-100'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {tab.id !== PRIMARY_CHAT_TAB_ID && (
+                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isConnecting ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                        )}
+                        <span>{tab.label}</span>
+                        {tab.removable && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleRemoveChannel(tab.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleRemoveChannel(tab.id);
+                              }
+                            }}
+                            className="rounded p-0.5 hover:bg-gray-200/80 dark:hover:bg-gray-600"
+                            aria-label={`#${tab.id} を削除`}
+                          >
+                            <X className="h-3 w-3" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          </>
-        )}
+                {channelEditorOpen && (
+                  <div className="mt-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={channelInput}
+                        onChange={(event) => {
+                          setChannelInput(event.target.value);
+                          if (channelInputError) {
+                            setChannelInputError('');
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                            event.preventDefault();
+                            handleAddChannel();
+                          }
+                        }}
+                        placeholder="追加するチャンネル名"
+                        className="flex-1 h-8 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 text-xs"
+                      />
+                      <Button type="button" size="sm" className="h-8 px-2" onClick={handleAddChannel}>
+                        追加
+                      </Button>
+                    </div>
+                    {channelInputError && (
+                      <p className="mt-1 text-[11px] text-red-500">{channelInputError}</p>
+                    )}
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Twitch IRCへ匿名接続してメッセージを受信します
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
-        {collapsed ? (
-          <button
-            type="button"
-            onClick={handleToggle}
-            className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-            aria-label="コメント欄を開く"
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span className="text-[10px] leading-none">開く</span>
-          </button>
-        ) : (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div
-              ref={listRef}
-              className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              aria-label="コメント欄を開く"
             >
-              {messages.length === 0 ? (
-                emptyState
-              ) : (
-                messages.map((msg, index) => (
-                  <ChatSidebarItem
-                    key={msg.id}
-                    message={msg}
-                    index={index}
-                    fontSize={fontSize}
-                    metaFontSize={metaFontSize}
-                    translationFontSize={translationFontSize}
-                    timestampLabel={formatTime(msg.timestamp)}
-                  />
-                ))
-              )}
-            </div>
+              <MessageCircle className="w-5 h-5" />
+              <span className="text-[10px] leading-none">開く</span>
+            </button>
+          ) : (
+            <div className="flex-1 flex flex-col min-h-0">
+              <div
+                ref={listRef}
+                className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+              >
+                {activeMessages.length === 0 ? (
+                  emptyState
+                ) : (
+                  activeMessages.map((msg, index) => (
+                    <ChatSidebarItem
+                      key={msg.id}
+                      message={msg}
+                      index={index}
+                      fontSize={fontSize}
+                      metaFontSize={metaFontSize}
+                      translationFontSize={translationFontSize}
+                      timestampLabel={formatTime(msg.timestamp)}
+                    />
+                  ))
+                )}
+              </div>
             <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={draftMessage}
-                  onChange={(event) => setDraftMessage(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      void sendComment();
-                    }
-                  }}
-                  placeholder="コメントを入力..."
-                  className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-600"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => void sendComment()}
-                  disabled={postingMessage || draftMessage.trim().length === 0}
-                >
-                  <Send className="w-4 h-4 mr-1" />
-                  投稿
-                </Button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={draftMessage}
+                    onChange={(event) => setDraftMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        void sendComment();
+                      }
+                    }}
+                    placeholder={isPrimaryTab ? 'コメントを入力...' : `#${activeTab} に送信...`}
+                    disabled={postingMessage}
+                    className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-600 disabled:opacity-60"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void sendComment()}
+                    disabled={postingMessage || draftMessage.trim().length === 0}
+                  >
+                    <Send className="w-4 h-4 mr-1" />
+                    投稿
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
       </div>
     </aside>

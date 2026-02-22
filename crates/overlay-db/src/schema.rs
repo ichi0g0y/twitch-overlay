@@ -290,6 +290,29 @@ CREATE TABLE IF NOT EXISTS chat_users (
 CREATE INDEX IF NOT EXISTS idx_chat_users_updated_at
     ON chat_users(updated_at);
 
+CREATE TABLE IF NOT EXISTS irc_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_login TEXT NOT NULL,
+    message_id TEXT,
+    user_id TEXT,
+    message TEXT NOT NULL,
+    fragments_json TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_irc_chat_messages_channel_message_id
+    ON irc_chat_messages(channel_login, message_id)
+    WHERE message_id IS NOT NULL AND message_id != '';
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_created_at
+    ON irc_chat_messages(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel
+    ON irc_chat_messages(channel_login);
+
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_user_id
+    ON irc_chat_messages(user_id);
+
 CREATE TABLE IF NOT EXISTS lottery_participants (
     user_id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
