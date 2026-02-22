@@ -1,6 +1,6 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { RefreshCw, Wifi, Radio } from "lucide-react";
 import { FeatureStatus, AuthStatus, StreamStatus, TwitchUserInfo, PrinterStatusInfo } from '@/types';
 
@@ -54,14 +54,17 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
   if (!featureStatus) return null;
 
   return (
-    <Card className="mb-6">
-      <CardHeader className="text-left">
-        <CardTitle className="flex items-center gap-2">
+    <CollapsibleCard
+      panelId="settings.system-status"
+      className="mb-6"
+      title={(
+        <span className="flex items-center gap-2">
           <Wifi className="w-5 h-5 text-gray-400" />
           システム状態
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+        </span>
+      )}
+      headerClassName="text-left"
+    >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Twitch連携状態 */}
           <div className="space-y-1">
@@ -264,7 +267,6 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
             )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+    </CollapsibleCard>
   );
 };

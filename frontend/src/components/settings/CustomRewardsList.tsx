@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Award, Loader2, RefreshCw, AlertCircle, Copy, Check, Plus, Trash2, Edit2, Save, X } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { buildApiUrl } from '../../utils/api';
@@ -267,39 +267,36 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
+      <CollapsibleCard
+        panelId="settings.twitch.custom-rewards"
+        title={(
+          <span className="flex items-center space-x-2">
             <Award className="w-5 h-5" />
             <span>カスタムリワード一覧</span>
-          </CardTitle>
-          <CardDescription>
-            チャンネルポイントで引き換え可能なカスタムリワード
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </span>
+        )}
+        description="チャンネルポイントで引き換え可能なカスタムリワード"
+      >
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
             <span className="ml-2 text-gray-500">読み込み中...</span>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     );
   }
 
   if (error && rewards.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
+      <CollapsibleCard
+        panelId="settings.twitch.custom-rewards"
+        title={(
+          <span className="flex items-center space-x-2">
             <Award className="w-5 h-5" />
             <span>カスタムリワード一覧</span>
-          </CardTitle>
-          <CardDescription>
-            チャンネルポイントで引き換え可能なカスタムリワード
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </span>
+        )}
+        description="チャンネルポイントで引き換え可能なカスタムリワード"
+      >
           <div className="flex flex-col items-center justify-center py-8">
             <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
             <p className="text-red-500 mb-4">{error}</p>
@@ -308,8 +305,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
               再読み込み
             </Button>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     );
   }
 
@@ -323,36 +319,33 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
         }}
       />
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center space-x-2">
-                <Award className="w-5 h-5" />
-                <span>カスタムリワード一覧</span>
-              </CardTitle>
-              <CardDescription>
-                チャンネルポイントで引き換え可能なカスタムリワード
-              </CardDescription>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                onClick={() => setIsCreateDialogOpen(true)}
-                variant="default"
-                size="sm"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                新規作成
-              </Button>
-              <Button onClick={fetchRewards} variant="outline" size="sm">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                更新
-              </Button>
-            </div>
+      <CollapsibleCard
+        panelId="settings.twitch.custom-rewards"
+        title={(
+          <span className="flex items-center space-x-2">
+            <Award className="w-5 h-5" />
+            <span>カスタムリワード一覧</span>
+          </span>
+        )}
+        description="チャンネルポイントで引き換え可能なカスタムリワード"
+        actions={(
+          <div className="flex items-center space-x-2">
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              variant="default"
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              新規作成
+            </Button>
+            <Button onClick={fetchRewards} variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              更新
+            </Button>
           </div>
-        </CardHeader>
-      <CardContent>
+        )}
+      >
         {/* グループフィルター */}
         {allGroups.length > 0 && (
           <div className="mb-4 pb-4 border-b dark:border-gray-700">
@@ -640,8 +633,7 @@ export const CustomRewardsList: React.FC<CustomRewardsListProps> = ({
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </CollapsibleCard>
     </>
   );
 };

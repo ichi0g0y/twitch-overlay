@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { SettingsPage } from './components/SettingsPage';
 import { NotificationWindow } from './components/notification/NotificationWindow';
 import { TraySettingsWindow } from './components/TraySettingsWindow';
@@ -7,6 +8,21 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { MicCaptionStatusProvider } from './contexts/MicCaptionStatusContext';
 
 function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const isNotificationWindow = location.pathname.startsWith('/notification');
+    const backgroundColor = isNotificationWindow ? 'transparent' : '#111827';
+
+    document.documentElement.style.backgroundColor = backgroundColor;
+    document.body.style.backgroundColor = backgroundColor;
+
+    return () => {
+      document.documentElement.style.backgroundColor = '';
+      document.body.style.backgroundColor = '';
+    };
+  }, [location.pathname]);
+
   return (
     <>
       <Routes>

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { SystemStatusCard } from './SystemStatusCard';
 import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { CollapsibleCard } from './ui/collapsible-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 // Import tab components
@@ -145,15 +145,17 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
           <div className={`flex-1 min-w-0 ${layoutOrders.content}`}>
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+            <CollapsibleCard
+              panelId="settings.quick-actions"
+              className="mb-4"
+              title={(
+                <span className="flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-gray-400" />
                   クイック操作
-                </CardTitle>
-              </CardHeader>
-			  <CardContent>
-				<div className="flex flex-wrap gap-2">
+                </span>
+              )}
+            >
+              <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline"
             onClick={handleOpenOverlay}
             className="flex items-center space-x-1">
@@ -179,8 +181,7 @@ export const SettingsPage: React.FC = () => {
                     <span>プレゼント(デバッグ)</span>
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+            </CollapsibleCard>
             <SystemStatusCard
               featureStatus={featureStatus}
               authStatus={authStatus}

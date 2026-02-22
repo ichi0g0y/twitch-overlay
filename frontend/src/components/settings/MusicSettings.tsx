@@ -1,21 +1,17 @@
 import React from 'react';
 import MusicManagerEmbed from '../music/MusicManagerEmbed';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 
 export const MusicSettings: React.FC = () => {
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>音楽管理</CardTitle>
-          <CardDescription>
-            配信中の音楽を管理します。URLパラメータ ?playlist=プレイリスト名 で特定のプレイリストを再生できます。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleCard
+        panelId="settings.music.manager"
+        title="音楽管理"
+        description="配信中の音楽を管理します。URLパラメータ ?playlist=プレイリスト名 で特定のプレイリストを再生できます。"
+      >
           <MusicManagerEmbed />
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     </div>
   );
 };

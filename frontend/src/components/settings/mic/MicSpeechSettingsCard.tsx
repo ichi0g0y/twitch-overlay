@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { SettingsPageContext } from '../../../hooks/useSettingsPage';
-import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card';
+import { CollapsibleCard } from '../../ui/collapsible-card';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
@@ -13,11 +13,11 @@ export const MicSpeechSettingsCard: React.FC = () => {
   const { overlaySettings, updateOverlaySettings } = context;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>音声認識（Web Speech）</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <CollapsibleCard
+      panelId="settings.mic.speech"
+      title="音声認識（Web Speech）"
+      contentClassName="space-y-4"
+    >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="mic-speech-lang">認識言語（例: ja / en / ko）</Label>
@@ -116,7 +116,6 @@ export const MicSpeechSettingsCard: React.FC = () => {
             <WordFilterManager />
           )}
         </div>
-      </CardContent>
-    </Card>
+    </CollapsibleCard>
   );
 };
