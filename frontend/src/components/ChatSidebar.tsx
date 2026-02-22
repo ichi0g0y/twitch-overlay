@@ -18,10 +18,10 @@ type SidebarSide = 'left' | 'right';
 
 type ChatSidebarProps = {
   side: SidebarSide;
-  onSideChange: (side: SidebarSide) => void;
   width: number;
   onWidthChange: (width: number) => void;
   avoidEdgeRail?: boolean;
+  embedded?: boolean;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -251,10 +251,10 @@ const readStoredActiveTab = (): string => {
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   side,
-  onSideChange,
   width,
   onWidthChange,
   avoidEdgeRail = false,
+  embedded = false,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -266,6 +266,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true';
   });
+  const isCollapsed = embedded ? false : collapsed;
   const [primaryMessages, setPrimaryMessages] = useState<ChatMessage[]>([]);
   const [ircChannels, setIrcChannels] = useState<string[]>(() => readIrcChannels());
   const [activeTab, setActiveTab] = useState<string>(() => readStoredActiveTab());
@@ -289,6 +290,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
 
   const handleToggle = () => {
+    if (embedded) return;
     setCollapsed((prev) => {
       const next = !prev;
       if (typeof window !== 'undefined') {
@@ -299,7 +301,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   };
 
   const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (collapsed) return;
+    if (isCollapsed) return;
     event.preventDefault();
     resizeStateRef.current = { startX: event.clientX, startWidth: width };
     setResizing(true);
@@ -782,18 +784,18 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTab, ircMessagesByChannel, primaryMessages]);
 
   useEffect(() => {
-    if (collapsed) return;
+    if (isCollapsed) return;
     const container = listRef.current;
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [activeMessages, activeTab, collapsed]);
+  }, [activeMessages, activeTab, isCollapsed]);
 
   const asideWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)] xl:w-[var(--chat-sidebar-reserved-width)]';
   const fixedWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)]';
   const collapseIcon = side === 'left' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />;
   const expandIcon = <span className="text-xs leading-none">＞</span>;
-  const toggleIcon = collapsed ? expandIcon : collapseIcon;
+  const toggleIcon = isCollapsed ? expandIcon : collapseIcon;
   const resizeHandleSideClass = side === 'left' ? 'right-0' : 'left-0';
   const metaFontSize = Math.max(10, fontSize - 2);
   const translationFontSize = Math.max(10, fontSize - 2);
@@ -801,12 +803,21 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     ? (avoidEdgeRail ? 'lg:left-4 xl:left-16' : 'lg:left-4')
     : (avoidEdgeRail ? 'lg:right-4 xl:right-16' : 'lg:right-4');
   const fixedOffsetClass = 'lg:top-6';
-  const effectiveSidebarWidth = collapsed ? COLLAPSED_DESKTOP_WIDTH : width;
+  const effectiveSidebarWidth = isCollapsed ? COLLAPSED_DESKTOP_WIDTH : width;
   const reservedSidebarWidth = effectiveSidebarWidth + (avoidEdgeRail ? EDGE_RAIL_OFFSET_XL_PX : 0);
   const sidebarStyle = useMemo(() => ({
     '--chat-sidebar-width': `${effectiveSidebarWidth}px`,
     '--chat-sidebar-reserved-width': `${reservedSidebarWidth}px`,
   } as React.CSSProperties), [effectiveSidebarWidth, reservedSidebarWidth]);
+  const asideClass = embedded
+    ? 'h-full w-full'
+    : `transition-all duration-200 self-start ${asideWidthClass}`;
+  const wrapperClass = embedded
+    ? 'h-full w-full'
+    : `${fixedWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`;
+  const panelClass = embedded
+    ? `h-full bg-white dark:bg-gray-800 border-gray-700 ${side === 'left' ? 'border-r' : 'border-l'} flex flex-col overflow-hidden relative`
+    : 'h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative';
 
   const emptyState = useMemo(() => (
     <div className="flex flex-col items-center justify-center h-full text-sm text-gray-500 dark:text-gray-400">
@@ -920,13 +931,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   };
 
   return (
-    <aside className={`transition-all duration-200 self-start ${asideWidthClass}`} style={sidebarStyle}>
-      <div
-        className={`${fixedWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`}
-        style={sidebarStyle}
-      >
-        <div className="h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative">
-          {!collapsed && (
+    <aside className={asideClass} style={embedded ? undefined : sidebarStyle}>
+      <div className={wrapperClass} style={embedded ? undefined : sidebarStyle}>
+        <div className={panelClass}>
+          {!isCollapsed && (
             <>
               <div
                 role="separator"
@@ -965,15 +973,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   >
                     <Settings className="w-4 h-4" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleToggle}
-                    className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-                    aria-label="コメント欄を閉じる"
-                    aria-expanded={!collapsed}
-                  >
-                    {toggleIcon}
-                  </button>
+                  {!embedded && (
+                    <button
+                      type="button"
+                      onClick={handleToggle}
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
+                      aria-label="コメント欄を閉じる"
+                      aria-expanded={!isCollapsed}
+                    >
+                      {toggleIcon}
+                    </button>
+                  )}
                 </div>
                 {settingsOpen && (
                   <div
@@ -993,33 +1003,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             className="flex-1"
                           />
                           <span className="w-8 text-right text-sm text-gray-600 dark:text-gray-300">{fontSize}px</span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400">配置</div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onSideChange('left')}
-                            className={`h-8 rounded-md border text-sm transition ${
-                              side === 'left'
-                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                            }`}
-                          >
-                            左
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSideChange('right')}
-                            className={`h-8 rounded-md border text-sm transition ${
-                              side === 'right'
-                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                            }`}
-                          >
-                            右
-                          </button>
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2">
@@ -1116,7 +1099,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </>
           )}
 
-          {collapsed ? (
+          {isCollapsed ? (
             <button
               type="button"
               onClick={handleToggle}
