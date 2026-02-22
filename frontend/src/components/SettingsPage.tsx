@@ -587,6 +587,7 @@ type FollowedChannelsRailProps = {
   channels: FollowedChannelRailItem[];
   loading: boolean;
   error: string;
+  canStartRaid: boolean;
   chatWidth: number;
   chatPanel: React.ReactNode;
   onSideChange: (side: 'left' | 'right') => void;
@@ -603,6 +604,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   channels,
   loading,
   error,
+  canStartRaid,
   chatWidth,
   chatPanel,
   onSideChange,
@@ -622,6 +624,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
   const [hoverAnchor, setHoverAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
   const copiedResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -671,6 +674,17 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       }
     };
   }, []);
+
+  useEffect(() => {
+    return subscribeIrcChannels((channels) => {
+      setIrcConnectedChannels(channels);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (canStartRaid) return;
+    setRaidConfirmChannelId(null);
+  }, [canStartRaid]);
 
   useEffect(() => {
     if (!railMenuOpen) return;
@@ -796,6 +810,8 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
               const selected = openChannelId === channel.broadcaster_id;
               const channelDisplayName = channel.broadcaster_name || channel.broadcaster_login;
               const channelLogin = channel.broadcaster_login;
+              const normalizedChannelLogin = channelLogin.trim().toLowerCase();
+              const alreadyConnected = ircConnectedChannels.includes(normalizedChannelLogin);
               return (
                 <div key={channel.broadcaster_id} className="group relative flex justify-center">
                   <button
@@ -919,19 +935,24 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       </div>
                       <button
                         type="button"
+                        disabled={alreadyConnected}
                         onClick={() => {
                           onAddIrcPreview(channel.broadcaster_login);
                           setOpenChannelId(null);
                           setMenuAnchor(null);
                           setRaidConfirmChannelId(null);
                         }}
-                        className="mb-1 inline-flex h-8 w-full items-center justify-center rounded border border-emerald-600/60 text-xs text-emerald-300 hover:bg-emerald-700/20"
+                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                          alreadyConnected
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : 'border-emerald-600/60 text-emerald-300 hover:bg-emerald-700/20'
+                        }`}
                       >
-                        コメント欄に接続
+                        {alreadyConnected ? '接続済み' : 'コメント欄に接続'}
                       </button>
                       <button
                         type="button"
-                        disabled={raidingChannelId === channel.broadcaster_id}
+                        disabled={!canStartRaid || raidingChannelId === channel.broadcaster_id}
                         onClick={async () => {
                           if (raidConfirmChannelId !== channel.broadcaster_id) {
                             setRaidConfirmChannelId(channel.broadcaster_id);
@@ -952,7 +973,9 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                           }
                         }}
                         className={`inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-                          raidConfirmChannelId === channel.broadcaster_id
+                          !canStartRaid
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : raidConfirmChannelId === channel.broadcaster_id
                             ? 'border-red-500/80 text-red-200 hover:bg-red-700/20'
                             : 'border-gray-600 text-gray-200 hover:bg-gray-800'
                         } disabled:opacity-60`}
@@ -980,7 +1003,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             })}
             {hoveredChannel && hoverAnchor && (
               <div
-                className={`pointer-events-none fixed z-[70] -translate-y-1/2 rounded bg-black/90 px-2 py-1 text-xs text-gray-100 shadow ${
+                className={`pointer-events-none fixed z-[70] -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 shadow ${
                   side === 'left' ? '' : '-translate-x-full'
                 }`}
                 style={{ top: `${hoverAnchor.top}px`, left: `${hoverAnchor.left}px` }}
@@ -1568,6 +1591,9 @@ export const SettingsPage: React.FC = () => {
   }, [connectIrcChannel, setNodes]);
 
   const startRaidToChannel = async (channel: FollowedChannelRailItem) => {
+    if (!streamStatus?.is_live) {
+      throw new Error('配信中のみレイドできます');
+    }
     const ownChannelLogin = (twitchUserInfo?.login || '').trim().toLowerCase();
     if (!ownChannelLogin) {
       throw new Error('Twitchユーザーが未設定です');
@@ -1976,6 +2002,7 @@ export const SettingsPage: React.FC = () => {
           channels={followedChannels}
           loading={followedChannelsLoading}
           error={followedChannelsError}
+          canStartRaid={Boolean(streamStatus?.is_live)}
           chatWidth={chatSidebarWidth}
           chatPanel={(
             <ChatSidebar
