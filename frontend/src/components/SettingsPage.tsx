@@ -1324,12 +1324,11 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
               ref={cardMenuTriggerRef}
               type="button"
               onClick={() => setCardMenuOpen((prev) => !prev)}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 text-xs text-gray-200 hover:bg-gray-800"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900/70 text-gray-200 hover:bg-gray-800"
               aria-expanded={cardMenuOpen}
               aria-label="設定カードを追加"
             >
               <Plus className="h-3.5 w-3.5" />
-              カード追加
             </button>
             {cardMenuOpen && (
               <div
