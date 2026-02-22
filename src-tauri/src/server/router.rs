@@ -252,6 +252,7 @@ pub fn create_router(state: SharedState) -> Router {
         // --- Chat ---
         .route("/api/chat/messages", get(api::chat::get_messages))
         .route("/api/chat/history", get(api::chat::get_history))
+        .route("/api/chat/post", post(api::chat::post_chat_message))
         .route("/api/chat/cleanup", post(api::chat::cleanup_messages))
         .route("/api/chat/avatar/{user_id}", get(api::chat::get_avatar))
         // --- Twitch ---

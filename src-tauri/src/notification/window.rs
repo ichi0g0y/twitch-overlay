@@ -23,6 +23,8 @@ const SETTING_WIDTH: &str = "NOTIFICATION_WINDOW_WIDTH";
 const SETTING_HEIGHT: &str = "NOTIFICATION_WINDOW_HEIGHT";
 const SETTING_SCREEN_INDEX: &str = "NOTIFICATION_WINDOW_SCREEN_INDEX";
 const SETTING_SCREEN_HASH: &str = "NOTIFICATION_WINDOW_SCREEN_HASH";
+const SETTING_MOVABLE: &str = "NOTIFICATION_WINDOW_MOVABLE";
+const SETTING_RESIZABLE: &str = "NOTIFICATION_WINDOW_RESIZABLE";
 
 const DEFAULT_WIDTH: u32 = 400;
 const DEFAULT_HEIGHT: u32 = 150;
@@ -53,10 +55,13 @@ pub fn ensure_window(state: &SharedState) -> Result<WebviewWindow, String> {
     };
 
     if let Some(existing) = app.get_webview_window(NOTIFICATION_WINDOW_LABEL) {
+        apply_interaction_settings(&existing, state.db());
         return Ok(existing);
     }
 
     let (width, height) = load_size(state.db());
+    let (movable, resizable) = load_interaction_settings(state.db());
+    let effective_resizable = movable && resizable;
     let window = WebviewWindowBuilder::new(
         &app,
         NOTIFICATION_WINDOW_LABEL,
@@ -64,13 +69,17 @@ pub fn ensure_window(state: &SharedState) -> Result<WebviewWindow, String> {
     )
     .title("Twitch Chat")
     .visible(false)
+    // Keep window chrome disabled so transparent corners can create a rounded window shape.
     .decorations(false)
+    .transparent(true)
+    .shadow(false)
     .always_on_top(true)
-    .resizable(true)
+    .resizable(effective_resizable)
     .inner_size(width as f64, height as f64)
     .build()
     .map_err(|e| format!("Failed to create notification window: {e}"))?;
 
+    apply_interaction_settings(&window, state.db());
     restore_layout(&window, state.db(), width, height);
     install_event_handlers(&window, state.db().clone());
 
@@ -82,6 +91,7 @@ pub fn ensure_window(state: &SharedState) -> Result<WebviewWindow, String> {
 pub fn show(state: &SharedState) {
     match ensure_window(state) {
         Ok(window) => {
+            let _ = window.set_always_on_top(true);
             if let Err(e) = window.show() {
                 tracing::warn!("Failed to show notification window: {e}");
             }
@@ -162,13 +172,14 @@ fn persist_current_layout(window: &WebviewWindow, db: &Database) {
     let Ok(pos) = window.outer_position() else {
         return;
     };
-    let Ok(size) = window.outer_size() else {
+    let Ok(outer_size) = window.outer_size() else {
         return;
     };
+    let inner_size = window.inner_size().unwrap_or(outer_size);
 
     let screens = monitor::get_all_screens(&window.app_handle());
     let screen_index =
-        monitor::find_screen_containing(&screens, pos.x, pos.y, size.width, size.height)
+        monitor::find_screen_containing(&screens, pos.x, pos.y, outer_size.width, outer_size.height)
             .unwrap_or(0);
     save_position(
         db,
@@ -178,7 +189,8 @@ fn persist_current_layout(window: &WebviewWindow, db: &Database) {
             screen_index,
         },
     );
-    save_size(db, size.width, size.height);
+    // Persist content size so restores remain stable even with window decorations.
+    save_size(db, inner_size.width, inner_size.height);
 
     if !screens.is_empty() {
         let sm = SettingsManager::new(db.clone());
@@ -252,6 +264,22 @@ fn load_size(db: &Database) -> (u32, u32) {
     (width, height)
 }
 
+fn load_interaction_settings(db: &Database) -> (bool, bool) {
+    let sm = SettingsManager::new(db.clone());
+    let movable = parse_saved_bool(sm.get_setting(SETTING_MOVABLE).unwrap_or_default(), true);
+    let resizable = parse_saved_bool(sm.get_setting(SETTING_RESIZABLE).unwrap_or_default(), true);
+    (movable, resizable)
+}
+
+fn apply_interaction_settings(window: &WebviewWindow, db: &Database) {
+    let (movable, resizable) = load_interaction_settings(db);
+    let effective_resizable = movable && resizable;
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_decorations(false);
+    let _ = window.set_shadow(false);
+    let _ = window.set_resizable(effective_resizable);
+}
+
 fn save_size(db: &Database, width: u32, height: u32) {
     let sm = SettingsManager::new(db.clone());
     let _ = sm.set_setting(SETTING_WIDTH, &width.to_string());
@@ -263,6 +291,16 @@ fn parse_saved_i32(value: String) -> Option<i32> {
         return Some(i);
     }
     value.parse::<f64>().ok().map(|f| f.round() as i32)
+}
+
+fn parse_saved_bool(value: String, default_value: bool) -> bool {
+    if value.eq_ignore_ascii_case("true") {
+        return true;
+    }
+    if value.eq_ignore_ascii_case("false") {
+        return false;
+    }
+    default_value
 }
 
 fn load_saved_coordinate(

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, MessageCircle, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageCircle, Send, Settings } from 'lucide-react';
 import { buildApiUrl } from '../utils/api';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
+import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 
 type SidebarSide = 'left' | 'right';
@@ -102,6 +103,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
+  const [draftMessage, setDraftMessage] = useState('');
+  const [postingMessage, setPostingMessage] = useState(false);
 
   const trimMessagesByAge = (items: ChatMessage[]) => {
     const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
@@ -327,6 +330,50 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     </div>
   ), []);
 
+  const sendComment = async () => {
+    const text = draftMessage.trim();
+    if (!text || postingMessage) {
+      return;
+    }
+
+    setPostingMessage(true);
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/post'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json().catch(() => null);
+      const posted = payload?.message;
+      if (posted && typeof posted === 'object') {
+        const nextMessage: ChatMessage = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          messageId: posted.messageId,
+          userId: posted.userId,
+          username: posted.username || 'WebUI',
+          message: posted.message || text,
+          fragments: normalizeFragments(posted.fragments ?? posted.fragments_json ?? posted.fragmentsJson),
+          avatarUrl: posted.avatarUrl,
+          translation: posted.translation,
+          translationStatus: posted.translationStatus,
+          translationLang: posted.translationLang,
+          timestamp: posted.timestamp,
+        };
+        setMessages(prev => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
+      }
+
+      setDraftMessage('');
+    } catch (error) {
+      console.error('[ChatSidebar] Failed to post comment:', error);
+    } finally {
+      setPostingMessage(false);
+    }
+  };
+
   return (
     <aside className={`transition-all duration-200 self-start ${sidebarWidthClass}`} style={sidebarStyle}>
       <div
@@ -444,25 +491,53 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <span className="text-[10px] leading-none">開く</span>
           </button>
         ) : (
-          <div
-            ref={listRef}
-            className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
-          >
-            {messages.length === 0 ? (
-              emptyState
-            ) : (
-              messages.map((msg, index) => (
-                <ChatSidebarItem
-                  key={msg.id}
-                  message={msg}
-                  index={index}
-                  fontSize={fontSize}
-                  metaFontSize={metaFontSize}
-                  translationFontSize={translationFontSize}
-                  timestampLabel={formatTime(msg.timestamp)}
+          <div className="flex-1 flex flex-col min-h-0">
+            <div
+              ref={listRef}
+              className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+            >
+              {messages.length === 0 ? (
+                emptyState
+              ) : (
+                messages.map((msg, index) => (
+                  <ChatSidebarItem
+                    key={msg.id}
+                    message={msg}
+                    index={index}
+                    fontSize={fontSize}
+                    metaFontSize={metaFontSize}
+                    translationFontSize={translationFontSize}
+                    timestampLabel={formatTime(msg.timestamp)}
+                  />
+                ))
+              )}
+            </div>
+            <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={draftMessage}
+                  onChange={(event) => setDraftMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      void sendComment();
+                    }
+                  }}
+                  placeholder="コメントを入力..."
+                  className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-600"
                 />
-              ))
-            )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void sendComment()}
+                  disabled={postingMessage || draftMessage.trim().length === 0}
+                >
+                  <Send className="w-4 h-4 mr-1" />
+                  投稿
+                </Button>
+              </div>
+            </div>
           </div>
         )}
         </div>

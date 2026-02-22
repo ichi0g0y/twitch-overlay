@@ -863,6 +863,20 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         "Notification screen hash",
     ),
     (
+        "NOTIFICATION_WINDOW_MOVABLE",
+        "true",
+        false,
+        false,
+        "Allow moving notification window",
+    ),
+    (
+        "NOTIFICATION_WINDOW_RESIZABLE",
+        "true",
+        false,
+        false,
+        "Allow resizing notification window",
+    ),
+    (
         "NOTIFICATION_DISPLAY_DURATION",
         "5",
         false,

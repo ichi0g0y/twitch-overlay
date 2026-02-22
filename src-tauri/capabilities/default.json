@@ -2,9 +2,11 @@
   "$schema": "https://raw.githubusercontent.com/nicosolo/tauri-schema/refs/heads/master/capability.json",
   "identifier": "default",
   "description": "Default capabilities for the main window",
-  "windows": ["main", "tray-settings"],
+  "windows": ["main", "tray-settings", "twitch-chat-notification"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
     "shell:allow-open"
   ]
 }

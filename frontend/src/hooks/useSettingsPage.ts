@@ -383,17 +383,21 @@ export const useSettingsPage = () => {
   const handleTestNotification = async () => {
     setTestingNotification(true);
     try {
-      if (!('Notification' in window)) {
-        throw new Error('このブラウザは通知APIに対応していません');
-      }
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        throw new Error('通知が許可されていません');
-      }
-      new Notification('Twitch Overlay', {
-        body: 'テスト通知だす',
+      const response = await fetch(buildApiUrl('/api/chat/post'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'WebUI',
+          user_id: 'webui-local',
+          message: 'テスト通知',
+        }),
       });
-      toast.success('ブラウザ通知を送信しました');
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      toast.success('通知ウィンドウのテスト通知を送信しました');
     } catch (err: any) {
       toast.error(`テスト通知エラー: ${err.message}`);
     } finally {

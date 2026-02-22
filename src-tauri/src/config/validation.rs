@@ -121,6 +121,8 @@ fn is_boolean_setting(key: &str) -> bool {
             | "CLOCK_SHOW_ICONS"
             | "DEBUG_OUTPUT"
             | "NOTIFICATION_ENABLED"
+            | "NOTIFICATION_WINDOW_MOVABLE"
+            | "NOTIFICATION_WINDOW_RESIZABLE"
             | "REWARD_COUNT_ENABLED"
             | "LOTTERY_ENABLED"
             | "LOTTERY_LOCKED"
