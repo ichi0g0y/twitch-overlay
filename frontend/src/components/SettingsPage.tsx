@@ -349,9 +349,14 @@ const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
   return kind;
 };
 
+const snapWorkspaceSizeToGrid = (size: { width: number; height: number }) => ({
+  width: Math.max(WORKSPACE_SNAP_GRID[0], Math.round(size.width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0]),
+  height: Math.max(WORKSPACE_SNAP_GRID[1], Math.round(size.height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1]),
+});
+
 const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
-  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return { width: 640, height: 420 };
-  if (kind === 'twitch-custom-rewards') return { width: 960, height: 640 };
+  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return snapWorkspaceSizeToGrid({ width: 640, height: 420 });
+  if (kind === 'twitch-custom-rewards') return snapWorkspaceSizeToGrid({ width: 960, height: 640 });
   if (
     kind === 'overlay-music-player' ||
     kind === 'overlay-fax' ||
@@ -360,10 +365,10 @@ const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
     kind === 'overlay-reward-count' ||
     kind === 'overlay-lottery'
   ) {
-    return { width: 820, height: 620 };
+    return snapWorkspaceSizeToGrid({ width: 820, height: 620 });
   }
-  if (kind === 'logs' || kind === 'api') return { width: 760, height: 560 };
-  return { width: 640, height: 520 };
+  if (kind === 'logs' || kind === 'api') return snapWorkspaceSizeToGrid({ width: 760, height: 560 });
+  return snapWorkspaceSizeToGrid({ width: 640, height: 520 });
 };
 
 const resolveWorkspaceCardMinSize = (kind: WorkspaceCardKind) => {
@@ -1030,7 +1035,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                             : 'border-emerald-600/60 text-emerald-300 hover:bg-emerald-700/20'
                         }`}
                       >
-                        {alreadyConnected ? '接続済み' : 'コメント欄に接続'}
+                        {alreadyConnected ? '接続済み' : '接続'}
                       </button>
                       <button
                         type="button"
@@ -1952,6 +1957,36 @@ export const SettingsPage: React.FC = () => {
     };
   }, [authStatus?.authenticated, featureStatus?.twitch_configured]);
 
+  useEffect(() => {
+    return subscribeIrcChannels((channels) => {
+      const connected = new Set(
+        channels
+          .map((channel) => channel.trim().toLowerCase())
+          .filter((channel) => channel !== ''),
+      );
+      setNodes((current) => {
+        const removedNodes = current.filter((node) => (
+          isPreviewIrcKind(node.data.kind)
+          && !connected.has(node.data.kind.slice('preview-irc:'.length).trim().toLowerCase())
+        ));
+        if (removedNodes.length === 0) return current;
+
+        const removedIds = new Set(removedNodes.map((node) => node.id));
+        const nextPositions = { ...lastWorkspaceCardPositionRef.current };
+        for (const node of removedNodes) {
+          nextPositions[node.data.kind] = {
+            x: node.position.x,
+            y: node.position.y,
+          };
+        }
+        lastWorkspaceCardPositionRef.current = nextPositions;
+        writeWorkspaceCardLastPositions(nextPositions);
+
+        return current.filter((node) => !removedIds.has(node.id));
+      });
+    });
+  }, [setNodes]);
+
   const addWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
     setNodes((current) => {
       if (current.some((node) => node.data.kind === kind)) {
@@ -1979,6 +2014,16 @@ export const SettingsPage: React.FC = () => {
         };
         lastWorkspaceCardPositionRef.current = nextPositions;
         writeWorkspaceCardLastPositions(nextPositions);
+        if (isPreviewIrcKind(target.data.kind)) {
+          const channelLogin = target.data.kind.slice('preview-irc:'.length).trim().toLowerCase();
+          if (channelLogin) {
+            const currentChannels = readIrcChannels();
+            const nextChannels = currentChannels.filter((channel) => channel !== channelLogin);
+            if (nextChannels.length !== currentChannels.length) {
+              writeIrcChannels(nextChannels);
+            }
+          }
+        }
       }
       return current.filter((node) => node.id !== id);
     });

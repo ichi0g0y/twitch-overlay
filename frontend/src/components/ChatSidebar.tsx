@@ -81,7 +81,14 @@ const formatTime = (timestamp?: string) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 };
 
-const emoteUrlFromId = (id: string) => `${EMOTE_CDN_BASE}/${id}/static/light/2.0`;
+const emoteUrlFromId = (id: string) => `${EMOTE_CDN_BASE}/${id}/default/light/2.0`;
+
+const normalizeEmoteUrl = (url: string) => {
+  const trimmed = url.trim();
+  if (trimmed === '') return trimmed;
+  if (!trimmed.includes('/emoticons/v2/')) return trimmed;
+  return trimmed.replace('/static/', '/default/');
+};
 
 const trimMessagesByAge = (items: ChatMessage[]) => {
   const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
@@ -139,7 +146,7 @@ const normalizeFragments = (raw: any): ChatFragment[] | undefined => {
       const emoteId = typeof emoteIdRaw === 'string' ? emoteIdRaw : undefined;
       const emoteUrlRaw = item.emoteUrl ?? item.emote_url;
       const emoteUrl = typeof emoteUrlRaw === 'string'
-        ? emoteUrlRaw
+        ? normalizeEmoteUrl(emoteUrlRaw)
         : emoteId
           ? emoteUrlFromId(emoteId)
           : undefined;
@@ -1002,69 +1009,36 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     setPostError('');
     setPostingMessage(true);
     try {
-      if (!isPrimaryTab) {
-        const connection = ircConnectionsRef.current.get(activeTab);
-        if (connection?.ws && connection.ws.readyState === WebSocket.OPEN) {
-          if (!connection.authenticated) {
-            throw new Error('IRCが匿名接続です。Twitch認証を確認してください。');
-          }
-          const ircText = sanitizeIrcMessage(text);
-          if (!ircText) {
-            throw new Error('投稿メッセージが空です');
-          }
-          connection.ws.send(`PRIVMSG #${activeTab} :${ircText}`);
-          // オプティミスティック表示：送信メッセージを即座にローカル表示
-          const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const optimisticMessage: ChatMessage = {
-            id: optimisticId,
-            messageId: optimisticId,
-            userId: connection.userId || undefined,
-            username: connection.displayName || connection.nick,
-            message: ircText,
-            fragments: [{ type: 'text', text: ircText }],
-            timestamp: new Date().toISOString(),
-          };
-          appendIrcMessage(activeTab, optimisticMessage);
-          // 署名を登録してTwitchエコー到着時に重複排除
-          shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
-          setDraftMessage('');
-          return;
-        }
+      if (isPrimaryTab) {
+        throw new Error('IRCタブを選択してから送信してください。');
       }
 
-      const targetChannel = isPrimaryTab ? undefined : activeTab;
-      const response = await fetch(buildApiUrl('/api/chat/post'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          channel: targetChannel,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const detail = payload?.error || payload?.message || `HTTP ${response.status}`;
-        throw new Error(String(detail));
+      const connection = ircConnectionsRef.current.get(activeTab);
+      if (!connection?.ws || connection.ws.readyState !== WebSocket.OPEN) {
+        throw new Error('IRCが未接続です。接続状態を確認してください。');
       }
-
-      const payload = await response.json().catch(() => null);
-      const posted = payload?.message;
-      if (posted && typeof posted === 'object' && isPrimaryTab) {
-        const nextMessage: ChatMessage = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          messageId: posted.messageId,
-          userId: posted.userId,
-          username: posted.username || 'WebUI',
-          message: posted.message || text,
-          fragments: normalizeFragments(posted.fragments ?? posted.fragments_json ?? posted.fragmentsJson),
-          avatarUrl: posted.avatarUrl,
-          translation: posted.translation,
-          translationStatus: posted.translationStatus,
-          translationLang: posted.translationLang,
-          timestamp: posted.timestamp,
-        };
-        setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, nextMessage])));
+      if (!connection.authenticated) {
+        throw new Error('IRCが匿名接続です。Twitch認証を確認してください。');
       }
+      const ircText = sanitizeIrcMessage(text);
+      if (!ircText) {
+        throw new Error('投稿メッセージが空です');
+      }
+      connection.ws.send(`PRIVMSG #${activeTab} :${ircText}`);
+      // オプティミスティック表示：送信メッセージを即座にローカル表示
+      const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimisticMessage: ChatMessage = {
+        id: optimisticId,
+        messageId: optimisticId,
+        userId: connection.userId || undefined,
+        username: connection.displayName || connection.nick,
+        message: ircText,
+        fragments: [{ type: 'text', text: ircText }],
+        timestamp: new Date().toISOString(),
+      };
+      appendIrcMessage(activeTab, optimisticMessage);
+      // 署名を登録してTwitchエコー到着時に重複排除
+      shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
 
       setDraftMessage('');
     } catch (error) {
