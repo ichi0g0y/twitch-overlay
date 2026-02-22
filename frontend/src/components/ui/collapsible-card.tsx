@@ -77,7 +77,7 @@ export function CollapsibleCard({
       <CardContent
         className={cn(
           'p-4 pt-0',
-          workspaceUi?.nodeMode ? 'min-h-0 flex-1 overflow-auto' : '',
+          workspaceUi?.nodeMode ? 'nodrag nopan nowheel min-h-0 flex-1 overflow-auto' : '',
           contentClassName,
         )}
       >
