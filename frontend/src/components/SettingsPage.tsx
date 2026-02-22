@@ -1,7 +1,8 @@
-import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
+  ControlButton,
   Controls,
   NodeResizer,
   ReactFlow,
@@ -47,6 +48,7 @@ const FOLLOWED_RAIL_WIDTH_PX = 48;
 const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
 const WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY = 'settings.workspace.reactflow.last_positions.v1';
+const WORKSPACE_SNAP_ENABLED_STORAGE_KEY = 'settings.workspace.reactflow.snap.enabled.v1';
 const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
 const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
@@ -1634,6 +1636,11 @@ export const SettingsPage: React.FC = () => {
   });
   const initialWorkspaceFlow = useMemo(() => readWorkspaceFlow(), []);
   const initialWorkspaceCardLastPositions = useMemo(() => readWorkspaceCardLastPositions(), []);
+  const [workspaceSnapEnabled, setWorkspaceSnapEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(WORKSPACE_SNAP_ENABLED_STORAGE_KEY);
+    return stored == null ? true : stored !== 'false';
+  });
   const initialWorkspace = useMemo(() => {
     if (initialWorkspaceFlow && initialWorkspaceFlow.nodes.length > 0) return initialWorkspaceFlow.nodes;
     return [
@@ -1852,6 +1859,11 @@ export const SettingsPage: React.FC = () => {
   }, [followedRailSide]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(WORKSPACE_SNAP_ENABLED_STORAGE_KEY, workspaceSnapEnabled ? 'true' : 'false');
+  }, [workspaceSnapEnabled]);
+
+  useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
 
@@ -1976,8 +1988,12 @@ export const SettingsPage: React.FC = () => {
     setNodes((current) => current.map((node) => {
       if (node.id !== id) return node;
       const minSize = resolveWorkspaceCardMinSize(node.data.kind);
-      const snappedWidth = Math.max(minSize.minWidth, Math.round(width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0]);
-      const snappedHeight = Math.max(minSize.minHeight, Math.round(height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1]);
+      const snappedWidth = workspaceSnapEnabled
+        ? Math.max(minSize.minWidth, Math.round(width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0])
+        : Math.max(minSize.minWidth, Math.round(width));
+      const snappedHeight = workspaceSnapEnabled
+        ? Math.max(minSize.minHeight, Math.round(height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1])
+        : Math.max(minSize.minHeight, Math.round(height));
       if (node.width === snappedWidth && node.height === snappedHeight) return node;
       return {
         ...node,
@@ -1990,7 +2006,7 @@ export const SettingsPage: React.FC = () => {
         },
       };
     }));
-  }, [setNodes]);
+  }, [setNodes, workspaceSnapEnabled]);
 
   const refreshPreview = useCallback((kind: WorkspaceCardKind) => {
     if (!isPreviewCardKind(kind)) return;
@@ -2200,7 +2216,7 @@ export const SettingsPage: React.FC = () => {
             nodeTypes={WORKSPACE_NODE_TYPES}
             minZoom={WORKSPACE_FLOW_MIN_ZOOM}
             maxZoom={WORKSPACE_FLOW_MAX_ZOOM}
-            snapToGrid
+            snapToGrid={workspaceSnapEnabled}
             snapGrid={WORKSPACE_SNAP_GRID}
             defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
             className="settings-workspace-flow bg-slate-950"
@@ -2208,7 +2224,16 @@ export const SettingsPage: React.FC = () => {
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#334155" gap={WORKSPACE_SNAP_GRID[0]} size={1} />
-            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100" />
+            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100">
+              <ControlButton
+                onClick={() => setWorkspaceSnapEnabled((current) => !current)}
+                title={workspaceSnapEnabled ? 'スナップ: ON' : 'スナップ: OFF'}
+                aria-label={workspaceSnapEnabled ? 'スナップをオフにする' : 'スナップをオンにする'}
+                className={`react-flow__controls-snap ${workspaceSnapEnabled ? '!text-emerald-300' : '!text-gray-400'}`}
+              >
+                <Magnet className="h-4 w-4" />
+              </ControlButton>
+            </Controls>
           </ReactFlow>
         </div>
 
