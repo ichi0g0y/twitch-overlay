@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, ChevronLeft, ChevronRight, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
 
 import { buildApiUrl } from '../utils/api';
 import {
@@ -69,10 +69,58 @@ type ResolvedIrcCredentials = {
   displayName: string;
 };
 
+type MessageOrderReversedByTab = Record<string, boolean>;
+
+type UserInfoPopupState = {
+  message: ChatMessage;
+  tabId: string;
+};
+
+type ChatUserProfileDetail = {
+  userId: string;
+  username: string;
+  avatarUrl: string;
+  displayName: string;
+  login: string;
+  description: string;
+  userType: string;
+  broadcasterType: string;
+  profileImageUrl: string;
+  coverImageUrl: string;
+  followerCount: number | null;
+  viewCount: number;
+  createdAt: string;
+};
+
+type CachedUserProfileDetail = {
+  profile: ChatUserProfileDetail;
+  fetchedAt: number;
+};
+
+type BadgeVisual = {
+  imageUrl: string;
+  label: string;
+};
+
+type IvrBadgeVersion = {
+  id?: string;
+  title?: string;
+  description?: string;
+  image_url_1x?: string;
+  image_url_2x?: string;
+  image_url_4x?: string;
+};
+
+type IvrBadgeSet = {
+  set_id?: string;
+  versions?: IvrBadgeVersion[];
+};
+
 const HISTORY_DAYS = 7;
 const COLLAPSE_STORAGE_KEY = 'chat_sidebar_collapsed';
 const ACTIVE_TAB_STORAGE_KEY = 'chat_sidebar_active_tab';
-const MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed';
+const MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed_by_tab';
+const LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed';
 const RESIZE_MIN_WIDTH = 220;
 const RESIZE_MAX_WIDTH = 520;
 const FONT_MIN_SIZE = 12;
@@ -86,6 +134,10 @@ const IRC_ANONYMOUS_PASS = 'SCHMOOPIIE';
 const PRIMARY_IRC_CONNECTION_PREFIX = '__primary_irc__';
 const COLLAPSED_DESKTOP_WIDTH = 48;
 const EDGE_RAIL_OFFSET_XL_PX = 64;
+const USER_PROFILE_CACHE_TTL_MS = 30_000;
+const USER_PROFILE_CACHE_INCOMPLETE_TTL_MS = 5_000;
+const IVR_BADGES_GLOBAL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/global';
+const IVR_BADGES_CHANNEL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/channel';
 
 const primaryIrcConnectionKey = (login: string) => `${PRIMARY_IRC_CONNECTION_PREFIX}${login}`;
 
@@ -115,33 +167,47 @@ const trimMessagesByAge = (items: ChatMessage[]) => {
   });
 };
 
+const pickPreferredFragments = (current?: ChatFragment[], incoming?: ChatFragment[]) => {
+  if (!current || current.length === 0) return incoming;
+  if (!incoming || incoming.length === 0) return current;
+  const currentHasEmote = current.some((fragment) => fragment.type === 'emote');
+  const incomingHasEmote = incoming.some((fragment) => fragment.type === 'emote');
+  if (!currentHasEmote && incomingHasEmote) return incoming;
+  return current;
+};
+
+const mergeBadgeKeys = (current?: string[], incoming?: string[]) => {
+  const merged = new Set<string>();
+  for (const key of current ?? []) {
+    const normalized = key.trim();
+    if (normalized !== '') merged.add(normalized);
+  }
+  for (const key of incoming ?? []) {
+    const normalized = key.trim();
+    if (normalized !== '') merged.add(normalized);
+  }
+  return merged.size > 0 ? Array.from(merged) : undefined;
+};
+
+const mergeChatMessage = (current: ChatMessage, incoming: ChatMessage): ChatMessage => ({
+  ...current,
+  messageId: current.messageId || incoming.messageId,
+  userId: current.userId || incoming.userId,
+  username: current.username || incoming.username,
+  message: current.message || incoming.message,
+  badgeKeys: mergeBadgeKeys(current.badgeKeys, incoming.badgeKeys),
+  fragments: pickPreferredFragments(current.fragments, incoming.fragments),
+  avatarUrl: current.avatarUrl || incoming.avatarUrl,
+  translation: current.translation || incoming.translation,
+  translationStatus: current.translationStatus || incoming.translationStatus,
+  translationLang: current.translationLang || incoming.translationLang,
+  timestamp: current.timestamp || incoming.timestamp,
+});
+
 const dedupeMessages = (items: ChatMessage[]) => {
   const idToIndex = new Map<string, number>();
   const signatureToIndex = new Map<string, number>();
   const next: ChatMessage[] = [];
-
-  const pickFragments = (current?: ChatFragment[], incoming?: ChatFragment[]) => {
-    if (!current || current.length === 0) return incoming;
-    if (!incoming || incoming.length === 0) return current;
-    const currentHasEmote = current.some((fragment) => fragment.type === 'emote');
-    const incomingHasEmote = incoming.some((fragment) => fragment.type === 'emote');
-    if (!currentHasEmote && incomingHasEmote) return incoming;
-    return current;
-  };
-
-  const mergeMessage = (current: ChatMessage, incoming: ChatMessage): ChatMessage => ({
-    ...current,
-    messageId: current.messageId || incoming.messageId,
-    userId: current.userId || incoming.userId,
-    username: current.username || incoming.username,
-    message: current.message || incoming.message,
-    fragments: pickFragments(current.fragments, incoming.fragments),
-    avatarUrl: current.avatarUrl || incoming.avatarUrl,
-    translation: current.translation || incoming.translation,
-    translationStatus: current.translationStatus || incoming.translationStatus,
-    translationLang: current.translationLang || incoming.translationLang,
-    timestamp: current.timestamp || incoming.timestamp,
-  });
 
   for (const item of items) {
     const messageId = (item.messageId || '').trim();
@@ -163,7 +229,7 @@ const dedupeMessages = (items: ChatMessage[]) => {
     if (duplicateIndex !== undefined) {
       const current = next[duplicateIndex];
       if (current) {
-        next[duplicateIndex] = mergeMessage(current, item);
+        next[duplicateIndex] = mergeChatMessage(current, item);
       }
       continue;
     }
@@ -295,6 +361,21 @@ const parseEmoteFragments = (message: string, emotesTag?: string): ChatFragment[
   return fragments.length > 0 ? fragments : undefined;
 };
 
+const parseBadgeKeys = (badgesTag?: string): string[] | undefined => {
+  if (!badgesTag) return undefined;
+  const keys = new Set<string>();
+  for (const rawEntry of badgesTag.split(',')) {
+    const entry = rawEntry.trim();
+    if (entry === '') continue;
+    const [setIdRaw, versionRaw = ''] = entry.split('/');
+    const setId = setIdRaw.trim();
+    const version = versionRaw.trim();
+    if (setId === '') continue;
+    keys.add(version === '' ? setId : `${setId}/${version}`);
+  }
+  return keys.size > 0 ? Array.from(keys) : undefined;
+};
+
 const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage } | null => {
   const match = line.match(/^(?:@([^ ]+) )?(?::([^ ]+) )?PRIVMSG #([^ ]+) :(.*)$/);
   if (!match) return null;
@@ -313,6 +394,7 @@ const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage 
     : new Date(timestampMillis).toISOString();
 
   const messageId = tags.id || `irc-${channel}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const badgeKeys = parseBadgeKeys(tags.badges);
   const fragments = parseEmoteFragments(rawMessage, tags.emotes);
 
   return {
@@ -323,6 +405,7 @@ const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage 
       userId,
       username,
       message: rawMessage,
+      badgeKeys,
       fragments,
       timestamp,
     },
@@ -345,9 +428,31 @@ const readStoredActiveTab = (): string => {
   return stored && stored.trim() !== '' ? stored : PRIMARY_CHAT_TAB_ID;
 };
 
-const readStoredMessageOrderReversed = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY) === 'true';
+const readStoredMessageOrderReversedByTab = (): MessageOrderReversedByTab => {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY);
+  if (raw && raw.trim() !== '') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const normalized: MessageOrderReversedByTab = {};
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof key === 'string' && key.trim() !== '' && value === true) {
+            normalized[key] = true;
+          }
+        }
+        return normalized;
+      }
+    } catch {
+      // ignore malformed payload and fall back to legacy key
+    }
+  }
+
+  // 旧フォーマット（単一フラグ）からの移行: メインタブの設定として復元する
+  if (window.localStorage.getItem(LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY) === 'true') {
+    return { [PRIMARY_CHAT_TAB_ID]: true };
+  }
+  return {};
 };
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -389,14 +494,26 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [draftMessage, setDraftMessage] = useState('');
   const [postingMessage, setPostingMessage] = useState(false);
   const [postError, setPostError] = useState('');
-  const [messageOrderReversed, setMessageOrderReversed] = useState<boolean>(() => readStoredMessageOrderReversed());
+  const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
+  const [userInfoPopup, setUserInfoPopup] = useState<UserInfoPopupState | null>(null);
+  const [userInfoProfile, setUserInfoProfile] = useState<ChatUserProfileDetail | null>(null);
+  const [userInfoLoading, setUserInfoLoading] = useState(false);
+  const [userInfoError, setUserInfoError] = useState('');
+  const [userInfoIdCopied, setUserInfoIdCopied] = useState(false);
   const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
   const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
   const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
   const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
-  const primaryRecentEchoKeysRef = useRef<Map<string, number>>(new Map());
+  const primaryRecentEchoKeysRef = useRef<Map<string, { sentAt: number; optimisticId: string }>>(new Map());
   const primaryIrcStartedRef = useRef(false);
+  const userProfileDetailCacheRef = useRef<Record<string, CachedUserProfileDetail>>({});
+  const userInfoFetchSeqRef = useRef(0);
+  const userInfoIdCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const globalBadgeCatalogRef = useRef<Map<string, BadgeVisual>>(new Map());
+  const channelBadgeCatalogRef = useRef<Record<string, Map<string, BadgeVisual>>>({});
+  const badgeCatalogInFlightRef = useRef<Set<string>>(new Set());
+  const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -491,28 +608,34 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const registerPrimaryEchoCandidate = useCallback((message: ChatMessage) => {
     const key = buildPrimaryEchoKey(message);
     if (!key) return;
-    primaryRecentEchoKeysRef.current.set(key, Date.now());
+    primaryRecentEchoKeysRef.current.set(key, {
+      sentAt: Date.now(),
+      optimisticId: message.id,
+    });
   }, [buildPrimaryEchoKey]);
 
-  const shouldIgnorePrimaryEcho = useCallback((message: ChatMessage) => {
+  const consumePrimaryEchoCandidate = useCallback((message: ChatMessage): string | null => {
     const key = buildPrimaryEchoKey(message);
-    if (!key) return false;
+    if (!key) return null;
 
     const now = Date.now();
     const ttlMs = 10000;
     const recent = primaryRecentEchoKeysRef.current;
-    for (const [staleKey, timestamp] of recent.entries()) {
-      if (now - timestamp > ttlMs) {
+    for (const [staleKey, candidate] of recent.entries()) {
+      if (now - candidate.sentAt > ttlMs) {
         recent.delete(staleKey);
       }
     }
 
-    const sentAt = recent.get(key);
-    if (typeof sentAt !== 'number') return false;
+    const candidate = recent.get(key);
+    if (!candidate) return null;
 
-    // 消費型: 1回だけエコー重複を抑止する
+    // 消費型: 1回だけエコー候補を使う
     recent.delete(key);
-    return (now - sentAt) < ttlMs;
+    if ((now - candidate.sentAt) >= ttlMs) {
+      return null;
+    }
+    return candidate.optimisticId;
   }, [buildPrimaryEchoKey]);
 
   const persistIrcMessage = useCallback(async (channel: string, message: ChatMessage) => {
@@ -561,6 +684,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         }
       }
 
+      return updated ? next : prev;
+    });
+
+    setPrimaryMessages((prev) => {
+      let updated = false;
+      const next = prev.map((message) => {
+        if (message.userId !== userId) return message;
+        updated = true;
+        return {
+          ...message,
+          username: profile.username || message.username,
+          avatarUrl: profile.avatarUrl || message.avatarUrl,
+        };
+      });
       return updated ? next : prev;
     });
   }, []);
@@ -632,6 +769,59 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return { ...createAnonymousCredentials(fallbackNick), login: '', userId: '', displayName: '' };
   }, []);
 
+  const buildBadgeCatalog = useCallback((sets: IvrBadgeSet[]) => {
+    const catalog = new Map<string, BadgeVisual>();
+    for (const set of sets) {
+      const setId = (set?.set_id || '').trim().toLowerCase();
+      if (setId === '') continue;
+      const versions = Array.isArray(set?.versions) ? set.versions : [];
+      for (const version of versions) {
+        const versionId = (version?.id || '').trim();
+        if (versionId === '') continue;
+        const imageUrl = (version?.image_url_2x || version?.image_url_4x || version?.image_url_1x || '').trim();
+        const title = (version?.title || '').trim();
+        const description = (version?.description || '').trim();
+        const label = description !== '' ? `${title || setId}: ${description}` : (title || setId);
+        catalog.set(`${setId}/${versionId}`, { imageUrl, label });
+      }
+    }
+    return catalog;
+  }, []);
+
+  const ensureBadgeCatalog = useCallback(async (channelLogin?: string) => {
+    const loadCatalog = async (cacheKey: string, url: string, onSuccess: (catalog: Map<string, BadgeVisual>) => void) => {
+      if (badgeCatalogInFlightRef.current.has(cacheKey)) return;
+      badgeCatalogInFlightRef.current.add(cacheKey);
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const sets = Array.isArray(payload) ? payload as IvrBadgeSet[] : [];
+        const catalog = buildBadgeCatalog(sets);
+        onSuccess(catalog);
+        setBadgeCatalogVersion((v) => v + 1);
+      } catch (error) {
+        console.warn('[ChatSidebar] Failed to load badge catalog:', error);
+      } finally {
+        badgeCatalogInFlightRef.current.delete(cacheKey);
+      }
+    };
+
+    if (globalBadgeCatalogRef.current.size === 0) {
+      void loadCatalog('global', IVR_BADGES_GLOBAL_ENDPOINT, (catalog) => {
+        globalBadgeCatalogRef.current = catalog;
+      });
+    }
+
+    const normalizedChannel = normalizeTwitchChannelName(channelLogin || '') || '';
+    if (normalizedChannel !== '' && !channelBadgeCatalogRef.current[normalizedChannel]) {
+      const url = `${IVR_BADGES_CHANNEL_ENDPOINT}?login=${encodeURIComponent(normalizedChannel)}`;
+      void loadCatalog(`channel:${normalizedChannel}`, url, (catalog) => {
+        channelBadgeCatalogRef.current[normalizedChannel] = catalog;
+      });
+    }
+  }, [buildBadgeCatalog]);
+
   const attachIrcSocket = useCallback((connection: IrcConnection) => {
     if (connection.stopped) return;
 
@@ -679,9 +869,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             ws.send(line.replace(/^PING/, 'PONG'));
             continue;
           }
-          if (connection.isPrimary) {
-            continue;
-          }
           if (shouldIgnoreDuplicateIrcLine(line)) {
             continue;
           }
@@ -691,9 +878,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           if (shouldIgnoreDuplicateIrcMessage(connection.channel, parsed.message)) {
             continue;
           }
-          appendIrcMessage(connection.channel, parsed.message);
-          void hydrateIrcUserProfile(parsed.message.userId, parsed.message.username);
-          void persistIrcMessage(connection.channel, parsed.message);
+
+          const profile = parsed.message.userId ? ircUserProfilesRef.current[parsed.message.userId] : undefined;
+          const mergedMessage: ChatMessage = profile
+            ? {
+              ...parsed.message,
+              username: profile.username || parsed.message.username,
+              avatarUrl: profile.avatarUrl || parsed.message.avatarUrl,
+            }
+            : parsed.message;
+
+          if (connection.isPrimary) {
+            setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, mergedMessage])));
+          } else {
+            appendIrcMessage(connection.channel, mergedMessage);
+            void persistIrcMessage(connection.channel, mergedMessage);
+          }
+          void hydrateIrcUserProfile(mergedMessage.userId, mergedMessage.username);
         }
       };
 
@@ -853,6 +1054,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             userId: item.userId ?? item.user_id,
             username: item.username,
             message: item.message,
+            badgeKeys: Array.isArray(item.badge_keys) ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
             avatarUrl: item.avatarUrl ?? item.avatar_url,
             translation: item.translation ?? item.translation_text,
@@ -899,6 +1101,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             userId: data.userId,
             username: data.username,
             message: data.message,
+            badgeKeys: Array.isArray(data.badge_keys) ? data.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(data.fragments ?? data.fragments_json ?? data.fragmentsJson),
             avatarUrl: data.avatarUrl,
             translation: data.translation,
@@ -906,10 +1109,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             translationLang: data.translationLang,
             timestamp: data.timestamp,
           };
-          if (shouldIgnorePrimaryEcho(nextMessage)) {
-            return;
-          }
+          const optimisticId = consumePrimaryEchoCandidate(nextMessage);
           setPrimaryMessages((prev) => {
+            if (optimisticId) {
+              const index = prev.findIndex((item) => item.id === optimisticId || item.messageId === optimisticId);
+              if (index >= 0) {
+                const patched = [...prev];
+                patched[index] = mergeChatMessage(patched[index], nextMessage);
+                return dedupeMessages(trimMessagesByAge(patched));
+              }
+            }
             const next = [...prev, nextMessage];
             return dedupeMessages(trimMessagesByAge(next));
           });
@@ -938,7 +1147,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [shouldIgnorePrimaryEcho]);
+  }, [consumePrimaryEchoCandidate]);
 
   useEffect(() => {
     writeIrcChannels(ircChannels);
@@ -978,6 +1187,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             userId: item.userId ?? item.user_id,
             username: item.username || '',
             message: item.message || '',
+            badgeKeys: Array.isArray(item.badge_keys) ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
             avatarUrl: item.avatarUrl ?? item.avatar_url,
             timestamp: item.timestamp ?? (typeof item.created_at === 'number'
@@ -1022,14 +1232,156 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY, String(messageOrderReversed));
-  }, [messageOrderReversed]);
+    window.localStorage.setItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY, JSON.stringify(messageOrderReversedByTab));
+    window.localStorage.removeItem(LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY);
+  }, [messageOrderReversedByTab]);
 
   useEffect(() => {
     if (activeTab === PRIMARY_CHAT_TAB_ID) return;
     if (ircChannels.includes(activeTab)) return;
     setActiveTab(PRIMARY_CHAT_TAB_ID);
   }, [activeTab, ircChannels]);
+
+  useEffect(() => {
+    if (!userInfoPopup) return;
+    setUserInfoPopup(null);
+  }, [activeTab, isCollapsed]);
+
+  useEffect(() => {
+    setUserInfoIdCopied(false);
+    if (userInfoIdCopiedTimerRef.current !== null) {
+      clearTimeout(userInfoIdCopiedTimerRef.current);
+      userInfoIdCopiedTimerRef.current = null;
+    }
+  }, [userInfoPopup]);
+
+  useEffect(() => {
+    return () => {
+      if (userInfoIdCopiedTimerRef.current !== null) {
+        clearTimeout(userInfoIdCopiedTimerRef.current);
+        userInfoIdCopiedTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userInfoPopup) {
+      setUserInfoProfile(null);
+      setUserInfoLoading(false);
+      setUserInfoError('');
+      return;
+    }
+
+    const userId = (userInfoPopup.message.userId || '').trim();
+    const loginHint = (userInfoPopup.message.username || '').trim().toLowerCase();
+    if (!userId && !loginHint) {
+      setUserInfoProfile(null);
+      setUserInfoLoading(false);
+      setUserInfoError('このコメントにはユーザー識別情報がなく、プロフィールを取得できません。');
+      return;
+    }
+
+    const cacheKey = userId || `login:${loginHint}`;
+    const cached = userProfileDetailCacheRef.current[cacheKey];
+    const ttl = cached?.profile.followerCount == null
+      ? USER_PROFILE_CACHE_INCOMPLETE_TTL_MS
+      : USER_PROFILE_CACHE_TTL_MS;
+    if (cached && (Date.now() - cached.fetchedAt) <= ttl) {
+      setUserInfoProfile(cached.profile);
+      setUserInfoLoading(false);
+      setUserInfoError('');
+      return;
+    }
+
+    let cancelled = false;
+    const seq = ++userInfoFetchSeqRef.current;
+    setUserInfoProfile(null);
+    setUserInfoLoading(true);
+    setUserInfoError('');
+
+    const loadUserProfileDetail = async () => {
+      try {
+        const response = await fetch(buildApiUrl('/api/chat/user-profile/detail'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId || undefined,
+            username: userInfoPopup.message.username || undefined,
+            login: userInfoPopup.message.username || undefined,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json().catch(() => null);
+        const profile: ChatUserProfileDetail = {
+          userId: typeof payload?.user_id === 'string' ? payload.user_id : userId,
+          username: typeof payload?.username === 'string' ? payload.username : '',
+          avatarUrl: typeof payload?.avatar_url === 'string' ? payload.avatar_url : '',
+          displayName: typeof payload?.display_name === 'string' ? payload.display_name : '',
+          login: typeof payload?.login === 'string' ? payload.login : '',
+          description: typeof payload?.description === 'string' ? payload.description : '',
+          userType: typeof payload?.user_type === 'string' ? payload.user_type : '',
+          broadcasterType: typeof payload?.broadcaster_type === 'string' ? payload.broadcaster_type : '',
+          profileImageUrl: typeof payload?.profile_image_url === 'string' ? payload.profile_image_url : '',
+          coverImageUrl: typeof payload?.cover_image_url === 'string' ? payload.cover_image_url : '',
+          followerCount: typeof payload?.follower_count === 'number' ? payload.follower_count : null,
+          viewCount: typeof payload?.view_count === 'number' ? payload.view_count : 0,
+          createdAt: typeof payload?.created_at === 'string' ? payload.created_at : '',
+        };
+        if (cancelled || seq !== userInfoFetchSeqRef.current) {
+          return;
+        }
+        const cacheValue: CachedUserProfileDetail = { profile, fetchedAt: Date.now() };
+        userProfileDetailCacheRef.current[cacheKey] = cacheValue;
+        if (profile.userId.trim() !== '') {
+          userProfileDetailCacheRef.current[profile.userId.trim()] = cacheValue;
+        }
+        if (profile.login.trim() !== '') {
+          userProfileDetailCacheRef.current[`login:${profile.login.trim().toLowerCase()}`] = cacheValue;
+        }
+        setUserInfoProfile(profile);
+        setUserInfoLoading(false);
+      } catch (error) {
+        if (cancelled || seq !== userInfoFetchSeqRef.current) {
+          return;
+        }
+        console.error('[ChatSidebar] Failed to load user profile detail:', error);
+        setUserInfoLoading(false);
+        setUserInfoError('プロフィール取得に失敗しました。');
+      }
+    };
+
+    void loadUserProfileDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userInfoPopup]);
+
+  const activeBadgeChannelLogin = useMemo(() => {
+    if (activeTab === PRIMARY_CHAT_TAB_ID) {
+      return normalizeTwitchChannelName(primaryChannelLogin || '') || '';
+    }
+    return normalizeTwitchChannelName(activeTab || '') || '';
+  }, [activeTab, primaryChannelLogin]);
+
+  useEffect(() => {
+    void ensureBadgeCatalog(activeBadgeChannelLogin);
+  }, [activeBadgeChannelLogin, ensureBadgeCatalog]);
+
+  useEffect(() => {
+    if (!userInfoPopup || typeof window === 'undefined') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUserInfoPopup(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [userInfoPopup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1088,6 +1440,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
     return ircMessagesByChannel[activeTab] ?? [];
   }, [activeTab, ircMessagesByChannel, primaryMessages]);
+  const messageOrderReversed = messageOrderReversedByTab[activeTab] === true;
 
   const displayedMessages = useMemo(
     () => (messageOrderReversed ? [...activeMessages].reverse() : activeMessages),
@@ -1153,9 +1506,76 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       };
     }),
   ], [channelDisplayNames, ircChannels]);
-
+  const popupProfileName = (userInfoProfile?.displayName || userInfoProfile?.username || userInfoPopup?.message.username || '').trim();
+  const popupProfileLogin = (userInfoProfile?.login || '').trim();
+  const popupProfileAvatar = (userInfoProfile?.profileImageUrl || userInfoProfile?.avatarUrl || userInfoPopup?.message.avatarUrl || '').trim();
+  const popupProfileCover = (userInfoProfile?.coverImageUrl || '').trim();
+  const popupProfileDescription = (userInfoProfile?.description || '').trim();
+  const popupChannelLogin = (() => {
+    const login = popupProfileLogin.trim().toLowerCase();
+    if (login !== '') return login;
+    const fallback = (userInfoPopup?.message.username || '').trim().toLowerCase();
+    return /^[a-z0-9_]{3,25}$/.test(fallback) ? fallback : '';
+  })();
+  const popupChannelUrl = popupChannelLogin ? `https://www.twitch.tv/${popupChannelLogin}` : '';
+  const userInfoCreatedAtLabel = (() => {
+    const raw = (userInfoProfile?.createdAt || '').trim();
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleString();
+  })();
+  const userInfoFollowerCountLabel = typeof userInfoProfile?.followerCount === 'number'
+    ? userInfoProfile.followerCount.toLocaleString()
+    : '';
+  const userInfoResolvedUserId = ((userInfoProfile?.userId || userInfoPopup?.message.userId || '')).trim();
+  const copyUserInfoUserId = useCallback(async () => {
+    if (userInfoResolvedUserId === '') return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(userInfoResolvedUserId);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = userInfoResolvedUserId;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setUserInfoIdCopied(true);
+      if (userInfoIdCopiedTimerRef.current !== null) {
+        clearTimeout(userInfoIdCopiedTimerRef.current);
+      }
+      userInfoIdCopiedTimerRef.current = setTimeout(() => {
+        setUserInfoIdCopied(false);
+      }, 1200);
+    } catch {
+      setUserInfoError('ユーザーIDのコピーに失敗しました。');
+    }
+  }, [userInfoResolvedUserId]);
   const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
   const primaryConnectionId = primaryChannelLogin ? primaryIrcConnectionKey(primaryChannelLogin) : '';
+
+  const resolveBadgeVisual = useCallback((badgeKey: string): BadgeVisual | null => {
+    const raw = (badgeKey || '').trim();
+    if (raw === '') return null;
+    const [setIdRaw, versionRaw = ''] = raw.split('/');
+    const setId = setIdRaw.trim().toLowerCase();
+    const version = versionRaw.trim();
+    if (setId === '') return null;
+    const resolvedKey = version !== '' ? `${setId}/${version}` : '';
+    const channelCatalog = activeBadgeChannelLogin ? channelBadgeCatalogRef.current[activeBadgeChannelLogin] : undefined;
+    const matched = (resolvedKey !== '' ? channelCatalog?.get(resolvedKey) : undefined)
+      ?? (resolvedKey !== '' ? globalBadgeCatalogRef.current.get(resolvedKey) : undefined);
+    if (matched) return matched;
+    return {
+      imageUrl: '',
+      label: version !== '' ? `${setIdRaw} ${version}` : setIdRaw,
+    };
+  }, [activeBadgeChannelLogin, badgeCatalogVersion]);
 
   const sendComment = async () => {
     const text = draftMessage.trim();
@@ -1184,17 +1604,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       }
       const targetChannel = connection.channel;
       connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
+      const ownProfile = connection.userId ? ircUserProfilesRef.current[connection.userId] : undefined;
       // オプティミスティック表示：送信メッセージを即座にローカル表示
       const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const optimisticMessage: ChatMessage = {
         id: optimisticId,
         messageId: optimisticId,
         userId: connection.userId || undefined,
-        username: connection.displayName || connection.nick,
+        username: connection.displayName || ownProfile?.username || connection.nick,
         message: ircText,
         fragments: [{ type: 'text', text: ircText }],
+        avatarUrl: ownProfile?.avatarUrl,
         timestamp: new Date().toISOString(),
       };
+      if (connection.userId) {
+        void hydrateIrcUserProfile(connection.userId, connection.displayName || connection.nick);
+      }
       if (isPrimaryTab) {
         registerPrimaryEchoCandidate(optimisticMessage);
         setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
@@ -1247,7 +1672,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (activeTab === channel) {
       setActiveTab(PRIMARY_CHAT_TAB_ID);
     }
+    setUserInfoPopup((prev) => (prev?.tabId === channel ? null : prev));
   };
+
+  const handleOpenUserInfo = useCallback((message: ChatMessage) => {
+    setUserInfoProfile(null);
+    setUserInfoLoading(false);
+    setUserInfoError('');
+    setUserInfoPopup({ message, tabId: activeTab });
+  }, [activeTab]);
+
+  const handleCloseUserInfo = useCallback(() => {
+    setUserInfoProfile(null);
+    setUserInfoLoading(false);
+    setUserInfoError('');
+    setUserInfoPopup(null);
+  }, []);
 
   return (
     <aside className={asideClass} style={embedded ? undefined : sidebarStyle}>
@@ -1284,7 +1724,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMessageOrderReversed((prev) => !prev)}
+                    onClick={() => {
+                      setMessageOrderReversedByTab((prev) => {
+                        const nextValue = !(prev[activeTab] === true);
+                        if (nextValue) {
+                          return { ...prev, [activeTab]: true };
+                        }
+                        if (!(activeTab in prev)) {
+                          return prev;
+                        }
+                        const next = { ...prev };
+                        delete next[activeTab];
+                        return next;
+                      });
+                    }}
                     className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
                       messageOrderReversed
                         ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
@@ -1446,7 +1899,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <div className="flex-1 flex flex-col min-h-0">
               <div
                 ref={listRef}
-                className="flex-1 overflow-y-auto px-0 py-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+                className="flex-1 overflow-y-auto px-0 pb-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
               >
                 {activeMessages.length === 0 ? (
                   emptyState
@@ -1460,6 +1913,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       metaFontSize={metaFontSize}
                       translationFontSize={translationFontSize}
                       timestampLabel={formatTime(msg.timestamp)}
+                      onUsernameClick={handleOpenUserInfo}
+                      resolveBadgeVisual={resolveBadgeVisual}
                     />
                   ))
                 )}
@@ -1499,6 +1954,129 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 {postError && (
                   <p className="mt-1 text-[11px] text-red-500 dark:text-red-300">{postError}</p>
                 )}
+              </div>
+            </div>
+          )}
+          {userInfoPopup && !isCollapsed && (
+            <div
+              className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 p-3 backdrop-blur-[1px]"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  handleCloseUserInfo();
+                }
+              }}
+            >
+              <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">ユーザー情報</h3>
+                  <div className="flex items-center gap-1">
+                    {popupChannelUrl && (
+                      <a
+                        href={popupChannelUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                        aria-label={`${popupChannelLogin} のチャンネルを開く`}
+                        title="チャンネルを開く"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCloseUserInfo}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      aria-label="ユーザー情報ポップアップを閉じる"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-3 px-4 py-3 text-sm">
+                  <div
+                    className={`relative overflow-hidden rounded-md border border-gray-200 dark:border-gray-700 ${
+                      popupProfileCover ? '' : 'bg-gradient-to-r from-slate-500 to-blue-500'
+                    }`}
+                  >
+                    {popupProfileCover && (
+                      <img
+                        src={popupProfileCover}
+                        alt={`${popupProfileName || userInfoPopup.message.username} cover`}
+                        className="h-24 w-full object-cover"
+                        loading="lazy"
+                      />
+                    )}
+                    {!popupProfileCover && <div className="h-24 w-full" />}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 flex items-end gap-3 p-3">
+                      {popupProfileAvatar ? (
+                        <img
+                          src={popupProfileAvatar}
+                          alt={`${popupProfileName || userInfoPopup.message.username} avatar`}
+                          className="h-12 w-12 rounded-full border-2 border-white/70 object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/70 bg-gray-200 text-base font-semibold text-gray-700">
+                          {(popupProfileName || userInfoPopup.message.username || '?').slice(0, 1)}
+                        </div>
+                      )}
+                      <div className="min-w-0 pb-0.5 text-white">
+                        <div className="truncate text-sm font-semibold">{popupProfileName || userInfoPopup.message.username || 'Unknown'}</div>
+                        <div className="truncate text-xs text-white/85">{popupProfileLogin ? `@${popupProfileLogin}` : ''}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {userInfoLoading && (
+                    <p className="text-xs text-blue-600 dark:text-blue-300">プロフィールを取得中...</p>
+                  )}
+                  {userInfoError && (
+                    <p className="text-xs text-amber-600 dark:text-amber-300">{userInfoError}</p>
+                  )}
+
+                  <table className="w-full text-xs text-gray-600 dark:text-gray-300">
+                    <tbody className="[&>tr:not(:last-child)]:border-b [&>tr:not(:last-child)]:border-gray-200/70 dark:[&>tr:not(:last-child)]:border-gray-700/70">
+                      <tr>
+                        <th className="w-[92px] py-1.5 pr-2 text-left font-normal text-gray-500 dark:text-gray-400">ユーザーID</th>
+                        <td className="py-1.5">
+                          <div className="flex items-start gap-1">
+                            <span className="min-w-0 break-all font-mono">{userInfoResolvedUserId || '不明'}</span>
+                            {userInfoResolvedUserId !== '' && (
+                              <button
+                                type="button"
+                                onClick={() => void copyUserInfoUserId()}
+                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                                aria-label="ユーザーIDをコピー"
+                                title="ユーザーIDをコピー"
+                              >
+                                {userInfoIdCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th className="w-[92px] py-1.5 pr-2 text-left font-normal text-gray-500 dark:text-gray-400">アカウント作成</th>
+                        <td className="py-1.5">{userInfoCreatedAtLabel || '不明'}</td>
+                      </tr>
+                      <tr>
+                        <th className="w-[92px] py-1.5 pr-2 text-left font-normal text-gray-500 dark:text-gray-400">フォロワー数</th>
+                        <td className="py-1.5">{userInfoFollowerCountLabel || '不明'}</td>
+                      </tr>
+                      <tr>
+                        <th className="w-[92px] py-1.5 pr-2 text-left font-normal text-gray-500 dark:text-gray-400">種別</th>
+                        <td className="py-1.5 break-words">
+                          {[userInfoProfile?.broadcasterType, userInfoProfile?.userType].filter((v) => v && v.trim() !== '').join(' / ') || '不明'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th className="w-[92px] py-1.5 pr-2 text-left font-normal text-gray-500 dark:text-gray-400">自己紹介</th>
+                        <td className="py-1.5 break-words">{popupProfileDescription || '（なし）'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

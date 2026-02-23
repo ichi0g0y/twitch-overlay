@@ -176,13 +176,13 @@ fn migrate_legacy_settings(sm: &SettingsManager) {
 
 /// Steps 10-16: Spawn all background tasks (non-fatal).
 fn spawn_background_tasks(app: &mut tauri::App, state: app::SharedState) {
-  state.set_app_handle(app.handle().clone());
+    state.set_app_handle(app.handle().clone());
 
-  // UI: Restore window position
-  // WKWebView autoplay policy is configured by wry when the webview is created.
-  if let Some(main_window) = app.get_webview_window("main") {
-    window::position::restore_window_state(&main_window, state.db());
-  }
+    // UI: Restore window position
+    // WKWebView autoplay policy is configured by wry when the webview is created.
+    if let Some(main_window) = app.get_webview_window("main") {
+        window::position::restore_window_state(&main_window, state.db());
+    }
 
     // Step 15: Web server
     let port = state.server_port();

@@ -200,6 +200,37 @@ impl Database {
         })
     }
 
+    pub fn find_chat_user_profile_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<ChatUserProfile>, DbError> {
+        let normalized = username.trim();
+        if normalized.is_empty() {
+            return Ok(None);
+        }
+
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT user_id, username, avatar_url, updated_at
+                 FROM chat_users
+                 WHERE username != '' AND lower(username) = lower(?1)
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+            )?;
+            let profile = stmt
+                .query_row([normalized], |row| {
+                    Ok(ChatUserProfile {
+                        user_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                    })
+                })
+                .optional()?;
+            Ok(profile)
+        })
+    }
+
     pub fn get_latest_chat_avatar(&self, user_id: &str) -> Result<Option<String>, DbError> {
         self.with_conn(|conn| {
             let mut user_stmt = conn.prepare(
@@ -286,7 +317,11 @@ impl Database {
                      ORDER BY m.created_at ASC
                      LIMIT ?3"
                         .to_string(),
-                    vec![Box::new(channel_login.to_string()), Box::new(since_unix), Box::new(l)],
+                    vec![
+                        Box::new(channel_login.to_string()),
+                        Box::new(since_unix),
+                        Box::new(l),
+                    ],
                 ),
                 None => (
                     "SELECT

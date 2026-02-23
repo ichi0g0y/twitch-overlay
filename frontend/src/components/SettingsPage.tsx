@@ -698,6 +698,7 @@ type FollowedChannelsRailProps = {
   onOpenPresentDebug: () => void;
   onAddIrcPreview: (channelLogin: string) => void;
   onStartRaid: (channel: FollowedChannelRailItem) => Promise<void>;
+  onStartShoutout: (channel: FollowedChannelRailItem) => Promise<void>;
 };
 
 const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
@@ -715,12 +716,14 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   onOpenPresentDebug,
   onAddIrcPreview,
   onStartRaid,
+  onStartShoutout,
 }) => {
   const [railMenuOpen, setRailMenuOpen] = useState(false);
   const [openChannelId, setOpenChannelId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
   const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
+  const [shoutoutingChannelId, setShoutoutingChannelId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
   const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
@@ -733,6 +736,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
     }
   }, [channels, openChannelId]);
 
@@ -750,6 +754,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
       setActionError('');
     };
 
@@ -757,6 +762,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
       setActionError('');
     };
 
@@ -913,6 +919,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
               const channelLogin = channel.broadcaster_login;
               const normalizedChannelLogin = channelLogin.trim().toLowerCase();
               const alreadyConnected = ircConnectedChannels.includes(normalizedChannelLogin);
+              const canStartShoutout = canStartRaid && channel.is_live;
               return (
                 <div key={channel.broadcaster_id} className="group relative flex justify-center">
                   <button
@@ -924,11 +931,12 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       setOpenChannelId(nextOpen ? channel.broadcaster_id : null);
                       if (!nextOpen) {
                         setMenuAnchor(null);
+                        setShoutoutingChannelId(null);
                         return;
                       }
                       const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
                       const menuWidth = 192;
-                      const menuHeight = 170;
+                      const menuHeight = 230;
                       const top = Math.max(
                         12,
                         Math.min(window.innerHeight - menuHeight - 12, rect.top + (rect.height / 2) - (menuHeight / 2)),
@@ -992,44 +1000,56 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       <div className="text-xs font-semibold text-gray-100">{channelDisplayName}</div>
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <div className="min-w-0 truncate text-[11px] text-gray-400">#{channelLogin}</div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                                await navigator.clipboard.writeText(channelLogin);
-                              } else if (typeof document !== 'undefined') {
-                                const textarea = document.createElement('textarea');
-                                textarea.value = channelLogin;
-                                textarea.style.position = 'fixed';
-                                textarea.style.opacity = '0';
-                                document.body.appendChild(textarea);
-                                textarea.focus();
-                                textarea.select();
-                                document.execCommand('copy');
-                                document.body.removeChild(textarea);
+                        <div className="inline-flex items-center gap-1">
+                          <a
+                            href={`https://www.twitch.tv/${encodeURIComponent(channelLogin)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                            aria-label={`${channelLogin} のチャンネルを開く`}
+                            title="チャンネルを開く"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                                  await navigator.clipboard.writeText(channelLogin);
+                                } else if (typeof document !== 'undefined') {
+                                  const textarea = document.createElement('textarea');
+                                  textarea.value = channelLogin;
+                                  textarea.style.position = 'fixed';
+                                  textarea.style.opacity = '0';
+                                  document.body.appendChild(textarea);
+                                  textarea.focus();
+                                  textarea.select();
+                                  document.execCommand('copy');
+                                  document.body.removeChild(textarea);
+                                }
+                                setCopiedChannelId(channel.broadcaster_id);
+                                if (copiedResetTimerRef.current !== null) {
+                                  window.clearTimeout(copiedResetTimerRef.current);
+                                }
+                                copiedResetTimerRef.current = window.setTimeout(() => {
+                                  setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
+                                }, 1200);
+                              } catch {
+                                setActionError('チャンネル名のコピーに失敗しました');
                               }
-                              setCopiedChannelId(channel.broadcaster_id);
-                              if (copiedResetTimerRef.current !== null) {
-                                window.clearTimeout(copiedResetTimerRef.current);
-                              }
-                              copiedResetTimerRef.current = window.setTimeout(() => {
-                                setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
-                              }, 1200);
-                            } catch {
-                              setActionError('チャンネル名のコピーに失敗しました');
-                            }
-                          }}
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
-                          aria-label={`${channelLogin} をコピー`}
-                          title="チャンネル名をコピー"
-                        >
-                          {copiedChannelId === channel.broadcaster_id ? (
-                            <Check className="h-3 w-3 text-emerald-300" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </button>
+                            }}
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                            aria-label={`${channelLogin} をコピー`}
+                            title="チャンネル名をコピー"
+                          >
+                            {copiedChannelId === channel.broadcaster_id ? (
+                              <Check className="h-3 w-3 text-emerald-300" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                       <div className="mb-2 text-[11px] text-gray-400 truncate">
                         {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
@@ -1042,6 +1062,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                           setOpenChannelId(null);
                           setMenuAnchor(null);
                           setRaidConfirmChannelId(null);
+                          setShoutoutingChannelId(null);
                         }}
                         className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
                           alreadyConnected
@@ -1050,6 +1071,32 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         }`}
                       >
                         {alreadyConnected ? '接続済み' : '接続'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canStartShoutout || shoutoutingChannelId === channel.broadcaster_id}
+                        onClick={async () => {
+                          setActionError('');
+                          setRaidConfirmChannelId(null);
+                          setShoutoutingChannelId(channel.broadcaster_id);
+                          try {
+                            await onStartShoutout(channel);
+                            setOpenChannelId(null);
+                            setMenuAnchor(null);
+                            setShoutoutingChannelId(null);
+                          } catch (error: any) {
+                            setActionError(error?.message || '応援に失敗しました');
+                          } finally {
+                            setShoutoutingChannelId(null);
+                          }
+                        }}
+                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                          !canStartShoutout
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : 'border-fuchsia-600/60 text-fuchsia-200 hover:bg-fuchsia-700/20'
+                        } disabled:opacity-60`}
+                      >
+                        {shoutoutingChannelId === channel.broadcaster_id ? '応援中...' : '応援'}
                       </button>
                       <button
                         type="button"
@@ -1800,22 +1847,47 @@ export const SettingsPage: React.FC = () => {
     if (!streamStatus?.is_live) {
       throw new Error('配信中のみレイドできます');
     }
-    const ownChannelLogin = (twitchUserInfo?.login || '').trim().toLowerCase();
-    if (!ownChannelLogin) {
-      throw new Error('Twitchユーザーが未設定です');
+    const targetChannelLogin = (channel.broadcaster_login || '').trim().toLowerCase();
+    if (!targetChannelLogin) {
+      throw new Error('レイド先チャンネルが不正です');
     }
 
-    const response = await fetch(buildApiUrl('/api/chat/post'), {
+    const response = await fetch(buildApiUrl('/api/twitch/raid/start'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        channel: ownChannelLogin,
-        message: `/raid ${channel.broadcaster_login}`,
+        to_channel_login: targetChannelLogin,
       }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      const message = payload?.error || `HTTP ${response.status}`;
+      const message = payload?.error || payload?.message || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+  };
+
+  const startShoutoutToChannel = async (channel: FollowedChannelRailItem) => {
+    if (!streamStatus?.is_live) {
+      throw new Error('配信中のみ応援できます');
+    }
+    if (!channel.is_live) {
+      throw new Error('LIVE中のチャンネルのみ応援できます');
+    }
+    const targetChannelLogin = (channel.broadcaster_login || '').trim().toLowerCase();
+    if (!targetChannelLogin) {
+      throw new Error('応援先チャンネルが不正です');
+    }
+
+    const response = await fetch(buildApiUrl('/api/twitch/shoutout/start'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to_channel_login: targetChannelLogin,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || payload?.message || `HTTP ${response.status}`;
       throw new Error(message);
     }
   };
@@ -2326,6 +2398,7 @@ export const SettingsPage: React.FC = () => {
           onOpenPresentDebug={handleOpenPresentDebug}
           onAddIrcPreview={addIrcPreviewCard}
           onStartRaid={startRaidToChannel}
+          onStartShoutout={startShoutoutToChannel}
         />
 
         <StatusTopBar

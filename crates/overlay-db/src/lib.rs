@@ -190,6 +190,13 @@ mod tests {
         assert_eq!(profile.username, "alice_renamed");
         assert_eq!(profile.avatar_url, "https://example.com/avatar.png");
 
+        let by_name = db
+            .find_chat_user_profile_by_username("Alice_Renamed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_name.user_id, "user1");
+        assert_eq!(by_name.username, "alice_renamed");
+
         let avatar = db.get_latest_chat_avatar("user1").unwrap().unwrap();
         assert_eq!(avatar, "https://example.com/avatar.png");
 

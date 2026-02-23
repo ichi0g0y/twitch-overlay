@@ -178,9 +178,14 @@ fn persist_current_layout(window: &WebviewWindow, db: &Database) {
     let inner_size = window.inner_size().unwrap_or(outer_size);
 
     let screens = monitor::get_all_screens(&window.app_handle());
-    let screen_index =
-        monitor::find_screen_containing(&screens, pos.x, pos.y, outer_size.width, outer_size.height)
-            .unwrap_or(0);
+    let screen_index = monitor::find_screen_containing(
+        &screens,
+        pos.x,
+        pos.y,
+        outer_size.width,
+        outer_size.height,
+    )
+    .unwrap_or(0);
     save_position(
         db,
         &NotificationPosition {

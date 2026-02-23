@@ -15,6 +15,7 @@ export type ChatMessage = {
   userId?: string;
   username: string;
   message: string;
+  badgeKeys?: string[];
   fragments?: ChatFragment[];
   avatarUrl?: string;
   translation?: string;
@@ -91,6 +92,8 @@ type ChatSidebarItemProps = {
   metaFontSize: number;
   translationFontSize: number;
   timestampLabel: string;
+  onUsernameClick?: (message: ChatMessage) => void;
+  resolveBadgeVisual?: (badgeKey: string) => { imageUrl: string; label: string } | null;
 };
 
 const BOT_USER_ID = '774281749';
@@ -102,6 +105,8 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   metaFontSize,
   translationFontSize,
   timestampLabel,
+  onUsernameClick,
+  resolveBadgeVisual,
 }) => {
   const isEven = index % 2 === 0;
   const isBotMessage = message.userId === BOT_USER_ID;
@@ -113,6 +118,11 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   const langLabel = resolveLangLabel(langCode);
   const shouldShowLang = !isBotMessage && langCode !== '' && langCode !== 'und' && langCode !== 'jpn' && langLabel !== '';
   const isPendingTranslation = message.translationStatus === 'pending';
+  const badgeVisuals = (message.badgeKeys || [])
+    .map((badgeKey) => badgeKey.trim())
+    .filter((badgeKey) => badgeKey !== '')
+    .map((badgeKey) => resolveBadgeVisual?.(badgeKey))
+    .filter((badge): badge is { imageUrl: string; label: string } => !!badge);
 
   const renderLangLabel = (className: string, spacingClass?: string, uncertain?: boolean) => {
     if (!shouldShowLang) return null;
@@ -155,7 +165,35 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             {message.username?.slice(0, 1)}
           </div>
         )}
-        <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
+        {badgeVisuals.map((badge, badgeIndex) => (
+          <span key={`${badge.label}-${badgeIndex}`} className="inline-flex" title={badge.label}>
+            {badge.imageUrl ? (
+              <img
+                src={badge.imageUrl}
+                alt={badge.label}
+                className="h-4 w-4 rounded-sm object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-gray-200 text-[9px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100">
+                {(badge.label || '?').slice(0, 1).toUpperCase()}
+              </span>
+            )}
+          </span>
+        ))}
+        {onUsernameClick ? (
+          <button
+            type="button"
+            onClick={() => onUsernameClick(message)}
+            className="font-semibold text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
+            aria-label={`${message.username} の情報を表示`}
+            title={`${message.username} の情報を表示`}
+          >
+            {message.username}
+          </button>
+        ) : (
+          <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
+        )}
         {isBotMessage && (
           <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
             BOT
@@ -167,7 +205,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
         style={{ lineHeight: `${Math.round(fontSize * 1.1)}px` }}
       >
-        <MessageContent message={message.message} fragments={message.fragments} fontSize={fontSize} />
+        <MessageContent message={message.message} fragments={message.fragments} fontSize={fontSize} linkifyUrls />
         {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
       </div>
       {message.translationStatus === 'pending' && (

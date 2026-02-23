@@ -290,7 +290,7 @@ export const MicCaptionSender: React.FC<{
         try {
           const res = await translator.translate(trimmed, speechLang, target);
           const translated = (res.translatedText || '').trim();
-          if (!translated) continue;
+          if (!translated || translated === trimmed) continue;
           const filteredTranslation = antiSexualEnabled
             ? filterWithCachedLists(translated, target)
             : translated;

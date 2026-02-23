@@ -21,11 +21,27 @@ type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
 const IRC_RETENTION_SECONDS: i64 = 24 * 60 * 60;
 const TWITCH_IRC_WS_ENDPOINT: &str = "wss://irc-ws.chat.twitch.tv:443";
 const TWITCH_IRC_SEND_TIMEOUT_SECS: u64 = 8;
+const IVR_TWITCH_USER_API_BASE: &str = "https://api.ivr.fi/v2/twitch/user";
+const DECAPI_TWITCH_FOLLOWCOUNT_BASE: &str = "https://decapi.me/twitch/followcount";
 
 struct TwitchIrcIdentity {
     token: twitch_client::Token,
     sender_user: TwitchUser,
     nick: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IvrTwitchUser {
+    #[serde(default)]
+    banner: String,
+    #[serde(default)]
+    followers: Option<u64>,
+}
+
+#[derive(Debug)]
+struct IvrProfileSnapshot {
+    banner: String,
+    followers: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +65,13 @@ pub struct PostChatBody {
 pub struct ChatUserProfileBody {
     pub user_id: String,
     pub username: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatUserProfileDetailBody {
+    pub user_id: Option<String>,
+    pub username: Option<String>,
+    pub login: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -181,6 +204,129 @@ async fn fetch_twitch_user_profile(state: &SharedState, user_id: &str) -> Option
     };
     let client = TwitchApiClient::new(client_id);
     client.get_user(&token, user_id).await.ok()
+}
+
+async fn fetch_twitch_user_profile_by_login(
+    state: &SharedState,
+    login: &str,
+) -> Option<TwitchUser> {
+    let normalized_login = login.trim().trim_start_matches('@').to_lowercase();
+    if normalized_login.is_empty() {
+        return None;
+    }
+
+    let (client_id, access_token, refresh_token, scope, expires_at) = {
+        let config = state.config().await;
+        let token = state.db().get_latest_token().ok().flatten()?;
+        (
+            config.client_id.clone(),
+            token.access_token,
+            token.refresh_token,
+            token.scope,
+            token.expires_at,
+        )
+    };
+
+    if client_id.is_empty() || access_token.is_empty() {
+        return None;
+    }
+
+    let token = twitch_client::Token {
+        access_token,
+        refresh_token,
+        scope,
+        expires_at,
+    };
+    let client = TwitchApiClient::new(client_id);
+    client
+        .get_user_by_login(&token, &normalized_login)
+        .await
+        .ok()
+}
+
+async fn fetch_profile_snapshot_from_ivr(
+    user_id: Option<&str>,
+    login: Option<&str>,
+) -> Option<IvrProfileSnapshot> {
+    async fn fetch_once(query: &str) -> Option<IvrProfileSnapshot> {
+        let url = format!("{IVR_TWITCH_USER_API_BASE}?{query}");
+        let response = reqwest::Client::new().get(url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let users = response.json::<Vec<IvrTwitchUser>>().await.ok()?;
+        let user = users.into_iter().next()?;
+        let banner = user.banner.trim().to_string();
+        if banner.is_empty() && user.followers.is_none() {
+            return None;
+        }
+        Some(IvrProfileSnapshot {
+            banner,
+            followers: user.followers,
+        })
+    }
+
+    let id_query = user_id
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(|id| format!("id={id}"));
+    let login_query = login
+        .map(str::trim)
+        .map(|s| s.trim_start_matches('@').to_lowercase())
+        .filter(|s| !s.is_empty())
+        .map(|name| format!("login={name}"));
+
+    let mut snapshot = None;
+    if let Some(query) = id_query.as_deref() {
+        snapshot = fetch_once(query).await;
+    }
+
+    let should_try_login = match snapshot.as_ref() {
+        None => true,
+        Some(found) => found.followers.is_none() || found.banner.trim().is_empty(),
+    };
+    if should_try_login {
+        if let Some(query) = login_query.as_deref() {
+            if let Some(by_login) = fetch_once(query).await {
+                snapshot = match snapshot {
+                    None => Some(by_login),
+                    Some(current) => Some(IvrProfileSnapshot {
+                        banner: if current.banner.trim().is_empty() {
+                            by_login.banner
+                        } else {
+                            current.banner
+                        },
+                        followers: current.followers.or(by_login.followers),
+                    }),
+                };
+            }
+        }
+    }
+
+    snapshot
+}
+
+async fn fetch_follower_count_from_decapi(login: Option<&str>) -> Option<u64> {
+    let normalized = login
+        .map(str::trim)
+        .map(|s| s.trim_start_matches('@').to_lowercase())
+        .filter(|s| !s.is_empty())?;
+
+    if !normalized
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return None;
+    }
+
+    let url = format!("{DECAPI_TWITCH_FOLLOWCOUNT_BASE}/{normalized}");
+    let response = reqwest::Client::new().get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let text = response.text().await.ok()?;
+    let cleaned = text.trim().replace(',', "");
+    cleaned.parse::<u64>().ok()
 }
 
 async fn resolve_twitch_irc_identity(
@@ -746,6 +892,145 @@ pub async fn upsert_user_profile(
         "user_id": user_id,
         "username": username,
         "avatar_url": avatar_url,
+    })))
+}
+
+/// POST /api/chat/user-profile/detail
+pub async fn get_user_profile_detail(
+    State(state): State<SharedState>,
+    Json(body): Json<ChatUserProfileDetailBody>,
+) -> ApiResult {
+    let mut resolved_user_id = body
+        .user_id
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let mut twitch_profile = if resolved_user_id.is_empty() {
+        None
+    } else {
+        fetch_twitch_user_profile(&state, &resolved_user_id).await
+    };
+
+    if resolved_user_id.is_empty() {
+        let login_hint = body
+            .login
+            .as_deref()
+            .or(body.username.as_deref())
+            .map(str::trim)
+            .unwrap_or_default();
+        if login_hint.is_empty() {
+            return Err(err_json(400, "user_id or login is required"));
+        }
+
+        twitch_profile = fetch_twitch_user_profile_by_login(&state, login_hint).await;
+        if let Some(user) = twitch_profile.as_ref() {
+            resolved_user_id = user.id.trim().to_string();
+        }
+
+        if resolved_user_id.is_empty() {
+            if let Some(profile) = state
+                .db()
+                .find_chat_user_profile_by_username(login_hint)
+                .map_err(|e| err_json(500, &e.to_string()))?
+            {
+                resolved_user_id = profile.user_id.trim().to_string();
+            }
+        }
+    }
+
+    if resolved_user_id.is_empty() {
+        return Err(err_json(404, "Twitch user not found"));
+    }
+
+    let (username, avatar_url) =
+        resolve_chat_user_profile(&state, &resolved_user_id, body.username.as_deref()).await?;
+    if twitch_profile.is_none() {
+        twitch_profile = fetch_twitch_user_profile(&state, &resolved_user_id).await;
+    }
+
+    let login = twitch_profile
+        .as_ref()
+        .map(|p| p.login.trim().to_string())
+        .unwrap_or_default();
+    let display_name = twitch_profile
+        .as_ref()
+        .map(|p| p.display_name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| username.clone());
+    let description = twitch_profile
+        .as_ref()
+        .map(|p| p.description.trim().to_string())
+        .unwrap_or_default();
+    let broadcaster_type = twitch_profile
+        .as_ref()
+        .map(|p| p.broadcaster_type.trim().to_string())
+        .unwrap_or_default();
+    let user_type = twitch_profile
+        .as_ref()
+        .map(|p| p.user_type.trim().to_string())
+        .unwrap_or_default();
+    let profile_image_url = twitch_profile
+        .as_ref()
+        .map(|p| p.profile_image_url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| avatar_url.clone());
+    let cover_image_url = twitch_profile
+        .as_ref()
+        .map(|p| p.offline_image_url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_default();
+    let ivr_login_hint = if login.is_empty() {
+        body.login
+            .as_deref()
+            .or(body.username.as_deref())
+            .or(Some(username.as_str()))
+    } else {
+        Some(login.as_str())
+    };
+    let ivr_profile =
+        fetch_profile_snapshot_from_ivr(Some(&resolved_user_id), ivr_login_hint).await;
+    let cover_image_url = if cover_image_url.is_empty() {
+        ivr_profile
+            .as_ref()
+            .map(|profile| profile.banner.trim().to_string())
+            .filter(|url| !url.is_empty())
+            .unwrap_or_default()
+    } else {
+        cover_image_url
+    };
+    let mut follower_count = ivr_profile.as_ref().and_then(|profile| profile.followers);
+    if follower_count.is_none() {
+        follower_count = fetch_follower_count_from_decapi(ivr_login_hint).await;
+    }
+    if follower_count.is_none() {
+        follower_count = fetch_follower_count_from_decapi(body.username.as_deref()).await;
+    }
+    if follower_count.is_none() {
+        follower_count = fetch_follower_count_from_decapi(Some(username.as_str())).await;
+    }
+    let view_count = twitch_profile
+        .as_ref()
+        .map(|p| p.view_count)
+        .unwrap_or_default();
+    let created_at = twitch_profile
+        .as_ref()
+        .map(|p| p.created_at.trim().to_string())
+        .unwrap_or_default();
+    Ok(Json(json!({
+        "user_id": resolved_user_id,
+        "username": username,
+        "avatar_url": avatar_url,
+        "display_name": display_name,
+        "login": login,
+        "description": description,
+        "user_type": user_type,
+        "broadcaster_type": broadcaster_type,
+        "profile_image_url": profile_image_url,
+        "cover_image_url": cover_image_url,
+        "follower_count": follower_count,
+        "view_count": view_count,
+        "created_at": created_at,
     })))
 }
 
