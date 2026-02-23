@@ -86,7 +86,7 @@ export function renderTranslationEntries(
         const style = slotStyles[t.slotIndex] || slotStyles[0];
         return (
           <div
-            key={`${lineId}-${t.lang}`}
+            key={`${lineId}-${t.lang}-${t.slotIndex}-${displayIndex}`}
             style={displayIndex > 0 ? { marginTop: `${spacings[displayIndex] ?? 0}px` } : undefined}
           >
             {renderOutlinedText({

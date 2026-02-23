@@ -34,6 +34,7 @@ export const GOOGLE_FONTS_LIST: GoogleFontEntry[] = [
   { family: 'Rampart One', category: 'display' },
   { family: 'Stick', category: 'display' },
   { family: 'Dela Gothic One', category: 'display' },
+  { family: 'Russo One', category: 'display' },
   // Handwriting
   { family: 'Klee One', category: 'handwriting' },
   { family: 'Yomogi', category: 'handwriting' },
@@ -42,12 +43,23 @@ export const GOOGLE_FONTS_LIST: GoogleFontEntry[] = [
 ];
 
 const GOOGLE_FONT_FAMILIES = new Set(GOOGLE_FONTS_LIST.map((f) => f.family));
+const NO_WEIGHT_AXIS_FAMILIES = new Set<string>([
+  'Russo One',
+]);
 
 const loadedFonts = new Set<string>();
 const loadingFonts = new Map<string, Promise<void>>();
 
 function buildGoogleFontsUrl(families: string[]): string {
-  const params = families.map((f) => `family=${encodeURIComponent(f)}:wght@100..900`).join('&');
+  const params = families
+    .map((family) => {
+      const encodedFamily = encodeURIComponent(family);
+      if (NO_WEIGHT_AXIS_FAMILIES.has(family)) {
+        return `family=${encodedFamily}`;
+      }
+      return `family=${encodedFamily}:wght@100..900`;
+    })
+    .join('&');
   return `https://fonts.googleapis.com/css2?${params}&display=swap`;
 }
 

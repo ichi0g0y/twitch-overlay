@@ -84,30 +84,36 @@ export const MicCaptionSender: React.FC<{
   const translationMode = overlaySettings?.mic_transcript_translation_mode
     ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
   const translationEnabled = translationMode !== 'off';
-  const translationTargets = useMemo(() => {
+  const translationRequests = useMemo(() => {
     if (!translationEnabled) return [];
     const raw1 = (overlaySettings?.mic_transcript_translation_language || '').trim();
     const raw2 = (overlaySettings?.mic_transcript_translation2_language || '').trim();
     const raw3 = (overlaySettings?.mic_transcript_translation3_language || '').trim();
-    const candidates = [
-      normalizeTranslationLang(raw1 || 'en', ''),
-      normalizeTranslationLang(raw2, ''),
-      normalizeTranslationLang(raw3, ''),
-    ].filter(Boolean);
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const lang of candidates) {
-      if (seen.has(lang)) continue;
-      seen.add(lang);
-      out.push(lang);
-    }
-    return out;
+    const slots = [
+      { slotIndex: 0, target: normalizeTranslationLang(raw1 || 'en', '') },
+      { slotIndex: 1, target: normalizeTranslationLang(raw2, '') },
+      { slotIndex: 2, target: normalizeTranslationLang(raw3, '') },
+    ];
+    return slots.filter((item) => item.target !== '');
   }, [
     overlaySettings?.mic_transcript_translation2_language,
     overlaySettings?.mic_transcript_translation3_language,
     overlaySettings?.mic_transcript_translation_language,
     translationEnabled,
   ]);
+  const translationTargets = useMemo(
+    () => translationRequests.map((item) => item.target),
+    [translationRequests],
+  );
+  const translationGroups = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const { slotIndex, target } of translationRequests) {
+      const current = map.get(target);
+      if (current) current.push(slotIndex);
+      else map.set(target, [slotIndex]);
+    }
+    return Array.from(map.entries()).map(([target, slotIndices]) => ({ target, slotIndices }));
+  }, [translationRequests]);
 
   const enabledSetting = overlaySettings?.mic_transcript_speech_enabled ?? false;
   const [capturing, setCapturing] = useState(false);
@@ -260,8 +266,8 @@ export const MicCaptionSender: React.FC<{
       updateStatus({ lastFinalText: displayText, lastInterimText: '', lastUpdatedAtMs: ts });
 
       const canTranslate = translationEnabled && translatorSupported
-        && translatorRef.current && translationTargets.length > 0;
-      const expectedTranslations = canTranslate ? translationTargets.length : 0;
+        && translatorRef.current && translationRequests.length > 0;
+      const expectedTranslations = canTranslate ? translationRequests.length : 0;
 
       ws.send('mic_transcript', {
         id,
@@ -280,28 +286,31 @@ export const MicCaptionSender: React.FC<{
       if (!canTranslate) return;
       const translator = translatorRef.current!;
 
-      await Promise.allSettled(
-        translationTargets.map(async (target) => {
-          try {
-            const res = await translator.translate(trimmed, speechLang, target);
-            const translated = (res.translatedText || '').trim();
-            if (!translated || translated === trimmed) return;
-            const filteredTranslation = antiSexualEnabled
-              ? filterWithCachedLists(translated, target)
-              : translated;
+      for (const { target, slotIndices } of translationGroups) {
+        try {
+          const res = await translator.translate(trimmed, speechLang, target);
+          const translated = (res.translatedText || '').trim();
+          if (!translated) continue;
+          const filteredTranslation = antiSexualEnabled
+            ? filterWithCachedLists(translated, target)
+            : translated;
+          if (!filteredTranslation.trim()) continue;
+
+          for (const slotIndex of slotIndices) {
             ws.send('mic_transcript_translation', {
               id,
               translation: filteredTranslation,
               source_language: res.sourceLanguage || speechLang,
-              target_language: res.targetLanguage,
+              target_language: res.targetLanguage || target,
+              slot_index: slotIndex,
             });
-          } catch (e: any) {
-            setError(e?.message || '翻訳に失敗しました');
           }
-        }),
-      );
+        } catch (e: any) {
+          setError(e?.message || '翻訳に失敗しました');
+        }
+      }
     },
-    [antiSexualEnabled, bouyomiEnabled, bouyomiUrl, speechLang, translationEnabled, translationTargets, translatorSupported, updateStatus],
+    [antiSexualEnabled, bouyomiEnabled, bouyomiUrl, speechLang, translationEnabled, translationGroups, translationRequests.length, translatorSupported, updateStatus],
   );
 
   const createOnResultHandler = useCallback(
@@ -476,9 +485,9 @@ export const MicCaptionSender: React.FC<{
       setRecState('starting');
 
       // Preload translation models in the background (if enabled) so first translation is smoother.
-      if (translationEnabled && translatorSupported && translatorRef.current && translationTargets.length > 0) {
+      if (translationEnabled && translatorSupported && translatorRef.current && translationGroups.length > 0) {
         void (async () => {
-          for (const target of translationTargets) {
+          for (const { target } of translationGroups) {
             try {
               await translatorRef.current?.preload(speechLang, target);
             } catch {
@@ -500,7 +509,7 @@ export const MicCaptionSender: React.FC<{
     setupRecognitionInstance,
     speechLang,
     translationEnabled,
-    translationTargets,
+    translationGroups,
     translatorSupported,
     updateStatus,
   ]);

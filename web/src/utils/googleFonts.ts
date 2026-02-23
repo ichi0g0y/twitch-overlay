@@ -8,13 +8,25 @@ const GOOGLE_FONT_FAMILIES = new Set([
   'Shippori Mincho',
   'Hachi Maru Pop', 'Yusei Magic', 'Reggae One', 'RocknRoll One', 'Train One',
   'DotGothic16', 'Potta One', 'Rampart One', 'Stick', 'Dela Gothic One',
+  'Russo One',
   'Klee One', 'Yomogi', 'Kaisei Decol',
 ]);
 
 const loadedFonts = new Set<string>();
+const NO_WEIGHT_AXIS_FAMILIES = new Set<string>([
+  'Russo One',
+]);
 
 function buildGoogleFontsUrl(families: string[]): string {
-  const params = families.map((f) => `family=${encodeURIComponent(f)}:wght@100..900`).join('&');
+  const params = families
+    .map((family) => {
+      const encodedFamily = encodeURIComponent(family);
+      if (NO_WEIGHT_AXIS_FAMILIES.has(family)) {
+        return `family=${encodedFamily}`;
+      }
+      return `family=${encodedFamily}:wght@100..900`;
+    })
+    .join('&');
   return `https://fonts.googleapis.com/css2?${params}&display=swap`;
 }
 
