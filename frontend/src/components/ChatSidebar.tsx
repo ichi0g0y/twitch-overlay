@@ -395,6 +395,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
   const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
   const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
+  const primaryRecentEchoKeysRef = useRef<Map<string, number>>(new Map());
   const primaryIrcStartedRef = useRef(false);
 
   const handleToggle = () => {
@@ -479,6 +480,40 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     recent.set(key, now);
     return typeof lastSeen === 'number' && (now - lastSeen) < ttlMs;
   }, []);
+
+  const buildPrimaryEchoKey = useCallback((message: ChatMessage) => {
+    const actor = (message.userId || message.username || '').trim().toLowerCase();
+    const body = message.message.trim().replace(/\s+/g, ' ');
+    if (actor === '' || body === '') return '';
+    return `${actor}|${body}`;
+  }, []);
+
+  const registerPrimaryEchoCandidate = useCallback((message: ChatMessage) => {
+    const key = buildPrimaryEchoKey(message);
+    if (!key) return;
+    primaryRecentEchoKeysRef.current.set(key, Date.now());
+  }, [buildPrimaryEchoKey]);
+
+  const shouldIgnorePrimaryEcho = useCallback((message: ChatMessage) => {
+    const key = buildPrimaryEchoKey(message);
+    if (!key) return false;
+
+    const now = Date.now();
+    const ttlMs = 10000;
+    const recent = primaryRecentEchoKeysRef.current;
+    for (const [staleKey, timestamp] of recent.entries()) {
+      if (now - timestamp > ttlMs) {
+        recent.delete(staleKey);
+      }
+    }
+
+    const sentAt = recent.get(key);
+    if (typeof sentAt !== 'number') return false;
+
+    // 消費型: 1回だけエコー重複を抑止する
+    recent.delete(key);
+    return (now - sentAt) < ttlMs;
+  }, [buildPrimaryEchoKey]);
 
   const persistIrcMessage = useCallback(async (channel: string, message: ChatMessage) => {
     try {
@@ -871,6 +906,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             translationLang: data.translationLang,
             timestamp: data.timestamp,
           };
+          if (shouldIgnorePrimaryEcho(nextMessage)) {
+            return;
+          }
           setPrimaryMessages((prev) => {
             const next = [...prev, nextMessage];
             return dedupeMessages(trimMessagesByAge(next));
@@ -900,7 +938,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [shouldIgnorePrimaryEcho]);
 
   useEffect(() => {
     writeIrcChannels(ircChannels);
@@ -1158,6 +1196,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         timestamp: new Date().toISOString(),
       };
       if (isPrimaryTab) {
+        registerPrimaryEchoCandidate(optimisticMessage);
         setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
       } else {
         appendIrcMessage(activeTab, optimisticMessage);
