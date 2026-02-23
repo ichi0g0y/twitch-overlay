@@ -33,6 +33,7 @@ type ChatSidebarProps = {
 
 type IrcConnection = {
   channel: string;
+  isPrimary: boolean;
   ws: WebSocket | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempts: number;
@@ -54,8 +55,18 @@ type IrcCredentialsResponse = {
   authenticated?: boolean;
   nick?: string;
   pass?: string;
+  login?: string;
   user_id?: string;
   display_name?: string;
+};
+
+type ResolvedIrcCredentials = {
+  authenticated: boolean;
+  nick: string;
+  pass: string;
+  login: string;
+  userId: string;
+  displayName: string;
 };
 
 const HISTORY_DAYS = 7;
@@ -72,8 +83,11 @@ const IRC_RECONNECT_BASE_DELAY_MS = 2000;
 const IRC_RECONNECT_MAX_DELAY_MS = 20000;
 const IRC_HISTORY_LIMIT = 300;
 const IRC_ANONYMOUS_PASS = 'SCHMOOPIIE';
+const PRIMARY_IRC_CONNECTION_PREFIX = '__primary_irc__';
 const COLLAPSED_DESKTOP_WIDTH = 48;
 const EDGE_RAIL_OFFSET_XL_PX = 64;
+
+const primaryIrcConnectionKey = (login: string) => `${PRIMARY_IRC_CONNECTION_PREFIX}${login}`;
 
 const formatTime = (timestamp?: string) => {
   if (!timestamp) return '';
@@ -102,25 +116,67 @@ const trimMessagesByAge = (items: ChatMessage[]) => {
 };
 
 const dedupeMessages = (items: ChatMessage[]) => {
-  const idSet = new Set<string>();
-  const signatureSet = new Set<string>();
+  const idToIndex = new Map<string, number>();
+  const signatureToIndex = new Map<string, number>();
   const next: ChatMessage[] = [];
+
+  const pickFragments = (current?: ChatFragment[], incoming?: ChatFragment[]) => {
+    if (!current || current.length === 0) return incoming;
+    if (!incoming || incoming.length === 0) return current;
+    const currentHasEmote = current.some((fragment) => fragment.type === 'emote');
+    const incomingHasEmote = incoming.some((fragment) => fragment.type === 'emote');
+    if (!currentHasEmote && incomingHasEmote) return incoming;
+    return current;
+  };
+
+  const mergeMessage = (current: ChatMessage, incoming: ChatMessage): ChatMessage => ({
+    ...current,
+    messageId: current.messageId || incoming.messageId,
+    userId: current.userId || incoming.userId,
+    username: current.username || incoming.username,
+    message: current.message || incoming.message,
+    fragments: pickFragments(current.fragments, incoming.fragments),
+    avatarUrl: current.avatarUrl || incoming.avatarUrl,
+    translation: current.translation || incoming.translation,
+    translationStatus: current.translationStatus || incoming.translationStatus,
+    translationLang: current.translationLang || incoming.translationLang,
+    timestamp: current.timestamp || incoming.timestamp,
+  });
+
   for (const item of items) {
     const messageId = (item.messageId || '').trim();
-    // IDベースの重複チェック（irc-以外のmessageIdがある場合）
-    if (messageId !== '' && !messageId.startsWith('irc-')) {
-      if (idSet.has(messageId)) continue;
-      idSet.add(messageId);
-    }
     // 署名ベースの重複チェック（常に適用 — 異なるmessageIdフォーマット間の重複を検出）
     const actor = (item.username || item.userId || '').trim().toLowerCase();
     const body = (item.message || '').trim().replace(/\s+/g, ' ');
     const parsedTs = item.timestamp ? new Date(item.timestamp).getTime() : Number.NaN;
     const timeBucket = Number.isNaN(parsedTs) ? '' : String(Math.floor(parsedTs / 1000));
-    const signature = `${actor}|${body}|${timeBucket}`;
-    if (actor !== '' && body !== '' && signatureSet.has(signature)) continue;
-    if (actor !== '' && body !== '') signatureSet.add(signature);
+    const signature = actor !== '' && body !== '' ? `${actor}|${body}|${timeBucket}` : '';
+
+    let duplicateIndex: number | undefined;
+    if (messageId !== '' && !messageId.startsWith('irc-')) {
+      duplicateIndex = idToIndex.get(messageId);
+    }
+    if (duplicateIndex === undefined && signature !== '') {
+      duplicateIndex = signatureToIndex.get(signature);
+    }
+
+    if (duplicateIndex !== undefined) {
+      const current = next[duplicateIndex];
+      if (current) {
+        next[duplicateIndex] = mergeMessage(current, item);
+      }
+      continue;
+    }
+
+    const index = next.length;
     next.push(item);
+    // IDベースの重複チェック（irc-以外のmessageIdがある場合）
+    if (messageId !== '' && !messageId.startsWith('irc-')) {
+      idToIndex.set(messageId, index);
+    }
+    if (signature !== '') {
+      signatureToIndex.set(signature, index);
+    }
   }
   return next;
 };
@@ -318,6 +374,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [activeTab, setActiveTab] = useState<string>(() => readStoredActiveTab());
   const [ircMessagesByChannel, setIrcMessagesByChannel] = useState<Record<string, ChatMessage[]>>({});
   const [connectingChannels, setConnectingChannels] = useState<Record<string, boolean>>({});
+  const [primaryChannelLogin, setPrimaryChannelLogin] = useState('');
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -338,6 +395,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
   const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
   const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
+  const primaryIrcStartedRef = useRef(false);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -511,7 +569,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   }, [applyIrcUserProfile]);
 
-  const resolveIrcCredentials = useCallback(async (fallbackNick?: string) => {
+  const resolveIrcCredentials = useCallback(async (fallbackNick?: string): Promise<ResolvedIrcCredentials> => {
     try {
       const response = await fetch(buildApiUrl('/api/chat/irc/credentials'));
       if (!response.ok) {
@@ -522,11 +580,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       const authenticated = payload?.authenticated === true;
       const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
       const pass = typeof payload?.pass === 'string' ? payload.pass.trim() : '';
+      const login = typeof payload?.login === 'string' ? (normalizeTwitchChannelName(payload.login) ?? '') : '';
       if (authenticated && nick !== '' && pass !== '') {
         return {
           authenticated: true,
           nick,
           pass,
+          login,
           userId: typeof payload?.user_id === 'string' ? payload.user_id.trim() : '',
           displayName: typeof payload?.display_name === 'string' ? payload.display_name.trim() : nick,
         };
@@ -534,7 +594,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     } catch (error) {
       console.warn('[ChatSidebar] Failed to resolve IRC credentials. Falling back to anonymous:', error);
     }
-    return { ...createAnonymousCredentials(fallbackNick), userId: '', displayName: '' };
+    return { ...createAnonymousCredentials(fallbackNick), login: '', userId: '', displayName: '' };
   }, []);
 
   const attachIrcSocket = useCallback((connection: IrcConnection) => {
@@ -582,6 +642,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           if (!line) continue;
           if (line.startsWith('PING')) {
             ws.send(line.replace(/^PING/, 'PONG'));
+            continue;
+          }
+          if (connection.isPrimary) {
             continue;
           }
           if (shouldIgnoreDuplicateIrcLine(line)) {
@@ -656,11 +719,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     });
   }, []);
 
-  const startIrcConnection = useCallback((channel: string) => {
-    if (ircConnectionsRef.current.has(channel)) return;
+  const startIrcConnection = useCallback((
+    channel: string,
+    options: { connectionKey?: string; isPrimary?: boolean } = {},
+  ) => {
+    const connectionKey = options.connectionKey ?? channel;
+    const isPrimary = options.isPrimary ?? false;
+    if (ircConnectionsRef.current.has(connectionKey)) return;
 
     const connection: IrcConnection = {
       channel,
+      isPrimary,
       ws: null,
       reconnectTimer: null,
       reconnectAttempts: 0,
@@ -673,7 +742,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       displayName: '',
     };
 
-    ircConnectionsRef.current.set(channel, connection);
+    ircConnectionsRef.current.set(connectionKey, connection);
     attachIrcSocket(connection);
   }, [attachIrcSocket]);
 
@@ -925,6 +994,33 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTab, ircChannels]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const startPrimaryIrcConnection = async () => {
+      if (primaryIrcStartedRef.current) return;
+      const credentials = await resolveIrcCredentials();
+      if (cancelled) return;
+
+      const login = normalizeTwitchChannelName(credentials.login ?? '');
+      if (!login) {
+        setPrimaryChannelLogin('');
+        return;
+      }
+
+      setPrimaryChannelLogin(login);
+      const connectionKey = primaryIrcConnectionKey(login);
+      startIrcConnection(login, { connectionKey, isPrimary: true });
+      primaryIrcStartedRef.current = true;
+    };
+
+    void startPrimaryIrcConnection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolveIrcCredentials, startIrcConnection]);
+
+  useEffect(() => {
     const expected = new Set(ircChannels);
     for (const channel of ircChannels) {
       if (!ircConnectionsRef.current.has(channel)) {
@@ -933,6 +1029,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
 
     for (const channel of Array.from(ircConnectionsRef.current.keys())) {
+      if (channel.startsWith(PRIMARY_IRC_CONNECTION_PREFIX)) continue;
       if (!expected.has(channel)) {
         stopIrcConnection(channel);
       }
@@ -1020,6 +1117,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   ], [channelDisplayNames, ircChannels]);
 
   const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
+  const primaryConnectionId = primaryChannelLogin ? primaryIrcConnectionKey(primaryChannelLogin) : '';
 
   const sendComment = async () => {
     const text = draftMessage.trim();
@@ -1030,11 +1128,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     setPostError('');
     setPostingMessage(true);
     try {
-      if (isPrimaryTab) {
-        throw new Error('IRCタブを選択してから送信してください。');
+      const connectionKey = isPrimaryTab ? primaryConnectionId : activeTab;
+      if (!connectionKey) {
+        throw new Error('メインチャンネルのIRC接続を初期化できませんでした。Twitch認証を確認してください。');
       }
 
-      const connection = ircConnectionsRef.current.get(activeTab);
+      const connection = ircConnectionsRef.current.get(connectionKey);
       if (!connection?.ws || connection.ws.readyState !== WebSocket.OPEN) {
         throw new Error('IRCが未接続です。接続状態を確認してください。');
       }
@@ -1045,7 +1144,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       if (!ircText) {
         throw new Error('投稿メッセージが空です');
       }
-      connection.ws.send(`PRIVMSG #${activeTab} :${ircText}`);
+      const targetChannel = connection.channel;
+      connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
       // オプティミスティック表示：送信メッセージを即座にローカル表示
       const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const optimisticMessage: ChatMessage = {
@@ -1057,9 +1157,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         fragments: [{ type: 'text', text: ircText }],
         timestamp: new Date().toISOString(),
       };
-      appendIrcMessage(activeTab, optimisticMessage);
-      // 署名を登録してTwitchエコー到着時に重複排除
-      shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
+      if (isPrimaryTab) {
+        setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
+      } else {
+        appendIrcMessage(activeTab, optimisticMessage);
+        // 署名を登録してTwitchエコー到着時に重複排除
+        shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
+      }
 
       setDraftMessage('');
     } catch (error) {
@@ -1336,7 +1440,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         void sendComment();
                       }
                     }}
-                    placeholder={isPrimaryTab ? 'コメントを入力...' : `#${activeTab} に送信...`}
+                    placeholder={isPrimaryTab
+                      ? (primaryChannelLogin ? `#${primaryChannelLogin} に送信...` : 'メインチャンネルに送信...')
+                      : `#${activeTab} に送信...`}
                     disabled={postingMessage}
                     className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-600 disabled:opacity-60"
                   />
