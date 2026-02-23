@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
+import { ArrowUpDown, ChevronLeft, ChevronRight, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
 
 import { buildApiUrl } from '../utils/api';
 import {
@@ -61,6 +61,7 @@ type IrcCredentialsResponse = {
 const HISTORY_DAYS = 7;
 const COLLAPSE_STORAGE_KEY = 'chat_sidebar_collapsed';
 const ACTIVE_TAB_STORAGE_KEY = 'chat_sidebar_active_tab';
+const MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed';
 const RESIZE_MIN_WIDTH = 220;
 const RESIZE_MAX_WIDTH = 520;
 const FONT_MIN_SIZE = 12;
@@ -288,6 +289,11 @@ const readStoredActiveTab = (): string => {
   return stored && stored.trim() !== '' ? stored : PRIMARY_CHAT_TAB_ID;
 };
 
+const readStoredMessageOrderReversed = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY) === 'true';
+};
+
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   side,
   width,
@@ -326,6 +332,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [draftMessage, setDraftMessage] = useState('');
   const [postingMessage, setPostingMessage] = useState(false);
   const [postError, setPostError] = useState('');
+  const [messageOrderReversed, setMessageOrderReversed] = useState<boolean>(() => readStoredMessageOrderReversed());
   const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
   const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
@@ -907,6 +914,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY, String(messageOrderReversed));
+  }, [messageOrderReversed]);
+
+  useEffect(() => {
     if (activeTab === PRIMARY_CHAT_TAB_ID) return;
     if (ircChannels.includes(activeTab)) return;
     setActiveTab(PRIMARY_CHAT_TAB_ID);
@@ -942,13 +954,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return ircMessagesByChannel[activeTab] ?? [];
   }, [activeTab, ircMessagesByChannel, primaryMessages]);
 
+  const displayedMessages = useMemo(
+    () => (messageOrderReversed ? [...activeMessages].reverse() : activeMessages),
+    [activeMessages, messageOrderReversed],
+  );
+
   useEffect(() => {
     if (isCollapsed) return;
     const container = listRef.current;
     if (container) {
-      container.scrollTop = container.scrollHeight;
+      if (messageOrderReversed) {
+        container.scrollTop = 0;
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
     }
-  }, [activeMessages, activeTab, isCollapsed]);
+  }, [activeMessages, activeTab, isCollapsed, messageOrderReversed]);
 
   const asideWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)] xl:w-[var(--chat-sidebar-reserved-width)]';
   const fixedWidthClass = 'w-full lg:w-[var(--chat-sidebar-width)]';
@@ -1120,6 +1141,19 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setMessageOrderReversed((prev) => !prev)}
+                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+                      messageOrderReversed
+                        ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                    }`}
+                    aria-label={messageOrderReversed ? 'コメント順を下に最新へ戻す' : 'コメント順を上に最新へ変更する'}
+                    title={messageOrderReversed ? '上に最新 (ON)' : '下に最新 (OFF)'}
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setSettingsOpen((prev) => !prev)}
                     className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
                     aria-label="コメント欄の設定を開く"
@@ -1274,7 +1308,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 {activeMessages.length === 0 ? (
                   emptyState
                 ) : (
-                  activeMessages.map((msg, index) => (
+                  displayedMessages.map((msg, index) => (
                     <ChatSidebarItem
                       key={msg.id}
                       message={msg}
