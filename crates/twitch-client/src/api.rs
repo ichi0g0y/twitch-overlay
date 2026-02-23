@@ -63,7 +63,19 @@ pub struct TwitchUser {
     pub id: String,
     pub login: String,
     pub display_name: String,
+    #[serde(default)]
+    pub user_type: String,
+    #[serde(default)]
+    pub broadcaster_type: String,
+    #[serde(default)]
+    pub description: String,
     pub profile_image_url: String,
+    #[serde(default)]
+    pub offline_image_url: String,
+    #[serde(default)]
+    pub view_count: u64,
+    #[serde(default)]
+    pub created_at: String,
 }
 
 /// Followed channel entry from GET /helix/channels/followed.
@@ -307,7 +319,11 @@ impl TwitchApiClient {
     }
 
     /// Execute a POST request with auth headers and no body.
-    async fn authenticated_post_no_body(&self, url: &str, token: &Token) -> Result<String, TwitchError> {
+    async fn authenticated_post_no_body(
+        &self,
+        url: &str,
+        token: &Token,
+    ) -> Result<String, TwitchError> {
         let headers = self.auth_headers(token);
         let resp = self.http.post(url).headers(headers).send().await?;
 
@@ -508,6 +524,21 @@ impl TwitchApiClient {
         let body = self.authenticated_post_no_body(&url, token).await?;
         let resp: HelixResponse<RaidInfo> = serde_json::from_str(&body)?;
         Ok(resp.data.into_iter().next())
+    }
+
+    /// Send a shoutout to another broadcaster.
+    pub async fn start_shoutout(
+        &self,
+        token: &Token,
+        from_broadcaster_id: &str,
+        to_broadcaster_id: &str,
+        moderator_id: &str,
+    ) -> Result<(), TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/chat/shoutouts?from_broadcaster_id={from_broadcaster_id}&to_broadcaster_id={to_broadcaster_id}&moderator_id={moderator_id}"
+        );
+        let _ = self.authenticated_post_no_body(&url, token).await?;
+        Ok(())
     }
 
     /// Get all custom channel point rewards for a broadcaster.

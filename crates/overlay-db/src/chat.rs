@@ -2,6 +2,7 @@
 
 use crate::{Database, DbError};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -34,9 +35,17 @@ pub struct IrcChatMessage {
     pub user_id: String,
     pub username: String,
     pub message: String,
+    pub badge_keys: Vec<String>,
     pub fragments_json: String,
     pub avatar_url: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IrcChannelProfile {
+    pub channel_login: String,
+    pub display_name: String,
+    pub updated_at: i64,
 }
 
 impl Database {
@@ -200,6 +209,37 @@ impl Database {
         })
     }
 
+    pub fn find_chat_user_profile_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<ChatUserProfile>, DbError> {
+        let normalized = username.trim();
+        if normalized.is_empty() {
+            return Ok(None);
+        }
+
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT user_id, username, avatar_url, updated_at
+                 FROM chat_users
+                 WHERE username != '' AND lower(username) = lower(?1)
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+            )?;
+            let profile = stmt
+                .query_row([normalized], |row| {
+                    Ok(ChatUserProfile {
+                        user_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                    })
+                })
+                .optional()?;
+            Ok(profile)
+        })
+    }
+
     pub fn get_latest_chat_avatar(&self, user_id: &str) -> Result<Option<String>, DbError> {
         self.with_conn(|conn| {
             let mut user_stmt = conn.prepare(
@@ -243,16 +283,19 @@ impl Database {
     }
 
     pub fn add_irc_chat_message(&self, msg: &IrcChatMessage) -> Result<bool, DbError> {
+        let badge_keys_json = serde_json::to_string(&msg.badge_keys)
+            .map_err(|e| DbError::InvalidData(format!("invalid badge keys: {e}")))?;
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO irc_chat_messages
-                    (channel_login, message_id, user_id, message, fragments_json, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    (channel_login, message_id, user_id, message, badge_keys_json, fragments_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
                     msg.channel_login,
                     msg.message_id,
                     msg.user_id,
                     msg.message,
+                    badge_keys_json,
                     msg.fragments_json,
                     msg.created_at,
                 ],
@@ -277,6 +320,7 @@ impl Database {
                         m.user_id,
                         COALESCE(u.username, '') AS username,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.created_at
@@ -286,7 +330,11 @@ impl Database {
                      ORDER BY m.created_at ASC
                      LIMIT ?3"
                         .to_string(),
-                    vec![Box::new(channel_login.to_string()), Box::new(since_unix), Box::new(l)],
+                    vec![
+                        Box::new(channel_login.to_string()),
+                        Box::new(since_unix),
+                        Box::new(l),
+                    ],
                 ),
                 None => (
                     "SELECT
@@ -296,6 +344,7 @@ impl Database {
                         m.user_id,
                         COALESCE(u.username, '') AS username,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.created_at
@@ -317,9 +366,13 @@ impl Database {
                     user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                     username: row.get(4)?,
                     message: row.get(5)?,
-                    fragments_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-                    avatar_url: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    created_at: row.get(8)?,
+                    badge_keys: parse_badge_keys_json(
+                        row.get::<_, Option<String>>(6)?
+                            .unwrap_or_else(|| "[]".to_string()),
+                    )?,
+                    fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                    avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                    created_at: row.get(9)?,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -335,6 +388,72 @@ impl Database {
             Ok(())
         })
     }
+
+    pub fn upsert_irc_channel_profile(
+        &self,
+        channel_login: &str,
+        display_name: &str,
+        updated_at: i64,
+    ) -> Result<(), DbError> {
+        let normalized_channel = channel_login.trim().to_lowercase();
+        if normalized_channel.is_empty() {
+            return Ok(());
+        }
+
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO irc_channel_profiles (channel_login, display_name, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(channel_login) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    updated_at = excluded.updated_at",
+                rusqlite::params![normalized_channel, display_name.trim(), updated_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_irc_channel_profile(
+        &self,
+        channel_login: &str,
+    ) -> Result<Option<IrcChannelProfile>, DbError> {
+        let normalized_channel = channel_login.trim().to_lowercase();
+        if normalized_channel.is_empty() {
+            return Ok(None);
+        }
+
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT channel_login, display_name, updated_at
+                 FROM irc_channel_profiles
+                 WHERE channel_login = ?1
+                 LIMIT 1",
+            )?;
+            let profile = stmt
+                .query_row([normalized_channel], |row| {
+                    Ok(IrcChannelProfile {
+                        channel_login: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        display_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
+                    })
+                })
+                .optional()?;
+            Ok(profile)
+        })
+    }
+
+    pub fn get_irc_channel_profiles(
+        &self,
+        channel_logins: &[String],
+    ) -> Result<Vec<IrcChannelProfile>, DbError> {
+        let mut profiles = Vec::new();
+        for channel_login in channel_logins {
+            if let Some(profile) = self.get_irc_channel_profile(channel_login)? {
+                profiles.push(profile);
+            }
+        }
+        Ok(profiles)
+    }
 }
 
 trait OptionalExt<T> {
@@ -349,4 +468,19 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
             Err(e) => Err(e),
         }
     }
+}
+
+fn parse_badge_keys_json(raw: String) -> Result<Vec<String>, rusqlite::Error> {
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let parsed = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Array(vec![]));
+    let Some(items) = parsed.as_array() else {
+        return Ok(Vec::new());
+    };
+    Ok(items
+        .iter()
+        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+        .collect())
 }

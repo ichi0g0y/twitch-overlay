@@ -35,6 +35,7 @@ export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) =>
 
   const printerType = getSettingValue('PRINTER_TYPE') || 'bluetooth';
   const visibleSections = new Set(sections ?? ['type', 'bluetooth', 'usb', 'print', 'clock']);
+  const isSingleSectionMode = Array.isArray(sections) && sections.length === 1;
 
   return (
     <div className="space-y-6">
@@ -74,13 +75,29 @@ export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) =>
       )}
 
       {/* 2. Bluetooth設定カード（条件付き表示）*/}
-      {visibleSections.has('bluetooth') && printerType === 'bluetooth' && (
+      {visibleSections.has('bluetooth') && (printerType === 'bluetooth' || isSingleSectionMode) && (
         <CollapsibleCard
           panelId="settings.printer.bluetooth"
           title="プリンター接続設定"
           description="CatPrinterのBluetooth接続を設定します"
           contentClassName="space-y-6"
         >
+          {printerType !== 'bluetooth' ? (
+            <Alert>
+              <AlertDescription>
+                このカードは Bluetooth プリンター設定です。現在のプリンター種類は USB です。
+                <Button
+                  onClick={() => handleSettingChange('PRINTER_TYPE', 'bluetooth')}
+                  size="sm"
+                  variant="outline"
+                  className="ml-3"
+                >
+                  Bluetooth に切り替える
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
             {/* Bluetooth デバイススキャン */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -206,17 +223,35 @@ export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) =>
                 </div>
               )}
             </div>
+            </>
+          )}
         </CollapsibleCard>
       )}
 
       {/* 3. USB設定カード（条件付き表示）*/}
-      {visibleSections.has('usb') && printerType === 'usb' && (
+      {visibleSections.has('usb') && (printerType === 'usb' || isSingleSectionMode) && (
         <CollapsibleCard
           panelId="settings.printer.usb"
           title="USBプリンター設定"
           description="システムに登録されているプリンターから選択します"
           contentClassName="space-y-4"
         >
+          {printerType !== 'usb' ? (
+            <Alert>
+              <AlertDescription>
+                このカードは USB プリンター設定です。現在のプリンター種類は Bluetooth です。
+                <Button
+                  onClick={() => handleSettingChange('PRINTER_TYPE', 'usb')}
+                  size="sm"
+                  variant="outline"
+                  className="ml-3"
+                >
+                  USB に切り替える
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
             <div className="flex items-center justify-between">
               <Label>システムプリンター</Label>
               <Button
@@ -299,6 +334,8 @@ export const PrinterSettings: React.FC<PrinterSettingsProps> = ({ sections }) =>
                 </AlertDescription>
               </Alert>
             )}
+            </>
+          )}
         </CollapsibleCard>
       )}
 

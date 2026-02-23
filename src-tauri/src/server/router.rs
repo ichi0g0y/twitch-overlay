@@ -1,7 +1,7 @@
 use axum::{
+    Router,
     extract::DefaultBodyLimit,
     routing::{delete, get, patch, post, put},
-    Router,
 };
 use tower_http::cors::CorsLayer;
 
@@ -257,11 +257,23 @@ pub fn create_router(state: SharedState) -> Router {
             get(api::chat::get_irc_credentials),
         )
         .route("/api/chat/irc/history", get(api::chat::get_irc_history))
+        .route(
+            "/api/chat/irc/channel-profiles",
+            get(api::chat::get_irc_channel_profiles),
+        )
+        .route(
+            "/api/chat/irc/channel-profile",
+            post(api::chat::post_irc_channel_profile),
+        )
         .route("/api/chat/irc/message", post(api::chat::post_irc_message))
         .route("/api/chat/post", post(api::chat::post_chat_message))
         .route(
             "/api/chat/user-profile",
             post(api::chat::upsert_user_profile),
+        )
+        .route(
+            "/api/chat/user-profile/detail",
+            post(api::chat::get_user_profile_detail),
         )
         .route("/api/chat/cleanup", post(api::chat::cleanup_messages))
         .route("/api/chat/avatar/{user_id}", get(api::chat::get_avatar))
@@ -272,6 +284,10 @@ pub fn create_router(state: SharedState) -> Router {
             get(api::twitch::followed_channels),
         )
         .route("/api/twitch/raid/start", post(api::twitch::start_raid))
+        .route(
+            "/api/twitch/shoutout/start",
+            post(api::twitch::start_shoutout),
+        )
         .route(
             "/api/twitch/refresh-token",
             get(api::twitch::refresh_token).post(api::twitch::refresh_token),

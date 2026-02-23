@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { PhysicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChatNotification } from '../../types/notification';
 import { buildApiUrl } from '../../utils/api';
@@ -16,6 +17,7 @@ export function NotificationWindow() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [isMovable, setIsMovable] = useState(true);
   const [isResizable, setIsResizable] = useState(true);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
 
   const parseBool = (value: unknown, defaultValue: boolean): boolean => {
     if (typeof value === 'boolean') return value;
@@ -66,6 +68,26 @@ export function NotificationWindow() {
       console.warn('[NotificationWindow] Failed to start window resize dragging:', error);
     });
   };
+
+  const fitWindowHeight = useCallback(async () => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const targetHeightLogical = Math.ceil(surface.getBoundingClientRect().height);
+    if (targetHeightLogical <= 0) return;
+
+    try {
+      const currentWindow = getCurrentWindow();
+      const scaleFactor = await currentWindow.scaleFactor();
+      const currentSize = await currentWindow.innerSize();
+      const targetHeightPhysical = Math.max(1, Math.round(targetHeightLogical * scaleFactor));
+      if (Math.abs(currentSize.height - targetHeightPhysical) <= 1) return;
+
+      await currentWindow.setSize(new PhysicalSize(currentSize.width, targetHeightPhysical));
+    } catch (error) {
+      console.warn('[NotificationWindow] Failed to auto-fit window height:', error);
+    }
+  }, []);
 
   // 新しい通知が来たときにフラッシュアニメーションを実行
   useEffect(() => {
@@ -142,9 +164,47 @@ export function NotificationWindow() {
     };
   }, []);
 
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    let frameId: number | null = null;
+    const scheduleFit = () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        void fitWindowHeight();
+      });
+    };
+
+    scheduleFit();
+
+    if (typeof ResizeObserver === 'undefined') {
+      return () => {
+        if (frameId !== null) {
+          cancelAnimationFrame(frameId);
+        }
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      scheduleFit();
+    });
+    observer.observe(surface);
+
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [fitWindowHeight, notification]);
+
   return (
     <div
-      className={`w-full h-screen bg-transparent overflow-hidden transition-colors duration-300 ${
+      className={`w-full bg-transparent overflow-hidden transition-colors duration-300 ${
         isFlashing ? 'text-black' : 'text-white'
       }`}
       style={{
@@ -152,7 +212,8 @@ export function NotificationWindow() {
       }}
     >
       <div
-        className={`relative w-full h-full rounded-2xl overflow-hidden flex flex-col border shadow-xl ${
+        ref={surfaceRef}
+        className={`relative w-full rounded-2xl overflow-hidden border shadow-xl ${
           isFlashing
             ? 'bg-[rgba(220,220,220,0.95)] border-[rgba(255,255,255,0.55)]'
             : 'bg-[rgba(30,30,30,0.95)] border-[rgba(255,255,255,0.2)]'
@@ -176,7 +237,7 @@ export function NotificationWindow() {
           />
         )}
 
-        <div className="relative pt-8 px-4 pb-4 flex-1">
+        <div className="relative pt-8 px-4 pb-4">
           {notification ? (
             <div className="flex gap-3">
               {/* アバター */}

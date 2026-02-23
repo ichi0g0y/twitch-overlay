@@ -1,9 +1,9 @@
-import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
+  ControlButton,
   Controls,
-  MiniMap,
   NodeResizer,
   ReactFlow,
   useNodesState,
@@ -47,8 +47,11 @@ const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
 const FOLLOWED_RAIL_WIDTH_PX = 48;
 const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
+const WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY = 'settings.workspace.reactflow.last_positions.v1';
+const WORKSPACE_SNAP_ENABLED_STORAGE_KEY = 'settings.workspace.reactflow.snap.enabled.v1';
 const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
+const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
 const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
 type BaseWorkspaceCardKind =
@@ -96,6 +99,17 @@ type WorkspaceCardMenuItem = {
   description: string;
 };
 
+type WorkspaceMenuCategory =
+  | 'preview'
+  | 'general'
+  | 'mic'
+  | 'twitch'
+  | 'printer'
+  | 'music'
+  | 'overlay'
+  | 'cache'
+  | 'system';
+
 type WorkspaceCardNodeData = {
   kind: WorkspaceCardKind;
   title: string;
@@ -119,9 +133,12 @@ type StoredWorkspaceFlowPayload = {
   };
 };
 
+type StoredWorkspaceCardLastPositionsPayload = Record<string, { x: number; y: number }>;
+
 type WorkspaceRenderContextValue = {
   removeCard: (id: string) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
+  snapCardSize: (id: string, width: number, height: number) => void;
   renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
   resolvePreviewHeader: (kind: WorkspaceCardKind) => {
     channelLogin: string;
@@ -188,6 +205,42 @@ const BASE_WORKSPACE_MENU: WorkspaceCardMenuItem[] = [
   { kind: 'api', label: 'API', description: 'API関連の状態確認' },
 ];
 
+const WORKSPACE_MENU_CATEGORY_ORDER: WorkspaceMenuCategory[] = [
+  'preview',
+  'general',
+  'mic',
+  'twitch',
+  'printer',
+  'music',
+  'overlay',
+  'cache',
+  'system',
+];
+
+const WORKSPACE_MENU_CATEGORY_LABELS: Record<WorkspaceMenuCategory, string> = {
+  preview: 'プレビュー',
+  general: '一般',
+  mic: 'マイク',
+  twitch: 'Twitch',
+  printer: 'プリンター',
+  music: '音楽',
+  overlay: 'Overlay',
+  cache: 'キャッシュ',
+  system: 'システム',
+};
+
+const resolveWorkspaceMenuCategory = (kind: WorkspaceCardKind): WorkspaceMenuCategory => {
+  if (kind.startsWith('preview-')) return 'preview';
+  if (kind.startsWith('general-')) return 'general';
+  if (kind.startsWith('mic-')) return 'mic';
+  if (kind.startsWith('twitch-')) return 'twitch';
+  if (kind.startsWith('printer-')) return 'printer';
+  if (kind.startsWith('music-')) return 'music';
+  if (kind.startsWith('overlay-')) return 'overlay';
+  if (kind.startsWith('cache-')) return 'cache';
+  return 'system';
+};
+
 const LEGACY_WORKSPACE_CARD_KIND_MAP: Record<LegacyWorkspaceCardKind, WorkspaceCardKind> = {
   general: 'general-basic',
   mic: 'mic-speech',
@@ -251,6 +304,41 @@ const normalizeWorkspaceCardKind = (kind: string): WorkspaceCardKind | null => {
   return null;
 };
 
+const readWorkspaceCardLastPositions = (): Partial<Record<WorkspaceCardKind, { x: number; y: number }>> => {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as StoredWorkspaceCardLastPositionsPayload;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: Partial<Record<WorkspaceCardKind, { x: number; y: number }>> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!isWorkspaceCardKind(key)) continue;
+      if (!value || typeof value !== 'object') continue;
+      const x = toFiniteNumber((value as { x?: unknown }).x, Number.NaN);
+      const y = toFiniteNumber((value as { y?: unknown }).y, Number.NaN);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      result[key] = { x, y };
+    }
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+const writeWorkspaceCardLastPositions = (positions: Partial<Record<WorkspaceCardKind, { x: number; y: number }>>) => {
+  if (typeof window === 'undefined') return;
+  const payload: StoredWorkspaceCardLastPositionsPayload = {};
+  for (const [key, position] of Object.entries(positions)) {
+    if (!position || !isWorkspaceCardKind(key)) continue;
+    payload[key] = {
+      x: toFiniteNumber(position.x, 0),
+      y: toFiniteNumber(position.y, 0),
+    };
+  }
+  window.localStorage.setItem(WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY, JSON.stringify(payload));
+};
+
 const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
   const staticItem = BASE_WORKSPACE_MENU.find((item) => item.kind === kind);
   if (staticItem) return staticItem.label;
@@ -261,9 +349,14 @@ const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
   return kind;
 };
 
+const snapWorkspaceSizeToGrid = (size: { width: number; height: number }) => ({
+  width: Math.max(WORKSPACE_SNAP_GRID[0], Math.round(size.width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0]),
+  height: Math.max(WORKSPACE_SNAP_GRID[1], Math.round(size.height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1]),
+});
+
 const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
-  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return { width: 640, height: 420 };
-  if (kind === 'twitch-custom-rewards') return { width: 960, height: 640 };
+  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return snapWorkspaceSizeToGrid({ width: 640, height: 396 });
+  if (kind === 'twitch-custom-rewards') return snapWorkspaceSizeToGrid({ width: 960, height: 640 });
   if (
     kind === 'overlay-music-player' ||
     kind === 'overlay-fax' ||
@@ -272,10 +365,10 @@ const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
     kind === 'overlay-reward-count' ||
     kind === 'overlay-lottery'
   ) {
-    return { width: 820, height: 620 };
+    return snapWorkspaceSizeToGrid({ width: 820, height: 620 });
   }
-  if (kind === 'logs' || kind === 'api') return { width: 760, height: 560 };
-  return { width: 640, height: 520 };
+  if (kind === 'logs' || kind === 'api') return snapWorkspaceSizeToGrid({ width: 760, height: 560 });
+  return snapWorkspaceSizeToGrid({ width: 640, height: 520 });
 };
 
 const resolveWorkspaceCardMinSize = (kind: WorkspaceCardKind) => {
@@ -289,16 +382,6 @@ const resolveWorkspaceCardMinSize = (kind: WorkspaceCardKind) => {
 const isCollapsibleCardNodeKind = (kind: WorkspaceCardKind) => {
   if (isPreviewCardKind(kind)) return false;
   if (kind === 'logs') return false;
-  if (
-    kind === 'overlay-music-player' ||
-    kind === 'overlay-fax' ||
-    kind === 'overlay-clock' ||
-    kind === 'overlay-mic-transcript' ||
-    kind === 'overlay-reward-count' ||
-    kind === 'overlay-lottery'
-  ) {
-    return false;
-  }
   return true;
 };
 
@@ -435,7 +518,9 @@ type PreviewEmbedProps = {
 };
 
 const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce }) => {
-  const parentDomain = typeof window !== 'undefined' ? (window.location.hostname || 'localhost') : 'localhost';
+  const parentDomain = typeof window !== 'undefined'
+    ? (window.location.hostname?.replace(/^tauri\./, '') || 'localhost')
+    : 'localhost';
   const streamUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channelLogin)}&parent=${encodeURIComponent(parentDomain)}&autoplay=true&muted=true&controls=true&refresh=${reloadNonce}`;
 
   return (
@@ -501,26 +586,41 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ c
 const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected }) => {
   const renderContext = useContext(WORKSPACE_RENDER_CONTEXT);
   if (!renderContext) return null;
+  const [isHovered, setIsHovered] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const cardAsNode = isCollapsibleCardNodeKind(data.kind);
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = resolveWorkspaceCardMinSize(data.kind);
+  const showResizeHandles = selected || isHovered || isResizing;
+  const nodeInteractionClassName = isResizing ? 'pointer-events-none select-none' : '';
   return (
-    <div className={`relative h-full min-h-0 min-w-0 ${cardAsNode ? '' : 'overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20'}`}>
+    <div
+      className="relative h-full min-h-0 min-w-0"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <NodeResizer
         minWidth={minSize.minWidth}
         minHeight={minSize.minHeight}
-        isVisible={selected}
+        isVisible={showResizeHandles}
         lineClassName="!border-transparent"
         handleClassName="!h-3.5 !w-3.5 !rounded-sm !border-none !bg-transparent !opacity-0"
+        onResizeStart={() => {
+          setIsResizing(true);
+        }}
+        onResizeEnd={(_event, params) => {
+          setIsResizing(false);
+          renderContext.snapCardSize(id, params.width, params.height);
+        }}
       />
       {cardAsNode ? (
-        <div className="settings-node-card-shell h-full min-h-0">
+        <div className={`settings-node-card-shell h-full min-h-0 ${nodeInteractionClassName}`}>
           <WorkspaceCardUiContext.Provider value={{ onClose: () => renderContext.removeCard(id), nodeMode: true }}>
             {renderContext.renderCard(data.kind)}
           </WorkspaceCardUiContext.Provider>
         </div>
       ) : (
-        <>
+        <div className={`h-full min-h-0 overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20 ${nodeInteractionClassName}`}>
           <div className="workspace-node-drag-handle flex h-9 items-center border-b border-gray-800/80 bg-gray-900/85 px-3">
             {previewHeader ? (
               <>
@@ -561,7 +661,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
           <div className="nodrag h-[calc(100%-2.25rem)] overflow-auto">
             {renderContext.renderCard(data.kind)}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -588,6 +688,7 @@ type FollowedChannelsRailProps = {
   channels: FollowedChannelRailItem[];
   loading: boolean;
   error: string;
+  canStartRaid: boolean;
   chatWidth: number;
   chatPanel: React.ReactNode;
   onSideChange: (side: 'left' | 'right') => void;
@@ -597,13 +698,22 @@ type FollowedChannelsRailProps = {
   onOpenPresentDebug: () => void;
   onAddIrcPreview: (channelLogin: string) => void;
   onStartRaid: (channel: FollowedChannelRailItem) => Promise<void>;
+  onStartShoutout: (channel: FollowedChannelRailItem) => Promise<void>;
 };
+
+function formatViewerCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (count >= 10_000) return `${(count / 1000).toFixed(0)}K`;
+  if (count >= 1_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(count);
+}
 
 const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   side,
   channels,
   loading,
   error,
+  canStartRaid,
   chatWidth,
   chatPanel,
   onSideChange,
@@ -613,19 +723,27 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   onOpenPresentDebug,
   onAddIrcPreview,
   onStartRaid,
+  onStartShoutout,
 }) => {
   const [railMenuOpen, setRailMenuOpen] = useState(false);
   const [openChannelId, setOpenChannelId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
   const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
+  const [shoutoutingChannelId, setShoutoutingChannelId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
+  const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
+  const [hoverAnchor, setHoverAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
+  const copiedResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (openChannelId && !channels.some((item) => item.broadcaster_id === openChannelId)) {
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
     }
   }, [channels, openChannelId]);
 
@@ -643,6 +761,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
       setActionError('');
     };
 
@@ -650,6 +769,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setOpenChannelId(null);
       setMenuAnchor(null);
       setRaidConfirmChannelId(null);
+      setShoutoutingChannelId(null);
       setActionError('');
     };
 
@@ -660,6 +780,25 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       window.removeEventListener('resize', closeByResize);
     };
   }, [openChannelId]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current !== null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return subscribeIrcChannels((channels) => {
+      setIrcConnectedChannels(channels);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (canStartRaid) return;
+    setRaidConfirmChannelId(null);
+  }, [canStartRaid]);
 
   useEffect(() => {
     if (!railMenuOpen) return;
@@ -686,8 +825,10 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
     };
   }, [railMenuOpen]);
 
-  const tooltipSideClass = side === 'left' ? 'left-full ml-2' : 'right-full mr-2';
   const toggleLabel = side === 'left' ? '右側へ移動' : '左側へ移動';
+  const hoveredChannel = hoveredChannelId
+    ? channels.find((item) => item.broadcaster_id === hoveredChannelId) ?? null
+    : null;
 
   return (
     <div
@@ -772,7 +913,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             )}
           </div>
           <div className="mb-2 h-px w-8 bg-gray-700" />
-          <div className="flex-1 overflow-y-auto space-y-2 px-1">
+          <div className="flex-1 overflow-y-auto space-y-2 px-1 py-1">
             {loading && (
               <div className="flex w-full justify-center py-1 text-[10px] text-gray-400">...</div>
             )}
@@ -781,6 +922,11 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             )}
             {channels.map((channel) => {
               const selected = openChannelId === channel.broadcaster_id;
+              const channelDisplayName = channel.broadcaster_name || channel.broadcaster_login;
+              const channelLogin = channel.broadcaster_login;
+              const normalizedChannelLogin = channelLogin.trim().toLowerCase();
+              const alreadyConnected = ircConnectedChannels.includes(normalizedChannelLogin);
+              const canStartShoutout = canStartRaid && channel.is_live;
               return (
                 <div key={channel.broadcaster_id} className="group relative flex justify-center">
                   <button
@@ -792,11 +938,12 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       setOpenChannelId(nextOpen ? channel.broadcaster_id : null);
                       if (!nextOpen) {
                         setMenuAnchor(null);
+                        setShoutoutingChannelId(null);
                         return;
                       }
                       const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
                       const menuWidth = 192;
-                      const menuHeight = 170;
+                      const menuHeight = 230;
                       const top = Math.max(
                         12,
                         Math.min(window.innerHeight - menuHeight - 12, rect.top + (rect.height / 2) - (menuHeight / 2)),
@@ -811,57 +958,158 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         ? 'border-blue-400 ring-1 ring-blue-400/60'
                         : 'border-gray-700 hover:border-gray-500'
                     }`}
-                    aria-label={`${channel.broadcaster_name} の操作を開く`}
+                    onMouseEnter={(event) => {
+                      const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      setHoveredChannelId(channel.broadcaster_id);
+                      setHoverAnchor({
+                        top: rect.top + (rect.height / 2),
+                        left: side === 'left' ? rect.right + 8 : rect.left - 8,
+                      });
+                    }}
+                    onMouseMove={(event) => {
+                      const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      setHoveredChannelId(channel.broadcaster_id);
+                      setHoverAnchor({
+                        top: rect.top + (rect.height / 2),
+                        left: side === 'left' ? rect.right + 8 : rect.left - 8,
+                      });
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredChannelId((current) => (current === channel.broadcaster_id ? null : current));
+                      setHoverAnchor(null);
+                    }}
+                    aria-label={`${channelDisplayName} の操作を開く`}
                     data-followed-trigger="true"
                   >
                     <span className="block h-full w-full overflow-hidden rounded-full">
                       {channel.profile_image_url ? (
                         <img
                           src={channel.profile_image_url}
-                          alt={channel.broadcaster_name}
+                          alt={channelDisplayName}
                           className={`h-full w-full object-cover ${channel.is_live ? '' : 'grayscale opacity-70'}`}
                         />
                       ) : (
                         <span className={`flex h-full w-full items-center justify-center bg-gray-700 text-xs font-semibold ${channel.is_live ? 'text-white' : 'text-gray-300'}`}>
-                          {(channel.broadcaster_name || channel.broadcaster_login || '?').slice(0, 1).toUpperCase()}
+                          {(channelDisplayName || '?').slice(0, 1).toUpperCase()}
                         </span>
                       )}
                     </span>
                     {channel.is_live && (
-                      <span className="absolute -right-1 -top-1 z-10 inline-flex h-3.5 w-3.5 rounded-full border border-gray-900 bg-red-500 shadow" />
+                      <span className="absolute -bottom-1 left-1/2 z-10 min-w-[16px] -translate-x-1/2 rounded-full border border-gray-900 bg-red-600 px-[2px] py-[2px] text-center text-[8px] font-bold leading-none text-white shadow">
+                        {formatViewerCount(channel.viewer_count)}
+                      </span>
                     )}
                   </button>
-                  <div
-                    className={`pointer-events-none absolute ${tooltipSideClass} top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 opacity-0 shadow transition group-hover:opacity-100`}
-                  >
-                    {channel.broadcaster_name}
-                    {channel.is_live ? ` (LIVE ${channel.viewer_count})` : ' (OFFLINE)'}
-                  </div>
                   {selected && menuAnchor && (
                     <div
                       data-followed-menu="true"
                       className="fixed z-50 w-48 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
                       style={{ left: `${menuAnchor.left}px`, top: `${menuAnchor.top}px` }}
                     >
-                      <div className="mb-1 text-xs font-semibold text-gray-100">#{channel.broadcaster_login}</div>
+                      <div className="text-xs font-semibold text-gray-100">{channelDisplayName}</div>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate text-[11px] text-gray-400">#{channelLogin}</div>
+                        <div className="inline-flex items-center gap-1">
+                          <a
+                            href={`https://www.twitch.tv/${encodeURIComponent(channelLogin)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                            aria-label={`${channelLogin} のチャンネルを開く`}
+                            title="チャンネルを開く"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                                  await navigator.clipboard.writeText(channelLogin);
+                                } else if (typeof document !== 'undefined') {
+                                  const textarea = document.createElement('textarea');
+                                  textarea.value = channelLogin;
+                                  textarea.style.position = 'fixed';
+                                  textarea.style.opacity = '0';
+                                  document.body.appendChild(textarea);
+                                  textarea.focus();
+                                  textarea.select();
+                                  document.execCommand('copy');
+                                  document.body.removeChild(textarea);
+                                }
+                                setCopiedChannelId(channel.broadcaster_id);
+                                if (copiedResetTimerRef.current !== null) {
+                                  window.clearTimeout(copiedResetTimerRef.current);
+                                }
+                                copiedResetTimerRef.current = window.setTimeout(() => {
+                                  setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
+                                }, 1200);
+                              } catch {
+                                setActionError('チャンネル名のコピーに失敗しました');
+                              }
+                            }}
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                            aria-label={`${channelLogin} をコピー`}
+                            title="チャンネル名をコピー"
+                          >
+                            {copiedChannelId === channel.broadcaster_id ? (
+                              <Check className="h-3 w-3 text-emerald-300" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
                       <div className="mb-2 text-[11px] text-gray-400 truncate">
                         {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
                       </div>
                       <button
                         type="button"
+                        disabled={alreadyConnected}
                         onClick={() => {
                           onAddIrcPreview(channel.broadcaster_login);
                           setOpenChannelId(null);
                           setMenuAnchor(null);
                           setRaidConfirmChannelId(null);
+                          setShoutoutingChannelId(null);
                         }}
-                        className="mb-1 inline-flex h-8 w-full items-center justify-center rounded border border-emerald-600/60 text-xs text-emerald-300 hover:bg-emerald-700/20"
+                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                          alreadyConnected
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : 'border-emerald-600/60 text-emerald-300 hover:bg-emerald-700/20'
+                        }`}
                       >
-                        コメント欄に接続
+                        {alreadyConnected ? '接続済み' : '接続'}
                       </button>
                       <button
                         type="button"
-                        disabled={raidingChannelId === channel.broadcaster_id}
+                        disabled={!canStartShoutout || shoutoutingChannelId === channel.broadcaster_id}
+                        onClick={async () => {
+                          setActionError('');
+                          setRaidConfirmChannelId(null);
+                          setShoutoutingChannelId(channel.broadcaster_id);
+                          try {
+                            await onStartShoutout(channel);
+                            setOpenChannelId(null);
+                            setMenuAnchor(null);
+                            setShoutoutingChannelId(null);
+                          } catch (error: any) {
+                            setActionError(error?.message || '応援に失敗しました');
+                          } finally {
+                            setShoutoutingChannelId(null);
+                          }
+                        }}
+                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
+                          !canStartShoutout
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : 'border-fuchsia-600/60 text-fuchsia-200 hover:bg-fuchsia-700/20'
+                        } disabled:opacity-60`}
+                      >
+                        {shoutoutingChannelId === channel.broadcaster_id ? '応援中...' : '応援'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canStartRaid || raidingChannelId === channel.broadcaster_id}
                         onClick={async () => {
                           if (raidConfirmChannelId !== channel.broadcaster_id) {
                             setRaidConfirmChannelId(channel.broadcaster_id);
@@ -882,7 +1130,9 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                           }
                         }}
                         className={`inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-                          raidConfirmChannelId === channel.broadcaster_id
+                          !canStartRaid
+                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                            : raidConfirmChannelId === channel.broadcaster_id
                             ? 'border-red-500/80 text-red-200 hover:bg-red-700/20'
                             : 'border-gray-600 text-gray-200 hover:bg-gray-800'
                         } disabled:opacity-60`}
@@ -908,6 +1158,22 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                 </div>
               );
             })}
+            {hoveredChannel && hoverAnchor && (
+              <div
+                className={`pointer-events-none fixed z-[70] -translate-y-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-1 text-xs text-gray-100 shadow ${
+                  side === 'left' ? '' : '-translate-x-full'
+                }`}
+                style={{ top: `${hoverAnchor.top}px`, left: `${hoverAnchor.left}px` }}
+              >
+                <div className="font-semibold leading-tight">
+                  {hoveredChannel.broadcaster_name || hoveredChannel.broadcaster_login}
+                </div>
+                <div className="text-[10px] leading-tight text-gray-300">#{hoveredChannel.broadcaster_login}</div>
+                <div className="text-[10px] leading-tight text-gray-300">
+                  {hoveredChannel.is_live ? `LIVE ${hoveredChannel.viewer_count}` : 'OFFLINE'}
+                </div>
+              </div>
+            )}
           </div>
           {!!error && (
             <div className="mt-2 w-full px-1 text-center text-[10px] leading-tight text-red-300">
@@ -947,6 +1213,7 @@ type StatusTopBarProps = {
   onAddCard: (kind: WorkspaceCardKind) => void;
   onAddIrcPreview: (channelLogin: string) => void;
   canAddCard: (kind: WorkspaceCardKind) => boolean;
+  ircChannelDisplayNames: Record<string, string>;
 };
 
 const StatusTopBar: React.FC<StatusTopBarProps> = ({
@@ -973,10 +1240,12 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
   onAddCard,
   onAddIrcPreview,
   canAddCard,
+  ircChannelDisplayNames,
 }) => {
   const { status: micStatus } = useMicCaptionStatus();
   const [openPanel, setOpenPanel] = useState<'system' | 'mic' | null>(null);
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
+  const [cardMenuHoveredCategory, setCardMenuHoveredCategory] = useState<WorkspaceMenuCategory>('preview');
   const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
   const systemTriggerRef = useRef<HTMLButtonElement | null>(null);
   const micTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -994,6 +1263,43 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
     const port = window.location.port ? Number.parseInt(window.location.port, 10) : NaN;
     return Number.isNaN(port) ? undefined : port;
   }, [webServerPort]);
+  const cardMenuItemsByCategory = useMemo(() => {
+    const grouped: Record<WorkspaceMenuCategory, WorkspaceCardMenuItem[]> = {
+      preview: [],
+      general: [],
+      mic: [],
+      twitch: [],
+      printer: [],
+      music: [],
+      overlay: [],
+      cache: [],
+      system: [],
+    };
+    for (const item of cardMenuItems) {
+      grouped[resolveWorkspaceMenuCategory(item.kind)].push(item);
+    }
+    return WORKSPACE_MENU_CATEGORY_ORDER
+      .map((category) => ({
+        category,
+        label: WORKSPACE_MENU_CATEGORY_LABELS[category],
+        items: grouped[category],
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [cardMenuItems]);
+  const activeCardMenuGroup = useMemo(
+    () => cardMenuItemsByCategory.find((group) => group.category === cardMenuHoveredCategory) ?? cardMenuItemsByCategory[0],
+    [cardMenuHoveredCategory, cardMenuItemsByCategory],
+  );
+  const normalizeCardMenuItemLabel = useCallback((label: string) => (
+    label.replace(/^[^:：]+[:：]\s*/, '')
+  ), []);
+
+  useEffect(() => {
+    if (!cardMenuOpen) return;
+    if (cardMenuItemsByCategory.length === 0) return;
+    if (cardMenuItemsByCategory.some((group) => group.category === cardMenuHoveredCategory)) return;
+    setCardMenuHoveredCategory(cardMenuItemsByCategory[0].category);
+  }, [cardMenuHoveredCategory, cardMenuItemsByCategory, cardMenuOpen]);
 
   useEffect(() => {
     if (!openPanel) return;
@@ -1081,7 +1387,6 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
               aria-expanded={openPanel === 'system'}
               aria-label="システム状態を表示"
             >
-              <span className="text-[11px] font-semibold text-gray-200">System</span>
               <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={featureStatus?.twitch_configured ? (authStatus?.authenticated ? 'Twitch認証済み' : 'Twitch認証待ち') : 'Twitch未設定'}>
                 <Wifi className={`h-3.5 w-3.5 ${!featureStatus?.twitch_configured ? 'text-red-400' : authStatus?.authenticated ? 'text-emerald-400' : 'text-amber-400'}`} />
                 Twitch
@@ -1213,41 +1518,67 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
               ref={cardMenuTriggerRef}
               type="button"
               onClick={() => setCardMenuOpen((prev) => !prev)}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 text-xs text-gray-200 hover:bg-gray-800"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900/70 text-gray-200 hover:bg-gray-800"
               aria-expanded={cardMenuOpen}
               aria-label="設定カードを追加"
             >
               <Plus className="h-3.5 w-3.5" />
-              カード追加
             </button>
             {cardMenuOpen && (
               <div
                 ref={cardMenuPanelRef}
-                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-[34rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
               >
                 <div className="mb-1 px-1 text-[11px] text-gray-400">作業領域へ追加</div>
-                <div className="space-y-1">
-                  {cardMenuItems.map((item) => (
-                    <button
-                      key={item.kind}
-                      type="button"
-                      disabled={!canAddCard(item.kind)}
-                      onClick={() => {
-                        if (!canAddCard(item.kind)) return;
-                        onAddCard(item.kind);
-                        setCardMenuOpen(false);
-                      }}
-                      className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <div>
-                        <div className="text-xs text-gray-100">
-                          {item.label}
-                          {!canAddCard(item.kind) ? ' (配置済み)' : ''}
-                        </div>
-                        <div className="text-[11px] text-gray-400">{item.description}</div>
-                      </div>
-                    </button>
-                  ))}
+                <div className="flex gap-2">
+                  <div className="w-28 shrink-0 space-y-1">
+                    {cardMenuItemsByCategory.map((group) => {
+                      const isActive = activeCardMenuGroup?.category === group.category;
+                      return (
+                        <button
+                          key={group.category}
+                          type="button"
+                          onMouseEnter={() => setCardMenuHoveredCategory(group.category)}
+                          onFocus={() => setCardMenuHoveredCategory(group.category)}
+                          onClick={() => setCardMenuHoveredCategory(group.category)}
+                          className={`flex h-8 w-full items-center justify-between rounded border px-2 text-left text-xs transition ${
+                            isActive
+                              ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                              : 'border-gray-700 text-gray-300 hover:bg-gray-800'
+                          }`}
+                        >
+                          <span className="truncate">{group.label}</span>
+                          <span className="text-[10px] text-gray-400">▶</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="min-w-0 flex-1 rounded border border-gray-700/80 bg-black/10 p-1">
+                    <div className="mb-1 px-1 text-[11px] text-gray-400">{activeCardMenuGroup?.label ?? '-'}</div>
+                    <div className="space-y-1">
+                      {(activeCardMenuGroup?.items ?? []).map((item) => (
+                        <button
+                          key={item.kind}
+                          type="button"
+                          disabled={!canAddCard(item.kind)}
+                          onClick={() => {
+                            if (!canAddCard(item.kind)) return;
+                            onAddCard(item.kind);
+                            setCardMenuOpen(false);
+                          }}
+                          className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <div>
+                            <div className="text-xs text-gray-100">
+                              {normalizeCardMenuItemLabel(item.label)}
+                              {!canAddCard(item.kind) ? ' (配置済み)' : ''}
+                            </div>
+                            <div className="text-[11px] text-gray-400">{item.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-2 border-t border-gray-700 pt-2">
                   <div className="mb-1 px-1 text-[11px] text-gray-400">コメント欄接続中から追加</div>
@@ -1258,6 +1589,7 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
                     {ircConnectedChannels.map((channel) => {
                       const kind = `preview-irc:${channel}` as WorkspaceCardKind;
                       const disabled = !canAddCard(kind);
+                      const displayName = (ircChannelDisplayNames[channel] || '').trim();
                       return (
                         <button
                           key={channel}
@@ -1270,7 +1602,9 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
                           }}
                           className="flex h-8 w-full items-center justify-between rounded border border-gray-700 px-2 text-xs text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <span className="truncate text-left">#{channel}</span>
+                          <span className="truncate text-left">
+                            {displayName ? `${displayName} (#${channel})` : `#${channel}`}
+                          </span>
                           <span className="text-[11px] text-gray-400">{disabled ? '配置済み' : '追加'}</span>
                         </button>
                       );
@@ -1375,6 +1709,12 @@ export const SettingsPage: React.FC = () => {
     return Math.min(SIDEBAR_MAX_FONT_SIZE, Math.max(SIDEBAR_MIN_FONT_SIZE, parsed));
   });
   const initialWorkspaceFlow = useMemo(() => readWorkspaceFlow(), []);
+  const initialWorkspaceCardLastPositions = useMemo(() => readWorkspaceCardLastPositions(), []);
+  const [workspaceSnapEnabled, setWorkspaceSnapEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(WORKSPACE_SNAP_ENABLED_STORAGE_KEY);
+    return stored == null ? true : stored !== 'false';
+  });
   const initialWorkspace = useMemo(() => {
     if (initialWorkspaceFlow && initialWorkspaceFlow.nodes.length > 0) return initialWorkspaceFlow.nodes;
     return [
@@ -1386,6 +1726,9 @@ export const SettingsPage: React.FC = () => {
   const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
   const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
   const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
+  const workspaceFlowInstanceRef = useRef<ReactFlowInstance<WorkspaceCardNode> | null>(null);
+  const lastWorkspaceCardPositionRef =
+    useRef<Partial<Record<WorkspaceCardKind, { x: number; y: number }>>>(initialWorkspaceCardLastPositions);
 
   const {
     featureStatus,
@@ -1445,12 +1788,46 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
+    workspaceFlowInstanceRef.current = instance;
     if (!shouldFitWorkspaceOnInitRef.current) return;
     shouldFitWorkspaceOnInitRef.current = false;
     window.requestAnimationFrame(() => {
       // Twitch autoplay requires a visible minimum area; avoid initial zoom-out below 1x.
       void instance.fitView({ minZoom: 1, maxZoom: 1 });
     });
+  }, []);
+
+  const resolveWorkspaceCardSpawnPosition = useCallback((kind: WorkspaceCardKind, existingCount: number) => {
+    const remembered = lastWorkspaceCardPositionRef.current[kind];
+    if (remembered) {
+      return remembered;
+    }
+
+    const offset = existingCount * 36;
+    const fallback = {
+      x: 160 + (offset % 720),
+      y: 120 + Math.floor(offset / 6) * 52,
+    };
+
+    const instance = workspaceFlowInstanceRef.current;
+    if (!instance || typeof window === 'undefined') {
+      return fallback;
+    }
+
+    try {
+      const base = instance.screenToFlowPosition({
+        x: Math.max(0, Math.floor(window.innerWidth / 2)),
+        y: Math.max(0, Math.floor(window.innerHeight / 2)),
+      });
+      const size = resolveWorkspaceCardSize(kind);
+      const shift = (existingCount % 6) * 24;
+      return {
+        x: base.x - (size.width / 2) + shift,
+        y: base.y - (size.height / 2) + Math.floor(existingCount / 6) * 24,
+      };
+    } catch {
+      return fallback;
+    }
   }, []);
 
   const connectIrcChannel = useCallback((channelLogin: string) => {
@@ -1469,36 +1846,72 @@ export const SettingsPage: React.FC = () => {
     const previewKind = `preview-irc:${normalized}` as WorkspaceCardKind;
     setNodes((existing) => {
       if (existing.some((node) => node.data.kind === previewKind)) return existing;
-      const offset = existing.length * 36;
-      const x = 160 + (offset % 720);
-      const y = 120 + Math.floor(offset / 6) * 52;
-      return [...existing, createWorkspaceNode(previewKind, { x, y })];
+      const position = resolveWorkspaceCardSpawnPosition(previewKind, existing.length);
+      return [...existing, createWorkspaceNode(previewKind, position)];
     });
-  }, [connectIrcChannel, setNodes]);
+  }, [connectIrcChannel, resolveWorkspaceCardSpawnPosition, setNodes]);
 
   const startRaidToChannel = async (channel: FollowedChannelRailItem) => {
-    const ownChannelLogin = (twitchUserInfo?.login || '').trim().toLowerCase();
-    if (!ownChannelLogin) {
-      throw new Error('Twitchユーザーが未設定です');
+    if (!streamStatus?.is_live) {
+      throw new Error('配信中のみレイドできます');
+    }
+    const targetChannelLogin = (channel.broadcaster_login || '').trim().toLowerCase();
+    if (!targetChannelLogin) {
+      throw new Error('レイド先チャンネルが不正です');
     }
 
-    const response = await fetch(buildApiUrl('/api/chat/post'), {
+    const response = await fetch(buildApiUrl('/api/twitch/raid/start'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        channel: ownChannelLogin,
-        message: `/raid ${channel.broadcaster_login}`,
+        to_channel_login: targetChannelLogin,
       }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      const message = payload?.error || `HTTP ${response.status}`;
+      const message = payload?.error || payload?.message || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+  };
+
+  const startShoutoutToChannel = async (channel: FollowedChannelRailItem) => {
+    if (!streamStatus?.is_live) {
+      throw new Error('配信中のみ応援できます');
+    }
+    if (!channel.is_live) {
+      throw new Error('LIVE中のチャンネルのみ応援できます');
+    }
+    const targetChannelLogin = (channel.broadcaster_login || '').trim().toLowerCase();
+    if (!targetChannelLogin) {
+      throw new Error('応援先チャンネルが不正です');
+    }
+
+    const response = await fetch(buildApiUrl('/api/twitch/shoutout/start'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to_channel_login: targetChannelLogin,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || payload?.message || `HTTP ${response.status}`;
       throw new Error(message);
     }
   };
 
   const cardMenuItems = useMemo<WorkspaceCardMenuItem[]>(() => BASE_WORKSPACE_MENU, []);
   const railReservedWidth = FOLLOWED_RAIL_WIDTH_PX + chatSidebarWidth;
+  const ircChannelDisplayNames = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const channel of followedChannels) {
+      const login = (channel.broadcaster_login || '').trim().toLowerCase();
+      const displayName = (channel.broadcaster_name || '').trim();
+      if (!login || !displayName) continue;
+      names[login] = displayName;
+    }
+    return names;
+  }, [followedChannels]);
   const topBarOffsets = useMemo(() => ({
     left: followedRailSide === 'left' ? railReservedWidth : 0,
     right: followedRailSide === 'right' ? railReservedWidth : 0,
@@ -1543,6 +1956,11 @@ export const SettingsPage: React.FC = () => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY, followedRailSide);
   }, [followedRailSide]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(WORKSPACE_SNAP_ENABLED_STORAGE_KEY, workspaceSnapEnabled ? 'true' : 'false');
+  }, [workspaceSnapEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1633,25 +2051,101 @@ export const SettingsPage: React.FC = () => {
     };
   }, [authStatus?.authenticated, featureStatus?.twitch_configured]);
 
+  useEffect(() => {
+    return subscribeIrcChannels((channels) => {
+      const connected = new Set(
+        channels
+          .map((channel) => channel.trim().toLowerCase())
+          .filter((channel) => channel !== ''),
+      );
+      setNodes((current) => {
+        const removedNodes = current.filter((node) => (
+          isPreviewIrcKind(node.data.kind)
+          && !connected.has(node.data.kind.slice('preview-irc:'.length).trim().toLowerCase())
+        ));
+        if (removedNodes.length === 0) return current;
+
+        const removedIds = new Set(removedNodes.map((node) => node.id));
+        const nextPositions = { ...lastWorkspaceCardPositionRef.current };
+        for (const node of removedNodes) {
+          nextPositions[node.data.kind] = {
+            x: node.position.x,
+            y: node.position.y,
+          };
+        }
+        lastWorkspaceCardPositionRef.current = nextPositions;
+        writeWorkspaceCardLastPositions(nextPositions);
+
+        return current.filter((node) => !removedIds.has(node.id));
+      });
+    });
+  }, [setNodes]);
+
   const addWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
     setNodes((current) => {
       if (current.some((node) => node.data.kind === kind)) {
         return current;
       }
-      const offset = current.length * 36;
-      const x = 160 + (offset % 720);
-      const y = 120 + Math.floor(offset / 6) * 52;
-      return [...current, createWorkspaceNode(kind, { x, y })];
+      const position = resolveWorkspaceCardSpawnPosition(kind, current.length);
+      return [...current, createWorkspaceNode(kind, position)];
     });
-  }, [setNodes]);
+  }, [resolveWorkspaceCardSpawnPosition, setNodes]);
 
   const canAddCard = useCallback((kind: WorkspaceCardKind) => {
     return !nodes.some((node) => node.data.kind === kind);
   }, [nodes]);
 
   const removeWorkspaceCard = useCallback((id: string) => {
-    setNodes((current) => current.filter((node) => node.id !== id));
+    setNodes((current) => {
+      const target = current.find((node) => node.id === id);
+      if (target) {
+        const nextPositions = {
+          ...lastWorkspaceCardPositionRef.current,
+          [target.data.kind]: {
+            x: target.position.x,
+            y: target.position.y,
+          },
+        };
+        lastWorkspaceCardPositionRef.current = nextPositions;
+        writeWorkspaceCardLastPositions(nextPositions);
+        if (isPreviewIrcKind(target.data.kind)) {
+          const channelLogin = target.data.kind.slice('preview-irc:'.length).trim().toLowerCase();
+          if (channelLogin) {
+            const currentChannels = readIrcChannels();
+            const nextChannels = currentChannels.filter((channel) => channel !== channelLogin);
+            if (nextChannels.length !== currentChannels.length) {
+              writeIrcChannels(nextChannels);
+            }
+          }
+        }
+      }
+      return current.filter((node) => node.id !== id);
+    });
   }, [setNodes]);
+
+  const snapWorkspaceCardSize = useCallback((id: string, width: number, height: number) => {
+    setNodes((current) => current.map((node) => {
+      if (node.id !== id) return node;
+      const minSize = resolveWorkspaceCardMinSize(node.data.kind);
+      const snappedWidth = workspaceSnapEnabled
+        ? Math.max(minSize.minWidth, Math.round(width / WORKSPACE_SNAP_GRID[0]) * WORKSPACE_SNAP_GRID[0])
+        : Math.max(minSize.minWidth, Math.round(width));
+      const snappedHeight = workspaceSnapEnabled
+        ? Math.max(minSize.minHeight, Math.round(height / WORKSPACE_SNAP_GRID[1]) * WORKSPACE_SNAP_GRID[1])
+        : Math.max(minSize.minHeight, Math.round(height));
+      if (node.width === snappedWidth && node.height === snappedHeight) return node;
+      return {
+        ...node,
+        width: snappedWidth,
+        height: snappedHeight,
+        style: {
+          ...(node.style ?? {}),
+          width: snappedWidth,
+          height: snappedHeight,
+        },
+      };
+    }));
+  }, [setNodes, workspaceSnapEnabled]);
 
   const refreshPreview = useCallback((kind: WorkspaceCardKind) => {
     if (!isPreviewCardKind(kind)) return;
@@ -1827,9 +2321,10 @@ export const SettingsPage: React.FC = () => {
   const workspaceRenderContext = useMemo<WorkspaceRenderContextValue>(() => ({
     removeCard: removeWorkspaceCard,
     refreshPreview,
+    snapCardSize: snapWorkspaceCardSize,
     renderCard: renderWorkspaceCard,
     resolvePreviewHeader,
-  }), [removeWorkspaceCard, refreshPreview, renderWorkspaceCard, resolvePreviewHeader]);
+  }), [removeWorkspaceCard, refreshPreview, snapWorkspaceCardSize, renderWorkspaceCard, resolvePreviewHeader]);
 
   useEffect(() => {
     writeWorkspaceFlow(nodes, workspaceViewport);
@@ -1845,7 +2340,13 @@ export const SettingsPage: React.FC = () => {
         />
       </div>
       <WORKSPACE_RENDER_CONTEXT.Provider value={workspaceRenderContext}>
-        <div className="fixed inset-0 z-0">
+        <div
+          className="fixed inset-0 z-0 top-12 xl:left-[var(--rf-flow-left)] xl:right-[var(--rf-flow-right)]"
+          style={{
+            '--rf-flow-left': `${topBarOffsets.left}px`,
+            '--rf-flow-right': `${topBarOffsets.right}px`,
+          } as React.CSSProperties}
+        >
           <ReactFlow
             nodes={nodes}
             onNodesChange={onNodesChange}
@@ -1854,18 +2355,24 @@ export const SettingsPage: React.FC = () => {
             nodeTypes={WORKSPACE_NODE_TYPES}
             minZoom={WORKSPACE_FLOW_MIN_ZOOM}
             maxZoom={WORKSPACE_FLOW_MAX_ZOOM}
+            snapToGrid={workspaceSnapEnabled}
+            snapGrid={WORKSPACE_SNAP_GRID}
             defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
             className="settings-workspace-flow bg-slate-950"
             colorMode="dark"
             proOptions={{ hideAttribution: true }}
           >
-            <Background color="#334155" gap={24} size={1} />
-            <MiniMap
-              className="!border !border-gray-700 !bg-gray-900/90"
-              pannable
-              zoomable
-            />
-            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100" />
+            <Background color="#334155" gap={WORKSPACE_SNAP_GRID[0]} size={1} />
+            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100">
+              <ControlButton
+                onClick={() => setWorkspaceSnapEnabled((current) => !current)}
+                title={workspaceSnapEnabled ? 'スナップ: ON' : 'スナップ: OFF'}
+                aria-label={workspaceSnapEnabled ? 'スナップをオフにする' : 'スナップをオンにする'}
+                className={`react-flow__controls-snap ${workspaceSnapEnabled ? '!text-emerald-300' : '!text-gray-400'}`}
+              >
+                <Magnet className="h-4 w-4" />
+              </ControlButton>
+            </Controls>
           </ReactFlow>
         </div>
 
@@ -1874,6 +2381,7 @@ export const SettingsPage: React.FC = () => {
           channels={followedChannels}
           loading={followedChannelsLoading}
           error={followedChannelsError}
+          canStartRaid={Boolean(streamStatus?.is_live)}
           chatWidth={chatSidebarWidth}
           chatPanel={(
             <ChatSidebar
@@ -1881,6 +2389,7 @@ export const SettingsPage: React.FC = () => {
               width={chatSidebarWidth}
               onWidthChange={handleChatSidebarWidthChange}
               embedded
+              channelDisplayNames={ircChannelDisplayNames}
               fontSize={chatSidebarFontSize}
               onFontSizeChange={handleChatSidebarFontSizeChange}
               translationEnabled={getSettingValue('CHAT_TRANSLATION_ENABLED') !== 'false'}
@@ -1897,6 +2406,7 @@ export const SettingsPage: React.FC = () => {
           onOpenPresentDebug={handleOpenPresentDebug}
           onAddIrcPreview={addIrcPreviewCard}
           onStartRaid={startRaidToChannel}
+          onStartShoutout={startShoutoutToChannel}
         />
 
         <StatusTopBar
@@ -1923,6 +2433,7 @@ export const SettingsPage: React.FC = () => {
           onAddCard={addWorkspaceCard}
           onAddIrcPreview={addIrcPreviewCard}
           canAddCard={canAddCard}
+          ircChannelDisplayNames={ircChannelDisplayNames}
         />
       </WORKSPACE_RENDER_CONTEXT.Provider>
     </div>

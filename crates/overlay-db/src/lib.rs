@@ -190,6 +190,13 @@ mod tests {
         assert_eq!(profile.username, "alice_renamed");
         assert_eq!(profile.avatar_url, "https://example.com/avatar.png");
 
+        let by_name = db
+            .find_chat_user_profile_by_username("Alice_Renamed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_name.user_id, "user1");
+        assert_eq!(by_name.username, "alice_renamed");
+
         let avatar = db.get_latest_chat_avatar("user1").unwrap().unwrap();
         assert_eq!(avatar, "https://example.com/avatar.png");
 
@@ -212,6 +219,7 @@ mod tests {
             user_id: "u1".into(),
             username: "alice".into(),
             message: "hello from irc".into(),
+            badge_keys: vec!["subscriber/24".into(), "moderator/1".into()],
             fragments_json: "[]".into(),
             avatar_url: String::new(),
             created_at: 1200,
@@ -226,12 +234,49 @@ mod tests {
         assert_eq!(rows[0].message, "hello from irc");
         assert_eq!(rows[0].username, "alice");
         assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
+        assert_eq!(rows[0].badge_keys, vec!["subscriber/24", "moderator/1"]);
 
         db.cleanup_irc_chat_messages_before(1300).unwrap();
         let rows_after = db
             .get_irc_chat_messages_since("sample_channel", 0, None)
             .unwrap();
         assert!(rows_after.is_empty());
+    }
+
+    #[test]
+    fn test_irc_channel_profiles() {
+        let db = test_db();
+
+        db.upsert_irc_channel_profile("sample_channel", "SampleChannel", 1000)
+            .unwrap();
+        db.upsert_irc_channel_profile("another_channel", "AnotherChannel", 1100)
+            .unwrap();
+
+        let one = db
+            .get_irc_channel_profile("sample_channel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(one.channel_login, "sample_channel");
+        assert_eq!(one.display_name, "SampleChannel");
+        assert_eq!(one.updated_at, 1000);
+
+        db.upsert_irc_channel_profile("sample_channel", "SampleRenamed", 1200)
+            .unwrap();
+        let updated = db
+            .get_irc_channel_profile("sample_channel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.display_name, "SampleRenamed");
+        assert_eq!(updated.updated_at, 1200);
+
+        let profiles = db
+            .get_irc_channel_profiles(&[
+                "sample_channel".to_string(),
+                "another_channel".to_string(),
+                "missing_channel".to_string(),
+            ])
+            .unwrap();
+        assert_eq!(profiles.len(), 2);
     }
 
     #[test]

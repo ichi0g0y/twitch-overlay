@@ -16,6 +16,7 @@ interface MicTranscriptTranslationPayload {
   translation?: string;
   target_language?: string;
   source_language?: string;
+  slot_index?: number;
 }
 
 const POSITION_CLASS: Record<string, string> = {
@@ -30,7 +31,7 @@ const POSITION_CLASS: Record<string, string> = {
 const DEFAULT_LINE_TTL_MS = 8000;
 const DEFAULT_LAST_TTL_MS = 8000;
 const INTERIM_CLEAR_DELAY_MS = 1500;
-const TRANSLATION_WAIT_TIMEOUT_MS = 5000;
+const TRANSLATION_WAIT_TIMEOUT_MS = 30000;
 const INFINITE_EXPIRY = Number.POSITIVE_INFINITY;
 
 function normalizeLang(code: string | undefined | null): string {
@@ -61,7 +62,7 @@ type TranscriptLine = {
   createdAt: number;
   expiresAt?: number;
   expectedTranslations?: number;
-  translations?: Record<string, { text: string; targetLanguage?: string; sourceLanguage?: string }>;
+  translations?: Record<string, { text: string; targetLanguage?: string; sourceLanguage?: string; slotIndex?: number }>;
 };
 
 export const MicTranscriptOverlay: React.FC = () => {
@@ -72,6 +73,7 @@ export const MicTranscriptOverlay: React.FC = () => {
   const interimClearTimerRef = useRef<number | null>(null);
   const clearAllTimerRef = useRef<number | null>(null);
   const translationWaitTimerRef = useRef<number | null>(null);
+  const translationIdAliasRef = useRef<Map<string, { to: string; at: number }>>(new Map());
 
   const maxLines = settings?.mic_transcript_max_lines ?? 3;
   const enabled = settings?.mic_transcript_enabled ?? false;
@@ -182,7 +184,13 @@ export const MicTranscriptOverlay: React.FC = () => {
     const lastIndex = nextLines.length - 1;
     return nextLines
       .map((line, index) => {
-        const ttl = index === lastIndex ? lastTtlMs : lineTtlMs;
+        const receivedTranslations = Object.keys(line.translations || {}).length;
+        const expectedTranslations = line.expectedTranslations ?? 0;
+        const waitingForTranslations = expectedTranslations > 0 && receivedTranslations < expectedTranslations;
+        const baseTtl = index === lastIndex ? lastTtlMs : lineTtlMs;
+        const ttl = baseTtl === INFINITE_EXPIRY
+          ? INFINITE_EXPIRY
+          : Math.max(baseTtl, waitingForTranslations ? TRANSLATION_WAIT_TIMEOUT_MS : 0);
         const createdAt = Number.isFinite(line.createdAt) ? line.createdAt : now;
         const expiresAt = ttl === INFINITE_EXPIRY ? INFINITE_EXPIRY : createdAt + ttl;
         return { ...line, createdAt, expiresAt };
@@ -233,6 +241,35 @@ export const MicTranscriptOverlay: React.FC = () => {
     interimClearTimerRef.current = window.setTimeout(() => setInterimLine(null), INTERIM_CLEAR_DELAY_MS);
   }, []);
 
+  const registerTranslationAlias = useCallback((fromId: string, toId: string) => {
+    const from = (fromId || '').trim();
+    const to = (toId || '').trim();
+    if (!from || !to || from === to) return;
+    translationIdAliasRef.current.set(from, { to, at: Date.now() });
+  }, []);
+
+  const resolveTranslationTargetId = useCallback((rawId: string) => {
+    const id = (rawId || '').trim();
+    if (!id) return '';
+
+    const now = Date.now();
+    const ttlMs = 30_000;
+    const aliases = translationIdAliasRef.current;
+    for (const [from, meta] of aliases.entries()) {
+      if (now - meta.at > ttlMs) {
+        aliases.delete(from);
+      }
+    }
+
+    let current = id;
+    for (let i = 0; i < 8; i++) {
+      const next = aliases.get(current)?.to;
+      if (!next || next === current) break;
+      current = next;
+    }
+    return current;
+  }, []);
+
   const pushFinalLine = useCallback(
     (payload: MicTranscriptPayload) => {
       const text = (payload?.text || '').trim();
@@ -246,6 +283,7 @@ export const MicTranscriptOverlay: React.FC = () => {
         if (prev.length > 0) {
           const last = prev[prev.length - 1];
           if (last.text === text || text.startsWith(last.text) || last.text.startsWith(text)) {
+            registerTranslationAlias(last.id, id);
             const next = [...prev];
             next[next.length - 1] = { ...last, id, text, createdAt: now, expectedTranslations: expected };
             return applyExpiryRules(next);
@@ -263,7 +301,7 @@ export const MicTranscriptOverlay: React.FC = () => {
         scheduleClearAll();
       }
     },
-    [applyExpiryRules, cancelTranslationWait, maxLines, scheduleClearAll],
+    [applyExpiryRules, cancelTranslationWait, maxLines, registerTranslationAlias, scheduleClearAll],
   );
 
   const pushInterimLine = useCallback(
@@ -281,24 +319,26 @@ export const MicTranscriptOverlay: React.FC = () => {
 
   const applyTranslation = useCallback(
     (payload: MicTranscriptTranslationPayload) => {
-      const id = payload?.id;
+      const id = resolveTranslationTargetId(payload?.id || '');
       const translation = (payload?.translation || '').trim();
       if (!id || !translation) return;
       const target = normalizeLang(payload.target_language) || 'unknown';
+      const slotIndex = Number.isInteger(payload.slot_index) ? Number(payload.slot_index) : -1;
+      const translationKey = slotIndex >= 0 ? `slot_${slotIndex}` : target;
 
       let allTranslationsReceived = false;
 
       setLines((prev) => {
-        const next = prev.map((line) => {
-          if (line.id !== id) return line;
+        const applyToLine = (line: TranscriptLine) => {
           const updated = {
             ...line,
             translations: {
               ...(line.translations || {}),
-              [target]: {
+              [translationKey]: {
                 text: translation,
                 ...(payload.target_language ? { targetLanguage: payload.target_language } : {}),
                 ...(payload.source_language ? { sourceLanguage: payload.source_language } : {}),
+                ...(slotIndex >= 0 ? { slotIndex } : {}),
               },
             },
           };
@@ -307,8 +347,28 @@ export const MicTranscriptOverlay: React.FC = () => {
             allTranslationsReceived = true;
           }
           return updated;
+        };
+
+        let matched = false;
+        const next = prev.map((line) => {
+          if (line.id !== id) return line;
+          matched = true;
+          return applyToLine(line);
         });
-        return next;
+        if (matched) {
+          return next;
+        }
+
+        // ID更新競合時の救済: 直近行へ紐付ける
+        const fallbackIndex = next.length - 1;
+        if (fallbackIndex < 0) return next;
+        const fallback = next[fallbackIndex];
+        if (!fallback) return next;
+        if (Date.now() - fallback.createdAt > TRANSLATION_WAIT_TIMEOUT_MS) return next;
+
+        const recovered = [...next];
+        recovered[fallbackIndex] = applyToLine(fallback);
+        return recovered;
       });
 
       if (allTranslationsReceived) {
@@ -316,7 +376,7 @@ export const MicTranscriptOverlay: React.FC = () => {
         scheduleClearAll();
       }
     },
-    [cancelTranslationWait, scheduleClearAll],
+    [cancelTranslationWait, resolveTranslationTargetId, scheduleClearAll],
   );
 
   useEffect(() => () => {
@@ -324,6 +384,7 @@ export const MicTranscriptOverlay: React.FC = () => {
     if (interimClearTimerRef.current !== null) window.clearTimeout(interimClearTimerRef.current);
     if (clearAllTimerRef.current !== null) window.clearTimeout(clearAllTimerRef.current);
     if (translationWaitTimerRef.current !== null) window.clearTimeout(translationWaitTimerRef.current);
+    translationIdAliasRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -341,6 +402,7 @@ export const MicTranscriptOverlay: React.FC = () => {
       if (interimClearTimerRef.current !== null) { window.clearTimeout(interimClearTimerRef.current); interimClearTimerRef.current = null; }
       if (clearAllTimerRef.current !== null) { window.clearTimeout(clearAllTimerRef.current); clearAllTimerRef.current = null; }
       if (translationWaitTimerRef.current !== null) { window.clearTimeout(translationWaitTimerRef.current); translationWaitTimerRef.current = null; }
+      translationIdAliasRef.current.clear();
       setLines([]);
       setInterimLine(null);
     }
@@ -372,8 +434,10 @@ export const MicTranscriptOverlay: React.FC = () => {
     for (let i = 0; i < translationSlots.length; i++) {
       const lang = translationSlots[i];
       if (!lang) continue;
-      const t = (translations[lang]?.text || '').trim();
-      if (!t || t === line.text) continue;
+      const slotValue = translations[`slot_${i}`];
+      const fallbackValue = translations[lang];
+      const t = (slotValue?.text || fallbackValue?.text || '').trim();
+      if (!t) continue;
       out.push({ slotIndex: i, lang, text: t });
     }
     return out;

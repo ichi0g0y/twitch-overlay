@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
+import { Clock, Gift, Hash, Mic, Music, Pause, Play, Printer, SkipBack, SkipForward, Square, Volume2 } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { SettingsPageContext } from '../../hooks/useSettingsPage';
@@ -9,6 +9,7 @@ import { LotterySettings } from './lottery/LotterySettings';
 import type { LotteryHistoryItem, LotteryRuntimeState, LotterySettingsState } from './lottery/types';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { CollapsibleCard } from '../ui/collapsible-card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -120,59 +121,15 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
   const groupRewardIdsRef = useRef<Set<string>>(new Set());
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
-  // カードの折りたたみ状態（overlaySettingsから復帰）
-  const [expandedCards, setExpandedCards] = useState(() => {
-    try {
-      const savedState = overlaySettings?.overlay_cards_expanded;
-      if (savedState) {
-        return JSON.parse(savedState);
-      }
-    } catch (error) {
-      console.error('[OverlaySettings] Failed to parse card expanded state:', error);
-    }
-    // デフォルト値
-    return {
-      musicPlayer: true,
-      fax: true,
-      clock: true,
-      micTranscript: true,
-      rewardCount: true,
-      lottery: true,
-    };
-  });
 
   const [cardsLayout, setCardsLayout] = useState<CardsLayout>(() =>
     parseCardsLayout(overlaySettings?.overlay_cards_layout)
   );
   const [draggingCard, setDraggingCard] = useState<OverlayCardKey | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<{ column: ColumnKey; index: number } | null>(null);
-  const [draggingCardExpanded, setDraggingCardExpanded] = useState<boolean | null>(null);
-
-  // 初回マウント時の保存を防ぐフラグ
-  const isInitialMount = useRef(true);
-  // 前回のWebSocketから受信した値を保持（無限ループ防止）
-  const previousSavedState = useRef<string | undefined>(undefined);
-  // 前回保存した値を保持（無限ループ防止）
-  const previousExpandedCards = useRef<string | undefined>(undefined);
   const isLayoutInitialMount = useRef(true);
   const previousLayoutSavedState = useRef<string | undefined>(undefined);
   const previousLayoutState = useRef<string | undefined>(undefined);
-
-  // overlaySettingsが更新されたら、カード状態も更新（無限ループ防止のため前回値と比較）
-  useEffect(() => {
-    try {
-      const savedState = overlaySettings?.overlay_cards_expanded;
-      // 前回の値と異なる場合のみ更新（無限ループ防止）
-      if (savedState && savedState !== previousSavedState.current) {
-        const parsed = JSON.parse(savedState);
-        setExpandedCards(parsed);
-        previousSavedState.current = savedState;
-        previousExpandedCards.current = savedState; // 保存値も更新
-      }
-    } catch (error) {
-      console.error('[OverlaySettings] Failed to parse card expanded state:', error);
-    }
-  }, [overlaySettings?.overlay_cards_expanded]);
 
   // overlaySettingsが更新されたら、カードレイアウトも更新（無限ループ防止のため前回値と比較）
   useEffect(() => {
@@ -186,34 +143,6 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
     previousLayoutSavedState.current = savedLayout;
     previousLayoutState.current = JSON.stringify(parsedLayout);
   }, [overlaySettings?.overlay_cards_layout]);
-
-  // カードの折りたたみ状態が変更されたらDBに保存
-  useEffect(() => {
-    // 初回マウント時はスキップ
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
-    const jsonValue = JSON.stringify(expandedCards);
-
-    // 前回保存した値と比較して、変わった場合のみ保存（無限ループ防止）
-    if (jsonValue === previousExpandedCards.current) {
-      return; // 変わっていないのでスキップ
-    }
-
-    const saveExpandedState = async () => {
-      try {
-        previousSavedState.current = jsonValue;
-        previousExpandedCards.current = jsonValue;
-        await updateOverlaySettings({ overlay_cards_expanded: jsonValue });
-      } catch (error) {
-        console.error('[OverlaySettings] Failed to save card expanded state:', error);
-      }
-    };
-    saveExpandedState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedCards]); // updateOverlaySettingsは安定しているので依存配列から除外
 
   // カードレイアウトが変更されたらDBに保存
   useEffect(() => {
@@ -750,13 +679,11 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
     event.dataTransfer.setData('application/x-card-column', column);
     event.dataTransfer.effectAllowed = 'move';
     setDraggingCard(cardKey);
-    setDraggingCardExpanded(expandedCards[cardKey]);
   };
 
   const handleDragEnd = () => {
     setDraggingCard(null);
     setDragOverPosition(null);
-    setDraggingCardExpanded(null);
   };
 
   const handleDragOver = (event: React.DragEvent) => {
@@ -916,45 +843,69 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
     }
   };
 
-  const renderMusicPlayerCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
+  type OverlayCardRenderOptions = {
+    preview?: boolean;
+  };
+
+  const renderOverlayCardFrame = ({
+    panelId,
+    cardKey,
+    column,
+    options,
+    title,
+    description,
+    children,
+    contentClassName = 'space-y-4 text-left',
+  }: {
+    panelId: string;
+    cardKey: OverlayCardKey;
+    column: ColumnKey;
+    options?: OverlayCardRenderOptions;
+    title: React.ReactNode;
+    description: React.ReactNode;
+    children: React.ReactNode;
+    contentClassName?: string;
+  }) => {
     const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.musicPlayer : expandedCards.musicPlayer;
-    const isDraggingSelf = draggingCard === 'musicPlayer';
+    const isDraggingSelf = draggingCard === cardKey;
+    const canSort = !focusCard && !isPreview;
     const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+    const headerClassName = canSort ? 'cursor-grab active:cursor-grabbing' : undefined;
 
     return (
-    <Card className={cardClassName}>
-      <CardHeader
-        className={headerClassName}
-        onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, musicPlayer: !prev.musicPlayer }))}
-        draggable={!isPreview}
-        onDragStart={isPreview ? undefined : handleDragStart('musicPlayer', column)}
-        onDragEnd={isPreview ? undefined : handleDragEnd}
+      <CollapsibleCard
+        panelId={panelId}
+        title={title}
+        description={description}
+        className={cardClassName}
+        headerClassName={headerClassName}
+        headerProps={canSort ? {
+          draggable: true,
+          onDragStart: handleDragStart(cardKey, column),
+          onDragEnd: handleDragEnd,
+        } : undefined}
+        contentClassName={contentClassName}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Music className="w-4 h-4" />
-              再生コントロール
-            </CardTitle>
-            <CardDescription className="text-left">
-              オーバーレイの音楽プレイヤーをリモート操作します
-            </CardDescription>
-          </div>
-          <div className="flex-shrink-0 pt-1">
-            {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent className="space-y-4 text-left">
+        {children}
+      </CollapsibleCard>
+    );
+  };
+
+  const renderMusicPlayerCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.music-player',
+      cardKey: 'musicPlayer',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Music className="w-4 h-4" />
+          再生コントロール
+        </span>
+      ),
+      description: 'オーバーレイの音楽プレイヤーをリモート操作します',
+      children: (
+        <>
         {/* 現在の曲情報 */}
         {musicStatus.current_track ? (
           <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -1136,51 +1087,26 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
             </SelectContent>
           </Select>
         </div>
-        </CardContent>
-      )}
-    </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderFaxCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.fax : expandedCards.fax;
-    const isDraggingSelf = draggingCard === 'fax';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
-
-    return (
-    <Card className={cardClassName}>
-      <CardHeader
-        className={headerClassName}
-        onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, fax: !prev.fax }))}
-        draggable={!isPreview}
-        onDragStart={isPreview ? undefined : handleDragStart('fax', column)}
-        onDragEnd={isPreview ? undefined : handleDragEnd}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Printer className="w-4 h-4" />
-              FAX表示
-            </CardTitle>
-            <CardDescription className="text-left">
-              FAX受信時のアニメーション設定
-            </CardDescription>
-          </div>
-          <div className="flex-shrink-0 pt-1">
-            {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent className="space-y-4 text-left">
+  const renderFaxCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.fax',
+      cardKey: 'fax',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Printer className="w-4 h-4" />
+          FAX表示
+        </span>
+      ),
+      description: 'FAX受信時のアニメーション設定',
+      children: (
+        <>
         <div className="flex items-center justify-between">
           <Label htmlFor="fax-enabled" className="flex flex-col">
             <span>FAXアニメーションを表示</span>
@@ -1231,51 +1157,26 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
             className="w-full"
           />
         </div>
-        </CardContent>
-      )}
-    </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderClockCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.clock : expandedCards.clock;
-    const isDraggingSelf = draggingCard === 'clock';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
-
-    return (
-    <Card className={cardClassName}>
-      <CardHeader
-        className={headerClassName}
-        onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, clock: !prev.clock }))}
-        draggable={!isPreview}
-        onDragStart={isPreview ? undefined : handleDragStart('clock', column)}
-        onDragEnd={isPreview ? undefined : handleDragEnd}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              時計表示
-            </CardTitle>
-            <CardDescription className="text-left">
-              オーバーレイの時計表示設定
-            </CardDescription>
-          </div>
-          <div className="flex-shrink-0 pt-1">
-            {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent className="space-y-4 text-left">
+  const renderClockCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.clock',
+      cardKey: 'clock',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          時計表示
+        </span>
+      ),
+      description: 'オーバーレイの時計表示設定',
+      children: (
+        <>
         <div className="flex items-center justify-between">
           <Label htmlFor="clock-enabled" className="flex flex-col">
             <span>時計を表示</span>
@@ -1360,56 +1261,31 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
           </>
         )}
 
-        </CardContent>
-      )}
-    </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderMicTranscriptCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.micTranscript : expandedCards.micTranscript;
-    const isDraggingSelf = draggingCard === 'micTranscript';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-	    const headerClassName = isPreview
-	      ? 'cursor-default'
-	      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
+  const renderMicTranscriptCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    const translationModeValue =
+      overlaySettings?.mic_transcript_translation_mode
+      ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
+    const translationEnabled = translationModeValue !== 'off';
 
-	    const translationModeValue =
-	      overlaySettings?.mic_transcript_translation_mode
-	      ?? ((overlaySettings?.mic_transcript_translation_enabled ?? false) ? 'chrome' : 'off');
-	    const translationEnabled = translationModeValue !== 'off';
-
-	    return (
-	      <Card className={cardClassName}>
-        <CardHeader
-          className={headerClassName}
-          onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, micTranscript: !prev.micTranscript }))}
-          draggable={!isPreview}
-          onDragStart={isPreview ? undefined : handleDragStart('micTranscript', column)}
-          onDragEnd={isPreview ? undefined : handleDragEnd}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <CardTitle className="flex items-center gap-2">
-                <Mic className="w-4 h-4" />
-                マイク
-              </CardTitle>
-              <CardDescription className="text-left">
-                ダッシュボード（/）から送信した字幕をオーバーレイに表示するだす
-              </CardDescription>
-            </div>
-            <div className="flex-shrink-0 pt-1">
-              {isExpanded ? (
-                <ChevronUp className="w-5 h-5 text-gray-500" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-gray-500" />
-              )}
-            </div>
-          </div>
-	        </CardHeader>
-	        {isExpanded && (
-	          <CardContent className="space-y-4 text-left">
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.mic-transcript',
+      cardKey: 'micTranscript',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Mic className="w-4 h-4" />
+          マイク
+        </span>
+      ),
+      description: 'ダッシュボード（/）から送信した字幕をオーバーレイに表示するだす',
+      children: (
+        <>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>表示を有効化</Label>
@@ -1437,51 +1313,26 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
             </div>
 
             <div className="text-xs text-gray-500 dark:text-gray-400">詳細設定は「マイク」タブで調整するだす</div>
-          </CardContent>
-	        )}
-	      </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderRewardCountCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.rewardCount : expandedCards.rewardCount;
-    const isDraggingSelf = draggingCard === 'rewardCount';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
-
-    return (
-    <Card className={cardClassName}>
-      <CardHeader
-        className={headerClassName}
-        onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, rewardCount: !prev.rewardCount }))}
-        draggable={!isPreview}
-        onDragStart={isPreview ? undefined : handleDragStart('rewardCount', column)}
-        onDragEnd={isPreview ? undefined : handleDragEnd}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Hash className="w-4 h-4" />
-              リワードカウント表示
-            </CardTitle>
-            <CardDescription className="text-left">
-              使用されたリワードの回数を蓄積表示します
-            </CardDescription>
-          </div>
-          <div className="flex-shrink-0 pt-1">
-            {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent className="space-y-4 text-left">
+  const renderRewardCountCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.reward-count',
+      cardKey: 'rewardCount',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Hash className="w-4 h-4" />
+          リワードカウント表示
+        </span>
+      ),
+      description: '使用されたリワードの回数を蓄積表示します',
+      children: (
+        <>
         <div className="flex items-center justify-between">
           <Label htmlFor="reward-count-enabled" className="flex flex-col">
             <span>カウント表示を有効化</span>
@@ -1690,51 +1541,26 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
             )}
           </div>
         )}
-        </CardContent>
-      )}
-    </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderLotteryCard = (column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
-    const isPreview = options?.preview ?? false;
-    const isExpanded = isPreview ? options?.previewExpanded ?? expandedCards.lottery : expandedCards.lottery;
-    const isDraggingSelf = draggingCard === 'lottery';
-    const cardClassName = `break-inside-avoid${isPreview ? ' opacity-60 pointer-events-none ring-2 ring-blue-400/60 shadow-lg' : ''}${!isPreview && isDraggingSelf ? ' opacity-30 scale-[0.98]' : ''}`;
-    const headerClassName = isPreview
-      ? 'cursor-default'
-      : 'cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors';
-
-    return (
-    <Card className={cardClassName}>
-      <CardHeader
-        className={headerClassName}
-        onClick={isPreview ? undefined : () => setExpandedCards(prev => ({ ...prev, lottery: !prev.lottery }))}
-        draggable={!isPreview}
-        onDragStart={isPreview ? undefined : handleDragStart('lottery', column)}
-        onDragEnd={isPreview ? undefined : handleDragEnd}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Gift className="w-4 h-4" />
-              プレゼントルーレット
-            </CardTitle>
-            <CardDescription className="text-left">
-              チャンネルポイントリワードを使った抽選機能の設定
-            </CardDescription>
-          </div>
-          <div className="flex-shrink-0 pt-1">
-            {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent className="space-y-4 text-left">
+  const renderLotteryCard = (column: ColumnKey, options?: OverlayCardRenderOptions) => {
+    return renderOverlayCardFrame({
+      panelId: 'settings.overlay.lottery',
+      cardKey: 'lottery',
+      column,
+      options,
+      title: (
+        <span className="flex items-center gap-2">
+          <Gift className="w-4 h-4" />
+          プレゼントルーレット
+        </span>
+      ),
+      description: 'チャンネルポイントリワードを使った抽選機能の設定',
+      children: (
+        <>
           <LotterySettings
             isLoading={isLotteryLoading}
             runtimeState={lotteryRuntimeState}
@@ -1876,13 +1702,12 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
                 </>
               )}
             </div>
-        </CardContent>
-      )}
-    </Card>
-    );
+        </>
+      ),
+    });
   };
 
-  const renderCard = (cardKey: OverlayCardKey, column: ColumnKey, options?: { preview?: boolean; previewExpanded?: boolean }) => {
+  const renderCard = (cardKey: OverlayCardKey, column: ColumnKey, options?: OverlayCardRenderOptions) => {
     switch (cardKey) {
       case 'musicPlayer':
         return renderMusicPlayerCard(column, options);
@@ -1903,7 +1728,6 @@ export const OverlaySettings: React.FC<OverlaySettingsProps> = ({ focusCard }) =
   const renderCardPreview = (cardKey: OverlayCardKey, column: ColumnKey) =>
     renderCard(cardKey, column, {
       preview: true,
-      previewExpanded: draggingCard === cardKey ? draggingCardExpanded ?? expandedCards[cardKey] : expandedCards[cardKey],
     });
 
   const renderDropZone = (column: ColumnKey, index: number) => {

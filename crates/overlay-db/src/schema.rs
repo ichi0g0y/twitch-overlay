@@ -16,6 +16,7 @@ fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
     migrate_playlist_tracks_table(conn)?;
     migrate_chat_user_profiles(conn)?;
     migrate_chat_messages_user_columns(conn)?;
+    migrate_irc_chat_messages_badge_keys(conn)?;
     Ok(())
 }
 
@@ -139,6 +140,18 @@ fn migrate_chat_messages_user_columns(conn: &Connection) -> Result<(), DbError> 
 
         CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
             ON chat_messages(user_id);",
+    )?;
+    Ok(())
+}
+
+fn migrate_irc_chat_messages_badge_keys(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "irc_chat_messages", "badge_keys_json")? {
+        return Ok(());
+    }
+
+    tracing::info!("Adding badge_keys_json column to irc_chat_messages");
+    conn.execute_batch(
+        "ALTER TABLE irc_chat_messages ADD COLUMN badge_keys_json TEXT NOT NULL DEFAULT '[]';",
     )?;
     Ok(())
 }
@@ -296,6 +309,7 @@ CREATE TABLE IF NOT EXISTS irc_chat_messages (
     message_id TEXT,
     user_id TEXT,
     message TEXT NOT NULL,
+    badge_keys_json TEXT NOT NULL DEFAULT '[]',
     fragments_json TEXT,
     created_at INTEGER NOT NULL
 );
@@ -312,6 +326,15 @@ CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel
 
 CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_user_id
     ON irc_chat_messages(user_id);
+
+CREATE TABLE IF NOT EXISTS irc_channel_profiles (
+    channel_login TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_irc_channel_profiles_updated_at
+    ON irc_channel_profiles(updated_at);
 
 CREATE TABLE IF NOT EXISTS lottery_participants (
     user_id TEXT PRIMARY KEY,

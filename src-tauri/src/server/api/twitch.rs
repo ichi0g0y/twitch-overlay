@@ -3,21 +3,21 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
-use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use twitch_client::TwitchError;
 use twitch_client::api::{
     CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient, TwitchUser,
     UpdateRewardRequest,
 };
 use twitch_client::auth::TwitchAuth;
-use twitch_client::TwitchError;
 
 use crate::app::SharedState;
 use crate::events;
@@ -706,6 +706,91 @@ pub async fn start_raid(
     })))
 }
 
+/// POST /api/twitch/shoutout/start
+pub async fn start_shoutout(
+    State(state): State<SharedState>,
+    Json(body): Json<StartShoutoutBody>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    let from_broadcaster_id = config.twitch_user_id.clone();
+    if from_broadcaster_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+    let moderator_id = from_broadcaster_id.clone();
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let to_broadcaster_id = if let Some(id) = body
+        .to_broadcaster_id
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        id
+    } else if let Some(login) = body
+        .to_channel_login
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        match client.get_user_by_login(&token, &login).await {
+            Ok(user) => user.id,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!(
+                    "start_shoutout(get_user_by_login) got 401, refreshing token and retrying"
+                );
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_user_by_login(&token, &login)
+                    .await
+                    .map_err(map_twitch_error)?
+                    .id
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    } else {
+        return Err(err_json(400, "target channel is required"));
+    };
+
+    if to_broadcaster_id == from_broadcaster_id {
+        return Err(err_json(400, "cannot shoutout your own channel"));
+    }
+
+    match client
+        .start_shoutout(
+            &token,
+            &from_broadcaster_id,
+            &to_broadcaster_id,
+            &moderator_id,
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(err) if is_unauthorized_error(&err) => {
+            tracing::warn!("start_shoutout got 401, refreshing token and retrying");
+            let refreshed = force_refresh_token(&state, &token).await?;
+            token = refreshed.clone();
+            client
+                .start_shoutout(
+                    &token,
+                    &from_broadcaster_id,
+                    &to_broadcaster_id,
+                    &moderator_id,
+                )
+                .await
+                .map_err(map_twitch_error)?;
+        }
+        Err(err) => return Err(map_twitch_error(err)),
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "from_broadcaster_id": from_broadcaster_id,
+        "to_broadcaster_id": to_broadcaster_id,
+    })))
+}
+
 // ---------------------------------------------------------------------------
 // Custom rewards CRUD
 // ---------------------------------------------------------------------------
@@ -936,6 +1021,12 @@ pub struct StreamStatusByLoginQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct StartRaidBody {
+    pub to_broadcaster_id: Option<String>,
+    pub to_channel_login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartShoutoutBody {
     pub to_broadcaster_id: Option<String>,
     pub to_channel_login: Option<String>,
 }
