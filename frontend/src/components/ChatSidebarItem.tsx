@@ -139,7 +139,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
 
   return (
     <div
-      className={`py-3 px-4 first:pt-0 last:pb-0 text-sm text-left ${
+      className={`py-3 px-4 last:pb-0 text-sm text-left ${
         isBotMessage
           ? 'bg-amber-50/70 dark:bg-amber-900/20 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)]'
           : isEven

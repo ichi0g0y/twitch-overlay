@@ -136,6 +136,7 @@ const COLLAPSED_DESKTOP_WIDTH = 48;
 const EDGE_RAIL_OFFSET_XL_PX = 64;
 const USER_PROFILE_CACHE_TTL_MS = 30_000;
 const USER_PROFILE_CACHE_INCOMPLETE_TTL_MS = 5_000;
+const IVR_TWITCH_USER_ENDPOINT = 'https://api.ivr.fi/v2/twitch/user';
 const IVR_BADGES_GLOBAL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/global';
 const IVR_BADGES_CHANNEL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/channel';
 
@@ -513,6 +514,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const globalBadgeCatalogRef = useRef<Map<string, BadgeVisual>>(new Map());
   const channelBadgeCatalogRef = useRef<Record<string, Map<string, BadgeVisual>>>({});
   const badgeCatalogInFlightRef = useRef<Set<string>>(new Set());
+  const tabDisplayNameInFlightRef = useRef<Set<string>>(new Set());
+  const [tabDisplayNamesByChannel, setTabDisplayNamesByChannel] = useState<Record<string, string>>({});
   const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
 
   const handleToggle = () => {
@@ -1427,6 +1430,76 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [ircChannels, startIrcConnection, stopIrcConnection]);
 
   useEffect(() => {
+    let cancelled = false;
+    const candidates = ircChannels
+      .map((rawChannel) => normalizeTwitchChannelName(rawChannel))
+      .filter((channel): channel is string => !!channel)
+      .filter((channel) => {
+        const presetName = (channelDisplayNames[channel] || '').trim();
+        if (presetName !== '') return false;
+        const cachedName = (tabDisplayNamesByChannel[channel] || '').trim();
+        if (cachedName !== '') return false;
+        return !tabDisplayNameInFlightRef.current.has(channel);
+      });
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const loadDisplayName = async (channel: string) => {
+      tabDisplayNameInFlightRef.current.add(channel);
+      try {
+        let nextName = '';
+        const response = await fetch(buildApiUrl('/api/chat/user-profile/detail'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            login: channel,
+            username: channel,
+          }),
+        });
+        if (response.ok) {
+          const payload = await response.json().catch(() => null);
+          const resolvedDisplayName = typeof payload?.display_name === 'string'
+            ? payload.display_name.trim()
+            : '';
+          const fallbackName = typeof payload?.username === 'string'
+            ? payload.username.trim()
+            : '';
+          nextName = resolvedDisplayName || fallbackName;
+        }
+
+        if (!nextName) {
+          const ivrResponse = await fetch(`${IVR_TWITCH_USER_ENDPOINT}?login=${encodeURIComponent(channel)}`);
+          if (ivrResponse.ok) {
+            const ivrPayload = await ivrResponse.json().catch(() => null);
+            const first = Array.isArray(ivrPayload) ? ivrPayload[0] : null;
+            const ivrDisplayName = typeof first?.displayName === 'string' ? first.displayName.trim() : '';
+            const ivrLogin = typeof first?.login === 'string' ? first.login.trim() : '';
+            nextName = ivrDisplayName || ivrLogin;
+          }
+        }
+
+        if (!nextName || cancelled) return;
+        setTabDisplayNamesByChannel((prev) => {
+          if ((prev[channel] || '').trim() === nextName) return prev;
+          return { ...prev, [channel]: nextName };
+        });
+      } catch (error) {
+        console.error(`[ChatSidebar] Failed to load tab display name (#${channel}):`, error);
+      } finally {
+        tabDisplayNameInFlightRef.current.delete(channel);
+      }
+    };
+
+    void Promise.all(candidates.map((channel) => loadDisplayName(channel)));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [channelDisplayNames, ircChannels, tabDisplayNamesByChannel]);
+
+  useEffect(() => {
     return () => {
       for (const channel of Array.from(ircConnectionsRef.current.keys())) {
         stopIrcConnection(channel);
@@ -1497,15 +1570,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const tabs = useMemo(() => [
     { id: PRIMARY_CHAT_TAB_ID, label: 'メイン', title: 'メインチャンネル', removable: false },
     ...ircChannels.map((channel) => {
-      const displayName = (channelDisplayNames[channel] || '').trim();
+      const normalizedChannel = normalizeTwitchChannelName(channel) || channel;
+      const displayName = (
+        channelDisplayNames[channel]
+        || channelDisplayNames[normalizedChannel]
+        || tabDisplayNamesByChannel[channel]
+        || tabDisplayNamesByChannel[normalizedChannel]
+        || ''
+      ).trim();
       return {
         id: channel,
-        label: displayName || `#${channel}`,
-        title: displayName ? `${displayName} (#${channel})` : `#${channel}`,
+        label: displayName || `#${normalizedChannel}`,
+        title: displayName ? `${displayName} (#${normalizedChannel})` : `#${normalizedChannel}`,
         removable: true,
       };
     }),
-  ], [channelDisplayNames, ircChannels]);
+  ], [channelDisplayNames, ircChannels, tabDisplayNamesByChannel]);
   const popupProfileName = (userInfoProfile?.displayName || userInfoProfile?.username || userInfoPopup?.message.username || '').trim();
   const popupProfileLogin = (userInfoProfile?.login || '').trim();
   const popupProfileAvatar = (userInfoProfile?.profileImageUrl || userInfoProfile?.avatarUrl || userInfoPopup?.message.avatarUrl || '').trim();

@@ -1378,7 +1378,6 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
               aria-expanded={openPanel === 'system'}
               aria-label="システム状態を表示"
             >
-              <span className="text-[11px] font-semibold text-gray-200">System</span>
               <span className="inline-flex items-center gap-1 text-xs text-gray-300" title={featureStatus?.twitch_configured ? (authStatus?.authenticated ? 'Twitch認証済み' : 'Twitch認証待ち') : 'Twitch未設定'}>
                 <Wifi className={`h-3.5 w-3.5 ${!featureStatus?.twitch_configured ? 'text-red-400' : authStatus?.authenticated ? 'text-emerald-400' : 'text-amber-400'}`} />
                 Twitch
