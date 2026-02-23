@@ -423,6 +423,15 @@ const createAnonymousCredentials = (nick?: string) => ({
 
 const sanitizeIrcMessage = (raw: string) => raw.replace(/\r?\n/g, ' ').trim();
 
+const isLoginLikeDisplayName = (name: string, channel: string) => {
+  const rawName = name.trim().replace(/^[@#]+/, '');
+  const normalizedName = normalizeTwitchChannelName(rawName);
+  const normalizedChannel = normalizeTwitchChannelName(channel);
+  if (!normalizedName || !normalizedChannel) return false;
+  if (normalizedName !== normalizedChannel) return false;
+  return rawName === normalizedName;
+};
+
 const readStoredActiveTab = (): string => {
   if (typeof window === 'undefined') return PRIMARY_CHAT_TAB_ID;
   const stored = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
@@ -652,6 +661,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           user_id: message.userId,
           username: message.username,
           message: message.message,
+          badge_keys: message.badgeKeys,
           fragments: message.fragments ?? [{ type: 'text', text: message.message }],
           timestamp: message.timestamp,
         }),
@@ -1436,9 +1446,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       .filter((channel): channel is string => !!channel)
       .filter((channel) => {
         const presetName = (channelDisplayNames[channel] || '').trim();
-        if (presetName !== '') return false;
+        if (presetName !== '' && !isLoginLikeDisplayName(presetName, channel)) return false;
         const cachedName = (tabDisplayNamesByChannel[channel] || '').trim();
-        if (cachedName !== '') return false;
+        if (cachedName !== '' && !isLoginLikeDisplayName(cachedName, channel)) return false;
         return !tabDisplayNameInFlightRef.current.has(channel);
       });
 
@@ -1450,6 +1460,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       tabDisplayNameInFlightRef.current.add(channel);
       try {
         let nextName = '';
+        let apiDisplayName = '';
+        let apiFallbackName = '';
         const response = await fetch(buildApiUrl('/api/chat/user-profile/detail'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1460,13 +1472,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         });
         if (response.ok) {
           const payload = await response.json().catch(() => null);
-          const resolvedDisplayName = typeof payload?.display_name === 'string'
+          apiDisplayName = typeof payload?.display_name === 'string'
             ? payload.display_name.trim()
             : '';
-          const fallbackName = typeof payload?.username === 'string'
+          apiFallbackName = typeof payload?.username === 'string'
             ? payload.username.trim()
             : '';
-          nextName = resolvedDisplayName || fallbackName;
+          if (apiDisplayName !== '' && !isLoginLikeDisplayName(apiDisplayName, channel)) {
+            nextName = apiDisplayName;
+          } else if (apiFallbackName !== '' && !isLoginLikeDisplayName(apiFallbackName, channel)) {
+            nextName = apiFallbackName;
+          }
         }
 
         if (!nextName) {
@@ -1476,10 +1492,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             const first = Array.isArray(ivrPayload) ? ivrPayload[0] : null;
             const ivrDisplayName = typeof first?.displayName === 'string' ? first.displayName.trim() : '';
             const ivrLogin = typeof first?.login === 'string' ? first.login.trim() : '';
-            nextName = ivrDisplayName || ivrLogin;
+            if (ivrDisplayName !== '' && !isLoginLikeDisplayName(ivrDisplayName, channel)) {
+              nextName = ivrDisplayName;
+            } else if (ivrLogin !== '' && !isLoginLikeDisplayName(ivrLogin, channel)) {
+              nextName = ivrLogin;
+            }
           }
         }
 
+        if (!nextName) {
+          nextName = apiDisplayName || apiFallbackName;
+        }
         if (!nextName || cancelled) return;
         setTabDisplayNamesByChannel((prev) => {
           if ((prev[channel] || '').trim() === nextName) return prev;
@@ -1571,12 +1594,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     { id: PRIMARY_CHAT_TAB_ID, label: 'メイン', title: 'メインチャンネル', removable: false },
     ...ircChannels.map((channel) => {
       const normalizedChannel = normalizeTwitchChannelName(channel) || channel;
-      const displayName = (
+      const presetDisplayName = (
         channelDisplayNames[channel]
         || channelDisplayNames[normalizedChannel]
-        || tabDisplayNamesByChannel[channel]
+        || ''
+      ).trim();
+      const cachedDisplayName = (
+        tabDisplayNamesByChannel[channel]
         || tabDisplayNamesByChannel[normalizedChannel]
         || ''
+      ).trim();
+      const preferredPresetName = isLoginLikeDisplayName(presetDisplayName, normalizedChannel)
+        ? ''
+        : presetDisplayName;
+      const preferredCachedName = isLoginLikeDisplayName(cachedDisplayName, normalizedChannel)
+        ? ''
+        : cachedDisplayName;
+      const displayName = (
+        preferredPresetName
+        || preferredCachedName
+        || presetDisplayName
+        || cachedDisplayName
       ).trim();
       return {
         id: channel,

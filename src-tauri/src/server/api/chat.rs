@@ -81,6 +81,7 @@ pub struct IrcChatMessageBody {
     pub user_id: Option<String>,
     pub username: Option<String>,
     pub message: String,
+    pub badge_keys: Option<Vec<String>>,
     pub fragments: Option<Value>,
     pub timestamp: Option<String>,
 }
@@ -431,6 +432,7 @@ async fn save_irc_chat_message(
     user_id: &str,
     username_hint: Option<&str>,
     message: &str,
+    badge_keys: Vec<String>,
     fragments: Value,
     created_at: i64,
 ) -> Result<Value, (axum::http::StatusCode, Json<Value>)> {
@@ -459,6 +461,7 @@ async fn save_irc_chat_message(
         user_id: user_id.to_string(),
         username: username.clone(),
         message: message.to_string(),
+        badge_keys: badge_keys.clone(),
         fragments_json: fragments.to_string(),
         avatar_url: String::new(),
         created_at,
@@ -478,6 +481,7 @@ async fn save_irc_chat_message(
         "userId": user_id,
         "messageId": message_id,
         "message": message,
+        "badge_keys": badge_keys,
         "fragments": fragments,
         "avatarUrl": avatar_url,
         "translation": "",
@@ -614,6 +618,7 @@ async fn post_twitch_chat_via_irc_channel(
         &identity.sender_user.id,
         Some(&sender_username),
         &message,
+        Vec::new(),
         json!([{ "type": "text", "text": message }]),
         now.timestamp(),
     )
@@ -750,6 +755,14 @@ pub async fn post_irc_message(
         .fragments
         .clone()
         .unwrap_or_else(|| json!([{ "type": "text", "text": message }]));
+    let badge_keys = body
+        .badge_keys
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
     let created_at = parse_created_at_from_rfc3339(body.timestamp.as_deref());
 
     let ws_payload = save_irc_chat_message(
@@ -759,6 +772,7 @@ pub async fn post_irc_message(
         &user_id,
         body.username.as_deref(),
         &message,
+        badge_keys,
         fragments,
         created_at,
     )

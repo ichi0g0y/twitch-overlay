@@ -219,6 +219,7 @@ mod tests {
             user_id: "u1".into(),
             username: "alice".into(),
             message: "hello from irc".into(),
+            badge_keys: vec!["subscriber/24".into(), "moderator/1".into()],
             fragments_json: "[]".into(),
             avatar_url: String::new(),
             created_at: 1200,
@@ -233,6 +234,7 @@ mod tests {
         assert_eq!(rows[0].message, "hello from irc");
         assert_eq!(rows[0].username, "alice");
         assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
+        assert_eq!(rows[0].badge_keys, vec!["subscriber/24", "moderator/1"]);
 
         db.cleanup_irc_chat_messages_before(1300).unwrap();
         let rows_after = db

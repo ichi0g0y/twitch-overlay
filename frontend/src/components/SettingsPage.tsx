@@ -701,6 +701,13 @@ type FollowedChannelsRailProps = {
   onStartShoutout: (channel: FollowedChannelRailItem) => Promise<void>;
 };
 
+function formatViewerCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (count >= 10_000) return `${(count / 1000).toFixed(0)}K`;
+  if (count >= 1_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(count);
+}
+
 const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   side,
   channels,
@@ -906,7 +913,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             )}
           </div>
           <div className="mb-2 h-px w-8 bg-gray-700" />
-          <div className="flex-1 overflow-y-auto space-y-2 px-1">
+          <div className="flex-1 overflow-y-auto space-y-2 px-1 py-1">
             {loading && (
               <div className="flex w-full justify-center py-1 text-[10px] text-gray-400">...</div>
             )}
@@ -988,7 +995,9 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       )}
                     </span>
                     {channel.is_live && (
-                      <span className="absolute -right-1 -top-1 z-10 inline-flex h-3.5 w-3.5 rounded-full border border-gray-900 bg-red-500 shadow" />
+                      <span className="absolute -bottom-1 left-1/2 z-10 min-w-[16px] -translate-x-1/2 rounded-full border border-gray-900 bg-red-600 px-[2px] py-[2px] text-center text-[8px] font-bold leading-none text-white shadow">
+                        {formatViewerCount(channel.viewer_count)}
+                      </span>
                     )}
                   </button>
                   {selected && menuAnchor && (

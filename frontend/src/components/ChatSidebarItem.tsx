@@ -148,7 +148,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       }`}
       style={{ fontSize }}
     >
-      <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
+      <div className="flex items-center gap-[5px] text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
         {message.avatarUrl ? (
           <img
             src={message.avatarUrl}
@@ -165,22 +165,26 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             {message.username?.slice(0, 1)}
           </div>
         )}
-        {badgeVisuals.map((badge, badgeIndex) => (
-          <span key={`${badge.label}-${badgeIndex}`} className="inline-flex" title={badge.label}>
-            {badge.imageUrl ? (
-              <img
-                src={badge.imageUrl}
-                alt={badge.label}
-                className="h-4 w-4 rounded-sm object-contain"
-                loading="lazy"
-              />
-            ) : (
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-gray-200 text-[9px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100">
-                {(badge.label || '?').slice(0, 1).toUpperCase()}
+        {badgeVisuals.length > 0 && (
+          <span className="inline-flex items-center gap-[5px]">
+            {badgeVisuals.map((badge, badgeIndex) => (
+              <span key={`${badge.label}-${badgeIndex}`} className="inline-flex" title={badge.label}>
+                {badge.imageUrl ? (
+                  <img
+                    src={badge.imageUrl}
+                    alt={badge.label}
+                    className="h-4 w-4 rounded-sm object-contain"
+                    loading="lazy"
+                  />
+                ) : (
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-gray-200 text-[9px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100">
+                    {(badge.label || '?').slice(0, 1).toUpperCase()}
+                  </span>
+                )}
               </span>
-            )}
+            ))}
           </span>
-        ))}
+        )}
         {onUsernameClick ? (
           <button
             type="button"

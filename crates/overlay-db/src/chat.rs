@@ -2,6 +2,7 @@
 
 use crate::{Database, DbError};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -34,6 +35,7 @@ pub struct IrcChatMessage {
     pub user_id: String,
     pub username: String,
     pub message: String,
+    pub badge_keys: Vec<String>,
     pub fragments_json: String,
     pub avatar_url: String,
     pub created_at: i64,
@@ -274,16 +276,19 @@ impl Database {
     }
 
     pub fn add_irc_chat_message(&self, msg: &IrcChatMessage) -> Result<bool, DbError> {
+        let badge_keys_json = serde_json::to_string(&msg.badge_keys)
+            .map_err(|e| DbError::InvalidData(format!("invalid badge keys: {e}")))?;
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO irc_chat_messages
-                    (channel_login, message_id, user_id, message, fragments_json, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    (channel_login, message_id, user_id, message, badge_keys_json, fragments_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
                     msg.channel_login,
                     msg.message_id,
                     msg.user_id,
                     msg.message,
+                    badge_keys_json,
                     msg.fragments_json,
                     msg.created_at,
                 ],
@@ -308,6 +313,7 @@ impl Database {
                         m.user_id,
                         COALESCE(u.username, '') AS username,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.created_at
@@ -331,6 +337,7 @@ impl Database {
                         m.user_id,
                         COALESCE(u.username, '') AS username,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.created_at
@@ -352,9 +359,13 @@ impl Database {
                     user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                     username: row.get(4)?,
                     message: row.get(5)?,
-                    fragments_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-                    avatar_url: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    created_at: row.get(8)?,
+                    badge_keys: parse_badge_keys_json(
+                        row.get::<_, Option<String>>(6)?
+                            .unwrap_or_else(|| "[]".to_string()),
+                    )?,
+                    fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                    avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                    created_at: row.get(9)?,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -384,4 +395,19 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
             Err(e) => Err(e),
         }
     }
+}
+
+fn parse_badge_keys_json(raw: String) -> Result<Vec<String>, rusqlite::Error> {
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let parsed = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Array(vec![]));
+    let Some(items) = parsed.as_array() else {
+        return Ok(Vec::new());
+    };
+    Ok(items
+        .iter()
+        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+        .collect())
 }
