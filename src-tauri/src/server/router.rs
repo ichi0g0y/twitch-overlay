@@ -257,6 +257,14 @@ pub fn create_router(state: SharedState) -> Router {
             get(api::chat::get_irc_credentials),
         )
         .route("/api/chat/irc/history", get(api::chat::get_irc_history))
+        .route(
+            "/api/chat/irc/channel-profiles",
+            get(api::chat::get_irc_channel_profiles),
+        )
+        .route(
+            "/api/chat/irc/channel-profile",
+            post(api::chat::post_irc_channel_profile),
+        )
         .route("/api/chat/irc/message", post(api::chat::post_irc_message))
         .route("/api/chat/post", post(api::chat::post_chat_message))
         .route(

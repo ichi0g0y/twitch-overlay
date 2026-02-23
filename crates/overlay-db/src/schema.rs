@@ -327,6 +327,15 @@ CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel
 CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_user_id
     ON irc_chat_messages(user_id);
 
+CREATE TABLE IF NOT EXISTS irc_channel_profiles (
+    channel_login TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_irc_channel_profiles_updated_at
+    ON irc_channel_profiles(updated_at);
+
 CREATE TABLE IF NOT EXISTS lottery_participants (
     user_id TEXT PRIMARY KEY,
     username TEXT NOT NULL,

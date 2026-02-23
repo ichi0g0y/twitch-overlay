@@ -41,6 +41,13 @@ pub struct IrcChatMessage {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IrcChannelProfile {
+    pub channel_login: String,
+    pub display_name: String,
+    pub updated_at: i64,
+}
+
 impl Database {
     pub fn add_chat_message(&self, msg: &ChatMessage) -> Result<bool, DbError> {
         self.with_conn(|conn| {
@@ -380,6 +387,72 @@ impl Database {
             )?;
             Ok(())
         })
+    }
+
+    pub fn upsert_irc_channel_profile(
+        &self,
+        channel_login: &str,
+        display_name: &str,
+        updated_at: i64,
+    ) -> Result<(), DbError> {
+        let normalized_channel = channel_login.trim().to_lowercase();
+        if normalized_channel.is_empty() {
+            return Ok(());
+        }
+
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO irc_channel_profiles (channel_login, display_name, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(channel_login) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    updated_at = excluded.updated_at",
+                rusqlite::params![normalized_channel, display_name.trim(), updated_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_irc_channel_profile(
+        &self,
+        channel_login: &str,
+    ) -> Result<Option<IrcChannelProfile>, DbError> {
+        let normalized_channel = channel_login.trim().to_lowercase();
+        if normalized_channel.is_empty() {
+            return Ok(None);
+        }
+
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT channel_login, display_name, updated_at
+                 FROM irc_channel_profiles
+                 WHERE channel_login = ?1
+                 LIMIT 1",
+            )?;
+            let profile = stmt
+                .query_row([normalized_channel], |row| {
+                    Ok(IrcChannelProfile {
+                        channel_login: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        display_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
+                    })
+                })
+                .optional()?;
+            Ok(profile)
+        })
+    }
+
+    pub fn get_irc_channel_profiles(
+        &self,
+        channel_logins: &[String],
+    ) -> Result<Vec<IrcChannelProfile>, DbError> {
+        let mut profiles = Vec::new();
+        for channel_login in channel_logins {
+            if let Some(profile) = self.get_irc_channel_profile(channel_login)? {
+                profiles.push(profile);
+            }
+        }
+        Ok(profiles)
     }
 }
 

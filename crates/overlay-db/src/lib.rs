@@ -244,6 +244,42 @@ mod tests {
     }
 
     #[test]
+    fn test_irc_channel_profiles() {
+        let db = test_db();
+
+        db.upsert_irc_channel_profile("sample_channel", "SampleChannel", 1000)
+            .unwrap();
+        db.upsert_irc_channel_profile("another_channel", "AnotherChannel", 1100)
+            .unwrap();
+
+        let one = db
+            .get_irc_channel_profile("sample_channel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(one.channel_login, "sample_channel");
+        assert_eq!(one.display_name, "SampleChannel");
+        assert_eq!(one.updated_at, 1000);
+
+        db.upsert_irc_channel_profile("sample_channel", "SampleRenamed", 1200)
+            .unwrap();
+        let updated = db
+            .get_irc_channel_profile("sample_channel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.display_name, "SampleRenamed");
+        assert_eq!(updated.updated_at, 1200);
+
+        let profiles = db
+            .get_irc_channel_profiles(&[
+                "sample_channel".to_string(),
+                "another_channel".to_string(),
+                "missing_channel".to_string(),
+            ])
+            .unwrap();
+        assert_eq!(profiles.len(), 2);
+    }
+
+    #[test]
     fn test_lottery() {
         let db = test_db();
         let p = lottery::LotteryParticipant {

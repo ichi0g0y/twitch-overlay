@@ -355,7 +355,7 @@ const snapWorkspaceSizeToGrid = (size: { width: number; height: number }) => ({
 });
 
 const resolveWorkspaceCardSize = (kind: WorkspaceCardKind) => {
-  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return snapWorkspaceSizeToGrid({ width: 640, height: 420 });
+  if (kind === 'preview-main' || isPreviewIrcKind(kind)) return snapWorkspaceSizeToGrid({ width: 640, height: 396 });
   if (kind === 'twitch-custom-rewards') return snapWorkspaceSizeToGrid({ width: 960, height: 640 });
   if (
     kind === 'overlay-music-player' ||

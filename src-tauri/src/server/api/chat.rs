@@ -5,6 +5,7 @@ use axum::extract::{Query, State};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use tokio::time::{Duration, Instant, timeout};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
@@ -86,6 +87,17 @@ pub struct IrcChatMessageBody {
     pub timestamp: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IrcChannelProfilesQuery {
+    pub channels: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IrcChannelProfileBody {
+    pub channel: String,
+    pub display_name: String,
+}
+
 fn normalize_channel_login(raw: &str) -> Option<String> {
     let normalized = raw.trim().trim_start_matches('#').to_lowercase();
     if normalized.len() < 3 || normalized.len() > 25 {
@@ -98,6 +110,24 @@ fn normalize_channel_login(raw: &str) -> Option<String> {
         return None;
     }
     Some(normalized)
+}
+
+fn parse_channel_logins_csv(raw: Option<&str>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut channels = Vec::new();
+    let Some(csv) = raw else {
+        return channels;
+    };
+
+    for token in csv.split(',') {
+        let Some(channel) = normalize_channel_login(token) else {
+            continue;
+        };
+        if seen.insert(channel.clone()) {
+            channels.push(channel);
+        }
+    }
+    channels
 }
 
 fn map_twitch_error(err: TwitchError) -> (axum::http::StatusCode, Json<Value>) {
@@ -725,6 +755,52 @@ pub async fn get_irc_history(
     Ok(Json(
         json!({ "channel": channel_login, "messages": messages }),
     ))
+}
+
+/// GET /api/chat/irc/channel-profiles?channels=foo,bar
+pub async fn get_irc_channel_profiles(
+    State(state): State<SharedState>,
+    Query(q): Query<IrcChannelProfilesQuery>,
+) -> ApiResult {
+    let channels = parse_channel_logins_csv(q.channels.as_deref());
+    if channels.is_empty() {
+        return Ok(Json(json!({ "profiles": [] })));
+    }
+
+    let profiles = state
+        .db()
+        .get_irc_channel_profiles(&channels)
+        .map_err(|e| err_json(500, &e.to_string()))?;
+
+    Ok(Json(json!({ "profiles": profiles })))
+}
+
+/// POST /api/chat/irc/channel-profile
+pub async fn post_irc_channel_profile(
+    State(state): State<SharedState>,
+    Json(body): Json<IrcChannelProfileBody>,
+) -> ApiResult {
+    let channel_login =
+        normalize_channel_login(&body.channel).ok_or_else(|| err_json(400, "invalid channel"))?;
+    let display_name = body.display_name.trim().to_string();
+    if display_name.is_empty() {
+        return Err(err_json(400, "display_name is required"));
+    }
+
+    let updated_at = chrono::Utc::now().timestamp();
+    state
+        .db()
+        .upsert_irc_channel_profile(&channel_login, &display_name, updated_at)
+        .map_err(|e| err_json(500, &e.to_string()))?;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "profile": {
+            "channel_login": channel_login,
+            "display_name": display_name,
+            "updated_at": updated_at,
+        }
+    })))
 }
 
 /// POST /api/chat/irc/message
