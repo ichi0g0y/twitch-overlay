@@ -168,7 +168,7 @@ async fn load_twitch_runtime(state: &SharedState) -> Option<TwitchRuntime> {
     })
 }
 
-async fn load_emote_name_map(state: &SharedState) -> HashMap<String, String> {
+pub async fn load_emote_name_map(state: &SharedState) -> HashMap<String, String> {
     let Some(runtime) = load_twitch_runtime(state).await else {
         return HashMap::new();
     };
