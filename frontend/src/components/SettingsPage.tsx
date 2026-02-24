@@ -47,6 +47,7 @@ const SIDEBAR_MAX_FONT_SIZE = 40;
 const SIDEBAR_DEFAULT_FONT_SIZE = 14;
 const FOLLOWED_RAIL_SIDE_STORAGE_KEY = 'settings.followed_channels.side';
 const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
+const FOLLOWER_COUNT_RETRY_COOLDOWN_MS = 60_000;
 const FOLLOWED_RAIL_WIDTH_PX = 48;
 const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 const WORKSPACE_FLOW_STORAGE_KEY = 'settings.workspace.reactflow.v1';
@@ -780,6 +781,7 @@ type FollowedChannelRailItem = {
   followed_at?: string;
   is_live: boolean;
   viewer_count: number;
+  follower_count?: number | null;
   title?: string | null;
   game_name?: string | null;
   started_at?: string | null;
@@ -838,7 +840,16 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
   const [hoverAnchor, setHoverAnchor] = useState<{ top: number; left: number } | null>(null);
   const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
+  const [followerCountByChannelId, setFollowerCountByChannelId] = useState<Record<string, number | null>>({});
+  const [loadingFollowerChannelIds, setLoadingFollowerChannelIds] = useState<Record<string, true>>({});
+  const followerCountByChannelIdRef = useRef<Record<string, number | null>>({});
+  const followerCountFetchInFlightRef = useRef<Set<string>>(new Set());
+  const followerCountRetryAfterByChannelIdRef = useRef<Record<string, number>>({});
   const copiedResetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    followerCountByChannelIdRef.current = followerCountByChannelId;
+  }, [followerCountByChannelId]);
 
   useEffect(() => {
     if (openChannelId && !channels.some((item) => item.broadcaster_id === openChannelId)) {
@@ -896,6 +907,94 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
       setIrcConnectedChannels(channels);
     });
   }, []);
+
+  useEffect(() => {
+    setFollowerCountByChannelId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const channel of channels) {
+        const channelId = (channel.broadcaster_id || '').trim();
+        if (channelId === '') continue;
+        if (typeof channel.follower_count !== 'number') continue;
+        if (next[channelId] === channel.follower_count) continue;
+        next[channelId] = channel.follower_count;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [channels]);
+
+  const ensureFollowerCount = useCallback(async (channel: FollowedChannelRailItem) => {
+    const channelId = (channel.broadcaster_id || '').trim();
+    if (channelId === '') return;
+    const retryAfterAt = followerCountRetryAfterByChannelIdRef.current[channelId] || 0;
+    if (retryAfterAt > Date.now()) {
+      return;
+    }
+    if (typeof followerCountByChannelIdRef.current[channelId] === 'number' || followerCountByChannelIdRef.current[channelId] === null) {
+      return;
+    }
+    if (typeof channel.follower_count === 'number') {
+      const immediateFollowerCount = channel.follower_count;
+      setFollowerCountByChannelId((prev) => {
+        if (prev[channelId] === immediateFollowerCount) return prev;
+        return { ...prev, [channelId]: immediateFollowerCount };
+      });
+      return;
+    }
+    if (followerCountFetchInFlightRef.current.has(channelId)) {
+      return;
+    }
+
+    followerCountFetchInFlightRef.current.add(channelId);
+    setLoadingFollowerChannelIds((prev) => ({ ...prev, [channelId]: true }));
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/user-profile/detail'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: channelId,
+          login: channel.broadcaster_login,
+          username: channel.broadcaster_login,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json().catch(() => null);
+      const followerCount = typeof payload?.follower_count === 'number' ? payload.follower_count : null;
+      delete followerCountRetryAfterByChannelIdRef.current[channelId];
+      setFollowerCountByChannelId((prev) => {
+        if (prev[channelId] === followerCount) return prev;
+        return { ...prev, [channelId]: followerCount };
+      });
+    } catch {
+      followerCountRetryAfterByChannelIdRef.current[channelId] = Date.now() + FOLLOWER_COUNT_RETRY_COOLDOWN_MS;
+    } finally {
+      followerCountFetchInFlightRef.current.delete(channelId);
+      setLoadingFollowerChannelIds((prev) => {
+        if (!(channelId in prev)) return prev;
+        const next = { ...prev };
+        delete next[channelId];
+        return next;
+      });
+    }
+  }, []);
+
+  const resolveFollowerCountLabel = useCallback((channel: FollowedChannelRailItem) => {
+    const channelId = (channel.broadcaster_id || '').trim();
+    const cached = channelId ? followerCountByChannelId[channelId] : undefined;
+    const rawCount = typeof cached === 'number'
+      ? cached
+      : (typeof channel.follower_count === 'number' ? channel.follower_count : undefined);
+    if (typeof rawCount === 'number') {
+      return rawCount.toLocaleString('ja-JP');
+    }
+    if (channelId && loadingFollowerChannelIds[channelId]) {
+      return '取得中...';
+    }
+    return '不明';
+  }, [followerCountByChannelId, loadingFollowerChannelIds]);
 
   useEffect(() => {
     if (canStartRaid) return;
@@ -1026,6 +1125,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
               const selected = openChannelId === channel.broadcaster_id;
               const channelDisplayName = channel.broadcaster_name || channel.broadcaster_login;
               const channelLogin = channel.broadcaster_login;
+              const followerCountLabel = resolveFollowerCountLabel(channel);
               const normalizedChannelLogin = channelLogin.trim().toLowerCase();
               const alreadyConnected = ircConnectedChannels.includes(normalizedChannelLogin);
               const canStartShoutout = canStartRaid && channel.is_live;
@@ -1054,6 +1154,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         ? Math.min(window.innerWidth - menuWidth - 12, rect.right + 8)
                         : Math.max(12, rect.left - menuWidth - 8);
                       setMenuAnchor({ top, left });
+                      void ensureFollowerCount(channel);
                     }}
                     className={`relative h-9 w-9 rounded-full border transition ${
                       selected
@@ -1067,6 +1168,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         top: rect.top + (rect.height / 2),
                         left: side === 'left' ? rect.right + 8 : rect.left - 8,
                       });
+                      void ensureFollowerCount(channel);
                     }}
                     onMouseMove={(event) => {
                       const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
@@ -1162,6 +1264,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                           </button>
                         </div>
                       </div>
+                      <div className="mb-1 text-[11px] text-gray-300">{`フォロワー: ${followerCountLabel}`}</div>
                       <div className="mb-2 text-[11px] text-gray-400 truncate">
                         {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
                       </div>
@@ -1271,6 +1374,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                   {hoveredChannel.broadcaster_name || hoveredChannel.broadcaster_login}
                 </div>
                 <div className="text-[10px] leading-tight text-gray-300">#{hoveredChannel.broadcaster_login}</div>
+                <div className="text-[10px] leading-tight text-gray-300">{`フォロワー: ${resolveFollowerCountLabel(hoveredChannel)}`}</div>
                 {hoveredChannel.is_live && hoveredChannel.title && (
                   <div className="mt-1 text-[10px] leading-tight text-gray-200">{hoveredChannel.title}</div>
                 )}
@@ -2152,6 +2256,9 @@ export const SettingsPage: React.FC = () => {
         const data = Array.isArray(payload?.data) ? payload.data : [];
         const normalized: FollowedChannelRailItem[] = data.map((item: any) => {
           const viewerCount = Number(item.viewer_count ?? item.viewerCount ?? 0) || 0;
+          const followerCount = typeof item.follower_count === 'number'
+            ? item.follower_count
+            : (typeof item.followerCount === 'number' ? item.followerCount : undefined);
           const startedAt = typeof item.started_at === 'string'
             ? item.started_at
             : typeof item.startedAt === 'string'
@@ -2169,6 +2276,7 @@ export const SettingsPage: React.FC = () => {
             followed_at: typeof item.followed_at === 'string' ? item.followed_at : undefined,
             is_live: isLive,
             viewer_count: viewerCount,
+            follower_count: followerCount,
             title: typeof item.title === 'string' ? item.title : undefined,
             game_name: typeof item.game_name === 'string' ? item.game_name : undefined,
             started_at: startedAt,

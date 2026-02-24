@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Users, X } from 'lucide-react';
 
 import { buildApiUrl } from '../utils/api';
+import type { ChatMessage } from './ChatSidebarItem';
 
 type ChattersPanelProps = {
   open: boolean;
   channelLogin?: string;
   fallbackChatters?: ChattersPanelChatter[];
+  onChatterClick?: (message: ChatMessage) => void;
   onClose: () => void;
 };
 
@@ -27,12 +29,20 @@ type HydratedChatterProfile = {
   userLogin: string;
   displayName: string;
   avatarUrl: string;
+  followerCount: number | null;
 };
 
 const SCOPE_MISSING_MESSAGE = '視聴者一覧の取得には moderator:read:chatters 権限が必要です。再認証後にお試しください。';
 const PROFILE_HYDRATION_MAX = 200;
 const PROFILE_HYDRATION_CONCURRENCY = 6;
 const PROFILE_HYDRATION_RETRY_MAX = 2;
+
+const formatFollowerTooltip = (displayName: string, followerCount: number | null) => {
+  const followerLabel = typeof followerCount === 'number'
+    ? followerCount.toLocaleString('ja-JP')
+    : '不明';
+  return `${displayName} - フォロワー: ${followerLabel}`;
+};
 
 const chatterProfileKey = (chatter: ChattersPanelChatter) => {
   const userId = chatter.user_id.trim();
@@ -46,6 +56,7 @@ export const ChattersPanel: React.FC<ChattersPanelProps> = ({
   open,
   channelLogin,
   fallbackChatters,
+  onChatterClick,
   onClose,
 }) => {
   const [chatters, setChatters] = useState<ChattersPanelChatter[]>([]);
@@ -302,11 +313,15 @@ export const ChattersPanel: React.FC<ChattersPanelProps> = ({
               ? payload.avatar_url.trim()
               : ''
           );
+          const followerCount = typeof payload?.follower_count === 'number'
+            ? payload.follower_count
+            : null;
           const profile: HydratedChatterProfile = {
             userId,
             userLogin,
             displayName,
             avatarUrl,
+            followerCount,
           };
 
           succeeded = true;
@@ -399,27 +414,44 @@ export const ChattersPanel: React.FC<ChattersPanelProps> = ({
                 const userLogin = (profile?.userLogin || chatter.user_login || '').trim().toLowerCase();
                 const displayName = (profile?.displayName || chatter.user_name || userLogin || 'Unknown').trim();
                 const avatarUrl = (profile?.avatarUrl || '').trim();
+                const followerCount = profile?.followerCount ?? null;
                 const isHydrating = !profile && !!hydratingProfileKeys[key];
+                const tooltipTitle = formatFollowerTooltip(displayName, followerCount);
+                const handleClick = () => {
+                  if (!onChatterClick) return;
+                  onChatterClick({
+                    id: '',
+                    userId: (profile?.userId || chatter.user_id || '').trim(),
+                    username: displayName,
+                    avatarUrl,
+                    message: '',
+                  });
+                };
 
                 return (
                   <li
                     key={key}
                     ref={(node) => setRowRef(key, node)}
                     data-profile-key={key}
-                    className="flex items-center gap-3 py-2"
+                    className={`flex items-center gap-3 py-2 ${onChatterClick ? 'cursor-pointer' : ''}`}
+                    onClick={handleClick}
                   >
                     {avatarUrl !== '' ? (
                       <img
                         src={avatarUrl}
                         alt={`${displayName} avatar`}
                         loading="lazy"
+                        title={tooltipTitle}
                         className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-gray-700"
                         referrerPolicy="no-referrer"
                       />
                     ) : isHydrating ? (
                       <div className="h-8 w-8 animate-pulse rounded-full border border-gray-200 bg-gray-200 dark:border-gray-700 dark:bg-gray-700" />
                     ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      <div
+                        title={tooltipTitle}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      >
                         {(displayName || '?').slice(0, 1)}
                       </div>
                     )}
