@@ -619,6 +619,7 @@ pub async fn followed_channels(
                 is_live: stream.is_some(),
                 viewer_count: stream.map(|s| s.viewer_count).unwrap_or(0),
                 title: stream.map(|s| s.title.clone()),
+                game_name: stream.map(|s| s.game_name.clone()),
                 started_at: stream.and_then(|s| s.started_at.clone()),
             }
         })
@@ -1041,6 +1042,7 @@ struct FollowedChannelStatus {
     is_live: bool,
     viewer_count: u64,
     title: Option<String>,
+    game_name: Option<String>,
     started_at: Option<String>,
 }
 

@@ -1,4 +1,4 @@
-import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Menu, Mic, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Maximize2, Menu, Mic, Minimize2, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -29,6 +29,7 @@ import { OverlaySettings, type OverlayCardKey } from './settings/OverlaySettings
 import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
 import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
+import { WorkspacePanningSettings } from './settings/WorkspacePanningSettings';
 import { ChatSidebar } from './ChatSidebar';
 import { MicCaptionSender } from './mic/MicCaptionSender';
 import { readIrcChannels, subscribeIrcChannels, writeIrcChannels } from '../utils/chatChannels';
@@ -53,6 +54,8 @@ const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
 const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
 const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+const PREVIEW_NODE_HEADER_HEIGHT = 36;
+const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
 
 type BaseWorkspaceCardKind =
   | 'preview-main'
@@ -116,6 +119,11 @@ type WorkspaceCardNodeData = {
 };
 
 type WorkspaceCardNode = FlowNode<WorkspaceCardNodeData, 'workspace-card'>;
+type PreviewViewportExpandSnapshot = {
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+};
 
 type StoredWorkspaceFlowPayload = {
   nodes?: Array<{
@@ -138,6 +146,8 @@ type StoredWorkspaceCardLastPositionsPayload = Record<string, { x: number; y: nu
 type WorkspaceRenderContextValue = {
   removeCard: (id: string) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
+  togglePreviewViewportExpand: (id: string) => void;
+  isPreviewViewportExpanded: (id: string) => boolean;
   snapCardSize: (id: string, width: number, height: number) => void;
   renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
   resolvePreviewHeader: (kind: WorkspaceCardKind) => {
@@ -339,6 +349,23 @@ const writeWorkspaceCardLastPositions = (positions: Partial<Record<WorkspaceCard
   window.localStorage.setItem(WORKSPACE_CARD_LAST_POSITION_STORAGE_KEY, JSON.stringify(payload));
 };
 
+const normalizeWorkspaceZoomActivationKeyCode = (value: string): string => {
+  const normalized = (value || '').trim();
+  return normalized || 'Control';
+};
+
+const isZoomActivationPressed = (event: KeyboardEvent, activationKeyCode: string): boolean => {
+  if (
+    activationKeyCode === 'Control'
+    || activationKeyCode === 'Meta'
+    || activationKeyCode === 'Alt'
+    || activationKeyCode === 'Shift'
+  ) {
+    return event.getModifierState(activationKeyCode);
+  }
+  return event.code === activationKeyCode;
+};
+
 const resolveWorkspaceCardTitle = (kind: WorkspaceCardKind) => {
   const staticItem = BASE_WORKSPACE_MENU.find((item) => item.kind === kind);
   if (staticItem) return staticItem.label;
@@ -524,7 +551,7 @@ const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce }
   const streamUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channelLogin)}&parent=${encodeURIComponent(parentDomain)}&autoplay=true&muted=true&controls=true&refresh=${reloadNonce}`;
 
   return (
-    <div className="nodrag nopan nowheel h-full min-h-0 overflow-hidden bg-black">
+    <div className="nodrag nopan h-full min-h-0 overflow-hidden bg-black">
       <iframe
         key={`${channelLogin}-${parentDomain}-${reloadNonce}`}
         src={streamUrl}
@@ -583,7 +610,7 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ c
   );
 };
 
-const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected }) => {
+const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected, dragging }) => {
   const renderContext = useContext(WORKSPACE_RENDER_CONTEXT);
   if (!renderContext) return null;
   const [isHovered, setIsHovered] = useState(false);
@@ -592,7 +619,10 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = resolveWorkspaceCardMinSize(data.kind);
   const showResizeHandles = selected || isHovered || isResizing;
+  const isNodeInteractionLocked = isResizing || Boolean(dragging);
   const nodeInteractionClassName = isResizing ? 'pointer-events-none select-none' : '';
+  const isPreviewViewportExpanded = renderContext.isPreviewViewportExpanded(id);
+
   return (
     <div
       className="relative h-full min-h-0 min-w-0"
@@ -615,7 +645,9 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
       />
       {cardAsNode ? (
         <div className={`settings-node-card-shell h-full min-h-0 ${nodeInteractionClassName}`}>
-          <WorkspaceCardUiContext.Provider value={{ onClose: () => renderContext.removeCard(id), nodeMode: true }}>
+          <WorkspaceCardUiContext.Provider
+            value={{ onClose: () => renderContext.removeCard(id), nodeMode: true }}
+          >
             {renderContext.renderCard(data.kind)}
           </WorkspaceCardUiContext.Provider>
         </div>
@@ -633,6 +665,15 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
                   aria-label="プレビューを更新"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => renderContext.togglePreviewViewportExpand(id)}
+                  className="nodrag ml-2 inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                  aria-label={isPreviewViewportExpanded ? 'プレビュー拡大を解除' : 'プレビューを一時拡大'}
+                  title={isPreviewViewportExpanded ? '拡大解除' : '一時拡大'}
+                >
+                  {isPreviewViewportExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                 </button>
                 {previewHeader.channelLogin && (
                   <a
@@ -658,7 +699,9 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="nodrag h-[calc(100%-2.25rem)] overflow-auto">
+          <div
+            className={`nodrag nowheel h-[calc(100%-2.25rem)] overflow-auto ${isNodeInteractionLocked ? 'pointer-events-none select-none' : ''}`}
+          >
             {renderContext.renderCard(data.kind)}
           </div>
         </div>
@@ -680,6 +723,7 @@ type FollowedChannelRailItem = {
   is_live: boolean;
   viewer_count: number;
   title?: string | null;
+  game_name?: string | null;
   started_at?: string | null;
 };
 
@@ -1169,9 +1213,12 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                   {hoveredChannel.broadcaster_name || hoveredChannel.broadcaster_login}
                 </div>
                 <div className="text-[10px] leading-tight text-gray-300">#{hoveredChannel.broadcaster_login}</div>
-                <div className="text-[10px] leading-tight text-gray-300">
-                  {hoveredChannel.is_live ? `LIVE ${hoveredChannel.viewer_count}` : 'OFFLINE'}
-                </div>
+                {hoveredChannel.is_live && hoveredChannel.title && (
+                  <div className="mt-1 text-[10px] leading-tight text-gray-200">{hoveredChannel.title}</div>
+                )}
+                {hoveredChannel.is_live && hoveredChannel.game_name && (
+                  <div className="text-[10px] leading-tight text-gray-300">{hoveredChannel.game_name}</div>
+                )}
               </div>
             )}
           </div>
@@ -1725,10 +1772,17 @@ export const SettingsPage: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkspaceCardNode>(initialWorkspace);
   const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
   const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
+  const [expandedPreviewNodeId, setExpandedPreviewNodeId] = useState<string | null>(null);
+  const [panningSettingsOpen, setPanningSettingsOpen] = useState(false);
+  const [isWorkspaceControlsVisible, setIsWorkspaceControlsVisible] = useState(false);
+  const [isPanKeyActive, setIsPanKeyActive] = useState(false);
+  const [isZoomActivationKeyActive, setIsZoomActivationKeyActive] = useState(false);
   const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
   const workspaceFlowInstanceRef = useRef<ReactFlowInstance<WorkspaceCardNode> | null>(null);
   const lastWorkspaceCardPositionRef =
     useRef<Partial<Record<WorkspaceCardKind, { x: number; y: number }>>>(initialWorkspaceCardLastPositions);
+  const expandedPreviewNodeIdRef = useRef<string | null>(null);
+  const previewExpandSnapshotRef = useRef<Record<string, PreviewViewportExpandSnapshot>>({});
 
   const {
     featureStatus,
@@ -1785,6 +1839,18 @@ export const SettingsPage: React.FC = () => {
 
   const handleWorkspaceMoveEnd = useCallback((_: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     setWorkspaceViewport(normalizeWorkspaceViewport(viewport));
+  }, []);
+
+  const handleWorkspaceMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const fromLeft = event.clientX - rect.left;
+    const fromBottom = rect.bottom - event.clientY;
+    const nearLeftBottom = fromLeft <= WORKSPACE_CONTROLS_PROXIMITY_PX && fromBottom <= WORKSPACE_CONTROLS_PROXIMITY_PX;
+    setIsWorkspaceControlsVisible((current) => (current === nearLeftBottom ? current : nearLeftBottom));
+  }, []);
+
+  const handleWorkspaceMouseLeave = useCallback(() => {
+    setIsWorkspaceControlsVisible(false);
   }, []);
 
   const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
@@ -1916,6 +1982,37 @@ export const SettingsPage: React.FC = () => {
     left: followedRailSide === 'left' ? railReservedWidth : 0,
     right: followedRailSide === 'right' ? railReservedWidth : 0,
   }), [followedRailSide, railReservedWidth]);
+  const panActivationKeyCode = getSettingValue('WORKSPACE_PAN_ACTIVATION_KEY') || 'Space';
+  const zoomActivationKeyCode = normalizeWorkspaceZoomActivationKeyCode(getSettingValue('WORKSPACE_ZOOM_MODIFIER_KEY') || 'Control');
+
+  useEffect(() => {
+    setIsPanKeyActive(false);
+    setIsZoomActivationKeyActive(false);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === panActivationKeyCode) {
+        setIsPanKeyActive(true);
+      }
+      setIsZoomActivationKeyActive(isZoomActivationPressed(event, zoomActivationKeyCode));
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === panActivationKeyCode) {
+        setIsPanKeyActive(false);
+      }
+      setIsZoomActivationKeyActive(isZoomActivationPressed(event, zoomActivationKeyCode));
+    };
+    const handleWindowBlur = () => {
+      setIsPanKeyActive(false);
+      setIsZoomActivationKeyActive(false);
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [panActivationKeyCode, zoomActivationKeyCode]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -1943,7 +2040,7 @@ export const SettingsPage: React.FC = () => {
     }
 
     autoVerifyTriggeredRef.current = true;
-    void verifyTwitchConfig();
+    void verifyTwitchConfig({ suppressSuccessToast: true });
   }, [
     featureStatus?.twitch_configured,
     authStatus?.authenticated,
@@ -2014,6 +2111,7 @@ export const SettingsPage: React.FC = () => {
             is_live: isLive,
             viewer_count: viewerCount,
             title: typeof item.title === 'string' ? item.title : undefined,
+            game_name: typeof item.game_name === 'string' ? item.game_name : undefined,
             started_at: startedAt,
           };
         }).filter((item) => item.broadcaster_id && item.broadcaster_login);
@@ -2096,6 +2194,11 @@ export const SettingsPage: React.FC = () => {
   }, [nodes]);
 
   const removeWorkspaceCard = useCallback((id: string) => {
+    if (expandedPreviewNodeIdRef.current === id) {
+      expandedPreviewNodeIdRef.current = null;
+      setExpandedPreviewNodeId(null);
+    }
+    delete previewExpandSnapshotRef.current[id];
     setNodes((current) => {
       const target = current.find((node) => node.id === id);
       if (target) {
@@ -2146,6 +2249,202 @@ export const SettingsPage: React.FC = () => {
       };
     }));
   }, [setNodes, workspaceSnapEnabled]);
+
+  const togglePreviewViewportExpand = useCallback((id: string) => {
+    let next = nodes;
+    let changed = false;
+    const snapshots = previewExpandSnapshotRef.current;
+    const currentlyExpandedId = expandedPreviewNodeIdRef.current;
+
+    const restoreExpandedNode = (restoreId: string) => {
+      const snapshot = snapshots[restoreId];
+      if (!snapshot) return;
+      let restored = false;
+      next = next.map((node) => {
+        if (node.id !== restoreId) return node;
+        restored = true;
+        const restoredStyle = {
+          ...(node.style ?? {}),
+          width: snapshot.width,
+          height: snapshot.height,
+        } as Record<string, unknown>;
+        delete restoredStyle.zIndex;
+        return {
+          ...node,
+          position: {
+            x: snapshot.position.x,
+            y: snapshot.position.y,
+          },
+          width: snapshot.width,
+          height: snapshot.height,
+          style: restoredStyle,
+        };
+      });
+      if (restored) changed = true;
+      delete snapshots[restoreId];
+    };
+
+    if (currentlyExpandedId === id) {
+      restoreExpandedNode(currentlyExpandedId);
+      if (!changed) {
+        next = next.map((node) => {
+          if (node.id !== currentlyExpandedId) return node;
+          changed = true;
+          const fallback = resolveWorkspaceCardSize(node.data.kind);
+          const restoredStyle = {
+            ...(node.style ?? {}),
+            width: fallback.width,
+            height: fallback.height,
+          } as Record<string, unknown>;
+          delete restoredStyle.zIndex;
+          return {
+            ...node,
+            width: fallback.width,
+            height: fallback.height,
+            style: restoredStyle,
+          };
+        });
+      }
+      delete snapshots[currentlyExpandedId];
+      expandedPreviewNodeIdRef.current = null;
+      setExpandedPreviewNodeId(null);
+      if (changed) setNodes(next);
+      return;
+    }
+
+    if (currentlyExpandedId) {
+      restoreExpandedNode(currentlyExpandedId);
+      if (!changed) {
+        next = next.map((node) => {
+          if (node.id !== currentlyExpandedId) return node;
+          changed = true;
+          const fallback = resolveWorkspaceCardSize(node.data.kind);
+          const restoredStyle = {
+            ...(node.style ?? {}),
+            width: fallback.width,
+            height: fallback.height,
+          } as Record<string, unknown>;
+          delete restoredStyle.zIndex;
+          return {
+            ...node,
+            width: fallback.width,
+            height: fallback.height,
+            style: restoredStyle,
+          };
+        });
+      }
+      delete snapshots[currentlyExpandedId];
+      expandedPreviewNodeIdRef.current = null;
+      setExpandedPreviewNodeId(null);
+    }
+
+    const flowInstance = workspaceFlowInstanceRef.current;
+    if (!flowInstance || typeof window === 'undefined') {
+      if (changed) setNodes(next);
+      return;
+    }
+    const flowElement = window.document.querySelector('.settings-workspace-flow') as HTMLElement | null;
+    if (!flowElement) {
+      if (changed) setNodes(next);
+      return;
+    }
+    const viewportRect = flowElement.getBoundingClientRect();
+    if (viewportRect.width <= 0 || viewportRect.height <= 0) {
+      if (changed) setNodes(next);
+      return;
+    }
+
+    const target = next.find((node) => node.id === id);
+    if (!target || !isPreviewCardKind(target.data.kind)) {
+      if (changed) setNodes(next);
+      return;
+    }
+
+    const currentWidth = toFiniteNumber(
+      target.width,
+      toFiniteNumber(
+        target.measured?.width,
+        toFiniteNumber((target.style as Record<string, unknown> | undefined)?.width, resolveWorkspaceCardSize(target.data.kind).width),
+      ),
+    );
+    const currentHeight = toFiniteNumber(
+      target.height,
+      toFiniteNumber(
+        target.measured?.height,
+        toFiniteNumber((target.style as Record<string, unknown> | undefined)?.height, resolveWorkspaceCardSize(target.data.kind).height),
+      ),
+    );
+    const contentHeight = Math.max(currentHeight - PREVIEW_NODE_HEADER_HEIGHT, 1);
+    const contentAspect = currentWidth / contentHeight;
+
+    const viewport = flowInstance.getViewport();
+    const zoom = Math.max(toFiniteNumber(viewport.zoom, 1), 0.01);
+    const maxWidth = Math.max(1, (viewportRect.width * 0.9) / zoom);
+    const maxHeight = Math.max(1, (viewportRect.height * 0.9) / zoom);
+    const maxContentHeight = Math.max(1, maxHeight - PREVIEW_NODE_HEADER_HEIGHT);
+    let expandedWidth = maxWidth;
+    let expandedContentHeight = expandedWidth / contentAspect;
+    if (expandedContentHeight > maxContentHeight) {
+      expandedContentHeight = maxContentHeight;
+      expandedWidth = expandedContentHeight * contentAspect;
+    }
+    const expandedHeight = expandedContentHeight + PREVIEW_NODE_HEADER_HEIGHT;
+
+    let flowPosition: { x: number; y: number };
+    try {
+      const center = flowInstance.screenToFlowPosition({
+        x: viewportRect.left + (viewportRect.width / 2),
+        y: viewportRect.top + (viewportRect.height / 2),
+      });
+      flowPosition = {
+        x: center.x - (expandedWidth / 2),
+        y: center.y - (expandedHeight / 2),
+      };
+    } catch (error) {
+      console.warn('failed to calculate preview expand position', error);
+      if (changed) setNodes(next);
+      return;
+    }
+
+    snapshots[id] = {
+      position: {
+        x: target.position.x,
+        y: target.position.y,
+      },
+      width: currentWidth,
+      height: currentHeight,
+    };
+
+    next = next.map((node) => {
+      if (node.id !== id) return node;
+      return {
+        ...node,
+        position: flowPosition,
+        width: expandedWidth,
+        height: expandedHeight,
+        style: {
+          ...(node.style ?? {}),
+          width: expandedWidth,
+          height: expandedHeight,
+          zIndex: 60,
+        },
+      };
+    });
+    setNodes(next);
+    expandedPreviewNodeIdRef.current = id;
+    setExpandedPreviewNodeId(id);
+  }, [nodes, setNodes]);
+
+  const isPreviewViewportExpanded = useCallback((id: string) => expandedPreviewNodeId === id, [expandedPreviewNodeId]);
+
+  useEffect(() => {
+    const expandedId = expandedPreviewNodeIdRef.current;
+    if (!expandedId) return;
+    if (nodes.some((node) => node.id === expandedId)) return;
+    delete previewExpandSnapshotRef.current[expandedId];
+    expandedPreviewNodeIdRef.current = null;
+    setExpandedPreviewNodeId(null);
+  }, [nodes]);
 
   const refreshPreview = useCallback((kind: WorkspaceCardKind) => {
     if (!isPreviewCardKind(kind)) return;
@@ -2321,10 +2620,20 @@ export const SettingsPage: React.FC = () => {
   const workspaceRenderContext = useMemo<WorkspaceRenderContextValue>(() => ({
     removeCard: removeWorkspaceCard,
     refreshPreview,
+    togglePreviewViewportExpand,
+    isPreviewViewportExpanded,
     snapCardSize: snapWorkspaceCardSize,
     renderCard: renderWorkspaceCard,
     resolvePreviewHeader,
-  }), [removeWorkspaceCard, refreshPreview, snapWorkspaceCardSize, renderWorkspaceCard, resolvePreviewHeader]);
+  }), [
+    removeWorkspaceCard,
+    refreshPreview,
+    togglePreviewViewportExpand,
+    isPreviewViewportExpanded,
+    snapWorkspaceCardSize,
+    renderWorkspaceCard,
+    resolvePreviewHeader,
+  ]);
 
   useEffect(() => {
     writeWorkspaceFlow(nodes, workspaceViewport);
@@ -2346,6 +2655,8 @@ export const SettingsPage: React.FC = () => {
             '--rf-flow-left': `${topBarOffsets.left}px`,
             '--rf-flow-right': `${topBarOffsets.right}px`,
           } as React.CSSProperties}
+          onMouseMoveCapture={handleWorkspaceMouseMove}
+          onMouseLeave={handleWorkspaceMouseLeave}
         >
           <ReactFlow
             nodes={nodes}
@@ -2357,6 +2668,12 @@ export const SettingsPage: React.FC = () => {
             maxZoom={WORKSPACE_FLOW_MAX_ZOOM}
             snapToGrid={workspaceSnapEnabled}
             snapGrid={WORKSPACE_SNAP_GRID}
+            panOnDrag={[0, 1]}
+            panOnScroll={false}
+            zoomOnScroll
+            panActivationKeyCode={panActivationKeyCode}
+            data-pan-key-active={isPanKeyActive || isZoomActivationKeyActive ? 'true' : undefined}
+            data-controls-visible={isWorkspaceControlsVisible || panningSettingsOpen ? 'true' : undefined}
             defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
             className="settings-workspace-flow bg-slate-950"
             colorMode="dark"
@@ -2372,7 +2689,24 @@ export const SettingsPage: React.FC = () => {
               >
                 <Magnet className="h-4 w-4" />
               </ControlButton>
+              <ControlButton
+                onClick={() => setPanningSettingsOpen((current) => !current)}
+                title="パン設定"
+                aria-label="パン設定を開く"
+                className={`react-flow__controls-settings ${panningSettingsOpen ? '!text-blue-300' : '!text-gray-400'}`}
+              >
+                <Settings2 className="h-4 w-4" />
+              </ControlButton>
             </Controls>
+            {panningSettingsOpen && (
+              <WorkspacePanningSettings
+                panActivationKeyCode={panActivationKeyCode}
+                onPanActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_PAN_ACTIVATION_KEY', value)}
+                zoomActivationKeyCode={zoomActivationKeyCode}
+                onZoomActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_ZOOM_MODIFIER_KEY', value)}
+                onClose={() => setPanningSettingsOpen(false)}
+              />
+            )}
           </ReactFlow>
         </div>
 

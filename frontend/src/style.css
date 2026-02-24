@@ -37,6 +37,16 @@ body {
     border: 1px solid rgba(55, 65, 81, 0.95);
     background: rgba(17, 24, 39, 0.92);
     box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.settings-workspace-flow[data-controls-visible] .react-flow__controls {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
 }
 
 .settings-workspace-flow .react-flow__controls .react-flow__controls-button.react-flow__controls-snap {
@@ -47,6 +57,15 @@ body {
 .settings-workspace-flow .react-flow__controls .react-flow__controls-button.react-flow__controls-interactive {
     order: 4;
     border-bottom: none;
+}
+
+.settings-workspace-flow .react-flow__controls .react-flow__controls-button.react-flow__controls-settings {
+    order: 5;
+    border-bottom: none;
+}
+
+.settings-workspace-flow[data-pan-key-active] .nowheel {
+    pointer-events: none !important;
 }
 
 .settings-workspace-flow .react-flow__controls-button {
