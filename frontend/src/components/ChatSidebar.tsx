@@ -52,11 +52,13 @@ type IrcConnection = {
   authenticated: boolean;
   generation: number;
   userId: string;
+  login: string;
   displayName: string;
 };
 
 type IrcUserProfile = {
   username?: string;
+  displayName?: string;
   avatarUrl?: string;
 };
 
@@ -112,6 +114,8 @@ type ChatUserProfileDetail = {
   followerCount: number | null;
   viewCount: number;
   createdAt: string;
+  canTimeout: boolean;
+  canBlock: boolean;
 };
 
 type CachedUserProfileDetail = {
@@ -158,6 +162,7 @@ const COLLAPSED_DESKTOP_WIDTH = 48;
 const EDGE_RAIL_OFFSET_XL_PX = 64;
 const USER_PROFILE_CACHE_TTL_MS = 30_000;
 const USER_PROFILE_CACHE_INCOMPLETE_TTL_MS = 5_000;
+const DEFAULT_TIMEOUT_SECONDS = 10 * 60;
 const DISPLAY_NAME_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DISPLAY_NAME_REFRESH_TICK_MS = 10 * 60 * 1000;
 const IVR_TWITCH_USER_ENDPOINT = 'https://api.ivr.fi/v2/twitch/user';
@@ -219,6 +224,7 @@ const mergeChatMessage = (current: ChatMessage, incoming: ChatMessage): ChatMess
   messageId: current.messageId || incoming.messageId,
   userId: current.userId || incoming.userId,
   username: current.username || incoming.username,
+  displayName: current.displayName || incoming.displayName,
   message: current.message || incoming.message,
   badgeKeys: mergeBadgeKeys(current.badgeKeys, incoming.badgeKeys),
   fragments: pickPreferredFragments(current.fragments, incoming.fragments),
@@ -411,7 +417,9 @@ const parseIrcPrivmsg = (line: string): { channel: string; userLogin: string; me
 
   const tags = parseIrcTags(rawTags);
   const loginFromPrefix = rawPrefix.split('!')[0] || '';
-  const username = tags['display-name'] || loginFromPrefix || channel;
+  const normalizedLogin = normalizeTwitchChannelName(loginFromPrefix) || '';
+  const username = normalizedLogin || loginFromPrefix || channel;
+  const displayName = tags['display-name'] || loginFromPrefix || username;
   const userId = tags['user-id'] || undefined;
   const timestampMillis = Number.parseInt(tags['tmi-sent-ts'] || '', 10);
   const timestamp = Number.isNaN(timestampMillis)
@@ -424,12 +432,13 @@ const parseIrcPrivmsg = (line: string): { channel: string; userLogin: string; me
 
   return {
     channel,
-    userLogin: normalizeTwitchChannelName(loginFromPrefix) || '',
+    userLogin: normalizedLogin,
     message: {
       id: messageId,
       messageId,
       userId,
       username,
+      displayName,
       message: rawMessage,
       badgeKeys,
       fragments,
@@ -605,10 +614,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
   const [chattersOpen, setChattersOpen] = useState(false);
   const [userInfoPopup, setUserInfoPopup] = useState<UserInfoPopupState | null>(null);
+  const [rawDataMessage, setRawDataMessage] = useState<ChatMessage | null>(null);
   const [userInfoProfile, setUserInfoProfile] = useState<ChatUserProfileDetail | null>(null);
   const [userInfoLoading, setUserInfoLoading] = useState(false);
   const [userInfoError, setUserInfoError] = useState('');
+  const [userModerationLoading, setUserModerationLoading] = useState<'timeout' | 'block' | null>(null);
+  const [userModerationMessage, setUserModerationMessage] = useState('');
   const [userInfoIdCopied, setUserInfoIdCopied] = useState(false);
+  const [rawDataCopied, setRawDataCopied] = useState(false);
   const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
   const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
   const ircParticipantsByChannelRef = useRef<Record<string, Record<string, IrcParticipant>>>({});
@@ -621,6 +634,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const userProfileDetailCacheRef = useRef<Record<string, CachedUserProfileDetail>>({});
   const userInfoFetchSeqRef = useRef(0);
   const userInfoIdCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rawDataCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const globalBadgeCatalogRef = useRef<Map<string, BadgeVisual>>(new Map());
   const channelBadgeCatalogRef = useRef<Record<string, Map<string, BadgeVisual>>>({});
   const badgeCatalogInFlightRef = useRef<Set<string>>(new Set());
@@ -688,6 +702,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       ? {
         ...message,
         username: profile.username || message.username,
+        displayName: profile.displayName || message.displayName,
         avatarUrl: profile.avatarUrl || message.avatarUrl,
       }
       : message;
@@ -923,6 +938,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           message_id: message.messageId,
           user_id: message.userId,
           username: message.username,
+          display_name: message.displayName,
+          avatar_url: message.avatarUrl,
           message: message.message,
           badge_keys: message.badgeKeys,
           fragments: message.fragments ?? [{ type: 'text', text: message.message }],
@@ -951,6 +968,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           return {
             ...message,
             username: profile.username || message.username,
+            displayName: profile.displayName || message.displayName,
             avatarUrl: profile.avatarUrl || message.avatarUrl,
           };
         });
@@ -971,6 +989,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         return {
           ...message,
           username: profile.username || message.username,
+          displayName: profile.displayName || message.displayName,
           avatarUrl: profile.avatarUrl || message.avatarUrl,
         };
       });
@@ -978,12 +997,76 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     });
   }, []);
 
+  const applyResolvedUserProfile = useCallback((profile: ChatUserProfileDetail) => {
+    const userId = (profile.userId || '').trim();
+    const normalizedLogin = normalizeTwitchChannelName(profile.login || profile.username || '') || '';
+    const nextDisplayName = (profile.displayName || '').trim();
+    const nextAvatarUrl = (profile.profileImageUrl || profile.avatarUrl || '').trim();
+    const nextUsername = normalizedLogin || (profile.username || '').trim();
+    const profilePatch: IrcUserProfile = {
+      username: nextUsername || undefined,
+      displayName: nextDisplayName || undefined,
+      avatarUrl: nextAvatarUrl || undefined,
+    };
+
+    if (userId !== '') {
+      ircUserProfilesRef.current[userId] = profilePatch;
+      applyIrcUserProfile(userId, profilePatch);
+    }
+
+    if (normalizedLogin === '') {
+      return;
+    }
+
+    const patchMessage = (message: ChatMessage): ChatMessage => {
+      const messageLogin =
+        normalizeTwitchChannelName(message.username || '')
+        || normalizeTwitchChannelName(message.displayName || '')
+        || '';
+      if (messageLogin !== normalizedLogin) return message;
+      return {
+        ...message,
+        username: nextUsername || message.username,
+        displayName: nextDisplayName || message.displayName,
+        avatarUrl: nextAvatarUrl || message.avatarUrl,
+      };
+    };
+
+    setPrimaryMessages((prev) => {
+      let changed = false;
+      const next = prev.map((message) => {
+        const patched = patchMessage(message);
+        if (patched !== message) changed = true;
+        return patched;
+      });
+      return changed ? next : prev;
+    });
+    setIrcMessagesByChannel((prev) => {
+      let changed = false;
+      const next: Record<string, ChatMessage[]> = {};
+      for (const [channel, messages] of Object.entries(prev)) {
+        const patchedMessages = messages.map((message) => {
+          const patched = patchMessage(message);
+          if (patched !== message) changed = true;
+          return patched;
+        });
+        next[channel] = patchedMessages;
+      }
+      return changed ? next : prev;
+    });
+  }, [applyIrcUserProfile]);
+
   const hydrateIrcUserProfile = useCallback(async (userId?: string, usernameHint?: string) => {
     if (!userId || userId.trim() === '') return;
     if (ircProfileInFlightRef.current.has(userId)) return;
 
     const cached = ircUserProfilesRef.current[userId];
-    if (cached?.avatarUrl && cached.avatarUrl.trim() !== '') {
+    if (
+      cached?.avatarUrl
+      && cached.avatarUrl.trim() !== ''
+      && cached.displayName
+      && cached.displayName.trim() !== ''
+    ) {
       return;
     }
 
@@ -1002,10 +1085,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       }
 
       const payload = await response.json().catch(() => null);
-      const username = typeof payload?.username === 'string' ? payload.username : usernameHint;
+      const username = typeof payload?.username === 'string' ? payload.username.trim() : (usernameHint || '').trim();
+      const displayName = typeof payload?.display_name === 'string'
+        ? payload.display_name.trim()
+        : (typeof payload?.displayName === 'string' ? payload.displayName.trim() : '');
       const avatarUrl = typeof payload?.avatar_url === 'string' ? payload.avatar_url : '';
       const profile: IrcUserProfile = {
         username: username || undefined,
+        displayName: displayName || undefined,
         avatarUrl: avatarUrl || undefined,
       };
       ircUserProfilesRef.current[userId] = profile;
@@ -1117,6 +1204,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       connection.nick = credentials.nick;
       connection.pass = credentials.pass;
       connection.userId = credentials.userId;
+      connection.login = credentials.login;
       connection.displayName = credentials.displayName;
 
       if (connection.ws && connection.ws.readyState === WebSocket.OPEN) {
@@ -1184,6 +1272,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             ? {
               ...parsed.message,
               username: profile.username || parsed.message.username,
+              displayName: profile.displayName || parsed.message.displayName,
               avatarUrl: profile.avatarUrl || parsed.message.avatarUrl,
             }
             : parsed.message;
@@ -1196,7 +1285,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           }
           upsertIrcParticipant(connection.channel, {
             userLogin: parsed.userLogin,
-            userName: mergedMessage.username,
+            userName: mergedMessage.displayName || mergedMessage.username,
             userId: mergedMessage.userId,
           });
           void hydrateIrcUserProfile(mergedMessage.userId, mergedMessage.username);
@@ -1285,6 +1374,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       generation: 0,
       userId: '',
       displayName: '',
+      login: '',
     };
 
     ircConnectionsRef.current.set(connectionKey, connection);
@@ -1361,7 +1451,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             id: item.id ? String(item.id) : `${item.timestamp || Date.now()}-${Math.random().toString(36).slice(2)}`,
             messageId: item.messageId ?? item.message_id,
             userId: item.userId ?? item.user_id,
-            username: item.username,
+            username: item.username || '',
+            displayName: item.displayName ?? item.display_name,
             message: item.message,
             badgeKeys: Array.isArray(item.badge_keys) ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
@@ -1409,6 +1500,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             messageId: data.messageId,
             userId: data.userId,
             username: data.username,
+            displayName: data.displayName || data.display_name,
             message: data.message,
             badgeKeys: Array.isArray(data.badge_keys) ? data.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(data.fragments ?? data.fragments_json ?? data.fragmentsJson),
@@ -1495,6 +1587,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             messageId: item.messageId ?? item.message_id,
             userId: item.userId ?? item.user_id,
             username: item.username || '',
+            displayName: item.displayName ?? item.display_name,
             message: item.message || '',
             badgeKeys: Array.isArray(item.badge_keys) ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string') : undefined,
             fragments: normalizeFragments(item.fragments ?? item.fragments_json ?? item.fragmentsJson),
@@ -1577,8 +1670,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTabRequest, ircChannels]);
 
   useEffect(() => {
-    if (!userInfoPopup) return;
+    if (!userInfoPopup && !rawDataMessage) return;
     setUserInfoPopup(null);
+    setRawDataMessage(null);
   }, [activeTab, isCollapsed]);
 
   useEffect(() => {
@@ -1590,10 +1684,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [userInfoPopup]);
 
   useEffect(() => {
+    setRawDataCopied(false);
+    if (rawDataCopiedTimerRef.current !== null) {
+      clearTimeout(rawDataCopiedTimerRef.current);
+      rawDataCopiedTimerRef.current = null;
+    }
+  }, [rawDataMessage]);
+
+  useEffect(() => {
     return () => {
       if (userInfoIdCopiedTimerRef.current !== null) {
         clearTimeout(userInfoIdCopiedTimerRef.current);
         userInfoIdCopiedTimerRef.current = null;
+      }
+      if (rawDataCopiedTimerRef.current !== null) {
+        clearTimeout(rawDataCopiedTimerRef.current);
+        rawDataCopiedTimerRef.current = null;
       }
     };
   }, []);
@@ -1603,6 +1709,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       setUserInfoProfile(null);
       setUserInfoLoading(false);
       setUserInfoError('');
+      setUserModerationLoading(null);
+      setUserModerationMessage('');
       return;
     }
 
@@ -1620,17 +1728,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     const ttl = cached?.profile.followerCount == null
       ? USER_PROFILE_CACHE_INCOMPLETE_TTL_MS
       : USER_PROFILE_CACHE_TTL_MS;
-    if (cached && (Date.now() - cached.fetchedAt) <= ttl) {
+    const hasFreshCache = !!(cached && (Date.now() - cached.fetchedAt) <= ttl);
+    if (hasFreshCache && cached) {
       setUserInfoProfile(cached.profile);
-      setUserInfoLoading(false);
-      setUserInfoError('');
-      return;
+      setUserInfoLoading(true);
+    } else {
+      setUserInfoProfile(null);
+      setUserInfoLoading(true);
     }
 
     let cancelled = false;
     const seq = ++userInfoFetchSeqRef.current;
-    setUserInfoProfile(null);
-    setUserInfoLoading(true);
     setUserInfoError('');
 
     const loadUserProfileDetail = async () => {
@@ -1642,6 +1750,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             user_id: userId || undefined,
             username: userInfoPopup.message.username || undefined,
             login: userInfoPopup.message.username || undefined,
+            force_refresh: true,
           }),
         });
         if (!response.ok) {
@@ -1662,6 +1771,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           followerCount: typeof payload?.follower_count === 'number' ? payload.follower_count : null,
           viewCount: typeof payload?.view_count === 'number' ? payload.view_count : 0,
           createdAt: typeof payload?.created_at === 'string' ? payload.created_at : '',
+          canTimeout: payload?.can_timeout === true || payload?.canTimeout === true,
+          canBlock: payload?.can_block === true || payload?.canBlock === true,
         };
         if (cancelled || seq !== userInfoFetchSeqRef.current) {
           return;
@@ -1674,6 +1785,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         if (profile.login.trim() !== '') {
           userProfileDetailCacheRef.current[`login:${profile.login.trim().toLowerCase()}`] = cacheValue;
         }
+        applyResolvedUserProfile(profile);
         setUserInfoProfile(profile);
         setUserInfoLoading(false);
       } catch (error) {
@@ -1682,7 +1794,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         }
         console.error('[ChatSidebar] Failed to load user profile detail:', error);
         setUserInfoLoading(false);
-        setUserInfoError('プロフィール取得に失敗しました。');
+        setUserInfoError(hasFreshCache ? '最新情報の再取得に失敗しました。' : 'プロフィール取得に失敗しました。');
       }
     };
 
@@ -1691,7 +1803,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [userInfoPopup]);
+  }, [applyResolvedUserProfile, userInfoPopup]);
 
   const activeBadgeChannelLogin = useMemo(() => {
     if (activeTab === PRIMARY_CHAT_TAB_ID) {
@@ -1723,17 +1835,19 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeBadgeChannelLogin, ensureBadgeCatalog]);
 
   useEffect(() => {
-    if (!userInfoPopup || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
+    if (!userInfoPopup && !rawDataMessage) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setUserInfoPopup(null);
+        setRawDataMessage(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [userInfoPopup]);
+  }, [rawDataMessage, userInfoPopup]);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -1987,8 +2101,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
     for (const item of activeMessages) {
       const userId = (item.userId || '').trim();
-      const userName = (item.username || '').trim();
-      const userLogin = normalizeTwitchChannelName(userName) || '';
+      const userName = (item.displayName || item.username || '').trim();
+      const userLogin = normalizeTwitchChannelName(item.username || '') || '';
       const keyById = userId !== '' ? Array.from(participants.entries())
         .find(([, value]) => value.user_id === userId)?.[0]
         : undefined;
@@ -2101,7 +2215,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       activeButton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }, [activeTab, tabs]);
-  const popupProfileName = (userInfoProfile?.displayName || userInfoProfile?.username || userInfoPopup?.message.username || '').trim();
+  const popupProfileName = (
+    userInfoProfile?.displayName
+    || userInfoProfile?.username
+    || userInfoPopup?.message.displayName
+    || userInfoPopup?.message.username
+    || ''
+  ).trim();
   const popupProfileLogin = (userInfoProfile?.login || '').trim();
   const popupProfileAvatar = (userInfoProfile?.profileImageUrl || userInfoProfile?.avatarUrl || userInfoPopup?.message.avatarUrl || '').trim();
   const popupProfileCover = (userInfoProfile?.coverImageUrl || '').trim();
@@ -2124,6 +2244,21 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     ? userInfoProfile.followerCount.toLocaleString()
     : '';
   const userInfoResolvedUserId = ((userInfoProfile?.userId || userInfoPopup?.message.userId || '')).trim();
+  const moderationTargetName = (
+    userInfoProfile?.displayName
+    || userInfoProfile?.username
+    || userInfoPopup?.message.displayName
+    || userInfoPopup?.message.username
+    || userInfoResolvedUserId
+    || 'このユーザー'
+  ).trim();
+  const moderationAllowedOnPopup = userInfoPopup?.tabId === PRIMARY_CHAT_TAB_ID;
+  const userInfoCanTimeout = moderationAllowedOnPopup && userInfoProfile?.canTimeout === true && userInfoResolvedUserId !== '';
+  const userInfoCanBlock = moderationAllowedOnPopup && userInfoProfile?.canBlock === true && userInfoResolvedUserId !== '';
+  const rawDataJson = useMemo(
+    () => (rawDataMessage ? JSON.stringify(rawDataMessage, null, 2) : ''),
+    [rawDataMessage],
+  );
   const copyUserInfoUserId = useCallback(async () => {
     if (userInfoResolvedUserId === '') return;
     try {
@@ -2151,6 +2286,81 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       setUserInfoError('ユーザーIDのコピーに失敗しました。');
     }
   }, [userInfoResolvedUserId]);
+  const copyRawDataJson = useCallback(async () => {
+    if (rawDataJson === '') return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(rawDataJson);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = rawDataJson;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setRawDataCopied(true);
+      if (rawDataCopiedTimerRef.current !== null) {
+        clearTimeout(rawDataCopiedTimerRef.current);
+      }
+      rawDataCopiedTimerRef.current = setTimeout(() => {
+        setRawDataCopied(false);
+      }, 1200);
+    } catch (error) {
+      console.error('[ChatSidebar] Failed to copy raw chat message JSON:', error);
+    }
+  }, [rawDataJson]);
+  const runModerationAction = useCallback(async (action: 'timeout' | 'block') => {
+    if (userInfoResolvedUserId === '') return;
+    if (userModerationLoading) return;
+    if (action === 'timeout' && !userInfoCanTimeout) return;
+    if (action === 'block' && !userInfoCanBlock) return;
+
+    const confirmMessage = action === 'timeout'
+      ? `${moderationTargetName} を10分タイムアウトします。実行しますか？`
+      : `${moderationTargetName} をブロックします。実行しますか？`;
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setUserInfoError('');
+    setUserModerationMessage('');
+    setUserModerationLoading(action);
+    try {
+      const response = await fetch(buildApiUrl('/api/chat/moderation/action'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          user_id: userInfoResolvedUserId,
+          duration_seconds: action === 'timeout' ? DEFAULT_TIMEOUT_SECONDS : undefined,
+          reason: action === 'timeout' ? 'overlay moderation action' : undefined,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const errorText = typeof payload?.error === 'string'
+          ? payload.error
+          : `HTTP ${response.status}`;
+        throw new Error(errorText);
+      }
+      setUserModerationMessage(action === 'timeout' ? '10分タイムアウトを実行しました。' : 'ブロックを実行しました。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'モデレーション操作に失敗しました。';
+      setUserInfoError(message);
+    } finally {
+      setUserModerationLoading(null);
+    }
+  }, [
+    moderationTargetName,
+    userInfoCanBlock,
+    userInfoCanTimeout,
+    userInfoResolvedUserId,
+    userModerationLoading,
+  ]);
   const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
   const primaryConnectionId = primaryChannelLogin ? primaryIrcConnectionKey(primaryChannelLogin) : '';
 
@@ -2208,7 +2418,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         id: optimisticId,
         messageId: optimisticId,
         userId: connection.userId || undefined,
-        username: connection.displayName || ownProfile?.username || connection.nick,
+        username: ownProfile?.username || connection.login || connection.nick,
+        displayName: connection.displayName || ownProfile?.displayName || ownProfile?.username || connection.nick,
         message: ircText,
         fragments: inputFragmentsToChatFragments(inputFragments, ircText),
         avatarUrl: ownProfile?.avatarUrl,
@@ -2280,6 +2491,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     setUserInfoProfile(null);
     setUserInfoLoading(false);
     setUserInfoError('');
+    setUserModerationLoading(null);
+    setUserModerationMessage('');
     setUserInfoPopup({ message, tabId: activeTab });
   }, [activeTab]);
 
@@ -2287,7 +2500,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     setUserInfoProfile(null);
     setUserInfoLoading(false);
     setUserInfoError('');
+    setUserModerationLoading(null);
+    setUserModerationMessage('');
     setUserInfoPopup(null);
+  }, []);
+
+  const handleOpenRawData = useCallback((message: ChatMessage) => {
+    setRawDataMessage(message);
+  }, []);
+
+  const handleCloseRawData = useCallback(() => {
+    setRawDataMessage(null);
   }, []);
 
   return (
@@ -2532,6 +2755,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       translationFontSize={translationFontSize}
                       timestampLabel={formatTime(msg.timestamp)}
                       onUsernameClick={handleOpenUserInfo}
+                      onRawDataClick={handleOpenRawData}
                       resolveBadgeVisual={resolveBadgeVisual}
                     />
                   ))
@@ -2662,6 +2886,38 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   {userInfoError && (
                     <p className="text-xs text-amber-600 dark:text-amber-300">{userInfoError}</p>
                   )}
+                  {userModerationMessage && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-300">{userModerationMessage}</p>
+                  )}
+                  {(userInfoCanTimeout || userInfoCanBlock) && (
+                    <div className="rounded-md border border-red-200 bg-red-50/70 p-2 dark:border-red-500/40 dark:bg-red-900/20">
+                      <p className="mb-2 text-[11px] text-red-700 dark:text-red-200">
+                        モデレーション操作（確認ダイアログ後に実行）
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {userInfoCanTimeout && (
+                          <button
+                            type="button"
+                            onClick={() => void runModerationAction('timeout')}
+                            disabled={userModerationLoading !== null}
+                            className="inline-flex h-7 items-center rounded-md border border-red-300 px-2 text-xs text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/50 dark:text-red-100 dark:hover:bg-red-800/50"
+                          >
+                            {userModerationLoading === 'timeout' ? '実行中...' : '10分タイムアウト'}
+                          </button>
+                        )}
+                        {userInfoCanBlock && (
+                          <button
+                            type="button"
+                            onClick={() => void runModerationAction('block')}
+                            disabled={userModerationLoading !== null}
+                            className="inline-flex h-7 items-center rounded-md border border-red-400 px-2 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400 dark:text-red-100 dark:hover:bg-red-800/60"
+                          >
+                            {userModerationLoading === 'block' ? '実行中...' : 'ブロック'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <table className="w-full text-xs text-gray-600 dark:text-gray-300">
                     <tbody className="[&>tr:not(:last-child)]:border-b [&>tr:not(:last-child)]:border-gray-200/70 dark:[&>tr:not(:last-child)]:border-gray-700/70">
@@ -2704,6 +2960,47 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+          )}
+          {rawDataMessage && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  handleCloseRawData();
+                }
+              }}
+            >
+              <div className="flex h-[min(80vh,680px)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">コメント生データ</h3>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void copyRawDataJson()}
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-xs text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      aria-label="コメント生データをコピー"
+                      title="コメント生データをコピー"
+                    >
+                      {rawDataCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                      <span>{rawDataCopied ? 'コピー済み' : 'コピー'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloseRawData}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      aria-label="コメント生データモーダルを閉じる"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto bg-gray-50 p-4 dark:bg-gray-950">
+                  <pre className="min-h-full whitespace-pre-wrap break-all rounded border border-gray-200 bg-white p-3 font-mono text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                    {rawDataJson}
+                  </pre>
                 </div>
               </div>
             </div>

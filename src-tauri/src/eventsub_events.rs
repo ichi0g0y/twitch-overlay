@@ -34,10 +34,13 @@ pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value
 async fn handle_chat_message(state: &SharedState, payload: &Value) {
     let message_id = str_field(payload, &["message_id"]);
     let user_id = str_field(payload, &["chatter_user_id"]);
-    let username = non_empty(
-        str_field(payload, &["chatter_user_name"]),
-        str_field(payload, &["chatter_user_login"]),
-    );
+    let user_login = str_field(payload, &["chatter_user_login"]);
+    let display_name = str_field(payload, &["chatter_user_name"]);
+    let username = if user_login.is_empty() {
+        display_name.clone()
+    } else {
+        user_login
+    };
     let message_text = str_field(payload, &["message", "text"]);
     let message_fragments = payload
         .get("message")
@@ -53,7 +56,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     let now = chrono::Utc::now().timestamp();
     if let Err(e) = state
         .db()
-        .upsert_chat_user_profile(&user_id, &username, &avatar_url, now)
+        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
     {
         tracing::warn!(user_id, "Failed to upsert chat user profile: {e}");
     }
@@ -63,6 +66,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         message_id: message_id.clone(),
         user_id: user_id.clone(),
         username: username.clone(),
+        display_name: display_name.clone(),
         message: message_text.clone(),
         fragments_json,
         avatar_url: String::new(),
@@ -84,7 +88,8 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     }
 
     let ws_payload = json!({
-        "username": username,
+        "username": username.clone(),
+        "displayName": display_name.clone(),
         "userId": user_id,
         "messageId": message_id,
         "message": message_text,
@@ -99,7 +104,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
 
     enqueue_notification(
         state,
-        str_field(payload, &["chatter_user_name"]),
+        non_empty(display_name, username),
         str_field(payload, &["message", "text"]),
         to_notification_fragments(&message_fragments),
         NotificationType::Chat,

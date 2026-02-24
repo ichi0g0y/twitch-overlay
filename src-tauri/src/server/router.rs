@@ -269,6 +269,10 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/chat/irc/message", post(api::chat::post_irc_message))
         .route("/api/chat/post", post(api::chat::post_chat_message))
         .route(
+            "/api/chat/moderation/action",
+            post(api::chat::post_chat_moderation_action),
+        )
+        .route(
             "/api/chat/user-profile",
             post(api::chat::upsert_user_profile),
         )

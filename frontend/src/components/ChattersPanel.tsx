@@ -422,7 +422,8 @@ export const ChattersPanel: React.FC<ChattersPanelProps> = ({
                   onChatterClick({
                     id: '',
                     userId: (profile?.userId || chatter.user_id || '').trim(),
-                    username: displayName,
+                    username: userLogin || displayName,
+                    displayName,
                     avatarUrl,
                     message: '',
                   });

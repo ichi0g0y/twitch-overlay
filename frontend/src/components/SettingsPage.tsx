@@ -1,4 +1,4 @@
-import { AlertTriangle, Bluetooth, Bug, Check, Copy, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Maximize2, Menu, Mic, Minimize2, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Maximize2, Menu, Mic, Minimize2, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -32,6 +32,7 @@ import { CacheSettings } from './settings/CacheSettings';
 import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
 import { WorkspacePanningSettings } from './settings/WorkspacePanningSettings';
 import { TwitchPlayerEmbed } from './settings/TwitchPlayerEmbed';
+import { FollowedChannelPopover } from './settings/FollowedChannelPopover';
 import { ChatSidebar } from './ChatSidebar';
 import { MicCaptionSender } from './mic/MicCaptionSender';
 import { PRIMARY_CHAT_TAB_ID, normalizeTwitchChannelName, readIrcChannels, subscribeIrcChannels, writeIrcChannels } from '../utils/chatChannels';
@@ -1083,7 +1084,7 @@ const WORKSPACE_NODE_TYPES: NodeTypes = {
   'workspace-card': WorkspaceCardNodeView,
 };
 
-type FollowedChannelRailItem = {
+export type FollowedChannelRailItem = {
   broadcaster_id: string;
   broadcaster_login: string;
   broadcaster_name: string;
@@ -1141,7 +1142,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
 }) => {
   const [railMenuOpen, setRailMenuOpen] = useState(false);
   const [openChannelId, setOpenChannelId] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const [raidConfirmChannelId, setRaidConfirmChannelId] = useState<string | null>(null);
   const [raidingChannelId, setRaidingChannelId] = useState<string | null>(null);
   const [shoutoutingChannelId, setShoutoutingChannelId] = useState<string | null>(null);
@@ -1350,6 +1351,73 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   const hoveredChannel = hoveredChannelId
     ? channels.find((item) => item.broadcaster_id === hoveredChannelId) ?? null
     : null;
+  const closeChannelMenu = useCallback(() => {
+    setOpenChannelId(null);
+    setMenuAnchor(null);
+    setRaidConfirmChannelId(null);
+    setShoutoutingChannelId(null);
+  }, []);
+  const copyChannelLogin = useCallback(async (channel: FollowedChannelRailItem) => {
+    const channelLogin = channel.broadcaster_login;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(channelLogin);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = channelLogin;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedChannelId(channel.broadcaster_id);
+      if (copiedResetTimerRef.current !== null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = window.setTimeout(() => {
+        setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
+      }, 1200);
+    } catch {
+      setActionError('チャンネル名のコピーに失敗しました');
+    }
+  }, []);
+  const connectChannel = useCallback((channel: FollowedChannelRailItem) => {
+    onAddIrcPreview(channel.broadcaster_login);
+    closeChannelMenu();
+  }, [closeChannelMenu, onAddIrcPreview]);
+  const startShoutout = useCallback(async (channel: FollowedChannelRailItem) => {
+    setActionError('');
+    setRaidConfirmChannelId(null);
+    setShoutoutingChannelId(channel.broadcaster_id);
+    try {
+      await onStartShoutout(channel);
+      closeChannelMenu();
+    } catch (error: any) {
+      setActionError(error?.message || '応援に失敗しました');
+    } finally {
+      setShoutoutingChannelId(null);
+    }
+  }, [closeChannelMenu, onStartShoutout]);
+  const startRaid = useCallback(async (channel: FollowedChannelRailItem) => {
+    if (raidConfirmChannelId !== channel.broadcaster_id) {
+      setRaidConfirmChannelId(channel.broadcaster_id);
+      setActionError('');
+      return;
+    }
+    setActionError('');
+    setRaidingChannelId(channel.broadcaster_id);
+    try {
+      await onStartRaid(channel);
+      closeChannelMenu();
+    } catch (error: any) {
+      setActionError(error?.message || 'レイド開始に失敗しました');
+    } finally {
+      setRaidingChannelId(null);
+    }
+  }, [closeChannelMenu, onStartRaid, raidConfirmChannelId]);
 
   return (
     <div
@@ -1448,7 +1516,6 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
               const followerCountLabel = resolveFollowerCountLabel(channel);
               const normalizedChannelLogin = channelLogin.trim().toLowerCase();
               const alreadyConnected = ircConnectedChannels.includes(normalizedChannelLogin);
-              const canStartShoutout = canStartRaid && channel.is_live;
               return (
                 <div key={channel.broadcaster_id} className="group relative flex justify-center">
                   <button
@@ -1464,8 +1531,8 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                         return;
                       }
                       const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                      const menuWidth = 192;
-                      const menuHeight = 230;
+                      const menuWidth = channel.is_live ? 340 : 192;
+                      const menuHeight = channel.is_live ? 420 : 230;
                       const top = Math.max(
                         12,
                         Math.min(window.innerHeight - menuHeight - 12, rect.top + (rect.height / 2) - (menuHeight / 2)),
@@ -1473,7 +1540,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                       const left = side === 'left'
                         ? Math.min(window.innerWidth - menuWidth - 12, rect.right + 8)
                         : Math.max(12, rect.left - menuWidth - 8);
-                      setMenuAnchor({ top, left });
+                      setMenuAnchor({ top, left, width: menuWidth });
                       void ensureFollowerCount(channel);
                     }}
                     className={`relative h-9 w-9 rounded-full border transition ${
@@ -1525,160 +1592,27 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
                     )}
                   </button>
                   {selected && menuAnchor && (
-                    <div
-                      data-followed-menu="true"
-                      className="fixed z-50 w-48 rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
-                      style={{ left: `${menuAnchor.left}px`, top: `${menuAnchor.top}px` }}
-                    >
-                      <div className="text-xs font-semibold text-gray-100">{channelDisplayName}</div>
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <div className="min-w-0 truncate text-[11px] text-gray-400">#{channelLogin}</div>
-                        <div className="inline-flex items-center gap-1">
-                          <a
-                            href={`https://www.twitch.tv/${encodeURIComponent(channelLogin)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
-                            aria-label={`${channelLogin} のチャンネルを開く`}
-                            title="チャンネルを開く"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                                  await navigator.clipboard.writeText(channelLogin);
-                                } else if (typeof document !== 'undefined') {
-                                  const textarea = document.createElement('textarea');
-                                  textarea.value = channelLogin;
-                                  textarea.style.position = 'fixed';
-                                  textarea.style.opacity = '0';
-                                  document.body.appendChild(textarea);
-                                  textarea.focus();
-                                  textarea.select();
-                                  document.execCommand('copy');
-                                  document.body.removeChild(textarea);
-                                }
-                                setCopiedChannelId(channel.broadcaster_id);
-                                if (copiedResetTimerRef.current !== null) {
-                                  window.clearTimeout(copiedResetTimerRef.current);
-                                }
-                                copiedResetTimerRef.current = window.setTimeout(() => {
-                                  setCopiedChannelId((current) => (current === channel.broadcaster_id ? null : current));
-                                }, 1200);
-                              } catch {
-                                setActionError('チャンネル名のコピーに失敗しました');
-                              }
-                            }}
-                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
-                            aria-label={`${channelLogin} をコピー`}
-                            title="チャンネル名をコピー"
-                          >
-                            {copiedChannelId === channel.broadcaster_id ? (
-                              <Check className="h-3 w-3 text-emerald-300" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mb-1 text-[11px] text-gray-300">{`フォロワー: ${followerCountLabel}`}</div>
-                      <div className="mb-2 text-[11px] text-gray-400 truncate">
-                        {channel.title || (channel.is_live ? 'LIVE中' : 'オフライン')}
-                      </div>
-                      <button
-                        type="button"
-                        disabled={alreadyConnected}
-                        onClick={() => {
-                          onAddIrcPreview(channel.broadcaster_login);
-                          setOpenChannelId(null);
-                          setMenuAnchor(null);
-                          setRaidConfirmChannelId(null);
-                          setShoutoutingChannelId(null);
-                        }}
-                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-                          alreadyConnected
-                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
-                            : 'border-emerald-600/60 text-emerald-300 hover:bg-emerald-700/20'
-                        }`}
-                      >
-                        {alreadyConnected ? '接続済み' : '接続'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canStartShoutout || shoutoutingChannelId === channel.broadcaster_id}
-                        onClick={async () => {
-                          setActionError('');
-                          setRaidConfirmChannelId(null);
-                          setShoutoutingChannelId(channel.broadcaster_id);
-                          try {
-                            await onStartShoutout(channel);
-                            setOpenChannelId(null);
-                            setMenuAnchor(null);
-                            setShoutoutingChannelId(null);
-                          } catch (error: any) {
-                            setActionError(error?.message || '応援に失敗しました');
-                          } finally {
-                            setShoutoutingChannelId(null);
-                          }
-                        }}
-                        className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-                          !canStartShoutout
-                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
-                            : 'border-fuchsia-600/60 text-fuchsia-200 hover:bg-fuchsia-700/20'
-                        } disabled:opacity-60`}
-                      >
-                        {shoutoutingChannelId === channel.broadcaster_id ? '応援中...' : '応援'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canStartRaid || raidingChannelId === channel.broadcaster_id}
-                        onClick={async () => {
-                          if (raidConfirmChannelId !== channel.broadcaster_id) {
-                            setRaidConfirmChannelId(channel.broadcaster_id);
-                            setActionError('');
-                            return;
-                          }
-                          setActionError('');
-                          setRaidingChannelId(channel.broadcaster_id);
-                          try {
-                            await onStartRaid(channel);
-                            setOpenChannelId(null);
-                            setMenuAnchor(null);
-                            setRaidConfirmChannelId(null);
-                          } catch (error: any) {
-                            setActionError(error?.message || 'レイド開始に失敗しました');
-                          } finally {
-                            setRaidingChannelId(null);
-                          }
-                        }}
-                        className={`inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-                          !canStartRaid
-                            ? 'border-gray-700 text-gray-500 cursor-not-allowed'
-                            : raidConfirmChannelId === channel.broadcaster_id
-                            ? 'border-red-500/80 text-red-200 hover:bg-red-700/20'
-                            : 'border-gray-600 text-gray-200 hover:bg-gray-800'
-                        } disabled:opacity-60`}
-                      >
-                        {raidingChannelId === channel.broadcaster_id
-                          ? 'レイド中...'
-                          : raidConfirmChannelId === channel.broadcaster_id
-                            ? 'レイド確定'
-                            : 'レイド'}
-                      </button>
-                      {raidConfirmChannelId === channel.broadcaster_id && (
-                        <button
-                          type="button"
-                          onClick={() => setRaidConfirmChannelId(null)}
-                          className="mt-1 inline-flex h-7 w-full items-center justify-center rounded border border-gray-700 text-[11px] text-gray-300 hover:bg-gray-800"
-                        >
-                          キャンセル
-                        </button>
-                      )}
-                      {actionError && <p className="mt-1 text-[11px] text-red-300">{actionError}</p>}
-                    </div>
+                    <FollowedChannelPopover
+                      channel={channel}
+                      followerCountLabel={followerCountLabel}
+                      alreadyConnected={alreadyConnected}
+                      canStartRaid={canStartRaid}
+                      copiedChannelId={copiedChannelId}
+                      raidConfirmChannelId={raidConfirmChannelId}
+                      raidingChannelId={raidingChannelId}
+                      shoutoutingChannelId={shoutoutingChannelId}
+                      actionError={actionError}
+                      style={{
+                        left: `${menuAnchor.left}px`,
+                        top: `${menuAnchor.top}px`,
+                        width: `${menuAnchor.width}px`,
+                      }}
+                      onCopyChannelLogin={copyChannelLogin}
+                      onConnect={connectChannel}
+                      onStartShoutout={startShoutout}
+                      onStartRaid={startRaid}
+                      onCancelRaidConfirm={() => setRaidConfirmChannelId(null)}
+                    />
                   )}
                 </div>
               );

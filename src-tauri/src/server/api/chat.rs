@@ -75,6 +75,7 @@ pub struct ChatUserProfileDetailBody {
     pub user_id: Option<String>,
     pub username: Option<String>,
     pub login: Option<String>,
+    pub force_refresh: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,6 +84,8 @@ pub struct IrcChatMessageBody {
     pub message_id: Option<String>,
     pub user_id: Option<String>,
     pub username: Option<String>,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
     pub message: String,
     pub badge_keys: Option<Vec<String>>,
     pub fragments: Option<Value>,
@@ -98,6 +101,21 @@ pub struct IrcChannelProfilesQuery {
 pub struct IrcChannelProfileBody {
     pub channel: String,
     pub display_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatModerationAction {
+    Timeout,
+    Block,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatModerationActionBody {
+    pub action: ChatModerationAction,
+    pub user_id: String,
+    pub duration_seconds: Option<u32>,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +136,12 @@ struct CachedUserProfileDetail {
     cached_at: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ModerationCapabilities {
+    can_timeout: bool,
+    can_block: bool,
+}
+
 fn user_profile_detail_cache_key(user_id: &str) -> Option<String> {
     let normalized = user_id.trim();
     if normalized.is_empty() {
@@ -128,7 +152,10 @@ fn user_profile_detail_cache_key(user_id: &str) -> Option<String> {
     ))
 }
 
-fn cached_user_profile_to_json(cached: &CachedUserProfileDetail) -> Value {
+fn cached_user_profile_to_json(
+    cached: &CachedUserProfileDetail,
+    capabilities: ModerationCapabilities,
+) -> Value {
     json!({
         "user_id": cached.user_id,
         "username": cached.username,
@@ -143,6 +170,8 @@ fn cached_user_profile_to_json(cached: &CachedUserProfileDetail) -> Value {
         "follower_count": cached.follower_count,
         "view_count": cached.view_count,
         "created_at": cached.created_at,
+        "can_timeout": capabilities.can_timeout,
+        "can_block": capabilities.can_block,
     })
 }
 
@@ -212,6 +241,38 @@ fn parse_channel_logins_csv(raw: Option<&str>) -> Vec<String> {
         }
     }
     channels
+}
+
+fn token_has_scope(scope_csv: &str, required_scope: &str) -> bool {
+    scope_csv
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .map(str::trim)
+        .any(|scope| !scope.is_empty() && scope == required_scope)
+}
+
+async fn resolve_moderation_capabilities(state: &SharedState) -> ModerationCapabilities {
+    let config = state.config().await;
+    if config.client_id.trim().is_empty() || config.twitch_user_id.trim().is_empty() {
+        return ModerationCapabilities {
+            can_timeout: false,
+            can_block: false,
+        };
+    }
+
+    let db_token = match state.db().get_latest_token() {
+        Ok(Some(token)) => token,
+        _ => {
+            return ModerationCapabilities {
+                can_timeout: false,
+                can_block: false,
+            };
+        }
+    };
+
+    ModerationCapabilities {
+        can_timeout: token_has_scope(&db_token.scope, "moderator:manage:banned_users"),
+        can_block: token_has_scope(&db_token.scope, "user:manage:blocked_users"),
+    }
 }
 
 fn map_twitch_error(err: TwitchError) -> (axum::http::StatusCode, Json<Value>) {
@@ -483,7 +544,8 @@ async fn resolve_chat_user_profile(
     state: &SharedState,
     user_id: &str,
     username_hint: Option<&str>,
-) -> Result<(String, String), (axum::http::StatusCode, Json<Value>)> {
+    force_refresh: bool,
+) -> Result<(String, String, String), (axum::http::StatusCode, Json<Value>)> {
     let normalized_user_id = user_id.trim();
     if normalized_user_id.is_empty() {
         return Err(err_json(400, "user_id is required"));
@@ -502,37 +564,65 @@ async fn resolve_chat_user_profile(
         .or_else(|| existing.as_ref().map(|p| p.username.clone()))
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| normalized_user_id.to_string());
+    let mut display_name = existing
+        .as_ref()
+        .map(|p| p.display_name.clone())
+        .or_else(|| hinted_username.clone())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| username.clone());
     let mut avatar_url = existing
         .as_ref()
         .map(|p| p.avatar_url.clone())
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_default();
 
-    if avatar_url.is_empty()
+    if force_refresh
+        || avatar_url.is_empty()
         || username == normalized_user_id
         || username.eq_ignore_ascii_case("webui")
+        || display_name.trim().is_empty()
     {
         if let Some(user) = fetch_twitch_user_profile(state, normalized_user_id).await {
-            if username == normalized_user_id || username.eq_ignore_ascii_case("webui") {
-                username = if user.display_name.trim().is_empty() {
-                    user.login
+            if force_refresh || username == normalized_user_id || username.eq_ignore_ascii_case("webui")
+            {
+                username = if user.login.trim().is_empty() {
+                    normalized_user_id.to_string()
+                } else {
+                    user.login.clone()
+                };
+            }
+            if force_refresh
+                || display_name.trim().is_empty()
+                || display_name.eq_ignore_ascii_case("webui")
+            {
+                display_name = if user.display_name.trim().is_empty() {
+                    username.clone()
                 } else {
                     user.display_name
                 };
             }
-            if avatar_url.is_empty() {
+            if force_refresh || avatar_url.is_empty() {
                 avatar_url = user.profile_image_url;
             }
         }
+    }
+    if display_name.trim().is_empty() {
+        display_name = username.clone();
     }
 
     let now = chrono::Utc::now().timestamp();
     state
         .db()
-        .upsert_chat_user_profile(normalized_user_id, &username, &avatar_url, now)
+        .upsert_chat_user_profile(
+            normalized_user_id,
+            &username,
+            &display_name,
+            &avatar_url,
+            now,
+        )
         .map_err(|e| err_json(500, &e.to_string()))?;
 
-    Ok((username, avatar_url))
+    Ok((username, display_name, avatar_url))
 }
 
 async fn save_irc_chat_message(
@@ -541,22 +631,65 @@ async fn save_irc_chat_message(
     message_id: &str,
     user_id: &str,
     username_hint: Option<&str>,
+    display_name_hint: Option<&str>,
+    avatar_url_hint: Option<&str>,
     message: &str,
     badge_keys: Vec<String>,
     fragments: Value,
     created_at: i64,
 ) -> Result<Value, (axum::http::StatusCode, Json<Value>)> {
-    let (username, avatar_url) = if !user_id.trim().is_empty() {
-        resolve_chat_user_profile(state, user_id, username_hint).await?
+    let normalized_username_hint = username_hint
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+    let normalized_display_name_hint = display_name_hint
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+    let normalized_avatar_url_hint = avatar_url_hint
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+
+    let (mut username, mut display_name, mut avatar_url) = if !user_id.trim().is_empty() {
+        resolve_chat_user_profile(state, user_id, username_hint, false).await?
     } else {
-        (
-            username_hint
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "unknown".to_string()),
-            String::new(),
-        )
+        let username = normalized_username_hint
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let display_name = normalized_display_name_hint
+            .clone()
+            .unwrap_or_else(|| username.clone());
+        let avatar_url = normalized_avatar_url_hint.clone().unwrap_or_default();
+        (username, display_name, avatar_url)
     };
+    if !user_id.trim().is_empty() {
+        let next_username = normalized_username_hint.unwrap_or_else(|| username.clone());
+        let next_display_name = normalized_display_name_hint
+            .unwrap_or_else(|| display_name.clone())
+            .trim()
+            .to_string();
+        let next_display_name = if next_display_name.is_empty() {
+            next_username.clone()
+        } else {
+            next_display_name
+        };
+        let next_avatar_url = normalized_avatar_url_hint.unwrap_or_else(|| avatar_url.clone());
+        let now = chrono::Utc::now().timestamp();
+        state
+            .db()
+            .upsert_chat_user_profile(
+                user_id,
+                &next_username,
+                &next_display_name,
+                &next_avatar_url,
+                now,
+            )
+            .map_err(|e| err_json(500, &e.to_string()))?;
+        username = next_username;
+        display_name = next_display_name;
+        avatar_url = next_avatar_url;
+    }
 
     let irc_msg = overlay_db::chat::IrcChatMessage {
         id: 0,
@@ -564,6 +697,7 @@ async fn save_irc_chat_message(
         message_id: message_id.to_string(),
         user_id: user_id.to_string(),
         username: username.clone(),
+        display_name: display_name.clone(),
         message: message.to_string(),
         badge_keys: badge_keys.clone(),
         fragments_json: fragments.to_string(),
@@ -585,6 +719,7 @@ async fn save_irc_chat_message(
     Ok(json!({
         "channel": channel_login,
         "username": username,
+        "displayName": display_name,
         "userId": user_id,
         "messageId": message_id,
         "message": message,
@@ -712,18 +847,16 @@ async fn post_twitch_chat_via_irc_channel(
     let _ = ws.close(None).await;
 
     let now = chrono::Utc::now();
-    let sender_username = if identity.sender_user.display_name.trim().is_empty() {
-        identity.sender_user.login.clone()
-    } else {
-        identity.sender_user.display_name.clone()
-    };
+    let sender_login = identity.sender_user.login.trim().to_string();
     let message_id = format!("irc-local-{}", now.timestamp_micros());
     save_irc_chat_message(
         state,
         &channel_login,
         &message_id,
         &identity.sender_user.id,
-        Some(&sender_username),
+        Some(&sender_login),
+        Some(&identity.sender_user.display_name),
+        Some(&identity.sender_user.profile_image_url),
         &message,
         Vec::new(),
         json!([{ "type": "text", "text": message }]),
@@ -917,6 +1050,8 @@ pub async fn post_irc_message(
         &message_id,
         &user_id,
         body.username.as_deref(),
+        body.display_name.as_deref(),
+        body.avatar_url.as_deref(),
         &message,
         badge_keys,
         fragments,
@@ -954,25 +1089,44 @@ pub async fn post_chat_message(
     } else {
         username
     };
+    let mut display_name = if let Ok(Some(profile)) = state.db().get_chat_user_profile(&user_id) {
+        profile.display_name.trim().to_string()
+    } else {
+        String::new()
+    };
+    if display_name.is_empty() {
+        display_name = username.clone();
+    }
 
     let now = chrono::Utc::now();
     let created_at = now.timestamp();
     let message_id = format!("local-{}", now.timestamp_micros());
 
     let mut avatar_url = resolve_avatar_url(&state, &body, &user_id).await;
-    if (username == user_id || username.eq_ignore_ascii_case("webui")) || avatar_url.is_empty() {
+    if (username == user_id || username.eq_ignore_ascii_case("webui"))
+        || display_name.trim().is_empty()
+        || avatar_url.is_empty()
+    {
         if let Some(user) = fetch_twitch_user_profile(&state, &user_id).await {
             if username == user_id || username.eq_ignore_ascii_case("webui") {
-                username = if !user.display_name.trim().is_empty() {
-                    user.display_name
-                } else {
+                username = if !user.login.trim().is_empty() {
                     user.login
+                } else {
+                    user_id.clone()
                 };
             }
+            display_name = if !user.display_name.trim().is_empty() {
+                user.display_name
+            } else {
+                username.clone()
+            };
             if avatar_url.is_empty() {
                 avatar_url = user.profile_image_url;
             }
         }
+    }
+    if display_name.trim().is_empty() {
+        display_name = username.clone();
     }
 
     let fragments = json!([{ "type": "text", "text": message }]);
@@ -981,6 +1135,7 @@ pub async fn post_chat_message(
         message_id: message_id.clone(),
         user_id: user_id.clone(),
         username: username.clone(),
+        display_name: display_name.clone(),
         message: message.clone(),
         fragments_json: fragments.to_string(),
         avatar_url: String::new(),
@@ -992,7 +1147,7 @@ pub async fn post_chat_message(
 
     state
         .db()
-        .upsert_chat_user_profile(&user_id, &username, &avatar_url, created_at)
+        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, created_at)
         .map_err(|e| err_json(500, &e.to_string()))?;
 
     state
@@ -1002,6 +1157,7 @@ pub async fn post_chat_message(
 
     let ws_payload = json!({
         "username": username,
+        "displayName": display_name.clone(),
         "userId": user_id,
         "messageId": message_id,
         "message": message,
@@ -1019,7 +1175,7 @@ pub async fn post_chat_message(
     let _ = state.ws_sender().send(broadcast.to_string());
 
     let notif = types::ChatNotification {
-        username: username.clone(),
+        username: display_name,
         message: message.clone(),
         fragments: vec![types::FragmentInfo::Text(message.clone())],
         avatar_url: if avatar_url.is_empty() {
@@ -1046,13 +1202,100 @@ pub async fn upsert_user_profile(
         return Err(err_json(400, "user_id is required"));
     }
 
-    let (username, avatar_url) =
-        resolve_chat_user_profile(&state, user_id, body.username.as_deref()).await?;
+    let (username, display_name, avatar_url) =
+        resolve_chat_user_profile(&state, user_id, body.username.as_deref(), false).await?;
     Ok(Json(json!({
         "user_id": user_id,
         "username": username,
+        "display_name": display_name,
         "avatar_url": avatar_url,
     })))
+}
+
+/// POST /api/chat/moderation/action
+pub async fn post_chat_moderation_action(
+    State(state): State<SharedState>,
+    Json(body): Json<ChatModerationActionBody>,
+) -> ApiResult {
+    let target_user_id = body.user_id.trim().to_string();
+    if target_user_id.is_empty() {
+        return Err(err_json(400, "user_id is required"));
+    }
+
+    let config = state.config().await;
+    if config.client_id.trim().is_empty() || config.twitch_user_id.trim().is_empty() {
+        return Err(err_json(401, "Twitch credentials not configured"));
+    }
+
+    let db_token = state
+        .db()
+        .get_latest_token()
+        .map_err(|e| err_json(500, &e.to_string()))?
+        .ok_or_else(|| err_json(401, "No Twitch token stored"))?;
+    let token = twitch_client::Token {
+        access_token: db_token.access_token,
+        refresh_token: db_token.refresh_token,
+        scope: db_token.scope,
+        expires_at: db_token.expires_at,
+    };
+
+    let can_timeout = token_has_scope(&token.scope, "moderator:manage:banned_users");
+    let can_block = token_has_scope(&token.scope, "user:manage:blocked_users");
+    let api = TwitchApiClient::new(config.client_id.clone());
+
+    match body.action {
+        ChatModerationAction::Timeout => {
+            if !can_timeout {
+                return Err(err_json(
+                    403,
+                    "Missing scope: moderator:manage:banned_users",
+                ));
+            }
+            let duration_seconds = body.duration_seconds.unwrap_or(600).clamp(1, 1_209_600);
+            let reason = body.reason.as_deref();
+            let moderator = api
+                .get_current_user(&token)
+                .await
+                .map_err(map_twitch_error)?;
+            let moderator_id = moderator.id.trim();
+            if moderator_id.is_empty() {
+                return Err(err_json(500, "Failed to resolve moderator id"));
+            }
+
+            api.timeout_user(
+                &token,
+                &config.twitch_user_id,
+                moderator_id,
+                &target_user_id,
+                duration_seconds,
+                reason,
+            )
+            .await
+            .map_err(map_twitch_error)?;
+
+            Ok(Json(json!({
+                "status": "ok",
+                "action": "timeout",
+                "user_id": target_user_id,
+                "duration_seconds": duration_seconds,
+            })))
+        }
+        ChatModerationAction::Block => {
+            if !can_block {
+                return Err(err_json(403, "Missing scope: user:manage:blocked_users"));
+            }
+
+            api.block_user(&token, &target_user_id)
+                .await
+                .map_err(map_twitch_error)?;
+
+            Ok(Json(json!({
+                "status": "ok",
+                "action": "block",
+                "user_id": target_user_id,
+            })))
+        }
+    }
 }
 
 /// POST /api/chat/user-profile/detail
@@ -1061,6 +1304,7 @@ pub async fn get_user_profile_detail(
     Json(body): Json<ChatUserProfileDetailBody>,
 ) -> ApiResult {
     let now_unix = chrono::Utc::now().timestamp();
+    let moderation_capabilities = resolve_moderation_capabilities(&state).await;
     let mut resolved_user_id = body
         .user_id
         .as_deref()
@@ -1098,14 +1342,21 @@ pub async fn get_user_profile_detail(
     if resolved_user_id.is_empty() {
         return Err(err_json(404, "Twitch user not found"));
     }
-    if let Some(cached) = load_cached_user_profile_detail(&state, &resolved_user_id)? {
-        if now_unix - cached.cached_at <= USER_PROFILE_DETAIL_CACHE_TTL_SECONDS {
-            return Ok(Json(cached_user_profile_to_json(&cached)));
+    let force_refresh = body.force_refresh.unwrap_or(false);
+    if !force_refresh {
+        if let Some(cached) = load_cached_user_profile_detail(&state, &resolved_user_id)? {
+            if now_unix - cached.cached_at <= USER_PROFILE_DETAIL_CACHE_TTL_SECONDS {
+                return Ok(Json(cached_user_profile_to_json(
+                    &cached,
+                    moderation_capabilities,
+                )));
+            }
         }
     }
 
-    let (username, avatar_url) =
-        resolve_chat_user_profile(&state, &resolved_user_id, body.username.as_deref()).await?;
+    let (username, _display_name, avatar_url) =
+        resolve_chat_user_profile(&state, &resolved_user_id, body.username.as_deref(), force_refresh)
+            .await?;
     if twitch_profile.is_none() {
         twitch_profile = fetch_twitch_user_profile(&state, &resolved_user_id).await;
     }
@@ -1195,7 +1446,10 @@ pub async fn get_user_profile_detail(
         cached_at: now_unix,
     };
     save_cached_user_profile_detail(&state, &response_payload);
-    Ok(Json(cached_user_profile_to_json(&response_payload)))
+    Ok(Json(cached_user_profile_to_json(
+        &response_payload,
+        moderation_capabilities,
+    )))
 }
 
 /// POST /api/chat/cleanup
@@ -1225,7 +1479,7 @@ pub async fn get_avatar(
         .map_err(|e| err_json(500, &e.to_string()))?;
 
     if url.as_deref().unwrap_or_default().trim().is_empty() && !user_id.trim().is_empty() {
-        let (_, avatar_url) = resolve_chat_user_profile(&state, &user_id, None).await?;
+        let (_, _, avatar_url) = resolve_chat_user_profile(&state, &user_id, None, false).await?;
         if !avatar_url.trim().is_empty() {
             url = Some(avatar_url);
         }

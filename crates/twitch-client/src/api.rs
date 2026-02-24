@@ -374,6 +374,28 @@ impl TwitchApiClient {
         Ok(())
     }
 
+    /// Execute a PUT request with auth headers and no body.
+    async fn authenticated_put_no_body(
+        &self,
+        url: &str,
+        token: &Token,
+    ) -> Result<String, TwitchError> {
+        let headers = self.auth_headers(token);
+        let resp = self.http.put(url).headers(headers).send().await?;
+
+        let status = resp.status();
+        let body = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(TwitchError::ApiError {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+
+        Ok(body)
+    }
+
     // -----------------------------------------------------------------------
     // Endpoints
     // -----------------------------------------------------------------------
@@ -434,6 +456,20 @@ impl TwitchApiClient {
             .ok_or_else(|| TwitchError::ApiError {
                 status: 404,
                 message: "User not found".into(),
+            })
+    }
+
+    /// Get the currently authenticated user.
+    pub async fn get_current_user(&self, token: &Token) -> Result<TwitchUser, TwitchError> {
+        let url = format!("{HELIX_BASE}/users");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<TwitchUser> = serde_json::from_str(&body)?;
+        resp.data
+            .into_iter()
+            .next()
+            .ok_or_else(|| TwitchError::ApiError {
+                status: 404,
+                message: "Authenticated user not found".into(),
             })
     }
 
@@ -578,6 +614,55 @@ impl TwitchApiClient {
             "{HELIX_BASE}/chat/shoutouts?from_broadcaster_id={from_broadcaster_id}&to_broadcaster_id={to_broadcaster_id}&moderator_id={moderator_id}"
         );
         let _ = self.authenticated_post_no_body(&url, token).await?;
+        Ok(())
+    }
+
+    /// Timeout (or ban) a user in chat via moderation API.
+    pub async fn timeout_user(
+        &self,
+        token: &Token,
+        broadcaster_id: &str,
+        moderator_id: &str,
+        target_user_id: &str,
+        duration_seconds: u32,
+        reason: Option<&str>,
+    ) -> Result<(), TwitchError> {
+        #[derive(Serialize)]
+        struct BanData<'a> {
+            user_id: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            duration: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reason: Option<&'a str>,
+        }
+
+        #[derive(Serialize)]
+        struct BanRequest<'a> {
+            data: BanData<'a>,
+        }
+
+        let url = format!(
+            "{HELIX_BASE}/moderation/bans?broadcaster_id={broadcaster_id}&moderator_id={moderator_id}"
+        );
+        let body = BanRequest {
+            data: BanData {
+                user_id: target_user_id,
+                duration: Some(duration_seconds.max(1)),
+                reason: reason
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && value.len() <= 500),
+            },
+        };
+        let _ = self.authenticated_post(&url, token, &body).await?;
+        Ok(())
+    }
+
+    /// Block a user for the current authenticated user.
+    pub async fn block_user(&self, token: &Token, target_user_id: &str) -> Result<(), TwitchError> {
+        let url = format!(
+            "{HELIX_BASE}/users/blocks?target_user_id={target_user_id}&source_context=chat"
+        );
+        let _ = self.authenticated_put_no_body(&url, token).await?;
         Ok(())
     }
 

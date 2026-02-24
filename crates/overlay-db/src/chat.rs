@@ -10,6 +10,7 @@ pub struct ChatMessage {
     pub message_id: String,
     pub user_id: String,
     pub username: String,
+    pub display_name: String,
     pub message: String,
     pub fragments_json: String,
     pub avatar_url: String,
@@ -23,6 +24,7 @@ pub struct ChatMessage {
 pub struct ChatUserProfile {
     pub user_id: String,
     pub username: String,
+    pub display_name: String,
     pub avatar_url: String,
     pub updated_at: i64,
 }
@@ -34,6 +36,7 @@ pub struct IrcChatMessage {
     pub message_id: String,
     pub user_id: String,
     pub username: String,
+    pub display_name: String,
     pub message: String,
     pub badge_keys: Vec<String>,
     pub fragments_json: String,
@@ -85,6 +88,7 @@ impl Database {
                         m.message_id,
                         m.user_id,
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
+                        COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
@@ -106,6 +110,7 @@ impl Database {
                         m.message_id,
                         m.user_id,
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
+                        COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
@@ -129,13 +134,14 @@ impl Database {
                     message_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                     user_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                     username: row.get(3)?,
-                    message: row.get(4)?,
-                    fragments_json: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-                    avatar_url: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-                    translation_text: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    translation_status: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                    translation_lang: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
-                    created_at: row.get(10)?,
+                    display_name: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    message: row.get(5)?,
+                    fragments_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    avatar_url: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                    translation_text: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                    translation_status: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                    translation_lang: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                    created_at: row.get(11)?,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -156,6 +162,7 @@ impl Database {
         &self,
         user_id: &str,
         username: &str,
+        display_name: &str,
         avatar_url: &str,
         updated_at: i64,
     ) -> Result<(), DbError> {
@@ -164,13 +171,18 @@ impl Database {
         }
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO chat_users (user_id, username, avatar_url, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO chat_users (user_id, username, display_name, avatar_url, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(user_id) DO UPDATE SET
                     username = CASE
                         WHEN excluded.username != '' AND excluded.updated_at >= chat_users.updated_at
                         THEN excluded.username
                         ELSE chat_users.username
+                    END,
+                    display_name = CASE
+                        WHEN excluded.display_name != '' AND excluded.updated_at >= chat_users.updated_at
+                        THEN excluded.display_name
+                        ELSE chat_users.display_name
                     END,
                     avatar_url = CASE
                         WHEN excluded.avatar_url != ''
@@ -183,7 +195,7 @@ impl Database {
                         THEN excluded.updated_at
                         ELSE chat_users.updated_at
                     END",
-                rusqlite::params![user_id, username, avatar_url, updated_at],
+                rusqlite::params![user_id, username, display_name, avatar_url, updated_at],
             )?;
             Ok(())
         })
@@ -192,7 +204,7 @@ impl Database {
     pub fn get_chat_user_profile(&self, user_id: &str) -> Result<Option<ChatUserProfile>, DbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT user_id, username, avatar_url, updated_at
+                "SELECT user_id, username, display_name, avatar_url, updated_at
                  FROM chat_users
                  WHERE user_id = ?1",
             )?;
@@ -201,8 +213,9 @@ impl Database {
                     Ok(ChatUserProfile {
                         user_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
                         username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                        avatar_url: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                        updated_at: row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                        display_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
                     })
                 })
                 .optional()?;
@@ -221,7 +234,7 @@ impl Database {
 
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT user_id, username, avatar_url, updated_at
+                "SELECT user_id, username, display_name, avatar_url, updated_at
                  FROM chat_users
                  WHERE username != '' AND lower(username) = lower(?1)
                  ORDER BY updated_at DESC
@@ -232,8 +245,9 @@ impl Database {
                     Ok(ChatUserProfile {
                         user_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
                         username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                        avatar_url: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                        updated_at: row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                        display_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
                     })
                 })
                 .optional()?;
@@ -321,6 +335,7 @@ impl Database {
                         m.message_id,
                         m.user_id,
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
+                        COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
@@ -345,6 +360,7 @@ impl Database {
                         m.message_id,
                         m.user_id,
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
+                        COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
@@ -368,14 +384,15 @@ impl Database {
                         message_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                         user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                         username: row.get(4)?,
-                        message: row.get(5)?,
+                        display_name: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                        message: row.get(6)?,
                         badge_keys: parse_badge_keys_json(
-                            row.get::<_, Option<String>>(6)?
+                            row.get::<_, Option<String>>(7)?
                                 .unwrap_or_else(|| "[]".to_string()),
                         )?,
-                        fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                        avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                        created_at: row.get(9)?,
+                        fragments_json: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                        created_at: row.get(10)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

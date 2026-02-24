@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { loadTwitchEmbedScript } from '../../utils/twitchEmbed';
+import { getTwitchParentDomain } from '../../utils/twitchParentDomain';
 
 type TwitchPlayerEmbedProps = {
   channelLogin: string;
@@ -24,12 +25,7 @@ export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLog
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const normalizedChannel = channelLogin.trim();
-  const parentDomain = useMemo(
-    () => (typeof window !== 'undefined'
-      ? (window.location.hostname?.replace(/^tauri\./, '') || 'localhost')
-      : 'localhost'),
-    [],
-  );
+  const parentDomain = useMemo(() => getTwitchParentDomain(), []);
 
   useEffect(() => {
     const container = containerRef.current;

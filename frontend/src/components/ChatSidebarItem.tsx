@@ -1,4 +1,5 @@
 import React from 'react';
+import { Code } from 'lucide-react';
 import { MessageContent } from './notification/MessageContent';
 import languageNames from '../data/iso6393-names.json';
 
@@ -14,6 +15,7 @@ export type ChatMessage = {
   messageId?: string;
   userId?: string;
   username: string;
+  displayName?: string;
   message: string;
   badgeKeys?: string[];
   fragments?: ChatFragment[];
@@ -93,6 +95,7 @@ type ChatSidebarItemProps = {
   translationFontSize: number;
   timestampLabel: string;
   onUsernameClick?: (message: ChatMessage) => void;
+  onRawDataClick?: (message: ChatMessage) => void;
   resolveBadgeVisual?: (badgeKey: string) => { imageUrl: string; label: string } | null;
 };
 
@@ -106,6 +109,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   translationFontSize,
   timestampLabel,
   onUsernameClick,
+  onRawDataClick,
   resolveBadgeVisual,
 }) => {
   const isEven = index % 2 === 0;
@@ -123,7 +127,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
     .filter((badgeKey) => badgeKey !== '')
     .map((badgeKey) => resolveBadgeVisual?.(badgeKey))
     .filter((badge): badge is { imageUrl: string; label: string } => !!badge);
-  const displayName = message.username || message.userId || '不明';
+  const displayName = message.displayName || message.username || message.userId || '不明';
   const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
   const avatarFallbackStyle = {
     ...avatarSizeStyle,
@@ -142,7 +146,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       className="rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 flex items-center justify-center"
       style={avatarFallbackStyle}
     >
-      {(message.username || message.userId || '?')?.slice(0, 1)}
+      {(displayName || '?')?.slice(0, 1)}
     </div>
   );
 
@@ -161,7 +165,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
 
   return (
     <div
-      className={`py-3 px-4 last:pb-0 text-sm text-left ${
+      className={`group py-3 px-4 last:pb-0 text-sm text-left ${
         isBotMessage
           ? 'bg-amber-50/70 dark:bg-amber-900/20 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)]'
           : isEven
@@ -170,59 +174,62 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       }`}
       style={{ fontSize }}
     >
-      <div className="flex items-center gap-[5px] text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
-        {onUsernameClick ? (
-          <button
-            type="button"
-            onClick={() => onUsernameClick(message)}
-            className="inline-flex rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 cursor-pointer"
-            aria-label={`${displayName} の情報を表示`}
-            title={`${displayName} の情報を表示`}
-          >
-            {avatarNode}
-          </button>
-        ) : (
-          avatarNode
-        )}
-        {badgeVisuals.length > 0 && (
-          <span className="inline-flex items-center gap-[5px]">
-            {badgeVisuals.map((badge, badgeIndex) => (
-              <span key={`${badge.label}-${badgeIndex}`} className="inline-flex" title={badge.label}>
-                {badge.imageUrl ? (
-                  <img
-                    src={badge.imageUrl}
-                    alt={badge.label}
-                    className="h-4 w-4 rounded-sm object-contain"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-gray-200 text-[9px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100">
-                    {(badge.label || '?').slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </span>
-            ))}
-          </span>
-        )}
-        {onUsernameClick ? (
-          <button
-            type="button"
-            onClick={() => onUsernameClick(message)}
-            className="font-semibold text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
-            aria-label={`${displayName} の情報を表示`}
-            title={`${displayName} の情報を表示`}
-          >
-            {message.username || message.userId || '不明'}
-          </button>
-        ) : (
-          <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username || message.userId || '不明'}</span>
-        )}
-        {isBotMessage && (
-          <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
-            BOT
-          </span>
-        )}
-        <span>{timestampLabel}</span>
+      <div className="flex items-start justify-between text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
+        <div className="min-w-0 flex items-center gap-[5px]">
+          {avatarNode}
+          {badgeVisuals.length > 0 && (
+            <span className="inline-flex items-center gap-[5px]">
+              {badgeVisuals.map((badge, badgeIndex) => (
+                <span key={`${badge.label}-${badgeIndex}`} className="inline-flex" title={badge.label}>
+                  {badge.imageUrl ? (
+                    <img
+                      src={badge.imageUrl}
+                      alt={badge.label}
+                      className="h-4 w-4 rounded-sm object-contain"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-gray-200 text-[9px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100">
+                      {(badge.label || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </span>
+          )}
+          {onUsernameClick ? (
+            <button
+              type="button"
+              onClick={() => onUsernameClick(message)}
+              className="font-semibold text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
+              aria-label={`${displayName} の情報を表示`}
+              title={`${displayName} の情報を表示`}
+            >
+              {displayName}
+            </button>
+          ) : (
+            <span className="font-semibold text-gray-700 dark:text-gray-200">{displayName}</span>
+          )}
+          {isBotMessage && (
+            <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+              BOT
+            </span>
+          )}
+          <span className="text-gray-300 dark:text-gray-600">{timestampLabel}</span>
+        </div>
+        <div className="ml-2 inline-flex items-center gap-1">
+          {onRawDataClick && (
+            <button
+              type="button"
+              onClick={() => onRawDataClick(message)}
+              className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:text-gray-500 dark:hover:text-gray-200 dark:focus-visible:ring-blue-500"
+              aria-label="コメント生データを表示"
+              title="コメント生データを表示"
+            >
+              <Code className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
       <div
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
