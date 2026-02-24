@@ -2481,6 +2481,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             open={chattersOpen && !isCollapsed}
             channelLogin={activeBadgeChannelLogin || undefined}
             fallbackChatters={fallbackChatters}
+            onChatterClick={handleOpenUserInfo}
             onClose={() => setChattersOpen(false)}
           />
           {userInfoPopup && !isCollapsed && (

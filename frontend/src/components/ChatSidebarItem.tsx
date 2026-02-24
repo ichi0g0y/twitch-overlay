@@ -123,6 +123,27 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
     .filter((badgeKey) => badgeKey !== '')
     .map((badgeKey) => resolveBadgeVisual?.(badgeKey))
     .filter((badge): badge is { imageUrl: string; label: string } => !!badge);
+  const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
+  const avatarFallbackStyle = {
+    ...avatarSizeStyle,
+    fontSize: `${Math.max(10, fontSize * 0.6)}px`,
+  };
+  const avatarNode = message.avatarUrl ? (
+    <img
+      src={message.avatarUrl}
+      alt={`${message.username} avatar`}
+      className="rounded-full object-cover"
+      style={avatarSizeStyle}
+      loading="lazy"
+    />
+  ) : (
+    <div
+      className="rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 flex items-center justify-center"
+      style={avatarFallbackStyle}
+    >
+      {message.username?.slice(0, 1)}
+    </div>
+  );
 
   const renderLangLabel = (className: string, spacingClass?: string, uncertain?: boolean) => {
     if (!shouldShowLang) return null;
@@ -149,21 +170,18 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       style={{ fontSize }}
     >
       <div className="flex items-center gap-[5px] text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
-        {message.avatarUrl ? (
-          <img
-            src={message.avatarUrl}
-            alt={`${message.username} avatar`}
-            className="rounded-full object-cover"
-            style={{ width: `${fontSize}px`, height: `${fontSize}px` }}
-            loading="lazy"
-          />
-        ) : (
-          <div
-            className="rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 flex items-center justify-center"
-            style={{ width: `${fontSize}px`, height: `${fontSize}px`, fontSize: `${Math.max(10, fontSize * 0.6)}px` }}
+        {onUsernameClick ? (
+          <button
+            type="button"
+            onClick={() => onUsernameClick(message)}
+            className="inline-flex rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 cursor-pointer"
+            aria-label={`${message.username} の情報を表示`}
+            title={`${message.username} の情報を表示`}
           >
-            {message.username?.slice(0, 1)}
-          </div>
+            {avatarNode}
+          </button>
+        ) : (
+          avatarNode
         )}
         {badgeVisuals.length > 0 && (
           <span className="inline-flex items-center gap-[5px]">
