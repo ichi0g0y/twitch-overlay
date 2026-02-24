@@ -327,6 +327,9 @@ CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel
 CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_user_id
     ON irc_chat_messages(user_id);
 
+CREATE INDEX IF NOT EXISTS idx_irc_chat_messages_channel_created_at
+    ON irc_chat_messages(channel_login, created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS irc_channel_profiles (
     channel_login TEXT PRIMARY KEY,
     display_name TEXT NOT NULL DEFAULT '',

@@ -330,7 +330,8 @@ export const useSettingsPage = () => {
     setRefreshingStreamStatus(false);
   };
 
-  const verifyTwitchConfig = async () => {
+  const verifyTwitchConfig = async (options?: { suppressSuccessToast?: boolean }) => {
+    const suppressSuccessToast = options?.suppressSuccessToast ?? false;
     setVerifyingTwitch(true);
     try {
       const response = await fetch(buildApiUrl('/api/twitch/verify'));
@@ -339,7 +340,7 @@ export const useSettingsPage = () => {
       }
       const data: TwitchUserInfo = await response.json();
       setTwitchUserInfo(data);
-      if (data.verified) {
+      if (data.verified && !suppressSuccessToast) {
         toast.success(`Twitch連携確認: ${data.display_name}`);
       } else if (data.error) {
         toast.error(`Twitch連携エラー: ${data.error}`);

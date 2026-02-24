@@ -304,6 +304,27 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         "Overlay setting cards layout",
     ),
+    (
+        "WORKSPACE_PAN_ON_SCROLL",
+        "false",
+        false,
+        false,
+        "Workspace scroll-to-pan mode",
+    ),
+    (
+        "WORKSPACE_PAN_ACTIVATION_KEY",
+        "Space",
+        false,
+        false,
+        "Key code to activate canvas panning",
+    ),
+    (
+        "WORKSPACE_ZOOM_MODIFIER_KEY",
+        "Control",
+        false,
+        false,
+        "Key code to activate canvas zoom passthrough",
+    ),
     // --- Reward count ---
     (
         "REWARD_COUNT_ENABLED",

@@ -47,7 +47,7 @@ function App() {
         {/* Notification Window Route */}
         <Route path="/notification" element={<NotificationWindow />} />
       </Routes>
-      <Toaster position="top-right" richColors expand={true} duration={3000} />
+      <Toaster position="bottom-center" richColors expand={true} duration={3000} />
     </>
   );
 }

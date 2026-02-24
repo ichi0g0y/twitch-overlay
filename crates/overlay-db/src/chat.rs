@@ -327,7 +327,7 @@ impl Database {
                      FROM irc_chat_messages m
                      LEFT JOIN chat_users u ON u.user_id = m.user_id
                      WHERE m.channel_login = ?1 AND m.created_at >= ?2
-                     ORDER BY m.created_at ASC
+                     ORDER BY m.created_at DESC
                      LIMIT ?3"
                         .to_string(),
                     vec![
@@ -358,24 +358,29 @@ impl Database {
             };
 
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-                Ok(IrcChatMessage {
-                    id: row.get(0)?,
-                    channel_login: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    message_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                    username: row.get(4)?,
-                    message: row.get(5)?,
-                    badge_keys: parse_badge_keys_json(
-                        row.get::<_, Option<String>>(6)?
-                            .unwrap_or_else(|| "[]".to_string()),
-                    )?,
-                    fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                    created_at: row.get(9)?,
-                })
-            })?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            let mut rows = stmt
+                .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                    Ok(IrcChatMessage {
+                        id: row.get(0)?,
+                        channel_login: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        message_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        user_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                        username: row.get(4)?,
+                        message: row.get(5)?,
+                        badge_keys: parse_badge_keys_json(
+                            row.get::<_, Option<String>>(6)?
+                                .unwrap_or_else(|| "[]".to_string()),
+                        )?,
+                        fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                        avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                        created_at: row.get(9)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            if limit.is_some() {
+                rows.reverse();
+            }
+            Ok(rows)
         })
     }
 
@@ -384,6 +389,43 @@ impl Database {
             conn.execute(
                 "DELETE FROM irc_chat_messages WHERE created_at < ?1",
                 [cutoff_unix],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn cleanup_irc_chat_messages_exceeding_limit(
+        &self,
+        channel_login: &str,
+        max_count: i64,
+    ) -> Result<(), DbError> {
+        let normalized_channel = channel_login.trim().to_lowercase();
+        if normalized_channel.is_empty() {
+            return Ok(());
+        }
+
+        if max_count <= 0 {
+            return self.with_conn(|conn| {
+                conn.execute(
+                    "DELETE FROM irc_chat_messages WHERE channel_login = ?1",
+                    rusqlite::params![normalized_channel],
+                )?;
+                Ok(())
+            });
+        }
+
+        self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM irc_chat_messages
+                 WHERE channel_login = ?1
+                   AND id NOT IN (
+                       SELECT id
+                       FROM irc_chat_messages
+                       WHERE channel_login = ?1
+                       ORDER BY created_at DESC, id DESC
+                       LIMIT ?2
+                   )",
+                rusqlite::params![normalized_channel, max_count],
             )?;
             Ok(())
         })

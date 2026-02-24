@@ -56,6 +56,7 @@ pub enum TwitchError {
 pub const SCOPES: &[&str] = &[
     "user:read:chat",
     "user:read:follows",
+    "moderator:read:chatters",
     "channel:read:subscriptions",
     "bits:read",
     "channel:read:redemptions",

@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use twitch_client::TwitchError;
 use twitch_client::api::{
-    CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient, TwitchUser,
-    UpdateRewardRequest,
+    Chatter, CreateRewardRequest, FollowedChannel, RaidInfo, StreamInfo, TwitchApiClient,
+    TwitchUser, UpdateRewardRequest,
 };
 use twitch_client::auth::TwitchAuth;
 
@@ -29,6 +29,8 @@ static TOKEN_REFRESH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(())
 const FOLLOWED_CHANNELS_PAGE_SIZE: u32 = 100;
 const FOLLOWED_CHANNELS_SCAN_LIMIT: usize = 1000;
 const FOLLOWED_CHANNELS_LOOKUP_CHUNK_SIZE: usize = 100;
+const CHATTERS_PAGE_SIZE: u32 = 1000;
+const CHATTERS_SCAN_LIMIT: usize = 5000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -619,6 +621,7 @@ pub async fn followed_channels(
                 is_live: stream.is_some(),
                 viewer_count: stream.map(|s| s.viewer_count).unwrap_or(0),
                 title: stream.map(|s| s.title.clone()),
+                game_name: stream.map(|s| s.game_name.clone()),
                 started_at: stream.and_then(|s| s.started_at.clone()),
             }
         })
@@ -629,6 +632,102 @@ pub async fn followed_channels(
     }
 
     Ok(Json(json!({ "data": rows, "count": rows.len() })))
+}
+
+/// GET /api/twitch/chatters
+pub async fn chatters(
+    State(state): State<SharedState>,
+    Query(q): Query<ChattersQuery>,
+) -> ApiResult {
+    let mut token = get_valid_token(&state).await?;
+    let config = state.config().await;
+    if config.twitch_user_id.is_empty() {
+        return Err(err_json(401, "TWITCH_USER_ID is not configured"));
+    }
+
+    let client = TwitchApiClient::new(config.client_id.clone());
+    let broadcaster_id = if let Some(channel_login) = q
+        .channel_login
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+    {
+        match client.get_user_by_login(&token, &channel_login).await {
+            Ok(user) => user.id,
+            Err(err) if is_unauthorized_error(&err) => {
+                tracing::warn!(
+                    "chatters(get_user_by_login) got 401, refreshing token and retrying"
+                );
+                let refreshed = force_refresh_token(&state, &token).await?;
+                token = refreshed.clone();
+                client
+                    .get_user_by_login(&token, &channel_login)
+                    .await
+                    .map_err(map_twitch_error)?
+                    .id
+            }
+            Err(err) => return Err(map_twitch_error(err)),
+        }
+    } else {
+        config.twitch_user_id.clone()
+    };
+
+    let mut rows: Vec<Chatter> = Vec::new();
+    let mut after: Option<String> = None;
+    let mut total: Option<u64> = None;
+
+    loop {
+        let (mut page_rows, next_cursor, page_total): (Vec<Chatter>, Option<String>, u64) =
+            match client
+                .get_chatters_page(
+                    &token,
+                    &broadcaster_id,
+                    &config.twitch_user_id,
+                    CHATTERS_PAGE_SIZE,
+                    after.as_deref(),
+                )
+                .await
+            {
+                Ok(rows) => rows,
+                Err(err) if is_unauthorized_error(&err) => {
+                    tracing::warn!("chatters got 401, refreshing token and retrying");
+                    let refreshed = force_refresh_token(&state, &token).await?;
+                    token = refreshed.clone();
+                    client
+                        .get_chatters_page(
+                            &token,
+                            &broadcaster_id,
+                            &config.twitch_user_id,
+                            CHATTERS_PAGE_SIZE,
+                            after.as_deref(),
+                        )
+                        .await
+                        .map_err(map_twitch_error)?
+                }
+                Err(err) => return Err(map_twitch_error(err)),
+            };
+        total = Some(total.unwrap_or(page_total));
+        rows.append(&mut page_rows);
+        if rows.len() >= CHATTERS_SCAN_LIMIT {
+            break;
+        }
+        let Some(cursor) = next_cursor.filter(|cursor| !cursor.is_empty()) else {
+            break;
+        };
+        after = Some(cursor);
+    }
+
+    if rows.len() > CHATTERS_SCAN_LIMIT {
+        rows.truncate(CHATTERS_SCAN_LIMIT);
+    }
+    let count = rows.len();
+    Ok(Json(json!({
+        "data": rows,
+        "count": count,
+        "total": total.unwrap_or(count as u64),
+        "broadcaster_id": broadcaster_id
+    })))
 }
 
 /// POST /api/twitch/raid/start
@@ -1015,6 +1114,11 @@ pub struct FollowedChannelsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ChattersQuery {
+    pub channel_login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StreamStatusByLoginQuery {
     pub login: Option<String>,
 }
@@ -1041,6 +1145,7 @@ struct FollowedChannelStatus {
     is_live: bool,
     viewer_count: u64,
     title: Option<String>,
+    game_name: Option<String>,
     started_at: Option<String>,
 }
 

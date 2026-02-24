@@ -236,6 +236,49 @@ mod tests {
         assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
         assert_eq!(rows[0].badge_keys, vec!["subscriber/24", "moderator/1"]);
 
+        let msg2 = chat::IrcChatMessage {
+            id: 0,
+            channel_login: "sample_channel".into(),
+            message_id: "irc-msg-2".into(),
+            user_id: "u1".into(),
+            username: "alice".into(),
+            message: "second".into(),
+            badge_keys: vec![],
+            fragments_json: "[]".into(),
+            avatar_url: String::new(),
+            created_at: 1250,
+        };
+        let msg3 = chat::IrcChatMessage {
+            id: 0,
+            channel_login: "sample_channel".into(),
+            message_id: "irc-msg-3".into(),
+            user_id: "u1".into(),
+            username: "alice".into(),
+            message: "third".into(),
+            badge_keys: vec![],
+            fragments_json: "[]".into(),
+            avatar_url: String::new(),
+            created_at: 1260,
+        };
+        assert!(db.add_irc_chat_message(&msg2).unwrap());
+        assert!(db.add_irc_chat_message(&msg3).unwrap());
+
+        let limited = db
+            .get_irc_chat_messages_since("sample_channel", 0, Some(2))
+            .unwrap();
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].message_id, "irc-msg-2");
+        assert_eq!(limited[1].message_id, "irc-msg-3");
+
+        db.cleanup_irc_chat_messages_exceeding_limit("sample_channel", 2)
+            .unwrap();
+        let trimmed = db
+            .get_irc_chat_messages_since("sample_channel", 0, None)
+            .unwrap();
+        assert_eq!(trimmed.len(), 2);
+        assert_eq!(trimmed[0].message_id, "irc-msg-2");
+        assert_eq!(trimmed[1].message_id, "irc-msg-3");
+
         db.cleanup_irc_chat_messages_before(1300).unwrap();
         let rows_after = db
             .get_irc_chat_messages_since("sample_channel", 0, None)

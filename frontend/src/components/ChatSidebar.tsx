@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, X } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, Users, X } from 'lucide-react';
 
 import { buildApiUrl } from '../utils/api';
 import {
@@ -10,6 +10,7 @@ import {
   writeIrcChannels,
 } from '../utils/chatChannels';
 import { getWebSocketClient } from '../utils/websocket';
+import { ChattersPanel, type ChattersPanelChatter } from './ChattersPanel';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
@@ -64,6 +65,13 @@ type IrcChannelDisplayProfile = {
   channel_login?: string;
   display_name?: string;
   updated_at?: number;
+};
+
+type IrcParticipant = {
+  userId?: string;
+  userLogin: string;
+  userName: string;
+  lastSeenAt: number;
 };
 
 type ResolvedIrcCredentials = {
@@ -385,7 +393,7 @@ const parseBadgeKeys = (badgesTag?: string): string[] | undefined => {
   return keys.size > 0 ? Array.from(keys) : undefined;
 };
 
-const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage } | null => {
+const parseIrcPrivmsg = (line: string): { channel: string; userLogin: string; message: ChatMessage } | null => {
   const match = line.match(/^(?:@([^ ]+) )?(?::([^ ]+) )?PRIVMSG #([^ ]+) :(.*)$/);
   if (!match) return null;
 
@@ -408,6 +416,7 @@ const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage 
 
   return {
     channel,
+    userLogin: normalizeTwitchChannelName(loginFromPrefix) || '',
     message: {
       id: messageId,
       messageId,
@@ -419,6 +428,47 @@ const parseIrcPrivmsg = (line: string): { channel: string; message: ChatMessage 
       timestamp,
     },
   };
+};
+
+const parseIrcNamesReply = (line: string): { channel: string; logins: string[] } | null => {
+  const match = line.match(/^(?:@[^ ]+ )?:[^ ]+ 353 [^ ]+ [=*@] #([^ ]+) :(.*)$/);
+  if (!match) return null;
+
+  const [, rawChannel = '', rawNames = ''] = match;
+  const channel = normalizeTwitchChannelName(rawChannel);
+  if (!channel) return null;
+  const logins = rawNames
+    .split(' ')
+    .map((name) => name.trim().replace(/^[~&@%+]+/, ''))
+    .map((name) => normalizeTwitchChannelName(name) || '')
+    .filter((name) => name !== '');
+  return { channel, logins: Array.from(new Set(logins)) };
+};
+
+const parseIrcJoin = (line: string): { channel: string; userLogin: string } | null => {
+  const match = line.match(/^(?:@[^ ]+ )?:(.+?)![^ ]+ JOIN #([^ ]+)$/);
+  if (!match) return null;
+  const [, rawLogin = '', rawChannel = ''] = match;
+  const userLogin = normalizeTwitchChannelName(rawLogin);
+  const channel = normalizeTwitchChannelName(rawChannel);
+  if (!userLogin || !channel) return null;
+  return { channel, userLogin };
+};
+
+const parseIrcPart = (line: string): { channel: string; userLogin: string } | null => {
+  const match = line.match(/^(?:@[^ ]+ )?:(.+?)![^ ]+ PART #([^ ]+)(?: .*)?$/);
+  if (!match) return null;
+  const [, rawLogin = '', rawChannel = ''] = match;
+  const userLogin = normalizeTwitchChannelName(rawLogin);
+  const channel = normalizeTwitchChannelName(rawChannel);
+  if (!userLogin || !channel) return null;
+  return { channel, userLogin };
+};
+
+const buildOwnOutgoingEchoKey = (channel: string, messageText: string) => {
+  const normalizedChannel = normalizeTwitchChannelName(channel) || channel.trim().toLowerCase();
+  const normalizedBody = messageText.trim().replace(/\s+/g, ' ');
+  return `${normalizedChannel}|${normalizedBody}`;
 };
 
 const createAnonymousNick = () => `justinfan${Math.floor(10000 + Math.random() * 90000)}`;
@@ -513,6 +563,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [postingMessage, setPostingMessage] = useState(false);
   const [postError, setPostError] = useState('');
   const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
+  const [chattersOpen, setChattersOpen] = useState(false);
   const [userInfoPopup, setUserInfoPopup] = useState<UserInfoPopupState | null>(null);
   const [userInfoProfile, setUserInfoProfile] = useState<ChatUserProfileDetail | null>(null);
   const [userInfoLoading, setUserInfoLoading] = useState(false);
@@ -520,9 +571,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [userInfoIdCopied, setUserInfoIdCopied] = useState(false);
   const ircConnectionsRef = useRef<Map<string, IrcConnection>>(new Map());
   const ircUserProfilesRef = useRef<Record<string, IrcUserProfile>>({});
+  const ircParticipantsByChannelRef = useRef<Record<string, Record<string, IrcParticipant>>>({});
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
   const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
   const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
+  const ownOutgoingEchoRef = useRef<Map<string, number>>(new Map());
   const primaryRecentEchoKeysRef = useRef<Map<string, { sentAt: number; optimisticId: string }>>(new Map());
   const primaryIrcStartedRef = useRef(false);
   const userProfileDetailCacheRef = useRef<Record<string, CachedUserProfileDetail>>({});
@@ -536,6 +589,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [tabDisplayNameUpdatedAtByChannel, setTabDisplayNameUpdatedAtByChannel] = useState<Record<string, number>>({});
   const [displayNameRefreshTick, setDisplayNameRefreshTick] = useState(0);
   const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
+  const [ircParticipantsVersion, setIrcParticipantsVersion] = useState(0);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -603,6 +657,102 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     });
   }, []);
 
+  const upsertIrcParticipant = useCallback((
+    channel: string,
+    payload: { userLogin?: string; userName?: string; userId?: string },
+  ) => {
+    const normalizedChannel = normalizeTwitchChannelName(channel);
+    if (!normalizedChannel) return;
+
+    const userId = (payload.userId || '').trim();
+    const userLogin = normalizeTwitchChannelName(payload.userLogin || payload.userName || '') || '';
+    if (userLogin === '' && userId === '') return;
+
+    const bucket = ircParticipantsByChannelRef.current[normalizedChannel] ?? {};
+    ircParticipantsByChannelRef.current[normalizedChannel] = bucket;
+    const preferredKey = userLogin !== '' ? userLogin : `id:${userId}`;
+    const legacyIdKey = userId !== '' ? `id:${userId}` : '';
+    const current = bucket[preferredKey] || (legacyIdKey ? bucket[legacyIdKey] : undefined);
+    const nextName = (payload.userName || '').trim() || current?.userName || userLogin || userId;
+    const next: IrcParticipant = {
+      userId: userId || current?.userId,
+      userLogin: userLogin || current?.userLogin || '',
+      userName: nextName,
+      lastSeenAt: Date.now(),
+    };
+
+    let changed = false;
+    const before = current ? JSON.stringify(current) : '';
+    const after = JSON.stringify(next);
+    if (before !== after) {
+      changed = true;
+    }
+    bucket[preferredKey] = next;
+    if (legacyIdKey && preferredKey !== legacyIdKey && bucket[legacyIdKey]) {
+      delete bucket[legacyIdKey];
+      changed = true;
+    }
+    if (changed) {
+      setIrcParticipantsVersion((value) => value + 1);
+    }
+  }, []);
+
+  const applyIrcNames = useCallback((channel: string, logins: string[]) => {
+    const normalizedChannel = normalizeTwitchChannelName(channel);
+    if (!normalizedChannel || logins.length === 0) return;
+
+    const bucket = ircParticipantsByChannelRef.current[normalizedChannel] ?? {};
+    ircParticipantsByChannelRef.current[normalizedChannel] = bucket;
+    let changed = false;
+    for (const login of logins) {
+      const normalizedLogin = normalizeTwitchChannelName(login);
+      if (!normalizedLogin) continue;
+      if (!bucket[normalizedLogin]) {
+        bucket[normalizedLogin] = {
+          userLogin: normalizedLogin,
+          userName: normalizedLogin,
+          lastSeenAt: Date.now(),
+        };
+        changed = true;
+      }
+    }
+    if (changed) {
+      setIrcParticipantsVersion((value) => value + 1);
+    }
+  }, []);
+
+  const removeIrcParticipant = useCallback((channel: string, userLogin: string) => {
+    const normalizedChannel = normalizeTwitchChannelName(channel);
+    const normalizedLogin = normalizeTwitchChannelName(userLogin);
+    if (!normalizedChannel || !normalizedLogin) return;
+
+    const bucket = ircParticipantsByChannelRef.current[normalizedChannel];
+    if (!bucket) return;
+    let changed = false;
+    if (bucket[normalizedLogin]) {
+      delete bucket[normalizedLogin];
+      changed = true;
+    }
+    for (const key of Object.keys(bucket)) {
+      if (bucket[key]?.userLogin === normalizedLogin && key !== normalizedLogin) {
+        delete bucket[key];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setIrcParticipantsVersion((value) => value + 1);
+    }
+  }, []);
+
+  const clearIrcParticipants = useCallback((channel: string) => {
+    const normalizedChannel = normalizeTwitchChannelName(channel);
+    if (!normalizedChannel) return;
+    if (ircParticipantsByChannelRef.current[normalizedChannel]) {
+      delete ircParticipantsByChannelRef.current[normalizedChannel];
+      setIrcParticipantsVersion((value) => value + 1);
+    }
+  }, []);
+
   const shouldIgnoreDuplicateIrcLine = useCallback((line: string) => {
     const now = Date.now();
     const ttlMs = 2500;
@@ -646,6 +796,40 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     const lastSeen = recent.get(key);
     recent.set(key, now);
     return typeof lastSeen === 'number' && (now - lastSeen) < ttlMs;
+  }, []);
+
+  const markOwnOutgoingEcho = useCallback((channel: string, messageText: string) => {
+    const now = Date.now();
+    const ttlMs = 10_000;
+    const map = ownOutgoingEchoRef.current;
+    for (const [key, timestamp] of map.entries()) {
+      if ((now - timestamp) > ttlMs) {
+        map.delete(key);
+      }
+    }
+    map.set(buildOwnOutgoingEchoKey(channel, messageText), now);
+  }, []);
+
+  const consumeOwnOutgoingEcho = useCallback((connection: IrcConnection, message: ChatMessage) => {
+    const selfUserId = connection.userId.trim();
+    const normalizedUserName = normalizeTwitchChannelName(message.username || '') || '';
+    const isSelf = (selfUserId !== '' && message.userId === selfUserId)
+      || (normalizedUserName !== '' && normalizedUserName === normalizeTwitchChannelName(connection.nick));
+    if (!isSelf) return false;
+
+    const now = Date.now();
+    const ttlMs = 10_000;
+    const map = ownOutgoingEchoRef.current;
+    for (const [key, timestamp] of map.entries()) {
+      if ((now - timestamp) > ttlMs) {
+        map.delete(key);
+      }
+    }
+    const echoKey = buildOwnOutgoingEchoKey(connection.channel, message.message || '');
+    const sentAt = map.get(echoKey);
+    if (typeof sentAt !== 'number') return false;
+    map.delete(echoKey);
+    return (now - sentAt) < ttlMs;
   }, []);
 
   const buildPrimaryEchoKey = useCallback((message: ChatMessage) => {
@@ -904,7 +1088,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         if (connection.stopped || connection.ws !== ws || currentGeneration !== connection.generation) return;
         connection.reconnectAttempts = 0;
         setChannelConnecting(connection.channel, false);
-        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
         ws.send(`PASS ${connection.pass}`);
         ws.send(`NICK ${connection.nick}`);
         ws.send(`JOIN #${connection.channel}`);
@@ -924,8 +1108,32 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             continue;
           }
 
+          const namesReply = parseIrcNamesReply(line);
+          if (namesReply && namesReply.channel === connection.channel) {
+            applyIrcNames(connection.channel, namesReply.logins);
+            continue;
+          }
+
+          const joinEvent = parseIrcJoin(line);
+          if (joinEvent && joinEvent.channel === connection.channel) {
+            upsertIrcParticipant(connection.channel, {
+              userLogin: joinEvent.userLogin,
+              userName: joinEvent.userLogin,
+            });
+            continue;
+          }
+
+          const partEvent = parseIrcPart(line);
+          if (partEvent && partEvent.channel === connection.channel) {
+            removeIrcParticipant(connection.channel, partEvent.userLogin);
+            continue;
+          }
+
           const parsed = parseIrcPrivmsg(line);
           if (!parsed || parsed.channel !== connection.channel) continue;
+          if (consumeOwnOutgoingEcho(connection, parsed.message)) {
+            continue;
+          }
           if (shouldIgnoreDuplicateIrcMessage(connection.channel, parsed.message)) {
             continue;
           }
@@ -945,6 +1153,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             appendIrcMessage(connection.channel, mergedMessage);
             void persistIrcMessage(connection.channel, mergedMessage);
           }
+          upsertIrcParticipant(connection.channel, {
+            userLogin: parsed.userLogin,
+            userName: mergedMessage.username,
+            userId: mergedMessage.userId,
+          });
           void hydrateIrcUserProfile(mergedMessage.userId, mergedMessage.username);
         }
       };
@@ -973,12 +1186,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     void connect();
   }, [
     appendIrcMessage,
+    applyIrcNames,
     hydrateIrcUserProfile,
     persistIrcMessage,
+    removeIrcParticipant,
     resolveIrcCredentials,
+    consumeOwnOutgoingEcho,
     setChannelConnecting,
     shouldIgnoreDuplicateIrcLine,
     shouldIgnoreDuplicateIrcMessage,
+    upsertIrcParticipant,
   ]);
 
   const stopIrcConnection = useCallback((channel: string) => {
@@ -1435,6 +1652,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [userInfoPopup]);
 
   useEffect(() => {
+    if (isCollapsed) {
+      setChattersOpen(false);
+    }
+  }, [isCollapsed]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const startPrimaryIrcConnection = async () => {
@@ -1658,6 +1881,46 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
     return ircMessagesByChannel[activeTab] ?? [];
   }, [activeTab, ircMessagesByChannel, primaryMessages]);
+  const fallbackChatters = useMemo<ChattersPanelChatter[]>(() => {
+    const activeParticipantChannel = activeTab === PRIMARY_CHAT_TAB_ID
+      ? (normalizeTwitchChannelName(primaryChannelLogin) || '')
+      : (normalizeTwitchChannelName(activeTab) || '');
+    const participants = new Map<string, ChattersPanelChatter>();
+    if (activeParticipantChannel !== '') {
+      const snapshot = ircParticipantsByChannelRef.current[activeParticipantChannel] ?? {};
+      for (const participant of Object.values(snapshot)) {
+        const userId = (participant.userId || '').trim();
+        const userLogin = normalizeTwitchChannelName(participant.userLogin) || '';
+        const userName = (participant.userName || '').trim() || userLogin || userId;
+        const key = userLogin !== '' ? `login:${userLogin}` : (userId !== '' ? `id:${userId}` : '');
+        if (key === '') continue;
+        participants.set(key, {
+          user_id: userId,
+          user_login: userLogin,
+          user_name: userName,
+        });
+      }
+    }
+    for (const item of activeMessages) {
+      const userId = (item.userId || '').trim();
+      const userName = (item.username || '').trim();
+      const userLogin = normalizeTwitchChannelName(userName) || '';
+      const keyById = userId !== '' ? Array.from(participants.entries())
+        .find(([, value]) => value.user_id === userId)?.[0]
+        : undefined;
+      const key = keyById
+        || (userLogin !== '' ? `login:${userLogin}` : '')
+        || (userId !== '' ? `id:${userId}` : '');
+      if (key === '') continue;
+      const current = participants.get(key);
+      participants.set(key, {
+        user_id: userId || current?.user_id || '',
+        user_login: userLogin || current?.user_login || '',
+        user_name: userName || current?.user_name || userLogin,
+      });
+    }
+    return Array.from(participants.values()).sort((a, b) => a.user_name.localeCompare(b.user_name, 'ja'));
+  }, [activeMessages, activeTab, ircParticipantsVersion, primaryChannelLogin]);
   const messageOrderReversed = messageOrderReversedByTab[activeTab] === true;
 
   const displayedMessages = useMemo(
@@ -1864,7 +2127,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         registerPrimaryEchoCandidate(optimisticMessage);
         setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
       } else {
+        markOwnOutgoingEcho(activeTab, ircText);
         appendIrcMessage(activeTab, optimisticMessage);
+        void persistIrcMessage(activeTab, optimisticMessage);
         // 署名を登録してTwitchエコー到着時に重複排除
         shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
       }
@@ -1912,6 +2177,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (activeTab === channel) {
       setActiveTab(PRIMARY_CHAT_TAB_ID);
     }
+    clearIrcParticipants(channel);
     setUserInfoPopup((prev) => (prev?.tabId === channel ? null : prev));
   };
 
@@ -1987,6 +2253,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     title={messageOrderReversed ? '上に最新 (ON)' : '下に最新 (OFF)'}
                   >
                     <ArrowUpDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChattersOpen((prev) => !prev)}
+                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+                      chattersOpen
+                        ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                    }`}
+                    aria-label="視聴者一覧を開く"
+                    aria-expanded={chattersOpen}
+                    title="視聴者一覧"
+                  >
+                    <Users className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
@@ -2197,6 +2477,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
             </div>
           )}
+          <ChattersPanel
+            open={chattersOpen && !isCollapsed}
+            channelLogin={activeBadgeChannelLogin || undefined}
+            fallbackChatters={fallbackChatters}
+            onClose={() => setChattersOpen(false)}
+          />
           {userInfoPopup && !isCollapsed && (
             <div
               className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 p-3 backdrop-blur-[1px]"
