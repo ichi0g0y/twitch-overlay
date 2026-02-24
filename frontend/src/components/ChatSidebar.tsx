@@ -12,6 +12,9 @@ import {
 import { getWebSocketClient } from '../utils/websocket';
 import { ChattersPanel, type ChattersPanelChatter } from './ChattersPanel';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
+import { EmotePicker } from './chat/EmotePicker';
+import { RichChatInput, type RichChatInputRef } from './chat/RichChatInput';
+import { type InputFragment } from './chat/chatInputUtils';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 
@@ -24,6 +27,11 @@ type ChatSidebarProps = {
   avoidEdgeRail?: boolean;
   embedded?: boolean;
   channelDisplayNames?: Record<string, string>;
+  activeTabRequest?: {
+    tabId: string;
+    requestId: number;
+  } | null;
+  onActiveTabChange?: (tabId: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -481,6 +489,33 @@ const createAnonymousCredentials = (nick?: string) => ({
 
 const sanitizeIrcMessage = (raw: string) => raw.replace(/\r?\n/g, ' ').trim();
 
+const inputFragmentsToChatFragments = (fragments: InputFragment[], fallbackText: string): ChatFragment[] => {
+  const next: ChatFragment[] = [];
+
+  for (const fragment of fragments) {
+    if (fragment.type === 'text') {
+      if (fragment.text === '') continue;
+      const prev = next[next.length - 1];
+      if (prev?.type === 'text') {
+        prev.text += fragment.text;
+      } else {
+        next.push({ type: 'text', text: fragment.text });
+      }
+      continue;
+    }
+
+    const emoteName = fragment.text.trim();
+    if (emoteName === '') continue;
+    next.push({
+      type: 'emote',
+      text: emoteName,
+      emoteUrl: fragment.emoteUrl,
+    });
+  }
+
+  return next.length > 0 ? next : [{ type: 'text', text: fallbackText }];
+};
+
 const isLoginLikeDisplayName = (name: string, channel: string) => {
   const rawName = name.trim().replace(/^[@#]+/, '');
   const normalizedName = normalizeTwitchChannelName(rawName);
@@ -530,6 +565,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   avoidEdgeRail = false,
   embedded = false,
   channelDisplayNames = {},
+  activeTabRequest = null,
+  onActiveTabChange,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -550,6 +587,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [primaryChannelLogin, setPrimaryChannelLogin] = useState('');
 
   const listRef = useRef<HTMLDivElement | null>(null);
+  const tabScrollerRef = useRef<HTMLDivElement | null>(null);
+  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [resizing, setResizing] = useState(false);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -559,7 +598,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [channelInput, setChannelInput] = useState('');
   const [channelInputError, setChannelInputError] = useState('');
 
-  const [draftMessage, setDraftMessage] = useState('');
+  const richInputRef = useRef<RichChatInputRef | null>(null);
+  const [inputHasContent, setInputHasContent] = useState(false);
   const [postingMessage, setPostingMessage] = useState(false);
   const [postError, setPostError] = useState('');
   const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
@@ -590,6 +630,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [displayNameRefreshTick, setDisplayNameRefreshTick] = useState(0);
   const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
   const [ircParticipantsVersion, setIrcParticipantsVersion] = useState(0);
+  const lastHandledActiveTabRequestIdRef = useRef<number | null>(null);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -1499,6 +1540,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
+    onActiveTabChange?.(activeTab);
+  }, [activeTab, onActiveTabChange]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY, JSON.stringify(messageOrderReversedByTab));
     window.localStorage.removeItem(LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY);
@@ -1509,6 +1554,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (ircChannels.includes(activeTab)) return;
     setActiveTab(PRIMARY_CHAT_TAB_ID);
   }, [activeTab, ircChannels]);
+
+  useEffect(() => {
+    const request = activeTabRequest;
+    if (!request) return;
+    if (lastHandledActiveTabRequestIdRef.current === request.requestId) return;
+
+    const requestedTabId = (request.tabId || '').trim();
+    if (!requestedTabId) return;
+
+    if (requestedTabId === PRIMARY_CHAT_TAB_ID) {
+      lastHandledActiveTabRequestIdRef.current = request.requestId;
+      setActiveTab(PRIMARY_CHAT_TAB_ID);
+      return;
+    }
+
+    const normalizedRequested = normalizeTwitchChannelName(requestedTabId);
+    if (!normalizedRequested) return;
+    if (!ircChannels.includes(normalizedRequested)) return;
+    lastHandledActiveTabRequestIdRef.current = request.requestId;
+    setActiveTab(normalizedRequested);
+  }, [activeTabRequest, ircChannels]);
 
   useEffect(() => {
     if (!userInfoPopup) return;
@@ -1633,6 +1699,24 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
     return normalizeTwitchChannelName(activeTab || '') || '';
   }, [activeTab, primaryChannelLogin]);
+
+  const emotePickerChannelLogins = useMemo(() => {
+    const set = new Set<string>();
+    const primary = normalizeTwitchChannelName(primaryChannelLogin || '') || '';
+    if (primary) {
+      set.add(primary);
+    }
+    for (const channel of ircChannels) {
+      const normalized = normalizeTwitchChannelName(channel || '') || '';
+      if (normalized) {
+        set.add(normalized);
+      }
+    }
+    if (activeBadgeChannelLogin) {
+      set.add(activeBadgeChannelLogin);
+    }
+    return Array.from(set);
+  }, [activeBadgeChannelLogin, ircChannels, primaryChannelLogin]);
 
   useEffect(() => {
     void ensureBadgeCatalog(activeBadgeChannelLogin);
@@ -2009,6 +2093,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       };
     }),
   ], [channelDisplayNames, ircChannels, tabDisplayNamesByChannel]);
+  useEffect(() => {
+    const scroller = tabScrollerRef.current;
+    const activeButton = tabButtonRefs.current[activeTab];
+    if (!scroller || !activeButton) return;
+    window.requestAnimationFrame(() => {
+      activeButton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }, [activeTab, tabs]);
   const popupProfileName = (userInfoProfile?.displayName || userInfoProfile?.username || userInfoPopup?.message.username || '').trim();
   const popupProfileLogin = (userInfoProfile?.login || '').trim();
   const popupProfileAvatar = (userInfoProfile?.profileImageUrl || userInfoProfile?.avatarUrl || userInfoPopup?.message.avatarUrl || '').trim();
@@ -2081,8 +2173,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeBadgeChannelLogin, badgeCatalogVersion]);
 
   const sendComment = async () => {
-    const text = draftMessage.trim();
-    if (!text || postingMessage) {
+    if (postingMessage) {
+      return;
+    }
+
+    const inputFragments = richInputRef.current?.getFragments() ?? [];
+    const text = richInputRef.current?.getIrcText() ?? '';
+    const ircText = sanitizeIrcMessage(text);
+    if (!ircText) {
       return;
     }
 
@@ -2101,10 +2199,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       if (!connection.authenticated) {
         throw new Error('IRCが匿名接続です。Twitch認証を確認してください。');
       }
-      const ircText = sanitizeIrcMessage(text);
-      if (!ircText) {
-        throw new Error('投稿メッセージが空です');
-      }
       const targetChannel = connection.channel;
       connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
       const ownProfile = connection.userId ? ircUserProfilesRef.current[connection.userId] : undefined;
@@ -2116,7 +2210,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         userId: connection.userId || undefined,
         username: connection.displayName || ownProfile?.username || connection.nick,
         message: ircText,
-        fragments: [{ type: 'text', text: ircText }],
+        fragments: inputFragmentsToChatFragments(inputFragments, ircText),
         avatarUrl: ownProfile?.avatarUrl,
         timestamp: new Date().toISOString(),
       };
@@ -2134,7 +2228,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
       }
 
-      setDraftMessage('');
+      richInputRef.current?.clear();
+      setInputHasContent(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : '投稿に失敗しました';
       setPostError(message);
@@ -2323,7 +2418,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 )}
               </div>
               <div className="border-b dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 px-2 py-1">
-                <div className="flex items-center gap-1 overflow-x-auto">
+                <div ref={tabScrollerRef} className="flex items-center gap-1 overflow-x-auto">
                   {tabs.map((tab) => {
                     const isActive = tab.id === activeTab;
                     const isConnecting = tab.id !== PRIMARY_CHAT_TAB_ID && connectingChannels[tab.id];
@@ -2333,6 +2428,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
                         title={tab.title}
+                        ref={(node) => {
+                          tabButtonRefs.current[tab.id] = node;
+                        }}
                         className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs whitespace-nowrap transition ${
                           isActive
                             ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-100'
@@ -2441,24 +2539,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
             <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={draftMessage}
-                    onChange={(event) => {
-                      setDraftMessage(event.target.value);
-                      if (postError) setPostError('');
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        void sendComment();
-                      }
-                    }}
+                  <RichChatInput
+                    ref={richInputRef}
                     placeholder={isPrimaryTab
                       ? (primaryChannelLogin ? `#${primaryChannelLogin} に送信...` : 'メインチャンネルに送信...')
                       : `#${activeTab} に送信...`}
                     disabled={postingMessage}
-                    className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-600 disabled:opacity-60"
+                    onSubmit={() => void sendComment()}
+                    onChangeHasContent={setInputHasContent}
+                    onChangeText={() => {
+                      if (postError) setPostError('');
+                    }}
+                  />
+                  <EmotePicker
+                    disabled={postingMessage}
+                    channelLogins={emotePickerChannelLogins}
+                    priorityChannelLogin={activeBadgeChannelLogin || undefined}
+                    onSelect={(name, url) => {
+                      richInputRef.current?.insertEmote(name, url);
+                      richInputRef.current?.focus();
+                      if (postError) setPostError('');
+                    }}
                   />
                   <Button
                     type="button"
@@ -2466,7 +2567,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     className="h-9 w-9 px-0"
                     aria-label="コメントを投稿"
                     onClick={() => void sendComment()}
-                    disabled={postingMessage || draftMessage.trim().length === 0}
+                    disabled={postingMessage || !inputHasContent}
                   >
                     <Send className="w-4 h-4" />
                   </Button>

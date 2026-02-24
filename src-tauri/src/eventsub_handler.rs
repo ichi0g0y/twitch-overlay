@@ -9,6 +9,8 @@ use serde_json::json;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+use twitch_client::Token;
+use twitch_client::auth::TwitchAuth;
 use twitch_client::eventsub::{EventSubClient, EventSubConfig, EventSubEvent};
 
 use crate::app::SharedState;
@@ -40,7 +42,9 @@ pub async fn run(state: SharedState) {
         let (client_id, access_token, broadcaster_id) = loop {
             let config = state.config().await;
             let cid = config.client_id.clone();
+            let csecret = config.client_secret.clone();
             let bid = config.twitch_user_id.clone();
+            let server_port = config.server_port;
             drop(config);
 
             if cid.is_empty() || bid.is_empty() {
@@ -53,7 +57,49 @@ pub async fn run(state: SharedState) {
 
             match state.db().get_latest_token() {
                 Ok(Some(t)) if !t.access_token.is_empty() => {
-                    break (cid, t.access_token, bid);
+                    let current_token = Token {
+                        access_token: t.access_token.clone(),
+                        refresh_token: t.refresh_token.clone(),
+                        scope: t.scope.clone(),
+                        expires_at: t.expires_at,
+                    };
+
+                    let usable_token = if csecret.trim().is_empty() {
+                        current_token
+                    } else {
+                        let redirect_uri = format!("http://localhost:{server_port}/callback");
+                        let auth = TwitchAuth::new(cid.clone(), csecret, redirect_uri);
+                        match auth.get_or_refresh_token(&current_token).await {
+                            Ok(Some(refreshed)) => {
+                                let db_tok = overlay_db::tokens::Token {
+                                    access_token: refreshed.access_token.clone(),
+                                    refresh_token: refreshed.refresh_token.clone(),
+                                    scope: refreshed.scope.clone(),
+                                    expires_at: refreshed.expires_at,
+                                };
+                                if let Err(e) = state.db().save_token(&db_tok) {
+                                    tracing::warn!(
+                                        "Failed to save refreshed token for EventSub reconnect: {e}"
+                                    );
+                                }
+                                tracing::info!("EventSub token refreshed before (re)connect");
+                                refreshed
+                            }
+                            Ok(None) => current_token,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to refresh EventSub token before reconnect: {e}"
+                                );
+                                if sleep_or_cancel(&shutdown_token, Duration::from_secs(30)).await {
+                                    tracing::info!("EventSub loop stopped (shutdown)");
+                                    return;
+                                }
+                                continue;
+                            }
+                        }
+                    };
+
+                    break (cid, usable_token.access_token, bid);
                 }
                 _ => {
                     if sleep_or_cancel(&shutdown_token, Duration::from_secs(30)).await {

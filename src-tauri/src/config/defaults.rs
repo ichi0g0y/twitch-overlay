@@ -325,6 +325,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         false,
         "Key code to activate canvas zoom passthrough",
     ),
+    (
+        "WORKSPACE_PREVIEW_PORTAL_ENABLED",
+        "false",
+        false,
+        false,
+        "Enable rendering workspace preview content through a body portal",
+    ),
     // --- Reward count ---
     (
         "REWARD_COUNT_ENABLED",

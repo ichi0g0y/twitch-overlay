@@ -6,6 +6,8 @@ interface WorkspacePanningSettingsProps {
   onPanActivationKeyCodeChange: (value: string) => void;
   zoomActivationKeyCode: string;
   onZoomActivationKeyCodeChange: (value: string) => void;
+  previewPortalEnabled: boolean;
+  onPreviewPortalEnabledChange: (enabled: boolean) => void;
   onClose: () => void;
 }
 
@@ -41,6 +43,8 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
   onPanActivationKeyCodeChange,
   zoomActivationKeyCode,
   onZoomActivationKeyCodeChange,
+  previewPortalEnabled,
+  onPreviewPortalEnabledChange,
   onClose,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -169,6 +173,28 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
             {captureTarget === 'pan' ? '入力待機中...' : formatKeyDisplay(panActivationKeyCode)}
           </button>
           <p className="mt-2 text-[11px] text-gray-500">クリック後にキーを押して設定</p>
+        </div>
+
+        <div className="mt-3 border-t border-gray-700 pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-gray-400">プレビューを自動再生</p>
+            <button
+              type="button"
+              onClick={() => onPreviewPortalEnabledChange(!previewPortalEnabled)}
+              className={`inline-flex h-7 items-center rounded border px-2 text-[11px] ${
+                previewPortalEnabled
+                  ? 'border-sky-500 bg-sky-500/20 text-sky-100'
+                  : 'border-gray-700 bg-gray-950/60 text-gray-200 hover:bg-gray-800'
+              }`}
+              aria-label="プレビューの自動再生を切り替える"
+              title="プレビューの自動再生を切り替える"
+            >
+              {previewPortalEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <p className="text-[11px] leading-relaxed text-amber-300/90">
+            注意: ON時はプレビューの自動再生も有効になります。環境によってはプレビュー領域が最前面に表示されることがあります。
+          </p>
         </div>
       </div>
     </Panel>

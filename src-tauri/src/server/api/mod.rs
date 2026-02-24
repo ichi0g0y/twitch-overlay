@@ -3,6 +3,7 @@
 pub mod cache;
 pub mod chat;
 pub mod debug;
+pub mod emotes;
 pub mod fax;
 pub mod font;
 pub mod logs;

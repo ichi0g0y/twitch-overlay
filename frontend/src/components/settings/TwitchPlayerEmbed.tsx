@@ -4,6 +4,7 @@ import { loadTwitchEmbedScript } from '../../utils/twitchEmbed';
 type TwitchPlayerEmbedProps = {
   channelLogin: string;
   reloadNonce: number;
+  autoplayEnabled?: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
@@ -19,7 +20,7 @@ const patchIframeAllow = (container: HTMLElement): boolean => {
   return true;
 };
 
-export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLogin, reloadNonce, onWarningChange }) => {
+export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLogin, reloadNonce, autoplayEnabled = false, onWarningChange }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const normalizedChannel = channelLogin.trim();
@@ -59,7 +60,7 @@ export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLog
 
         new window.Twitch.Player(container, {
           channel: normalizedChannel, parent: [parentDomain],
-          width: '100%', height: '100%', autoplay: false, muted: true, controls: true,
+          width: '100%', height: '100%', autoplay: autoplayEnabled, muted: true, controls: true,
         });
 
         if (!patchIframeAllow(container)) {
@@ -74,7 +75,7 @@ export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLog
 
     void setup();
     return () => { cancelled = true; clearPatch(); container.replaceChildren(); };
-  }, [normalizedChannel, parentDomain, reloadNonce]);
+  }, [autoplayEnabled, normalizedChannel, parentDomain, reloadNonce]);
 
   useEffect(() => {
     onWarningChange(errorMessage);

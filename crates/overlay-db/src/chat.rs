@@ -53,12 +53,13 @@ impl Database {
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO chat_messages
-                    (message_id, user_id, message, fragments_json,
+                    (message_id, user_id, username, message, fragments_json,
                      translation_text, translation_status, translation_lang, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     msg.message_id,
                     msg.user_id,
+                    msg.username,
                     msg.message,
                     msg.fragments_json,
                     msg.translation_text,
@@ -83,7 +84,7 @@ impl Database {
                         m.id,
                         m.message_id,
                         m.user_id,
-                        COALESCE(u.username, '') AS username,
+                        COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         m.message,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
@@ -104,7 +105,7 @@ impl Database {
                         m.id,
                         m.message_id,
                         m.user_id,
-                        COALESCE(u.username, '') AS username,
+                        COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         m.message,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
@@ -288,12 +289,13 @@ impl Database {
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO irc_chat_messages
-                    (channel_login, message_id, user_id, message, badge_keys_json, fragments_json, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    (channel_login, message_id, user_id, username, message, badge_keys_json, fragments_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     msg.channel_login,
                     msg.message_id,
                     msg.user_id,
+                    msg.username,
                     msg.message,
                     badge_keys_json,
                     msg.fragments_json,
@@ -318,7 +320,7 @@ impl Database {
                         m.channel_login,
                         m.message_id,
                         m.user_id,
-                        COALESCE(u.username, '') AS username,
+                        COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         m.message,
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
@@ -342,7 +344,7 @@ impl Database {
                         m.channel_login,
                         m.message_id,
                         m.user_id,
-                        COALESCE(u.username, '') AS username,
+                        COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         m.message,
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
