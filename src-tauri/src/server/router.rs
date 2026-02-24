@@ -279,6 +279,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/chat/avatar/{user_id}", get(api::chat::get_avatar))
         // --- Twitch ---
         .route("/api/twitch/verify", get(api::twitch::verify_twitch))
+        .route("/api/twitch/chatters", get(api::twitch::chatters))
         .route(
             "/api/twitch/followed-channels",
             get(api::twitch::followed_channels),

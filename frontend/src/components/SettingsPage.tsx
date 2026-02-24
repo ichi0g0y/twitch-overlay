@@ -13,6 +13,7 @@ import {
   type ReactFlowInstance,
   type Viewport,
 } from '@xyflow/react';
+import { createPortal } from 'react-dom';
 import { useSettingsPage, SettingsPageContext } from '../hooks/useSettingsPage';
 import { buildApiUrl } from '../utils/api';
 import { useMicCaptionStatus } from '../contexts/MicCaptionStatusContext';
@@ -30,6 +31,7 @@ import { ApiTab } from './settings/ApiTab';
 import { CacheSettings } from './settings/CacheSettings';
 import { MicTranscriptionSettings } from './settings/MicTranscriptionSettings';
 import { WorkspacePanningSettings } from './settings/WorkspacePanningSettings';
+import { TwitchPlayerEmbed } from './settings/TwitchPlayerEmbed';
 import { ChatSidebar } from './ChatSidebar';
 import { MicCaptionSender } from './mic/MicCaptionSender';
 import { readIrcChannels, subscribeIrcChannels, writeIrcChannels } from '../utils/chatChannels';
@@ -154,6 +156,7 @@ type WorkspaceRenderContextValue = {
     channelLogin: string;
     statusLabel: string;
     statusClassName: string;
+    warningMessage: string | null;
   } | null;
 };
 
@@ -521,6 +524,7 @@ type TwitchStreamPreviewProps = {
   isAuthenticated: boolean;
   channelLogin: string;
   reloadNonce: number;
+  onWarningChange: (warningMessage: string | null) => void;
 };
 
 type CompactPreviewFrameProps = {
@@ -542,25 +546,13 @@ const CompactPreviewFrame: React.FC<CompactPreviewFrameProps> = ({
 type PreviewEmbedProps = {
   channelLogin: string;
   reloadNonce: number;
+  onWarningChange: (warningMessage: string | null) => void;
 };
 
-const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce }) => {
-  const parentDomain = typeof window !== 'undefined'
-    ? (window.location.hostname?.replace(/^tauri\./, '') || 'localhost')
-    : 'localhost';
-  const streamUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channelLogin)}&parent=${encodeURIComponent(parentDomain)}&autoplay=true&muted=true&controls=true&refresh=${reloadNonce}`;
-
+const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce, onWarningChange }) => {
   return (
     <div className="nodrag nopan h-full min-h-0 overflow-hidden bg-black">
-      <iframe
-        key={`${channelLogin}-${parentDomain}-${reloadNonce}`}
-        src={streamUrl}
-        title={`Twitch Stream Preview - ${channelLogin}`}
-        className="h-full w-full border-0"
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        allowFullScreen
-        scrolling="no"
-      />
+      <TwitchPlayerEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={onWarningChange} />
     </div>
   );
 };
@@ -570,8 +562,14 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
   isAuthenticated,
   channelLogin,
   reloadNonce,
+  onWarningChange,
 }) => {
   const canEmbed = Boolean(channelLogin);
+
+  useEffect(() => {
+    if (isTwitchConfigured && isAuthenticated && canEmbed) return;
+    onWarningChange(null);
+  }, [canEmbed, isAuthenticated, isTwitchConfigured, onWarningChange]);
 
   return (
     <CompactPreviewFrame panelId="settings.twitch.stream-preview">
@@ -591,21 +589,23 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
         </div>
       )}
       {isTwitchConfigured && isAuthenticated && canEmbed && (
-        <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} />
+        <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={onWarningChange} />
       )}
     </CompactPreviewFrame>
   );
 };
 
 type AddedChannelStreamPreviewProps = {
+  kind: WorkspaceCardKind;
   channelLogin: string;
   reloadNonce: number;
+  onWarningChange: (kind: WorkspaceCardKind, warningMessage: string | null) => void;
 };
 
-const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ channelLogin, reloadNonce }) => {
+const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ kind, channelLogin, reloadNonce, onWarningChange }) => {
   return (
     <CompactPreviewFrame panelId={`settings.twitch.stream-preview.irc.${channelLogin}`}>
-      <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} />
+      <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={(warningMessage) => onWarningChange(kind, warningMessage)} />
     </CompactPreviewFrame>
   );
 };
@@ -615,6 +615,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   if (!renderContext) return null;
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [warningTooltip, setWarningTooltip] = useState<{ message: string; x: number; y: number; fontFamily: string } | null>(null);
   const cardAsNode = isCollapsibleCardNodeKind(data.kind);
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = resolveWorkspaceCardMinSize(data.kind);
@@ -622,6 +623,31 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const isNodeInteractionLocked = isResizing || Boolean(dragging);
   const nodeInteractionClassName = isResizing ? 'pointer-events-none select-none' : '';
   const isPreviewViewportExpanded = renderContext.isPreviewViewportExpanded(id);
+
+  const hideWarningTooltip = useCallback(() => {
+    setWarningTooltip(null);
+  }, []);
+
+  const showWarningTooltip = useCallback((target: HTMLElement, message: string) => {
+    if (typeof window === 'undefined') return;
+    const rect = target.getBoundingClientRect();
+    const { fontFamily } = window.getComputedStyle(target);
+    const tooltipWidth = 288;
+    const x = Math.max(8, Math.min(window.innerWidth - tooltipWidth - 8, rect.right - tooltipWidth));
+    const y = rect.bottom + 8;
+    setWarningTooltip({ message, x, y, fontFamily });
+  }, []);
+
+  useEffect(() => {
+    if (!warningTooltip) return undefined;
+    const hide = () => setWarningTooltip(null);
+    window.addEventListener('resize', hide);
+    window.addEventListener('scroll', hide, true);
+    return () => {
+      window.removeEventListener('resize', hide);
+      window.removeEventListener('scroll', hide, true);
+    };
+  }, [warningTooltip]);
 
   return (
     <div
@@ -690,9 +716,24 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
             ) : (
               <span className="truncate text-xs font-semibold text-gray-200">{data.title}</span>
             )}
+            {previewHeader?.warningMessage && (
+              <div className="nodrag ml-auto">
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-amber-400/20 text-[11px] font-semibold text-amber-300"
+                  aria-label={`プレビュー警告: ${previewHeader.warningMessage}`}
+                  onMouseEnter={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
+                  onMouseLeave={hideWarningTooltip}
+                  onFocus={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
+                  onBlur={hideWarningTooltip}
+                >
+                  !
+                </button>
+              </div>
+            )}
             <button
               type="button"
-              className="nodrag ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+              className={`nodrag inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100 ${previewHeader?.warningMessage ? 'ml-2' : 'ml-auto'}`}
               onClick={() => renderContext.removeCard(id)}
               aria-label="カードを削除"
             >
@@ -705,6 +746,23 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
             {renderContext.renderCard(data.kind)}
           </div>
         </div>
+      )}
+      {warningTooltip && typeof document !== 'undefined' && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            left: warningTooltip.x,
+            top: warningTooltip.y,
+            width: 288,
+            zIndex: 2000,
+            fontFamily: warningTooltip.fontFamily,
+          }}
+          className="pointer-events-none rounded border border-amber-500/40 bg-gray-950 px-2 py-1 text-[11px] leading-relaxed text-amber-200 shadow-lg"
+        >
+          {warningTooltip.message}
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -1772,6 +1830,7 @@ export const SettingsPage: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkspaceCardNode>(initialWorkspace);
   const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
   const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
+  const [previewWarningByKind, setPreviewWarningByKind] = useState<Partial<Record<WorkspaceCardKind, string>>>({});
   const [expandedPreviewNodeId, setExpandedPreviewNodeId] = useState<string | null>(null);
   const [panningSettingsOpen, setPanningSettingsOpen] = useState(false);
   const [isWorkspaceControlsVisible, setIsWorkspaceControlsVisible] = useState(false);
@@ -2454,6 +2513,24 @@ export const SettingsPage: React.FC = () => {
     }));
   }, []);
 
+  const setPreviewWarning = useCallback((kind: WorkspaceCardKind, warningMessage: string | null) => {
+    setPreviewWarningByKind((current) => {
+      const normalized = warningMessage?.trim() || null;
+      const previous = current[kind] ?? null;
+      if (previous === normalized) return current;
+      if (!normalized) {
+        if (!(kind in current)) return current;
+        const next = { ...current };
+        delete next[kind];
+        return next;
+      }
+      return {
+        ...current,
+        [kind]: normalized,
+      };
+    });
+  }, []);
+
   const renderWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
     const reloadNonce = previewReloadNonceByKind[kind] ?? 0;
     if (kind === 'preview-main') {
@@ -2463,12 +2540,13 @@ export const SettingsPage: React.FC = () => {
           isAuthenticated={Boolean(authStatus?.authenticated)}
           channelLogin={twitchUserInfo?.login ?? ''}
           reloadNonce={reloadNonce}
+          onWarningChange={(warningMessage) => setPreviewWarning('preview-main', warningMessage)}
         />
       );
     }
     if (isPreviewIrcKind(kind)) {
       const channelLogin = kind.slice('preview-irc:'.length);
-      return <AddedChannelStreamPreview channelLogin={channelLogin} reloadNonce={reloadNonce} />;
+      return <AddedChannelStreamPreview kind={kind} channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={setPreviewWarning} />;
     }
     if (kind === 'general-basic' || kind === 'general-notification' || kind === 'general-font') {
       const section = kind === 'general-basic'
@@ -2595,6 +2673,7 @@ export const SettingsPage: React.FC = () => {
     twitchUserInfo?.login,
     uploadingFont,
     previewReloadNonceByKind,
+    setPreviewWarning,
   ]);
 
   const resolvePreviewHeader = useCallback((kind: WorkspaceCardKind) => {
@@ -2605,6 +2684,7 @@ export const SettingsPage: React.FC = () => {
         channelLogin,
         statusLabel: isLive ? `LIVE (${streamStatus?.viewer_count ?? 0})` : 'OFFLINE',
         statusClassName: isLive ? 'text-red-400' : 'text-gray-400',
+        warningMessage: previewWarningByKind[kind] ?? null,
       };
     }
     if (isPreviewIrcKind(kind)) {
@@ -2612,10 +2692,11 @@ export const SettingsPage: React.FC = () => {
         channelLogin: kind.slice('preview-irc:'.length),
         statusLabel: 'IRC',
         statusClassName: 'text-emerald-400',
+        warningMessage: previewWarningByKind[kind] ?? null,
       };
     }
     return null;
-  }, [streamStatus?.is_live, streamStatus?.viewer_count, twitchUserInfo?.login]);
+  }, [previewWarningByKind, streamStatus?.is_live, streamStatus?.viewer_count, twitchUserInfo?.login]);
 
   const workspaceRenderContext = useMemo<WorkspaceRenderContextValue>(() => ({
     removeCard: removeWorkspaceCard,

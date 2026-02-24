@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::extract::{Query, State};
 use futures_util::{SinkExt, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use tokio::time::{Duration, Instant, timeout};
@@ -19,11 +19,13 @@ use crate::services::channel_points_assets;
 use super::err_json;
 
 type ApiResult = Result<Json<Value>, (axum::http::StatusCode, Json<Value>)>;
-const IRC_RETENTION_SECONDS: i64 = 24 * 60 * 60;
+const IRC_RETENTION_MAX_MESSAGES_PER_CHANNEL: i64 = 20_000;
 const TWITCH_IRC_WS_ENDPOINT: &str = "wss://irc-ws.chat.twitch.tv:443";
 const TWITCH_IRC_SEND_TIMEOUT_SECS: u64 = 8;
 const IVR_TWITCH_USER_API_BASE: &str = "https://api.ivr.fi/v2/twitch/user";
 const DECAPI_TWITCH_FOLLOWCOUNT_BASE: &str = "https://decapi.me/twitch/followcount";
+const USER_PROFILE_DETAIL_CACHE_KEY_PREFIX: &str = "chat_user_profile_detail:";
+const USER_PROFILE_DETAIL_CACHE_TTL_SECONDS: i64 = 24 * 60 * 60;
 
 struct TwitchIrcIdentity {
     token: twitch_client::Token,
@@ -98,6 +100,88 @@ pub struct IrcChannelProfileBody {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedUserProfileDetail {
+    user_id: String,
+    username: String,
+    avatar_url: String,
+    display_name: String,
+    login: String,
+    description: String,
+    user_type: String,
+    broadcaster_type: String,
+    profile_image_url: String,
+    cover_image_url: String,
+    follower_count: Option<u64>,
+    view_count: u64,
+    created_at: String,
+    cached_at: i64,
+}
+
+fn user_profile_detail_cache_key(user_id: &str) -> Option<String> {
+    let normalized = user_id.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{USER_PROFILE_DETAIL_CACHE_KEY_PREFIX}{normalized}"
+    ))
+}
+
+fn cached_user_profile_to_json(cached: &CachedUserProfileDetail) -> Value {
+    json!({
+        "user_id": cached.user_id,
+        "username": cached.username,
+        "avatar_url": cached.avatar_url,
+        "display_name": cached.display_name,
+        "login": cached.login,
+        "description": cached.description,
+        "user_type": cached.user_type,
+        "broadcaster_type": cached.broadcaster_type,
+        "profile_image_url": cached.profile_image_url,
+        "cover_image_url": cached.cover_image_url,
+        "follower_count": cached.follower_count,
+        "view_count": cached.view_count,
+        "created_at": cached.created_at,
+    })
+}
+
+fn load_cached_user_profile_detail(
+    state: &SharedState,
+    user_id: &str,
+) -> Result<Option<CachedUserProfileDetail>, (axum::http::StatusCode, Json<Value>)> {
+    let Some(cache_key) = user_profile_detail_cache_key(user_id) else {
+        return Ok(None);
+    };
+    let Some(raw) = state
+        .db()
+        .get_setting(&cache_key)
+        .map_err(|e| err_json(500, &e.to_string()))?
+    else {
+        return Ok(None);
+    };
+
+    match serde_json::from_str::<CachedUserProfileDetail>(&raw) {
+        Ok(parsed) => Ok(Some(parsed)),
+        Err(_) => Ok(None),
+    }
+}
+
+fn save_cached_user_profile_detail(state: &SharedState, profile: &CachedUserProfileDetail) {
+    let Some(cache_key) = user_profile_detail_cache_key(&profile.user_id) else {
+        return;
+    };
+    let Ok(raw) = serde_json::to_string(profile) else {
+        return;
+    };
+    if let Err(err) = state
+        .db()
+        .set_setting(&cache_key, &raw, "chat_profile_cache")
+    {
+        tracing::warn!("Failed to persist user profile detail cache: {err}");
+    }
+}
+
 fn normalize_channel_login(raw: &str) -> Option<String> {
     let normalized = raw.trim().trim_start_matches('#').to_lowercase();
     if normalized.len() < 3 || normalized.len() > 25 {
@@ -136,10 +220,6 @@ fn map_twitch_error(err: TwitchError) -> (axum::http::StatusCode, Json<Value>) {
         TwitchError::AuthRequired => err_json(401, "Authentication required"),
         other => err_json(500, &other.to_string()),
     }
-}
-
-fn irc_cutoff(now_unix: i64) -> i64 {
-    now_unix - IRC_RETENTION_SECONDS
 }
 
 fn parse_created_at_from_rfc3339(raw: Option<&str>) -> i64 {
@@ -478,12 +558,6 @@ async fn save_irc_chat_message(
         )
     };
 
-    let cutoff = irc_cutoff(chrono::Utc::now().timestamp());
-    state
-        .db()
-        .cleanup_irc_chat_messages_before(cutoff)
-        .map_err(|e| err_json(500, &e.to_string()))?;
-
     let irc_msg = overlay_db::chat::IrcChatMessage {
         id: 0,
         channel_login: channel_login.to_string(),
@@ -502,7 +576,10 @@ async fn save_irc_chat_message(
         .map_err(|e| err_json(500, &e.to_string()))?;
     state
         .db()
-        .cleanup_irc_chat_messages_before(cutoff)
+        .cleanup_irc_chat_messages_exceeding_limit(
+            channel_login,
+            IRC_RETENTION_MAX_MESSAGES_PER_CHANNEL,
+        )
         .map_err(|e| err_json(500, &e.to_string()))?;
 
     Ok(json!({
@@ -734,20 +811,13 @@ pub async fn get_irc_history(
     let channel = q.channel.unwrap_or_default();
     let channel_login =
         normalize_channel_login(&channel).ok_or_else(|| err_json(400, "channel is required"))?;
-    let now = chrono::Utc::now().timestamp();
-    let since_requested = q
+    let since = q
         .since
         .or_else(|| {
             q.days
                 .map(|days| chrono::Utc::now().timestamp() - (days * 24 * 3600))
         })
-        .unwrap_or_else(|| irc_cutoff(now));
-    let since = since_requested.max(irc_cutoff(now));
-
-    state
-        .db()
-        .cleanup_irc_chat_messages_before(irc_cutoff(now))
-        .map_err(|e| err_json(500, &e.to_string()))?;
+        .unwrap_or(0);
     let messages = state
         .db()
         .get_irc_chat_messages_since(&channel_login, since, q.limit)
@@ -990,17 +1060,14 @@ pub async fn get_user_profile_detail(
     State(state): State<SharedState>,
     Json(body): Json<ChatUserProfileDetailBody>,
 ) -> ApiResult {
+    let now_unix = chrono::Utc::now().timestamp();
     let mut resolved_user_id = body
         .user_id
         .as_deref()
         .map(str::trim)
         .unwrap_or_default()
         .to_string();
-    let mut twitch_profile = if resolved_user_id.is_empty() {
-        None
-    } else {
-        fetch_twitch_user_profile(&state, &resolved_user_id).await
-    };
+    let mut twitch_profile = None;
 
     if resolved_user_id.is_empty() {
         let login_hint = body
@@ -1013,24 +1080,28 @@ pub async fn get_user_profile_detail(
             return Err(err_json(400, "user_id or login is required"));
         }
 
-        twitch_profile = fetch_twitch_user_profile_by_login(&state, login_hint).await;
-        if let Some(user) = twitch_profile.as_ref() {
-            resolved_user_id = user.id.trim().to_string();
+        if let Some(profile) = state
+            .db()
+            .find_chat_user_profile_by_username(login_hint)
+            .map_err(|e| err_json(500, &e.to_string()))?
+        {
+            resolved_user_id = profile.user_id.trim().to_string();
         }
-
         if resolved_user_id.is_empty() {
-            if let Some(profile) = state
-                .db()
-                .find_chat_user_profile_by_username(login_hint)
-                .map_err(|e| err_json(500, &e.to_string()))?
-            {
-                resolved_user_id = profile.user_id.trim().to_string();
+            twitch_profile = fetch_twitch_user_profile_by_login(&state, login_hint).await;
+            if let Some(user) = twitch_profile.as_ref() {
+                resolved_user_id = user.id.trim().to_string();
             }
         }
     }
 
     if resolved_user_id.is_empty() {
         return Err(err_json(404, "Twitch user not found"));
+    }
+    if let Some(cached) = load_cached_user_profile_detail(&state, &resolved_user_id)? {
+        if now_unix - cached.cached_at <= USER_PROFILE_DETAIL_CACHE_TTL_SECONDS {
+            return Ok(Json(cached_user_profile_to_json(&cached)));
+        }
     }
 
     let (username, avatar_url) =
@@ -1107,21 +1178,24 @@ pub async fn get_user_profile_detail(
         .as_ref()
         .map(|p| p.created_at.trim().to_string())
         .unwrap_or_default();
-    Ok(Json(json!({
-        "user_id": resolved_user_id,
-        "username": username,
-        "avatar_url": avatar_url,
-        "display_name": display_name,
-        "login": login,
-        "description": description,
-        "user_type": user_type,
-        "broadcaster_type": broadcaster_type,
-        "profile_image_url": profile_image_url,
-        "cover_image_url": cover_image_url,
-        "follower_count": follower_count,
-        "view_count": view_count,
-        "created_at": created_at,
-    })))
+    let response_payload = CachedUserProfileDetail {
+        user_id: resolved_user_id,
+        username,
+        avatar_url,
+        display_name,
+        login,
+        description,
+        user_type,
+        broadcaster_type,
+        profile_image_url,
+        cover_image_url,
+        follower_count,
+        view_count,
+        created_at,
+        cached_at: now_unix,
+    };
+    save_cached_user_profile_detail(&state, &response_payload);
+    Ok(Json(cached_user_profile_to_json(&response_payload)))
 }
 
 /// POST /api/chat/cleanup
