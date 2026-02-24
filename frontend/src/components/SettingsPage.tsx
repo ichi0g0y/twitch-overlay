@@ -58,6 +58,9 @@ const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
 const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
 const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 const PREVIEW_NODE_HEADER_HEIGHT = 36;
+const PREVIEW_NODE_MIN_Z_INDEX = 10;
+const PREVIEW_NODE_MAX_Z_INDEX = 59;
+const PREVIEW_NODE_EXPANDED_Z_INDEX = 60;
 const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
 
 type BaseWorkspaceCardKind =
@@ -840,9 +843,9 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   const [hoveredChannelId, setHoveredChannelId] = useState<string | null>(null);
   const [hoverAnchor, setHoverAnchor] = useState<{ top: number; left: number } | null>(null);
   const [ircConnectedChannels, setIrcConnectedChannels] = useState<string[]>(() => readIrcChannels());
-  const [followerCountByChannelId, setFollowerCountByChannelId] = useState<Record<string, number | null>>({});
+  const [followerCountByChannelId, setFollowerCountByChannelId] = useState<Record<string, number>>({});
   const [loadingFollowerChannelIds, setLoadingFollowerChannelIds] = useState<Record<string, true>>({});
-  const followerCountByChannelIdRef = useRef<Record<string, number | null>>({});
+  const followerCountByChannelIdRef = useRef<Record<string, number>>({});
   const followerCountFetchInFlightRef = useRef<Set<string>>(new Set());
   const followerCountRetryAfterByChannelIdRef = useRef<Record<string, number>>({});
   const copiedResetTimerRef = useRef<number | null>(null);
@@ -931,7 +934,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
     if (retryAfterAt > Date.now()) {
       return;
     }
-    if (typeof followerCountByChannelIdRef.current[channelId] === 'number' || followerCountByChannelIdRef.current[channelId] === null) {
+    if (typeof followerCountByChannelIdRef.current[channelId] === 'number') {
       return;
     }
     if (typeof channel.follower_count === 'number') {
@@ -962,12 +965,22 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
         throw new Error(`HTTP ${response.status}`);
       }
       const payload = await response.json().catch(() => null);
-      const followerCount = typeof payload?.follower_count === 'number' ? payload.follower_count : null;
-      delete followerCountRetryAfterByChannelIdRef.current[channelId];
-      setFollowerCountByChannelId((prev) => {
-        if (prev[channelId] === followerCount) return prev;
-        return { ...prev, [channelId]: followerCount };
-      });
+      const followerCount = typeof payload?.follower_count === 'number' ? payload.follower_count : undefined;
+      if (typeof followerCount === 'number') {
+        delete followerCountRetryAfterByChannelIdRef.current[channelId];
+        setFollowerCountByChannelId((prev) => {
+          if (prev[channelId] === followerCount) return prev;
+          return { ...prev, [channelId]: followerCount };
+        });
+      } else {
+        followerCountRetryAfterByChannelIdRef.current[channelId] = Date.now() + FOLLOWER_COUNT_RETRY_COOLDOWN_MS;
+        setFollowerCountByChannelId((prev) => {
+          if (!(channelId in prev)) return prev;
+          const next = { ...prev };
+          delete next[channelId];
+          return next;
+        });
+      }
     } catch {
       followerCountRetryAfterByChannelIdRef.current[channelId] = Date.now() + FOLLOWER_COUNT_RETRY_COOLDOWN_MS;
     } finally {
@@ -2593,7 +2606,7 @@ export const SettingsPage: React.FC = () => {
           ...(node.style ?? {}),
           width: expandedWidth,
           height: expandedHeight,
-          zIndex: 60,
+          zIndex: PREVIEW_NODE_EXPANDED_Z_INDEX,
         },
       };
     });
@@ -2601,6 +2614,52 @@ export const SettingsPage: React.FC = () => {
     expandedPreviewNodeIdRef.current = id;
     setExpandedPreviewNodeId(id);
   }, [nodes, setNodes]);
+
+  const bringPreviewNodeToFront = useCallback((nodeId: string) => {
+    setNodes((current) => {
+      const target = current.find((node) => node.id === nodeId);
+      if (!target || !isPreviewCardKind(target.data.kind)) return current;
+      if (expandedPreviewNodeIdRef.current === nodeId) return current;
+
+      const orderedPreviewNodes = current
+        .filter((node) => isPreviewCardKind(node.data.kind) && node.id !== expandedPreviewNodeIdRef.current)
+        .map((node, index) => ({
+          node,
+          index,
+          zIndex: toFiniteNumber(node.zIndex, PREVIEW_NODE_MIN_Z_INDEX),
+        }))
+        .sort((a, b) => (a.zIndex !== b.zIndex ? a.zIndex - b.zIndex : a.index - b.index))
+        .map(({ node }) => node)
+        .filter((node) => node.id !== nodeId);
+
+      const availableLowerSlots = PREVIEW_NODE_MAX_Z_INDEX - PREVIEW_NODE_MIN_Z_INDEX;
+      const normalizeStartIndex = Math.max(0, orderedPreviewNodes.length - availableLowerSlots);
+      const nextZIndexById = new Map<string, number>();
+      orderedPreviewNodes.slice(normalizeStartIndex).forEach((node, index) => {
+        nextZIndexById.set(node.id, PREVIEW_NODE_MIN_Z_INDEX + index);
+      });
+      nextZIndexById.set(nodeId, PREVIEW_NODE_MAX_Z_INDEX);
+
+      let changed = false;
+      const nextNodes = current.map((node) => {
+        const nextZIndex = nextZIndexById.get(node.id);
+        if (nextZIndex == null || node.zIndex === nextZIndex) return node;
+        changed = true;
+        return { ...node, zIndex: nextZIndex };
+      });
+      return changed ? nextNodes : current;
+    });
+  }, [setNodes]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const nodeId = (event as CustomEvent<{ nodeId?: string }>).detail?.nodeId;
+      if (!nodeId) return;
+      bringPreviewNodeToFront(nodeId);
+    };
+    window.addEventListener('workspace-preview-bring-to-front', handler);
+    return () => window.removeEventListener('workspace-preview-bring-to-front', handler);
+  }, [bringPreviewNodeToFront]);
 
   const isPreviewViewportExpanded = useCallback((id: string) => expandedPreviewNodeId === id, [expandedPreviewNodeId]);
 
@@ -2828,6 +2887,11 @@ export const SettingsPage: React.FC = () => {
     writeWorkspaceFlow(nodes, workspaceViewport);
   }, [nodes, workspaceViewport]);
 
+  const handleWorkspaceNodeClick = useCallback((_event: React.MouseEvent, node: WorkspaceCardNode) => {
+    if (!isPreviewCardKind(node.data.kind)) return;
+    bringPreviewNodeToFront(node.id);
+  }, [bringPreviewNodeToFront]);
+
   return (
     <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div className="hidden" aria-hidden="true">
@@ -2850,6 +2914,7 @@ export const SettingsPage: React.FC = () => {
           <ReactFlow
             nodes={nodes}
             onNodesChange={onNodesChange}
+            onNodeClick={handleWorkspaceNodeClick}
             onMoveEnd={handleWorkspaceMoveEnd}
             onInit={handleWorkspaceFlowInit}
             nodeTypes={WORKSPACE_NODE_TYPES}
