@@ -57,6 +57,7 @@ pub const SCOPES: &[&str] = &[
     "user:read:chat",
     "user:read:follows",
     "moderator:read:chatters",
+    "moderator:manage:banned_users",
     "channel:read:subscriptions",
     "bits:read",
     "channel:read:redemptions",
@@ -66,4 +67,5 @@ pub const SCOPES: &[&str] = &[
     "moderator:read:followers",
     "channel:manage:redemptions",
     "moderator:manage:shoutouts",
+    "user:manage:blocked_users",
 ];

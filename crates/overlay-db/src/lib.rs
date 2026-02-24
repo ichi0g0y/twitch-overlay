@@ -152,13 +152,14 @@ mod tests {
     #[test]
     fn test_chat_messages() {
         let db = test_db();
-        db.upsert_chat_user_profile("user1", "alice", "", 900)
+        db.upsert_chat_user_profile("user1", "alice", "Alice", "", 900)
             .unwrap();
         let msg = chat::ChatMessage {
             id: 0,
             message_id: "msg1".into(),
             user_id: "user1".into(),
             username: "alice".into(),
+            display_name: "Alice".into(),
             message: "hello".into(),
             fragments_json: "[]".into(),
             avatar_url: String::new(),
@@ -174,6 +175,7 @@ mod tests {
         let msgs = db.get_chat_messages_since(0, None).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].username, "alice");
+        assert_eq!(msgs[0].display_name, "Alice");
         assert_eq!(msgs[0].avatar_url, "");
 
         assert!(db.chat_message_exists("msg1").unwrap());
@@ -182,12 +184,14 @@ mod tests {
         db.upsert_chat_user_profile(
             "user1",
             "alice_renamed",
+            "AliceRenamed",
             "https://example.com/avatar.png",
             1200,
         )
         .unwrap();
         let profile = db.get_chat_user_profile("user1").unwrap().unwrap();
         assert_eq!(profile.username, "alice_renamed");
+        assert_eq!(profile.display_name, "AliceRenamed");
         assert_eq!(profile.avatar_url, "https://example.com/avatar.png");
 
         let by_name = db
@@ -196,6 +200,7 @@ mod tests {
             .unwrap();
         assert_eq!(by_name.user_id, "user1");
         assert_eq!(by_name.username, "alice_renamed");
+        assert_eq!(by_name.display_name, "AliceRenamed");
 
         let avatar = db.get_latest_chat_avatar("user1").unwrap().unwrap();
         assert_eq!(avatar, "https://example.com/avatar.png");
@@ -203,13 +208,14 @@ mod tests {
         let hydrated = db.get_chat_messages_since(0, None).unwrap();
         assert_eq!(hydrated.len(), 1);
         assert_eq!(hydrated[0].username, "alice_renamed");
+        assert_eq!(hydrated[0].display_name, "AliceRenamed");
         assert_eq!(hydrated[0].avatar_url, "https://example.com/avatar.png");
     }
 
     #[test]
     fn test_irc_chat_messages() {
         let db = test_db();
-        db.upsert_chat_user_profile("u1", "alice", "https://example.com/a.png", 1000)
+        db.upsert_chat_user_profile("u1", "alice", "Alice", "https://example.com/a.png", 1000)
             .unwrap();
 
         let msg = chat::IrcChatMessage {
@@ -218,6 +224,7 @@ mod tests {
             message_id: "irc-msg-1".into(),
             user_id: "u1".into(),
             username: "alice".into(),
+            display_name: "Alice".into(),
             message: "hello from irc".into(),
             badge_keys: vec!["subscriber/24".into(), "moderator/1".into()],
             fragments_json: "[]".into(),
@@ -233,6 +240,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].message, "hello from irc");
         assert_eq!(rows[0].username, "alice");
+        assert_eq!(rows[0].display_name, "Alice");
         assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
         assert_eq!(rows[0].badge_keys, vec!["subscriber/24", "moderator/1"]);
 
@@ -242,6 +250,7 @@ mod tests {
             message_id: "irc-msg-2".into(),
             user_id: "u1".into(),
             username: "alice".into(),
+            display_name: "Alice".into(),
             message: "second".into(),
             badge_keys: vec![],
             fragments_json: "[]".into(),
@@ -254,6 +263,7 @@ mod tests {
             message_id: "irc-msg-3".into(),
             user_id: "u1".into(),
             username: "alice".into(),
+            display_name: "Alice".into(),
             message: "third".into(),
             badge_keys: vec![],
             fragments_json: "[]".into(),
