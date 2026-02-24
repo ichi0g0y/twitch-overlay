@@ -62,6 +62,7 @@ const PREVIEW_NODE_HEADER_HEIGHT = 36;
 const PREVIEW_NODE_MIN_Z_INDEX = 10;
 const PREVIEW_NODE_MAX_Z_INDEX = 59;
 const PREVIEW_NODE_EXPANDED_Z_INDEX = 60;
+const PREVIEW_PORTAL_Z_INDEX = 20;
 const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
 const WORKSPACE_CARD_SPAWN_SEARCH_STEP = 48;
 const WORKSPACE_CARD_SPAWN_SEARCH_RING_LIMIT = 16;
@@ -165,6 +166,7 @@ type WorkspaceRenderContextValue = {
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (id: string) => void;
   isPreviewViewportExpanded: (id: string) => boolean;
+  previewPortalEnabled: boolean;
   snapCardSize: (id: string, width: number, height: number) => void;
   renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
   resolvePreviewHeader: (kind: WorkspaceCardKind) => {
@@ -733,6 +735,7 @@ type TwitchStreamPreviewProps = {
   isAuthenticated: boolean;
   channelLogin: string;
   reloadNonce: number;
+  autoplayEnabled: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
@@ -755,13 +758,19 @@ const CompactPreviewFrame: React.FC<CompactPreviewFrameProps> = ({
 type PreviewEmbedProps = {
   channelLogin: string;
   reloadNonce: number;
+  autoplayEnabled: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
-const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce, onWarningChange }) => {
+const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce, autoplayEnabled, onWarningChange }) => {
   return (
     <div className="nodrag nopan h-full min-h-0 overflow-hidden bg-black">
-      <TwitchPlayerEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={onWarningChange} />
+      <TwitchPlayerEmbed
+        channelLogin={channelLogin}
+        reloadNonce={reloadNonce}
+        autoplayEnabled={autoplayEnabled}
+        onWarningChange={onWarningChange}
+      />
     </div>
   );
 };
@@ -771,6 +780,7 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
   isAuthenticated,
   channelLogin,
   reloadNonce,
+  autoplayEnabled,
   onWarningChange,
 }) => {
   const canEmbed = Boolean(channelLogin);
@@ -798,7 +808,12 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
         </div>
       )}
       {isTwitchConfigured && isAuthenticated && canEmbed && (
-        <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={onWarningChange} />
+        <PreviewEmbed
+          channelLogin={channelLogin}
+          reloadNonce={reloadNonce}
+          autoplayEnabled={autoplayEnabled}
+          onWarningChange={onWarningChange}
+        />
       )}
     </CompactPreviewFrame>
   );
@@ -808,13 +823,25 @@ type AddedChannelStreamPreviewProps = {
   kind: WorkspaceCardKind;
   channelLogin: string;
   reloadNonce: number;
+  autoplayEnabled: boolean;
   onWarningChange: (kind: WorkspaceCardKind, warningMessage: string | null) => void;
 };
 
-const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({ kind, channelLogin, reloadNonce, onWarningChange }) => {
+const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({
+  kind,
+  channelLogin,
+  reloadNonce,
+  autoplayEnabled,
+  onWarningChange,
+}) => {
   return (
     <CompactPreviewFrame panelId={`settings.twitch.stream-preview.irc.${channelLogin}`}>
-      <PreviewEmbed channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={(warningMessage) => onWarningChange(kind, warningMessage)} />
+      <PreviewEmbed
+        channelLogin={channelLogin}
+        reloadNonce={reloadNonce}
+        autoplayEnabled={autoplayEnabled}
+        onWarningChange={(warningMessage) => onWarningChange(kind, warningMessage)}
+      />
     </CompactPreviewFrame>
   );
 };
@@ -825,6 +852,8 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [warningTooltip, setWarningTooltip] = useState<{ message: string; x: number; y: number; fontFamily: string } | null>(null);
+  const [previewPortalRect, setPreviewPortalRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const previewContentHostRef = useRef<HTMLDivElement | null>(null);
   const cardAsNode = isCollapsibleCardNodeKind(data.kind);
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = resolveWorkspaceCardMinSize(data.kind);
@@ -835,6 +864,11 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
     ? 'border-b border-sky-400/60 bg-sky-500/20'
     : 'border-b border-gray-800/80 bg-gray-900/85';
+  const shouldPortalPreviewContent =
+    Boolean(previewHeader)
+    && renderContext.previewPortalEnabled
+    && typeof document !== 'undefined';
+  const previewContentNode = cardAsNode ? null : renderContext.renderCard(data.kind);
 
   const hideWarningTooltip = useCallback(() => {
     setWarningTooltip(null);
@@ -860,6 +894,44 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
       window.removeEventListener('scroll', hide, true);
     };
   }, [warningTooltip]);
+
+  useEffect(() => {
+    if (!shouldPortalPreviewContent) {
+      setPreviewPortalRect(null);
+      return undefined;
+    }
+    let rafId = 0;
+    let isDisposed = false;
+    let lastSerializedRect = '';
+
+    const updateRect = () => {
+      if (isDisposed) return;
+      const host = previewContentHostRef.current;
+      if (!host) {
+        rafId = window.requestAnimationFrame(updateRect);
+        return;
+      }
+      const rect = host.getBoundingClientRect();
+      const nextRect = {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      };
+      const serialized = `${nextRect.left}:${nextRect.top}:${nextRect.width}:${nextRect.height}`;
+      if (serialized !== lastSerializedRect) {
+        lastSerializedRect = serialized;
+        setPreviewPortalRect(nextRect.width > 0 && nextRect.height > 0 ? nextRect : null);
+      }
+      rafId = window.requestAnimationFrame(updateRect);
+    };
+
+    rafId = window.requestAnimationFrame(updateRect);
+    return () => {
+      isDisposed = true;
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [shouldPortalPreviewContent]);
 
   return (
     <div
@@ -963,11 +1035,28 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
             )}
           </div>
           <div
+            ref={previewContentHostRef}
             className={`nodrag nowheel h-[calc(100%-2.25rem)] overflow-auto ${isNodeInteractionLocked ? 'pointer-events-none select-none' : ''}`}
           >
-            {renderContext.renderCard(data.kind)}
+            {shouldPortalPreviewContent ? <div className="h-full w-full" /> : previewContentNode}
           </div>
         </div>
+      )}
+      {shouldPortalPreviewContent && previewPortalRect && typeof document !== 'undefined' && createPortal(
+        <div
+          className={`nodrag nowheel overflow-hidden ${isNodeInteractionLocked ? 'pointer-events-none select-none' : ''}`}
+          style={{
+            position: 'fixed',
+            left: previewPortalRect.left,
+            top: previewPortalRect.top,
+            width: previewPortalRect.width,
+            height: previewPortalRect.height,
+            zIndex: PREVIEW_PORTAL_Z_INDEX,
+          }}
+        >
+          {previewContentNode}
+        </div>,
+        document.body,
       )}
       {warningTooltip && typeof document !== 'undefined' && createPortal(
         <div
@@ -2387,6 +2476,7 @@ export const SettingsPage: React.FC = () => {
   }), [followedRailSide, railReservedWidth]);
   const panActivationKeyCode = getSettingValue('WORKSPACE_PAN_ACTIVATION_KEY') || 'Space';
   const zoomActivationKeyCode = normalizeWorkspaceZoomActivationKeyCode(getSettingValue('WORKSPACE_ZOOM_MODIFIER_KEY') || 'Control');
+  const previewPortalEnabled = getSettingValue('WORKSPACE_PREVIEW_PORTAL_ENABLED') === 'true';
 
   useEffect(() => {
     setIsPanKeyActive(false);
@@ -2931,13 +3021,22 @@ export const SettingsPage: React.FC = () => {
           isAuthenticated={Boolean(authStatus?.authenticated)}
           channelLogin={twitchUserInfo?.login ?? ''}
           reloadNonce={reloadNonce}
+          autoplayEnabled={previewPortalEnabled}
           onWarningChange={(warningMessage) => setPreviewWarning('preview-main', warningMessage)}
         />
       );
     }
     if (isPreviewIrcKind(kind)) {
       const channelLogin = kind.slice('preview-irc:'.length);
-      return <AddedChannelStreamPreview kind={kind} channelLogin={channelLogin} reloadNonce={reloadNonce} onWarningChange={setPreviewWarning} />;
+      return (
+        <AddedChannelStreamPreview
+          kind={kind}
+          channelLogin={channelLogin}
+          reloadNonce={reloadNonce}
+          autoplayEnabled={previewPortalEnabled}
+          onWarningChange={setPreviewWarning}
+        />
+      );
     }
     if (kind === 'general-basic' || kind === 'general-notification' || kind === 'general-font') {
       const section = kind === 'general-basic'
@@ -3057,6 +3156,7 @@ export const SettingsPage: React.FC = () => {
     handleSettingChange,
     handleTestNotification,
     previewImage,
+    previewPortalEnabled,
     previewText,
     setPreviewText,
     streamStatus,
@@ -3098,6 +3198,7 @@ export const SettingsPage: React.FC = () => {
     refreshPreview,
     togglePreviewViewportExpand,
     isPreviewViewportExpanded,
+    previewPortalEnabled,
     snapCardSize: snapWorkspaceCardSize,
     renderCard: renderWorkspaceCard,
     resolvePreviewHeader,
@@ -3106,6 +3207,7 @@ export const SettingsPage: React.FC = () => {
     refreshPreview,
     togglePreviewViewportExpand,
     isPreviewViewportExpanded,
+    previewPortalEnabled,
     snapWorkspaceCardSize,
     renderWorkspaceCard,
     resolvePreviewHeader,
@@ -3194,6 +3296,8 @@ export const SettingsPage: React.FC = () => {
                 onPanActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_PAN_ACTIVATION_KEY', value)}
                 zoomActivationKeyCode={zoomActivationKeyCode}
                 onZoomActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_ZOOM_MODIFIER_KEY', value)}
+                previewPortalEnabled={previewPortalEnabled}
+                onPreviewPortalEnabledChange={(enabled) => handleSettingChange('WORKSPACE_PREVIEW_PORTAL_ENABLED', enabled)}
                 onClose={() => setPanningSettingsOpen(false)}
               />
             )}
