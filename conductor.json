@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "setup": "bash ./scripts/setup_envrc.sh"
+    "setup": "bash ./scripts/setup_workspace.sh"
   }
 }
