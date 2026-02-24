@@ -17,6 +17,8 @@ fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
     migrate_chat_user_profiles(conn)?;
     migrate_chat_messages_user_columns(conn)?;
     migrate_irc_chat_messages_badge_keys(conn)?;
+    migrate_chat_messages_add_username(conn)?;
+    migrate_irc_chat_messages_add_username(conn)?;
     Ok(())
 }
 
@@ -156,6 +158,42 @@ fn migrate_irc_chat_messages_badge_keys(conn: &Connection) -> Result<(), DbError
     Ok(())
 }
 
+fn migrate_chat_messages_add_username(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "chat_messages", "username")? {
+        return Ok(());
+    }
+
+    tracing::info!("Adding username column to chat_messages");
+    conn.execute_batch(
+        "ALTER TABLE chat_messages ADD COLUMN username TEXT NOT NULL DEFAULT '';
+         UPDATE chat_messages
+         SET username = COALESCE(
+             (SELECT u.username FROM chat_users u WHERE u.user_id = chat_messages.user_id),
+             ''
+         )
+         WHERE user_id IS NOT NULL AND user_id != '';",
+    )?;
+    Ok(())
+}
+
+fn migrate_irc_chat_messages_add_username(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "irc_chat_messages", "username")? {
+        return Ok(());
+    }
+
+    tracing::info!("Adding username column to irc_chat_messages");
+    conn.execute_batch(
+        "ALTER TABLE irc_chat_messages ADD COLUMN username TEXT NOT NULL DEFAULT '';
+         UPDATE irc_chat_messages
+         SET username = COALESCE(
+             (SELECT u.username FROM chat_users u WHERE u.user_id = irc_chat_messages.user_id),
+             ''
+         )
+         WHERE user_id IS NOT NULL AND user_id != '';",
+    )?;
+    Ok(())
+}
+
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, DbError> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
     let exists = stmt
@@ -275,6 +313,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT,
     user_id TEXT,
+    username TEXT NOT NULL DEFAULT '',
     message TEXT NOT NULL,
     fragments_json TEXT,
     translation_text TEXT DEFAULT '',
@@ -308,6 +347,7 @@ CREATE TABLE IF NOT EXISTS irc_chat_messages (
     channel_login TEXT NOT NULL,
     message_id TEXT,
     user_id TEXT,
+    username TEXT NOT NULL DEFAULT '',
     message TEXT NOT NULL,
     badge_keys_json TEXT NOT NULL DEFAULT '[]',
     fragments_json TEXT,

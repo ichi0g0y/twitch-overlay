@@ -123,6 +123,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
     .filter((badgeKey) => badgeKey !== '')
     .map((badgeKey) => resolveBadgeVisual?.(badgeKey))
     .filter((badge): badge is { imageUrl: string; label: string } => !!badge);
+  const displayName = message.username || message.userId || '不明';
   const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
   const avatarFallbackStyle = {
     ...avatarSizeStyle,
@@ -131,7 +132,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   const avatarNode = message.avatarUrl ? (
     <img
       src={message.avatarUrl}
-      alt={`${message.username} avatar`}
+      alt={`${displayName} avatar`}
       className="rounded-full object-cover"
       style={avatarSizeStyle}
       loading="lazy"
@@ -141,7 +142,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       className="rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 flex items-center justify-center"
       style={avatarFallbackStyle}
     >
-      {message.username?.slice(0, 1)}
+      {(message.username || message.userId || '?')?.slice(0, 1)}
     </div>
   );
 
@@ -175,8 +176,8 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             type="button"
             onClick={() => onUsernameClick(message)}
             className="inline-flex rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 cursor-pointer"
-            aria-label={`${message.username} の情報を表示`}
-            title={`${message.username} の情報を表示`}
+            aria-label={`${displayName} の情報を表示`}
+            title={`${displayName} の情報を表示`}
           >
             {avatarNode}
           </button>
@@ -208,13 +209,13 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             type="button"
             onClick={() => onUsernameClick(message)}
             className="font-semibold text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
-            aria-label={`${message.username} の情報を表示`}
-            title={`${message.username} の情報を表示`}
+            aria-label={`${displayName} の情報を表示`}
+            title={`${displayName} の情報を表示`}
           >
-            {message.username}
+            {message.username || message.userId || '不明'}
           </button>
         ) : (
-          <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username}</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-200">{message.username || message.userId || '不明'}</span>
         )}
         {isBotMessage && (
           <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">

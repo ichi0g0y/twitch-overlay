@@ -24,6 +24,11 @@ type ChatSidebarProps = {
   avoidEdgeRail?: boolean;
   embedded?: boolean;
   channelDisplayNames?: Record<string, string>;
+  activeTabRequest?: {
+    tabId: string;
+    requestId: number;
+  } | null;
+  onActiveTabChange?: (tabId: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -530,6 +535,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   avoidEdgeRail = false,
   embedded = false,
   channelDisplayNames = {},
+  activeTabRequest = null,
+  onActiveTabChange,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -550,6 +557,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [primaryChannelLogin, setPrimaryChannelLogin] = useState('');
 
   const listRef = useRef<HTMLDivElement | null>(null);
+  const tabScrollerRef = useRef<HTMLDivElement | null>(null);
+  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [resizing, setResizing] = useState(false);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -590,6 +599,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [displayNameRefreshTick, setDisplayNameRefreshTick] = useState(0);
   const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
   const [ircParticipantsVersion, setIrcParticipantsVersion] = useState(0);
+  const lastHandledActiveTabRequestIdRef = useRef<number | null>(null);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -1499,6 +1509,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
+    onActiveTabChange?.(activeTab);
+  }, [activeTab, onActiveTabChange]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(MESSAGE_ORDER_REVERSED_STORAGE_KEY, JSON.stringify(messageOrderReversedByTab));
     window.localStorage.removeItem(LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY);
@@ -1509,6 +1523,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     if (ircChannels.includes(activeTab)) return;
     setActiveTab(PRIMARY_CHAT_TAB_ID);
   }, [activeTab, ircChannels]);
+
+  useEffect(() => {
+    const request = activeTabRequest;
+    if (!request) return;
+    if (lastHandledActiveTabRequestIdRef.current === request.requestId) return;
+
+    const requestedTabId = (request.tabId || '').trim();
+    if (!requestedTabId) return;
+
+    if (requestedTabId === PRIMARY_CHAT_TAB_ID) {
+      lastHandledActiveTabRequestIdRef.current = request.requestId;
+      setActiveTab(PRIMARY_CHAT_TAB_ID);
+      return;
+    }
+
+    const normalizedRequested = normalizeTwitchChannelName(requestedTabId);
+    if (!normalizedRequested) return;
+    if (!ircChannels.includes(normalizedRequested)) return;
+    lastHandledActiveTabRequestIdRef.current = request.requestId;
+    setActiveTab(normalizedRequested);
+  }, [activeTabRequest, ircChannels]);
 
   useEffect(() => {
     if (!userInfoPopup) return;
@@ -2009,6 +2044,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       };
     }),
   ], [channelDisplayNames, ircChannels, tabDisplayNamesByChannel]);
+  useEffect(() => {
+    const scroller = tabScrollerRef.current;
+    const activeButton = tabButtonRefs.current[activeTab];
+    if (!scroller || !activeButton) return;
+    window.requestAnimationFrame(() => {
+      activeButton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }, [activeTab, tabs]);
   const popupProfileName = (userInfoProfile?.displayName || userInfoProfile?.username || userInfoPopup?.message.username || '').trim();
   const popupProfileLogin = (userInfoProfile?.login || '').trim();
   const popupProfileAvatar = (userInfoProfile?.profileImageUrl || userInfoProfile?.avatarUrl || userInfoPopup?.message.avatarUrl || '').trim();
@@ -2323,7 +2366,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 )}
               </div>
               <div className="border-b dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 px-2 py-1">
-                <div className="flex items-center gap-1 overflow-x-auto">
+                <div ref={tabScrollerRef} className="flex items-center gap-1 overflow-x-auto">
                   {tabs.map((tab) => {
                     const isActive = tab.id === activeTab;
                     const isConnecting = tab.id !== PRIMARY_CHAT_TAB_ID && connectingChannels[tab.id];
@@ -2333,6 +2376,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
                         title={tab.title}
+                        ref={(node) => {
+                          tabButtonRefs.current[tab.id] = node;
+                        }}
                         className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs whitespace-nowrap transition ${
                           isActive
                             ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-100'
