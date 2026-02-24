@@ -2042,166 +2042,165 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
             )}
           </div>
 
-          <div className="relative">
+          <div className="relative flex items-center gap-2">
             <button
-              ref={cardMenuTriggerRef}
+              ref={micTriggerRef}
               type="button"
-              onClick={() => setCardMenuOpen((prev) => !prev)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900/70 text-gray-200 hover:bg-gray-800"
-              aria-expanded={cardMenuOpen}
-              aria-label="設定カードを追加"
+              onClick={() => setOpenPanel((prev) => (prev === 'mic' ? null : 'mic'))}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 hover:bg-gray-800"
+              aria-expanded={openPanel === 'mic'}
+              aria-label="マイク状態を表示"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Mic className={`h-4 w-4 ${micStatus.capturing ? 'text-emerald-400' : micStatus.speechSupported ? 'text-amber-400' : 'text-gray-500'}`} />
+              <span className="text-xs text-gray-200">{micStateLabel}</span>
+              <Languages className={`h-3.5 w-3.5 ${micStatus.translationEnabled ? 'text-sky-400' : 'text-gray-500'}`} />
+              <span className="text-[11px] text-gray-300">
+                {micStatus.translationEnabled ? (micStatus.translationTargets.join(', ') || '-') : 'off'}
+              </span>
             </button>
-            {cardMenuOpen && (
+
+            {openPanel === 'mic' && (
               <div
-                ref={cardMenuPanelRef}
-                className="absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-[34rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
+                ref={micPanelRef}
+                className="absolute right-0 top-full z-40 mt-2 w-[360px] rounded-md border border-gray-700 bg-gray-900/95 p-2 text-xs text-gray-100 shadow-xl"
               >
-                <div className="mb-1 px-1 text-[11px] text-gray-400">作業領域へ追加</div>
-                <div className="flex gap-2">
-                  <div className="w-28 shrink-0 space-y-1">
-                    {cardMenuItemsByCategory.map((group) => {
-                      const isActive = activeCardMenuGroup?.category === group.category;
-                      return (
-                        <button
-                          key={group.category}
-                          type="button"
-                          onMouseEnter={() => setCardMenuHoveredCategory(group.category)}
-                          onFocus={() => setCardMenuHoveredCategory(group.category)}
-                          onClick={() => setCardMenuHoveredCategory(group.category)}
-                          className={`flex h-8 w-full items-center justify-between rounded border px-2 text-left text-xs transition ${
-                            isActive
-                              ? 'border-blue-500 bg-blue-500/20 text-blue-100'
-                              : 'border-gray-700 text-gray-300 hover:bg-gray-800'
-                          }`}
-                        >
-                          <span className="truncate">{group.label}</span>
-                          <span className="text-[10px] text-gray-400">▶</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="min-w-0 flex-1 rounded border border-gray-700/80 bg-black/10 p-1">
-                    <div className="mb-1 px-1 text-[11px] text-gray-400">{activeCardMenuGroup?.label ?? '-'}</div>
-                    <div className="space-y-1">
-                      {(activeCardMenuGroup?.items ?? []).map((item) => (
-                        <button
-                          key={item.kind}
-                          type="button"
-                          disabled={!canAddCard(item.kind)}
-                          onClick={() => {
-                            if (!canAddCard(item.kind)) return;
-                            onAddCard(item.kind);
-                            setCardMenuOpen(false);
-                          }}
-                          className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <div>
-                            <div className="text-xs text-gray-100">
-                              {normalizeCardMenuItemLabel(item.label)}
-                              {!canAddCard(item.kind) ? ' (配置済み)' : ''}
-                            </div>
-                            <div className="text-[11px] text-gray-400">{item.description}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="font-semibold">マイク詳細</span>
+                  <div className="inline-flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400">
+                      WS: {micStatus.wsConnected ? '接続中' : '未接続'}
+                    </span>
+                    <Switch
+                      aria-label="マイク"
+                      checked={overlaySettings?.mic_transcript_speech_enabled ?? false}
+                      onCheckedChange={(enabled) => {
+                        void updateOverlaySettings({ mic_transcript_speech_enabled: enabled });
+                      }}
+                    />
                   </div>
                 </div>
-                <div className="mt-2 border-t border-gray-700 pt-2">
-                  <div className="mb-1 px-1 text-[11px] text-gray-400">コメント欄接続中から追加</div>
-                  <div className="space-y-1">
-                    {ircConnectedChannels.length === 0 && (
-                      <div className="px-1 text-[11px] text-gray-500">接続中のIRCチャンネルはありません</div>
-                    )}
-                    {ircConnectedChannels.map((channel) => {
-                      const kind = `preview-irc:${channel}` as WorkspaceCardKind;
-                      const disabled = !canAddCard(kind);
-                      const displayName = (ircChannelDisplayNames[channel] || '').trim();
-                      return (
-                        <button
-                          key={channel}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => {
-                            if (disabled) return;
-                            onAddIrcPreview(channel);
-                            setCardMenuOpen(false);
-                          }}
-                          className="flex h-8 w-full items-center justify-between rounded border border-gray-700 px-2 text-xs text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <span className="truncate text-left">
-                            {displayName ? `${displayName} (#${channel})` : `#${channel}`}
-                          </span>
-                          <span className="text-[11px] text-gray-400">{disabled ? '配置済み' : '追加'}</span>
-                        </button>
-                      );
-                    })}
+                <div className="mb-1 text-[11px] text-gray-300">
+                  翻訳: {micStatus.translationEnabled ? `on (${micStatus.translationTargets.join(', ') || '-'})` : 'off'}
+                </div>
+                <div className="rounded border border-gray-700 bg-black/20 p-2">
+                  <div className="text-[11px] text-gray-400">認識中</div>
+                  <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                    {interim || '...'}
+                  </div>
+                </div>
+                <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
+                  <div className="text-[11px] text-gray-400">確定</div>
+                  <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                    {finalText || '...'}
+                  </div>
+                </div>
+                <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
+                  <div className="text-[11px] text-gray-400">翻訳</div>
+                  <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
+                    {translatedText || '...'}
                   </div>
                 </div>
               </div>
             )}
           </div>
-
         </div>
 
-        <div className="relative flex items-center gap-2">
+        <div className="relative">
           <button
-            ref={micTriggerRef}
+            ref={cardMenuTriggerRef}
             type="button"
-            onClick={() => setOpenPanel((prev) => (prev === 'mic' ? null : 'mic'))}
-            className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-3 hover:bg-gray-800"
-            aria-expanded={openPanel === 'mic'}
-            aria-label="マイク状態を表示"
+            onClick={() => setCardMenuOpen((prev) => !prev)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900/70 text-gray-200 hover:bg-gray-800"
+            aria-expanded={cardMenuOpen}
+            aria-label="設定カードを追加"
           >
-            <Mic className={`h-4 w-4 ${micStatus.capturing ? 'text-emerald-400' : micStatus.speechSupported ? 'text-amber-400' : 'text-gray-500'}`} />
-            <span className="text-xs text-gray-200">{micStateLabel}</span>
-            <Languages className={`h-3.5 w-3.5 ${micStatus.translationEnabled ? 'text-sky-400' : 'text-gray-500'}`} />
-            <span className="text-[11px] text-gray-300">
-              {micStatus.translationEnabled ? (micStatus.translationTargets.join(', ') || '-') : 'off'}
-            </span>
+            <Plus className="h-3.5 w-3.5" />
           </button>
-
-          {openPanel === 'mic' && (
+          {cardMenuOpen && (
             <div
-              ref={micPanelRef}
-              className="absolute right-0 top-full z-40 mt-2 w-[360px] rounded-md border border-gray-700 bg-gray-900/95 p-2 text-xs text-gray-100 shadow-xl"
+              ref={cardMenuPanelRef}
+              className="absolute right-0 top-full z-40 mt-2 max-h-[70vh] w-[34rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900/95 p-2 shadow-xl"
             >
-              <div className="mb-1 flex items-center justify-between">
-                <span className="font-semibold">マイク詳細</span>
-                <div className="inline-flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400">
-                    WS: {micStatus.wsConnected ? '接続中' : '未接続'}
-                  </span>
-                  <Switch
-                    aria-label="マイク"
-                    checked={overlaySettings?.mic_transcript_speech_enabled ?? false}
-                    onCheckedChange={(enabled) => {
-                      void updateOverlaySettings({ mic_transcript_speech_enabled: enabled });
-                    }}
-                  />
+              <div className="mb-1 px-1 text-[11px] text-gray-400">作業領域へ追加</div>
+              <div className="flex gap-2">
+                <div className="w-28 shrink-0 space-y-1">
+                  {cardMenuItemsByCategory.map((group) => {
+                    const isActive = activeCardMenuGroup?.category === group.category;
+                    return (
+                      <button
+                        key={group.category}
+                        type="button"
+                        onMouseEnter={() => setCardMenuHoveredCategory(group.category)}
+                        onFocus={() => setCardMenuHoveredCategory(group.category)}
+                        onClick={() => setCardMenuHoveredCategory(group.category)}
+                        className={`flex h-8 w-full items-center justify-between rounded border px-2 text-left text-xs transition ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                            : 'border-gray-700 text-gray-300 hover:bg-gray-800'
+                        }`}
+                      >
+                        <span className="truncate">{group.label}</span>
+                        <span className="text-[10px] text-gray-400">▶</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="min-w-0 flex-1 rounded border border-gray-700/80 bg-black/10 p-1">
+                  <div className="mb-1 px-1 text-[11px] text-gray-400">{activeCardMenuGroup?.label ?? '-'}</div>
+                  <div className="space-y-1">
+                    {(activeCardMenuGroup?.items ?? []).map((item) => (
+                      <button
+                        key={item.kind}
+                        type="button"
+                        disabled={!canAddCard(item.kind)}
+                        onClick={() => {
+                          if (!canAddCard(item.kind)) return;
+                          onAddCard(item.kind);
+                          setCardMenuOpen(false);
+                        }}
+                        className="flex w-full items-start rounded border border-gray-700 px-2 py-1.5 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <div>
+                          <div className="text-xs text-gray-100">
+                            {normalizeCardMenuItemLabel(item.label)}
+                            {!canAddCard(item.kind) ? ' (配置済み)' : ''}
+                          </div>
+                          <div className="text-[11px] text-gray-400">{item.description}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="mb-1 text-[11px] text-gray-300">
-                翻訳: {micStatus.translationEnabled ? `on (${micStatus.translationTargets.join(', ') || '-'})` : 'off'}
-              </div>
-              <div className="rounded border border-gray-700 bg-black/20 p-2">
-                <div className="text-[11px] text-gray-400">認識中</div>
-                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
-                  {interim || '...'}
-                </div>
-              </div>
-              <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
-                <div className="text-[11px] text-gray-400">確定</div>
-                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
-                  {finalText || '...'}
-                </div>
-              </div>
-              <div className="mt-1 rounded border border-gray-700 bg-black/20 p-2">
-                <div className="text-[11px] text-gray-400">翻訳</div>
-                <div className="min-h-6 whitespace-pre-wrap break-words text-[12px] text-gray-100">
-                  {translatedText || '...'}
+              <div className="mt-2 border-t border-gray-700 pt-2">
+                <div className="mb-1 px-1 text-[11px] text-gray-400">コメント欄接続中から追加</div>
+                <div className="space-y-1">
+                  {ircConnectedChannels.length === 0 && (
+                    <div className="px-1 text-[11px] text-gray-500">接続中のIRCチャンネルはありません</div>
+                  )}
+                  {ircConnectedChannels.map((channel) => {
+                    const kind = `preview-irc:${channel}` as WorkspaceCardKind;
+                    const disabled = !canAddCard(kind);
+                    const displayName = (ircChannelDisplayNames[channel] || '').trim();
+                    return (
+                      <button
+                        key={channel}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (disabled) return;
+                          onAddIrcPreview(channel);
+                          setCardMenuOpen(false);
+                        }}
+                        className="flex h-8 w-full items-center justify-between rounded border border-gray-700 px-2 text-xs text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span className="truncate text-left">
+                          {displayName ? `${displayName} (#${channel})` : `#${channel}`}
+                        </span>
+                        <span className="text-[11px] text-gray-400">{disabled ? '配置済み' : '追加'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

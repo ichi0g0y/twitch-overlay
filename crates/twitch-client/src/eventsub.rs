@@ -4,7 +4,7 @@
 //! notification messages, and manages automatic reconnection with
 //! exponential backoff.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,8 @@ const EVENTSUB_URL: &str = "wss://eventsub.wss.twitch.tv/ws";
 const KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(30);
 const BASE_BACKOFF: Duration = Duration::from_secs(2);
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+const FAILURE_RESET_WINDOW: Duration = Duration::from_secs(5 * 60);
+const MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART: u32 = 8;
 
 /// Event types supported for subscription.
 pub const EVENT_CHANNEL_FOLLOW: &str = "channel.follow";
@@ -141,11 +143,24 @@ impl EventSubClient {
         mut shutdown_rx: mpsc::Receiver<()>,
     ) {
         let mut failures: u32 = 0;
+        let mut last_failure_at: Option<Instant> = None;
         let mut ws_url = EVENTSUB_URL.to_string();
         loop {
             if shutdown_rx.try_recv().is_ok() {
                 tracing::info!("EventSub shutdown requested");
                 return;
+            }
+            if let Some(last_failure) = last_failure_at {
+                if last_failure.elapsed() >= FAILURE_RESET_WINDOW {
+                    if failures > 0 {
+                        tracing::info!(
+                            failures,
+                            "EventSub failures reset after stable interval"
+                        );
+                    }
+                    failures = 0;
+                    last_failure_at = None;
+                }
             }
             match Self::connect_once(&config, &ws_url, &event_tx, &mut shutdown_rx).await {
                 Ok(Some(next_url)) => {
@@ -158,12 +173,27 @@ impl EventSubClient {
                     return;
                 }
                 Err(e) => {
+                    if Self::is_auth_error(&e) {
+                        tracing::warn!(
+                            error = %e,
+                            "EventSub connection failed due to auth error; terminating loop for token re-evaluation"
+                        );
+                        return;
+                    }
                     failures += 1;
+                    last_failure_at = Some(Instant::now());
                     if ws_url != EVENTSUB_URL {
                         tracing::warn!(
                             "EventSub reconnect URL failed, falling back to default URL"
                         );
                         ws_url = EVENTSUB_URL.to_string();
+                    }
+                    if failures >= MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART {
+                        tracing::warn!(
+                            failures,
+                            "EventSub failures exceeded threshold; restarting client loop for full re-initialization"
+                        );
+                        return;
                     }
                     let backoff = Self::backoff_duration(failures);
                     tracing::warn!(
@@ -171,7 +201,13 @@ impl EventSubClient {
                         backoff_secs = backoff.as_secs(),
                         "EventSub connection failed, will reconnect"
                     );
-                    tokio::time::sleep(backoff).await;
+                    tokio::select! {
+                        _ = shutdown_rx.recv() => {
+                            tracing::info!("EventSub shutdown requested during reconnect backoff");
+                            return;
+                        }
+                        _ = tokio::time::sleep(backoff) => {}
+                    }
                 }
             }
         }
@@ -348,6 +384,10 @@ impl EventSubClient {
                 let status = resp.status().as_u16();
                 let body = resp.text().await.unwrap_or_default();
                 tracing::error!(event_type, status, body, "Failed to subscribe");
+                return Err(TwitchError::ApiError {
+                    status,
+                    message: body,
+                });
             }
         }
         Ok(())
@@ -385,6 +425,13 @@ impl EventSubClient {
     fn backoff_duration(failures: u32) -> Duration {
         let d = BASE_BACKOFF * 2u32.saturating_pow(failures.saturating_sub(1));
         d.min(MAX_BACKOFF)
+    }
+
+    fn is_auth_error(error: &TwitchError) -> bool {
+        matches!(
+            error,
+            TwitchError::ApiError { status: 401 | 403, .. } | TwitchError::AuthRequired
+        )
     }
 }
 

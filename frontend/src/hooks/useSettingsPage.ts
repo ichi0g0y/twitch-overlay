@@ -224,19 +224,6 @@ export const useSettingsPage = () => {
     const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
     setUnsavedChanges(prev => ({ ...prev, [key]: stringValue }));
 
-    // Browser notifications require an explicit user gesture to request permission.
-    if (key === 'NOTIFICATION_ENABLED' && value === true && typeof window !== 'undefined') {
-      try {
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().catch(() => {
-            // ignore
-          });
-        }
-      } catch {
-        // ignore
-      }
-    }
-
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       handleAutoSave(key, stringValue);
@@ -693,7 +680,6 @@ export const useSettingsPage = () => {
 
     let unsubscribePrinterConnected: (() => void) | undefined;
     let unsubscribePrinterDisconnected: (() => void) | undefined;
-    let unsubscribeChatNotification: (() => void) | undefined;
     const tauriUnlisteners: Promise<UnlistenFn>[] = [];
     try {
       const ws = getWebSocketClient();
@@ -707,23 +693,6 @@ export const useSettingsPage = () => {
       unsubscribePrinterDisconnected = ws.on('printer_disconnected', () => {
         fetchAllSettings();
         fetchPrinterStatus();
-      });
-      unsubscribeChatNotification = ws.on('chat-notification', (data: any) => {
-        try {
-          if (typeof window === 'undefined') return;
-          if (!('Notification' in window)) return;
-          if (getSettingValueLive('NOTIFICATION_ENABLED') !== 'true') return;
-          if (Notification.permission !== 'granted') return;
-
-          const title = data?.username ? String(data.username) : 'Twitch Overlay';
-          const body = data?.message ? String(data.message) : '';
-          const options: NotificationOptions = {};
-          if (body) options.body = body;
-          if (data?.avatarUrl) options.icon = String(data.avatarUrl);
-          new Notification(title, options);
-        } catch (error) {
-          console.error('[SettingsPage] Failed to show browser notification:', error);
-        }
       });
 
       const isTauriRuntime = typeof window !== 'undefined'
@@ -761,7 +730,6 @@ export const useSettingsPage = () => {
     return () => {
       unsubscribePrinterConnected?.();
       unsubscribePrinterDisconnected?.();
-      unsubscribeChatNotification?.();
       tauriUnlisteners.forEach((promise) => {
         promise.then((unlisten) => unlisten()).catch(() => undefined);
       });
