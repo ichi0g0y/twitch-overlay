@@ -398,29 +398,7 @@ const readWorkspacePreviewExpandState = (): {
     const expandedNodeId = typeof parsed.expandedNodeId === 'string' && parsed.expandedNodeId
       ? parsed.expandedNodeId
       : null;
-    const snapshots: Record<string, PreviewViewportExpandSnapshot> = {};
-    const snapshotEntries = parsed.snapshots && typeof parsed.snapshots === 'object'
-      ? Object.entries(parsed.snapshots)
-      : [];
-    for (const [nodeId, rawSnapshot] of snapshotEntries) {
-      if (!nodeId || !rawSnapshot || typeof rawSnapshot !== 'object') continue;
-      const x = toFiniteNumber((rawSnapshot as { x?: unknown }).x, Number.NaN);
-      const y = toFiniteNumber((rawSnapshot as { y?: unknown }).y, Number.NaN);
-      const width = toFiniteNumber((rawSnapshot as { width?: unknown }).width, Number.NaN);
-      const height = toFiniteNumber((rawSnapshot as { height?: unknown }).height, Number.NaN);
-      const rawZIndex = toFiniteNumber((rawSnapshot as { zIndex?: unknown }).zIndex, Number.NaN);
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-        continue;
-      }
-      snapshots[nodeId] = {
-        position: { x, y },
-        width,
-        height,
-        zIndex: Number.isFinite(rawZIndex) ? rawZIndex : undefined,
-      };
-    }
-
-    return { expandedNodeId, snapshots };
+    return { expandedNodeId, snapshots: {} };
   } catch {
     return { expandedNodeId: null, snapshots: {} };
   }
@@ -428,32 +406,12 @@ const readWorkspacePreviewExpandState = (): {
 
 const writeWorkspacePreviewExpandState = (
   expandedNodeId: string | null,
-  snapshots: Record<string, PreviewViewportExpandSnapshot>,
+  _snapshots: Record<string, PreviewViewportExpandSnapshot>,
 ) => {
   if (typeof window === 'undefined') return;
   const payload: StoredWorkspacePreviewExpandStatePayload = {
     expandedNodeId: expandedNodeId || null,
-    snapshots: {},
   };
-  for (const [nodeId, snapshot] of Object.entries(snapshots)) {
-    if (!nodeId || !snapshot) continue;
-    const x = toFiniteNumber(snapshot.position.x, Number.NaN);
-    const y = toFiniteNumber(snapshot.position.y, Number.NaN);
-    const width = toFiniteNumber(snapshot.width, Number.NaN);
-    const height = toFiniteNumber(snapshot.height, Number.NaN);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-      continue;
-    }
-    payload.snapshots![nodeId] = {
-      x,
-      y,
-      width,
-      height,
-      zIndex: Number.isFinite(toFiniteNumber(snapshot.zIndex, Number.NaN))
-        ? toFiniteNumber(snapshot.zIndex, Number.NaN)
-        : undefined,
-    };
-  }
   window.localStorage.setItem(WORKSPACE_PREVIEW_EXPAND_STATE_STORAGE_KEY, JSON.stringify(payload));
 };
 
@@ -717,31 +675,48 @@ const readWorkspaceFlow = (): { nodes: WorkspaceCardNode[]; viewport: Viewport |
   }
 };
 
-const writeWorkspaceFlow = (nodes: WorkspaceCardNode[], viewport: Viewport | null) => {
+const writeWorkspaceFlow = (
+  nodes: WorkspaceCardNode[],
+  viewport: Viewport | null,
+  expandedNodeId: string | null = null,
+  snapshots: Record<string, PreviewViewportExpandSnapshot> = {},
+) => {
   if (typeof window === 'undefined') return;
   const payload: StoredWorkspaceFlowPayload = {
     nodes: nodes.map((node) => ({
       id: node.id,
       kind: node.data.kind,
-      x: node.position.x,
-      y: node.position.y,
-      width: toFiniteNumber(
-        node.width,
-        toFiniteNumber(
-          node.measured?.width,
-          toFiniteNumber((node.style as Record<string, unknown> | undefined)?.width, resolveWorkspaceCardSize(node.data.kind).width),
+      x: expandedNodeId && node.id === expandedNodeId && snapshots[node.id]
+        ? snapshots[node.id].position.x
+        : node.position.x,
+      y: expandedNodeId && node.id === expandedNodeId && snapshots[node.id]
+        ? snapshots[node.id].position.y
+        : node.position.y,
+      width: expandedNodeId && node.id === expandedNodeId && snapshots[node.id]
+        ? snapshots[node.id].width
+        : toFiniteNumber(
+          node.width,
+          toFiniteNumber(
+            node.measured?.width,
+            toFiniteNumber((node.style as Record<string, unknown> | undefined)?.width, resolveWorkspaceCardSize(node.data.kind).width),
+          ),
         ),
-      ),
-      height: toFiniteNumber(
-        node.height,
-        toFiniteNumber(
-          node.measured?.height,
-          toFiniteNumber((node.style as Record<string, unknown> | undefined)?.height, resolveWorkspaceCardSize(node.data.kind).height),
+      height: expandedNodeId && node.id === expandedNodeId && snapshots[node.id]
+        ? snapshots[node.id].height
+        : toFiniteNumber(
+          node.height,
+          toFiniteNumber(
+            node.measured?.height,
+            toFiniteNumber((node.style as Record<string, unknown> | undefined)?.height, resolveWorkspaceCardSize(node.data.kind).height),
+          ),
         ),
-      ),
-      zIndex: Number.isFinite(toFiniteNumber(node.zIndex, Number.NaN))
-        ? toFiniteNumber(node.zIndex, Number.NaN)
-        : undefined,
+      zIndex: expandedNodeId && node.id === expandedNodeId && snapshots[node.id]
+        ? (Number.isFinite(toFiniteNumber(snapshots[node.id].zIndex, Number.NaN))
+          ? toFiniteNumber(snapshots[node.id].zIndex, Number.NaN)
+          : undefined)
+        : (Number.isFinite(toFiniteNumber(node.zIndex, Number.NaN))
+          ? toFiniteNumber(node.zIndex, Number.NaN)
+          : undefined),
     })),
   };
   if (viewport) {
@@ -2245,6 +2220,7 @@ export const SettingsPage: React.FC = () => {
   const [chatSidebarActiveTabRequest, setChatSidebarActiveTabRequest] = useState<{ tabId: string; requestId: number } | null>(null);
   const [activeChatSidebarTabId, setActiveChatSidebarTabId] = useState<string>(PRIMARY_CHAT_TAB_ID);
   const [panningSettingsOpen, setPanningSettingsOpen] = useState(false);
+  const [isWorkspaceFlowReady, setIsWorkspaceFlowReady] = useState(false);
   const [isWorkspaceControlsVisible, setIsWorkspaceControlsVisible] = useState(false);
   const [isQuickControlsHovered, setIsQuickControlsHovered] = useState(false);
   const [isPanKeyActive, setIsPanKeyActive] = useState(false);
@@ -2258,6 +2234,7 @@ export const SettingsPage: React.FC = () => {
     useRef<Partial<Record<WorkspaceCardKind, { x: number; y: number }>>>(initialWorkspaceCardLastPositions);
   const expandedPreviewNodeIdRef = useRef<string | null>(initialPreviewExpandState.expandedNodeId);
   const previewExpandSnapshotRef = useRef<Record<string, PreviewViewportExpandSnapshot>>(initialPreviewExpandState.snapshots);
+  const restoredInitialExpandedPreviewRef = useRef(false);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -2364,14 +2341,69 @@ export const SettingsPage: React.FC = () => {
     setPreviewInteractionKind(kind);
   }, [scrollModeEnabled]);
 
+  const collapseExpandedPreviewViewport = useCallback(() => {
+    const expandedId = expandedPreviewNodeIdRef.current;
+    if (!expandedId) return;
+    const snapshot = previewExpandSnapshotRef.current[expandedId];
+
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        if (node.id !== expandedId) return node;
+        changed = true;
+        if (snapshot) {
+          const restoredStyle = {
+            ...(node.style ?? {}),
+            width: snapshot.width,
+            height: snapshot.height,
+          } as Record<string, unknown>;
+          delete restoredStyle.zIndex;
+          return {
+            ...node,
+            position: {
+              x: snapshot.position.x,
+              y: snapshot.position.y,
+            },
+            width: snapshot.width,
+            height: snapshot.height,
+            zIndex: Number.isFinite(toFiniteNumber(snapshot.zIndex, Number.NaN))
+              ? toFiniteNumber(snapshot.zIndex, Number.NaN)
+              : undefined,
+            style: restoredStyle,
+          };
+        }
+        const fallback = resolveWorkspaceCardSize(node.data.kind);
+        const restoredStyle = {
+          ...(node.style ?? {}),
+          width: fallback.width,
+          height: fallback.height,
+        } as Record<string, unknown>;
+        delete restoredStyle.zIndex;
+        return {
+          ...node,
+          width: fallback.width,
+          height: fallback.height,
+          zIndex: undefined,
+          style: restoredStyle,
+        };
+      });
+      return changed ? next : current;
+    });
+
+    delete previewExpandSnapshotRef.current[expandedId];
+    expandedPreviewNodeIdRef.current = null;
+    setExpandedPreviewNodeId(null);
+  }, [setNodes]);
+
   const handleWorkspaceMoveEnd = useCallback((_: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     setWorkspaceViewport(normalizeWorkspaceViewport(viewport));
   }, []);
 
   const handleWorkspaceMoveStart = useCallback(() => {
+    collapseExpandedPreviewViewport();
     if (!scrollModeEnabled) return;
     deactivatePreviewInteraction();
-  }, [deactivatePreviewInteraction, scrollModeEnabled]);
+  }, [collapseExpandedPreviewViewport, deactivatePreviewInteraction, scrollModeEnabled]);
 
   const handleWorkspaceMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (quickControlsHideTimerRef.current !== null) {
@@ -2405,6 +2437,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
     workspaceFlowInstanceRef.current = instance;
+    setIsWorkspaceFlowReady(true);
     if (!shouldFitWorkspaceOnInitRef.current) return;
     shouldFitWorkspaceOnInitRef.current = false;
     window.requestAnimationFrame(() => {
@@ -2579,10 +2612,11 @@ export const SettingsPage: React.FC = () => {
   }, [activePreviewNodeId, deactivatePreviewInteraction, scrollModeEnabled]);
 
   useEffect(() => {
-    if (!scrollModeEnabled) return undefined;
     const handleWheelCapture = (event: WheelEvent) => {
       const container = workspaceShellRef.current;
       if (!(event.target instanceof Node) || !container?.contains(event.target)) return;
+      collapseExpandedPreviewViewport();
+      if (!scrollModeEnabled) return;
       if (!event.cancelable) return;
       // Prevent browser-level back/forward swipe while preserving ReactFlow pan handling.
       event.preventDefault();
@@ -2591,7 +2625,7 @@ export const SettingsPage: React.FC = () => {
     return () => {
       window.removeEventListener('wheel', handleWheelCapture, true);
     };
-  }, [scrollModeEnabled]);
+  }, [collapseExpandedPreviewViewport, scrollModeEnabled]);
 
   useEffect(() => {
     setIsPanKeyActive(false);
@@ -2872,7 +2906,8 @@ export const SettingsPage: React.FC = () => {
     }));
   }, [setNodes, workspaceSnapEnabled]);
 
-  const togglePreviewViewportExpand = useCallback((id: string) => {
+  const togglePreviewViewportExpand = useCallback((id: string, options?: { forceExpand?: boolean }) => {
+    const forceExpand = options?.forceExpand ?? false;
     let next = nodes;
     let changed = false;
     const snapshots = previewExpandSnapshotRef.current;
@@ -2909,7 +2944,7 @@ export const SettingsPage: React.FC = () => {
       delete snapshots[restoreId];
     };
 
-    if (currentlyExpandedId === id) {
+    if (currentlyExpandedId === id && !forceExpand) {
       restoreExpandedNode(currentlyExpandedId);
       if (!changed) {
         next = next.map((node) => {
@@ -2938,7 +2973,7 @@ export const SettingsPage: React.FC = () => {
       return;
     }
 
-    if (currentlyExpandedId) {
+    if (currentlyExpandedId && currentlyExpandedId !== id) {
       restoreExpandedNode(currentlyExpandedId);
       if (!changed) {
         next = next.map((node) => {
@@ -3065,6 +3100,31 @@ export const SettingsPage: React.FC = () => {
     expandedPreviewNodeIdRef.current = id;
     setExpandedPreviewNodeId(id);
   }, [nodes, setNodes]);
+
+  useEffect(() => {
+    if (restoredInitialExpandedPreviewRef.current) return;
+    if (!isWorkspaceFlowReady) return;
+
+    const expandedId = expandedPreviewNodeIdRef.current;
+    if (!expandedId) {
+      restoredInitialExpandedPreviewRef.current = true;
+      return;
+    }
+
+    if (!nodes.some((node) => node.id === expandedId)) {
+      restoredInitialExpandedPreviewRef.current = true;
+      expandedPreviewNodeIdRef.current = null;
+      setExpandedPreviewNodeId(null);
+      return;
+    }
+
+    restoredInitialExpandedPreviewRef.current = true;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        togglePreviewViewportExpand(expandedId, { forceExpand: true });
+      });
+    });
+  }, [isWorkspaceFlowReady, nodes, togglePreviewViewportExpand]);
 
   const bringPreviewNodeToFront = useCallback((nodeId: string) => {
     setNodes((current) => reorderPreviewNodesForFront(current, nodeId, expandedPreviewNodeIdRef.current));
@@ -3357,7 +3417,12 @@ export const SettingsPage: React.FC = () => {
   ]);
 
   useEffect(() => {
-    writeWorkspaceFlow(nodes, workspaceViewport);
+    writeWorkspaceFlow(
+      nodes,
+      workspaceViewport,
+      expandedPreviewNodeIdRef.current,
+      previewExpandSnapshotRef.current,
+    );
   }, [nodes, workspaceViewport]);
 
   const handleWorkspaceNodeClick = useCallback((_event: React.MouseEvent, node: WorkspaceCardNode) => {
@@ -3453,7 +3518,10 @@ export const SettingsPage: React.FC = () => {
         >
           <button
             type="button"
-            onClick={() => { void workspaceFlowInstanceRef.current?.zoomIn({ duration: 120 }); }}
+            onClick={() => {
+              collapseExpandedPreviewViewport();
+              void workspaceFlowInstanceRef.current?.zoomIn({ duration: 120 });
+            }}
             className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-sm text-gray-200 hover:bg-gray-800"
             title="ズームイン"
             aria-label="ズームイン"
@@ -3462,7 +3530,10 @@ export const SettingsPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => { void workspaceFlowInstanceRef.current?.zoomOut({ duration: 120 }); }}
+            onClick={() => {
+              collapseExpandedPreviewViewport();
+              void workspaceFlowInstanceRef.current?.zoomOut({ duration: 120 });
+            }}
             className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-sm text-gray-200 hover:bg-gray-800"
             title="ズームアウト"
             aria-label="ズームアウト"
@@ -3471,7 +3542,10 @@ export const SettingsPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => { void workspaceFlowInstanceRef.current?.fitView({ duration: 150 }); }}
+            onClick={() => {
+              collapseExpandedPreviewViewport();
+              void workspaceFlowInstanceRef.current?.fitView({ duration: 150 });
+            }}
             className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-gray-200 hover:bg-gray-800"
             title="全体表示"
             aria-label="全体表示"
