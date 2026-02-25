@@ -7,6 +7,7 @@
 
 pub mod app;
 pub mod background;
+mod chat_filter;
 mod commands;
 pub mod config;
 pub mod events;

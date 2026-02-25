@@ -1,11 +1,10 @@
 //! EventSub domain handlers (11 Twitch event types).
 
-use std::collections::HashSet;
-
 use serde_json::{Value, json};
 use twitch_client::eventsub;
 
 use crate::app::SharedState;
+use crate::chat_filter::{extract_badge_keys, is_bot_chat_message};
 use crate::events;
 use crate::eventsub_support::{
     RewardEnqueueResult, enqueue_notification, enqueue_reward_redemption, non_empty, send_ws,
@@ -13,9 +12,6 @@ use crate::eventsub_support::{
 };
 use crate::notification::types::NotificationType;
 use crate::services::{channel_points_assets, channel_points_emote_cache};
-
-const KNOWN_BOT_LOGINS: &[&str] = &["mjnco"];
-const KNOWN_BOT_USER_IDS: &[&str] = &["774281749"];
 
 pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value) {
     match event_type {
@@ -129,80 +125,6 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         NotificationType::Chat,
     )
     .await;
-}
-
-fn extract_badge_keys(payload: &Value) -> Vec<String> {
-    let Some(items) = payload.get("badges").and_then(|badges| badges.as_array()) else {
-        return Vec::new();
-    };
-
-    let mut keys = Vec::new();
-    let mut dedupe = HashSet::new();
-    for item in items {
-        let Some(set_id_raw) = item.get("set_id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let set_id = set_id_raw.trim();
-        if set_id.is_empty() {
-            continue;
-        }
-        let badge_id = item
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .unwrap_or_default();
-        let key = if badge_id.is_empty() {
-            set_id.to_string()
-        } else {
-            format!("{set_id}/{badge_id}")
-        };
-        if dedupe.insert(key.clone()) {
-            keys.push(key);
-        }
-    }
-    keys
-}
-
-fn is_bot_chat_message(
-    payload: &Value,
-    user_id: &str,
-    username: &str,
-    badge_keys: &[String],
-) -> bool {
-    if bool_field(payload, &["chatter_is_bot"]) || bool_field(payload, &["is_bot"]) {
-        return true;
-    }
-
-    let normalized_user_id = user_id.trim();
-    if KNOWN_BOT_USER_IDS
-        .iter()
-        .any(|known| *known == normalized_user_id)
-    {
-        return true;
-    }
-
-    let normalized_username = username.trim().to_lowercase();
-    if KNOWN_BOT_LOGINS
-        .iter()
-        .any(|known| known.eq_ignore_ascii_case(&normalized_username))
-    {
-        return true;
-    }
-
-    badge_keys
-        .iter()
-        .any(|badge| badge == "bot" || badge.starts_with("bot/"))
-}
-
-fn bool_field(payload: &Value, path: &[&str]) -> bool {
-    let mut cur = payload;
-    for key in path {
-        cur = match cur.get(*key) {
-            Some(v) => v,
-            None => return false,
-        };
-    }
-    cur.as_bool().unwrap_or(false)
 }
 
 async fn resolve_chat_avatar_url(state: &SharedState, user_id: &str) -> String {
@@ -383,43 +305,4 @@ async fn handle_subscription_message(state: &SharedState, payload: &Value) {
     };
     send_ws(state, "resub", payload.clone());
     enqueue_notification(state, username, message, vec![], NotificationType::Resub).await;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{extract_badge_keys, is_bot_chat_message};
-
-    #[test]
-    fn bot_login_is_filtered() {
-        let payload = serde_json::json!({});
-        let badge_keys = Vec::new();
-        assert!(is_bot_chat_message(&payload, "", "mjnco", &badge_keys));
-    }
-
-    #[test]
-    fn bot_badge_is_filtered() {
-        let payload = serde_json::json!({
-            "badges": [
-                { "set_id": "bot", "id": "1" }
-            ]
-        });
-        let badge_keys = extract_badge_keys(&payload);
-        assert!(is_bot_chat_message(&payload, "123", "someone", &badge_keys));
-    }
-
-    #[test]
-    fn non_bot_user_is_not_filtered() {
-        let payload = serde_json::json!({
-            "badges": [
-                { "set_id": "subscriber", "id": "12" }
-            ]
-        });
-        let badge_keys = extract_badge_keys(&payload);
-        assert!(!is_bot_chat_message(
-            &payload,
-            "999",
-            "regular_user",
-            &badge_keys
-        ));
-    }
 }

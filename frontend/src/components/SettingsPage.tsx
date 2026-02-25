@@ -7,6 +7,7 @@ import {
   NodeResizer,
   ReactFlow,
   useNodesState,
+  type NodeChange,
   type Node as FlowNode,
   type NodeProps,
   type NodeTypes,
@@ -63,7 +64,8 @@ const PREVIEW_NODE_HEADER_HEIGHT = 36;
 const PREVIEW_NODE_MIN_Z_INDEX = 10;
 const PREVIEW_NODE_MAX_Z_INDEX = 59;
 const PREVIEW_NODE_EXPANDED_Z_INDEX = 60;
-const PREVIEW_PORTAL_Z_INDEX = 20;
+const PREVIEW_PORTAL_BASE_Z_INDEX = 200;
+const PREVIEW_PORTAL_EXPANDED_Z_INDEX = 1500;
 const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
 const WORKSPACE_CARD_SPAWN_SEARCH_STEP = 48;
 const WORKSPACE_CARD_SPAWN_SEARCH_RING_LIMIT = 16;
@@ -575,7 +577,15 @@ const reorderPreviewNodesForFront = (
 ) => {
   const target = nodes.find((node) => node.id === frontNodeId);
   if (!target || !isPreviewCardKind(target.data.kind)) return nodes;
-  if (expandedPreviewNodeId === frontNodeId) return nodes;
+  if (expandedPreviewNodeId === frontNodeId) {
+    const expandedNode = nodes.find((node) => node.id === expandedPreviewNodeId);
+    if (!expandedNode || expandedNode.zIndex === PREVIEW_NODE_EXPANDED_Z_INDEX) return nodes;
+    return nodes.map((node) => (
+      node.id === expandedPreviewNodeId
+        ? { ...node, zIndex: PREVIEW_NODE_EXPANDED_Z_INDEX }
+        : node
+    ));
+  }
 
   const orderedPreviewNodes = nodes
     .filter((node) => isPreviewCardKind(node.data.kind) && node.id !== expandedPreviewNodeId)
@@ -598,6 +608,11 @@ const reorderPreviewNodesForFront = (
 
   let changed = false;
   const nextNodes = nodes.map((node) => {
+    if (expandedPreviewNodeId && node.id === expandedPreviewNodeId) {
+      if (node.zIndex === PREVIEW_NODE_EXPANDED_Z_INDEX) return node;
+      changed = true;
+      return { ...node, zIndex: PREVIEW_NODE_EXPANDED_Z_INDEX };
+    }
     const nextZIndex = nextZIndexById.get(node.id);
     if (nextZIndex == null || node.zIndex === nextZIndex) return node;
     changed = true;
@@ -847,7 +862,7 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({
   );
 };
 
-const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected, dragging }) => {
+const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, data, selected, dragging, zIndex }) => {
   const renderContext = useContext(WORKSPACE_RENDER_CONTEXT);
   if (!renderContext) return null;
   const [isHovered, setIsHovered] = useState(false);
@@ -862,6 +877,9 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const isNodeInteractionLocked = isResizing || Boolean(dragging);
   const nodeInteractionClassName = isResizing ? 'pointer-events-none select-none' : '';
   const isPreviewViewportExpanded = renderContext.isPreviewViewportExpanded(id);
+  const previewPortalZIndex = isPreviewViewportExpanded
+    ? PREVIEW_PORTAL_EXPANDED_Z_INDEX
+    : PREVIEW_PORTAL_BASE_Z_INDEX + toFiniteNumber(zIndex, PREVIEW_NODE_MIN_Z_INDEX);
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
     ? 'border-b border-sky-400/60 bg-sky-500/20'
     : 'border-b border-gray-800/80 bg-gray-900/85';
@@ -1052,7 +1070,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
             top: previewPortalRect.top,
             width: previewPortalRect.width,
             height: previewPortalRect.height,
-            zIndex: PREVIEW_PORTAL_Z_INDEX,
+            zIndex: previewPortalZIndex,
           }}
         >
           {previewContentNode}
@@ -2186,7 +2204,7 @@ export const SettingsPage: React.FC = () => {
       createWorkspaceNode('general-basic', { x: 860, y: 120 }),
     ];
   }, [initialWorkspaceFlow]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkspaceCardNode>(initialWorkspace);
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<WorkspaceCardNode>(initialWorkspace);
   const [workspaceViewport, setWorkspaceViewport] = useState<Viewport | null>(() => initialWorkspaceFlow?.viewport ?? null);
   const [previewReloadNonceByKind, setPreviewReloadNonceByKind] = useState<Record<string, number>>({});
   const [previewWarningByKind, setPreviewWarningByKind] = useState<Partial<Record<WorkspaceCardKind, string>>>({});
@@ -2203,6 +2221,35 @@ export const SettingsPage: React.FC = () => {
     useRef<Partial<Record<WorkspaceCardKind, { x: number; y: number }>>>(initialWorkspaceCardLastPositions);
   const expandedPreviewNodeIdRef = useRef<string | null>(initialPreviewExpandState.expandedNodeId);
   const previewExpandSnapshotRef = useRef<Record<string, PreviewViewportExpandSnapshot>>(initialPreviewExpandState.snapshots);
+
+  const onNodesChange = useCallback((changes: NodeChange<WorkspaceCardNode>[]) => {
+    onNodesChangeRaw(changes);
+    const expandedNodeId = expandedPreviewNodeIdRef.current;
+    if (!expandedNodeId) return;
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        if (node.id !== expandedNodeId) return node;
+        const styleZIndex = toFiniteNumber(
+          (node.style as Record<string, unknown> | undefined)?.zIndex,
+          Number.NaN,
+        );
+        const hasExpandedNodeZIndex = node.zIndex === PREVIEW_NODE_EXPANDED_Z_INDEX;
+        const hasExpandedStyleZIndex = Number.isFinite(styleZIndex) && styleZIndex === PREVIEW_NODE_EXPANDED_Z_INDEX;
+        if (hasExpandedNodeZIndex && hasExpandedStyleZIndex) return node;
+        changed = true;
+        return {
+          ...node,
+          zIndex: PREVIEW_NODE_EXPANDED_Z_INDEX,
+          style: {
+            ...(node.style ?? {}),
+            zIndex: PREVIEW_NODE_EXPANDED_Z_INDEX,
+          },
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [onNodesChangeRaw, setNodes]);
 
   const {
     featureStatus,
@@ -3210,6 +3257,7 @@ export const SettingsPage: React.FC = () => {
             defaultViewport={workspaceViewport ?? DEFAULT_WORKSPACE_VIEWPORT}
             className="settings-workspace-flow bg-slate-950"
             colorMode="dark"
+            elevateNodesOnSelect={false}
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#334155" gap={WORKSPACE_SNAP_GRID[0]} size={1} />
