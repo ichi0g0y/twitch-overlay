@@ -2,8 +2,6 @@ import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive,
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
-  ControlButton,
-  Controls,
   NodeResizer,
   ReactFlow,
   useNodesState,
@@ -67,6 +65,7 @@ const PREVIEW_NODE_EXPANDED_Z_INDEX = 60;
 const PREVIEW_PORTAL_BASE_Z_INDEX = 200;
 const PREVIEW_PORTAL_EXPANDED_Z_INDEX = 1500;
 const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
+const QUICK_CONTROLS_HIDE_DELAY_MS = 220;
 const WORKSPACE_CARD_SPAWN_SEARCH_STEP = 48;
 const WORKSPACE_CARD_SPAWN_SEARCH_RING_LIMIT = 16;
 const WORKSPACE_CARD_SPAWN_MARGIN = 24;
@@ -2244,10 +2243,12 @@ export const SettingsPage: React.FC = () => {
   const [activeChatSidebarTabId, setActiveChatSidebarTabId] = useState<string>(PRIMARY_CHAT_TAB_ID);
   const [panningSettingsOpen, setPanningSettingsOpen] = useState(false);
   const [isWorkspaceControlsVisible, setIsWorkspaceControlsVisible] = useState(false);
+  const [isQuickControlsHovered, setIsQuickControlsHovered] = useState(false);
   const [isPanKeyActive, setIsPanKeyActive] = useState(false);
   const [isZoomActivationKeyActive, setIsZoomActivationKeyActive] = useState(false);
   const [previewInteractionKind, setPreviewInteractionKind] = useState<WorkspaceCardKind | null>(null);
   const workspaceShellRef = useRef<HTMLDivElement | null>(null);
+  const quickControlsHideTimerRef = useRef<number | null>(null);
   const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
   const workspaceFlowInstanceRef = useRef<ReactFlowInstance<WorkspaceCardNode> | null>(null);
   const lastWorkspaceCardPositionRef =
@@ -2361,6 +2362,10 @@ export const SettingsPage: React.FC = () => {
   }, [deactivatePreviewInteraction, scrollModeEnabled]);
 
   const handleWorkspaceMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (quickControlsHideTimerRef.current !== null) {
+      window.clearTimeout(quickControlsHideTimerRef.current);
+      quickControlsHideTimerRef.current = null;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     const fromLeft = event.clientX - rect.left;
     const fromBottom = rect.bottom - event.clientY;
@@ -2369,7 +2374,21 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   const handleWorkspaceMouseLeave = useCallback(() => {
-    setIsWorkspaceControlsVisible(false);
+    if (quickControlsHideTimerRef.current !== null) {
+      window.clearTimeout(quickControlsHideTimerRef.current);
+    }
+    quickControlsHideTimerRef.current = window.setTimeout(() => {
+      setIsWorkspaceControlsVisible(false);
+      quickControlsHideTimerRef.current = null;
+    }, QUICK_CONTROLS_HIDE_DELAY_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (quickControlsHideTimerRef.current !== null) {
+        window.clearTimeout(quickControlsHideTimerRef.current);
+      }
+    };
   }, []);
 
   const handleWorkspaceFlowInit = useCallback((instance: ReactFlowInstance<WorkspaceCardNode>) => {
@@ -3343,6 +3362,8 @@ export const SettingsPage: React.FC = () => {
     }));
   }, [activatePreviewInteraction, bringPreviewNodeToFront]);
 
+  const shouldShowQuickControls = isWorkspaceControlsVisible || panningSettingsOpen || isQuickControlsHovered;
+
   return (
     <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div className="hidden" aria-hidden="true">
@@ -3389,47 +3410,112 @@ export const SettingsPage: React.FC = () => {
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#334155" gap={WORKSPACE_SNAP_GRID[0]} size={1} />
-            <Controls className="!border !border-gray-700 !bg-gray-900/90 !text-gray-100">
-              <ControlButton
-                onClick={() => setWorkspaceSnapEnabled((current) => !current)}
-                title={workspaceSnapEnabled ? 'スナップ: ON' : 'スナップ: OFF'}
-                aria-label={workspaceSnapEnabled ? 'スナップをオフにする' : 'スナップをオンにする'}
-                className={`react-flow__controls-snap ${workspaceSnapEnabled ? '!text-emerald-300' : '!text-gray-400'}`}
-              >
-                <Magnet className="h-4 w-4" />
-              </ControlButton>
-              <ControlButton
-                onClick={() => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', !scrollModeEnabled)}
-                title={scrollModeEnabled ? 'スクロールモード: ON' : 'スクロールモード: OFF'}
-                aria-label={scrollModeEnabled ? 'スクロールモードをオフにする' : 'スクロールモードをオンにする'}
-                className={`react-flow__controls-scroll ${scrollModeEnabled ? '!text-sky-300' : '!text-gray-400'}`}
-              >
-                <Mouse className="h-4 w-4" />
-              </ControlButton>
-              <ControlButton
-                onClick={() => setPanningSettingsOpen((current) => !current)}
-                title="パン設定"
-                aria-label="パン設定を開く"
-                className={`react-flow__controls-settings ${panningSettingsOpen ? '!text-blue-300' : '!text-gray-400'}`}
-              >
-                <Settings2 className="h-4 w-4" />
-              </ControlButton>
-            </Controls>
-            {panningSettingsOpen && (
-              <WorkspacePanningSettings
-                panActivationKeyCode={panActivationKeyCode}
-                onPanActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_PAN_ACTIVATION_KEY', value)}
-                zoomActivationKeyCode={zoomActivationKeyCode}
-                onZoomActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_ZOOM_MODIFIER_KEY', value)}
-                scrollModeEnabled={scrollModeEnabled}
-                onScrollModeEnabledChange={(enabled) => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', enabled)}
-                previewPortalEnabled={previewPortalEnabled}
-                onPreviewPortalEnabledChange={(enabled) => handleSettingChange('WORKSPACE_PREVIEW_PORTAL_ENABLED', enabled)}
-                onClose={() => setPanningSettingsOpen(false)}
-              />
-            )}
           </ReactFlow>
         </div>
+        <div
+          className={`fixed bottom-3 z-[1700] flex flex-col overflow-hidden rounded-md border border-gray-700 bg-gray-900/90 shadow-lg transition ${
+            shouldShowQuickControls
+              ? 'translate-y-0 opacity-100 pointer-events-auto'
+              : 'translate-y-2 opacity-0 pointer-events-none'
+          }`}
+          style={{ left: `${topBarOffsets.left + 12}px` }}
+          onMouseEnter={() => {
+            if (quickControlsHideTimerRef.current !== null) {
+              window.clearTimeout(quickControlsHideTimerRef.current);
+              quickControlsHideTimerRef.current = null;
+            }
+            setIsQuickControlsHovered(true);
+            setIsWorkspaceControlsVisible(true);
+          }}
+          onMouseLeave={() => {
+            setIsQuickControlsHovered(false);
+            if (panningSettingsOpen) return;
+            if (quickControlsHideTimerRef.current !== null) {
+              window.clearTimeout(quickControlsHideTimerRef.current);
+            }
+            quickControlsHideTimerRef.current = window.setTimeout(() => {
+              setIsWorkspaceControlsVisible(false);
+              quickControlsHideTimerRef.current = null;
+            }, QUICK_CONTROLS_HIDE_DELAY_MS);
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => { void workspaceFlowInstanceRef.current?.zoomIn({ duration: 120 }); }}
+            className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-sm text-gray-200 hover:bg-gray-800"
+            title="ズームイン"
+            aria-label="ズームイン"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => { void workspaceFlowInstanceRef.current?.zoomOut({ duration: 120 }); }}
+            className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-sm text-gray-200 hover:bg-gray-800"
+            title="ズームアウト"
+            aria-label="ズームアウト"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={() => { void workspaceFlowInstanceRef.current?.fitView({ duration: 150 }); }}
+            className="inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 text-gray-200 hover:bg-gray-800"
+            title="全体表示"
+            aria-label="全体表示"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceSnapEnabled((current) => !current)}
+            className={`inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 hover:bg-gray-800 ${
+              workspaceSnapEnabled ? 'text-emerald-300' : 'text-gray-400'
+            }`}
+            title={workspaceSnapEnabled ? 'スナップ: ON' : 'スナップ: OFF'}
+            aria-label={workspaceSnapEnabled ? 'スナップをオフにする' : 'スナップをオンにする'}
+          >
+            <Magnet className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', !scrollModeEnabled)}
+            className={`inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 hover:bg-gray-800 ${
+              scrollModeEnabled ? 'text-sky-300' : 'text-gray-400'
+            }`}
+            title={scrollModeEnabled ? 'スクロールモード: ON' : 'スクロールモード: OFF'}
+            aria-label={scrollModeEnabled ? 'スクロールモードをオフにする' : 'スクロールモードをオンにする'}
+          >
+            <Mouse className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanningSettingsOpen((current) => !current)}
+            className={`inline-flex h-8 w-8 items-center justify-center hover:bg-gray-800 ${
+              panningSettingsOpen ? 'text-blue-300' : 'text-gray-400'
+            }`}
+            title="パン設定"
+            aria-label="パン設定を開く"
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
+        </div>
+        {panningSettingsOpen && (
+          <WorkspacePanningSettings
+            panActivationKeyCode={panActivationKeyCode}
+            onPanActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_PAN_ACTIVATION_KEY', value)}
+            zoomActivationKeyCode={zoomActivationKeyCode}
+            onZoomActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_ZOOM_MODIFIER_KEY', value)}
+            snapModeEnabled={workspaceSnapEnabled}
+            onSnapModeEnabledChange={setWorkspaceSnapEnabled}
+            scrollModeEnabled={scrollModeEnabled}
+            onScrollModeEnabledChange={(enabled) => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', enabled)}
+            previewPortalEnabled={previewPortalEnabled}
+            onPreviewPortalEnabledChange={(enabled) => handleSettingChange('WORKSPACE_PREVIEW_PORTAL_ENABLED', enabled)}
+            leftOffset={topBarOffsets.left + 52}
+            onClose={() => setPanningSettingsOpen(false)}
+          />
+        )}
 
         <FollowedChannelsRail
           side={followedRailSide}

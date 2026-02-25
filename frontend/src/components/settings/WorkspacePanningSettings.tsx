@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Panel } from '@xyflow/react';
 
 interface WorkspacePanningSettingsProps {
   panActivationKeyCode: string;
   onPanActivationKeyCodeChange: (value: string) => void;
   zoomActivationKeyCode: string;
   onZoomActivationKeyCodeChange: (value: string) => void;
+  snapModeEnabled: boolean;
+  onSnapModeEnabledChange: (enabled: boolean) => void;
   scrollModeEnabled: boolean;
   onScrollModeEnabledChange: (enabled: boolean) => void;
   previewPortalEnabled: boolean;
   onPreviewPortalEnabledChange: (enabled: boolean) => void;
+  leftOffset?: number;
   onClose: () => void;
 }
 
@@ -45,10 +47,13 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
   onPanActivationKeyCodeChange,
   zoomActivationKeyCode,
   onZoomActivationKeyCodeChange,
+  snapModeEnabled,
+  onSnapModeEnabledChange,
   scrollModeEnabled,
   onScrollModeEnabledChange,
   previewPortalEnabled,
   onPreviewPortalEnabledChange,
+  leftOffset = 12,
   onClose,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -127,7 +132,10 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
   }, [captureTarget, onClose, onPanActivationKeyCodeChange, onZoomActivationKeyCodeChange]);
 
   return (
-    <Panel position="bottom-left" className="pointer-events-none !m-3">
+    <div
+      className="pointer-events-none fixed bottom-3 z-[1710]"
+      style={{ left: `${leftOffset}px` }}
+    >
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -181,6 +189,26 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
 
         <div className="mt-3 border-t border-gray-700 pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-gray-400">スナップモード</p>
+            <button
+              type="button"
+              onClick={() => onSnapModeEnabledChange(!snapModeEnabled)}
+              className={`inline-flex h-7 items-center rounded border px-2 text-[11px] ${
+                snapModeEnabled
+                  ? 'border-emerald-500 bg-emerald-500/20 text-emerald-100'
+                  : 'border-gray-700 bg-gray-950/60 text-gray-200 hover:bg-gray-800'
+              }`}
+              aria-label="スナップモードを切り替える"
+              title="スナップモードを切り替える"
+            >
+              {snapModeEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500">ON時はカードの移動/リサイズがグリッドに吸着します。OFF時は自由配置になります。</p>
+        </div>
+
+        <div className="mt-3 border-t border-gray-700 pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] text-gray-400">スクロールモード</p>
             <button
               type="button"
@@ -221,6 +249,6 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
           </p>
         </div>
       </div>
-    </Panel>
+    </div>
   );
 };
