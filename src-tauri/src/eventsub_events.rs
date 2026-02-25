@@ -14,6 +14,9 @@ use crate::eventsub_support::{
 use crate::notification::types::NotificationType;
 use crate::services::{channel_points_assets, channel_points_emote_cache};
 
+const KNOWN_BOT_LOGINS: &[&str] = &["mjnco"];
+const KNOWN_BOT_USER_IDS: &[&str] = &["774281749"];
+
 pub async fn handle_event(state: &SharedState, event_type: &str, payload: &Value) {
     match event_type {
         eventsub::EVENT_CHAT_MESSAGE => handle_chat_message(state, payload).await,
@@ -108,6 +111,16 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     });
     send_ws(state, "chat-message", ws_payload);
 
+    if is_bot_chat_message(payload, &user_id, &username, &badge_keys) {
+        tracing::debug!(
+            message_id,
+            user_id,
+            username,
+            "Skip chat notification for bot message"
+        );
+        return;
+    }
+
     enqueue_notification(
         state,
         non_empty(display_name, username),
@@ -148,6 +161,48 @@ fn extract_badge_keys(payload: &Value) -> Vec<String> {
         }
     }
     keys
+}
+
+fn is_bot_chat_message(
+    payload: &Value,
+    user_id: &str,
+    username: &str,
+    badge_keys: &[String],
+) -> bool {
+    if bool_field(payload, &["chatter_is_bot"]) || bool_field(payload, &["is_bot"]) {
+        return true;
+    }
+
+    let normalized_user_id = user_id.trim();
+    if KNOWN_BOT_USER_IDS
+        .iter()
+        .any(|known| *known == normalized_user_id)
+    {
+        return true;
+    }
+
+    let normalized_username = username.trim().to_lowercase();
+    if KNOWN_BOT_LOGINS
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(&normalized_username))
+    {
+        return true;
+    }
+
+    badge_keys
+        .iter()
+        .any(|badge| badge == "bot" || badge.starts_with("bot/"))
+}
+
+fn bool_field(payload: &Value, path: &[&str]) -> bool {
+    let mut cur = payload;
+    for key in path {
+        cur = match cur.get(*key) {
+            Some(v) => v,
+            None => return false,
+        };
+    }
+    cur.as_bool().unwrap_or(false)
 }
 
 async fn resolve_chat_avatar_url(state: &SharedState, user_id: &str) -> String {
@@ -328,4 +383,43 @@ async fn handle_subscription_message(state: &SharedState, payload: &Value) {
     };
     send_ws(state, "resub", payload.clone());
     enqueue_notification(state, username, message, vec![], NotificationType::Resub).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_badge_keys, is_bot_chat_message};
+
+    #[test]
+    fn bot_login_is_filtered() {
+        let payload = serde_json::json!({});
+        let badge_keys = Vec::new();
+        assert!(is_bot_chat_message(&payload, "", "mjnco", &badge_keys));
+    }
+
+    #[test]
+    fn bot_badge_is_filtered() {
+        let payload = serde_json::json!({
+            "badges": [
+                { "set_id": "bot", "id": "1" }
+            ]
+        });
+        let badge_keys = extract_badge_keys(&payload);
+        assert!(is_bot_chat_message(&payload, "123", "someone", &badge_keys));
+    }
+
+    #[test]
+    fn non_bot_user_is_not_filtered() {
+        let payload = serde_json::json!({
+            "badges": [
+                { "set_id": "subscriber", "id": "12" }
+            ]
+        });
+        let badge_keys = extract_badge_keys(&payload);
+        assert!(!is_bot_chat_message(
+            &payload,
+            "999",
+            "regular_user",
+            &badge_keys
+        ));
+    }
 }
