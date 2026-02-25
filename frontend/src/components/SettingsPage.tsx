@@ -897,6 +897,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
     ? PREVIEW_PORTAL_EXPANDED_Z_INDEX
     : PREVIEW_PORTAL_BASE_Z_INDEX + toFiniteNumber(zIndex, PREVIEW_NODE_MIN_Z_INDEX);
   const previewInteractionEnabled = previewHeader ? renderContext.isPreviewInteractionEnabled(data.kind) : true;
+  const isPreviewPointerInputBlocked = isNodeInteractionLocked || !previewInteractionEnabled;
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
     ? 'border-b border-sky-400/60 bg-sky-500/20'
     : 'border-b border-gray-800/80 bg-gray-900/85';
@@ -1085,7 +1086,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
           </div>
           <div
             ref={previewContentHostRef}
-            className={`nodrag nowheel h-[calc(100%-2.25rem)] overflow-auto ${isNodeInteractionLocked ? 'pointer-events-none select-none' : ''}`}
+            className={`nodrag nowheel h-[calc(100%-2.25rem)] overflow-auto ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
           >
             {shouldPortalPreviewContent ? <div className="h-full w-full" /> : previewContentNode}
           </div>
@@ -1093,7 +1094,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
       )}
       {shouldPortalPreviewContent && previewPortalRect && typeof document !== 'undefined' && createPortal(
         <div
-          className={`nodrag nowheel overflow-hidden ${isNodeInteractionLocked ? 'pointer-events-none select-none' : ''}`}
+          className={`nodrag nowheel overflow-hidden ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
           style={{
             position: 'fixed',
             left: previewPortalRect.left,
@@ -1470,7 +1471,7 @@ const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
 
   return (
     <div
-      className={`hidden xl:flex fixed inset-y-0 z-40 bg-gray-900 ${side === 'left' ? 'left-0 flex-row' : 'right-0 flex-row-reverse'}`}
+      className={`hidden xl:flex fixed inset-y-0 z-[1700] bg-gray-900 ${side === 'left' ? 'left-0 flex-row' : 'right-0 flex-row-reverse'}`}
       style={{ width: `${FOLLOWED_RAIL_WIDTH_PX + chatWidth}px` }}
     >
       <div className={`w-12 shrink-0 border-gray-700 ${side === 'left' ? 'border-r' : 'border-l'}`}>
@@ -1882,7 +1883,7 @@ const StatusTopBar: React.FC<StatusTopBarProps> = ({
 
   return (
     <div
-      className="fixed left-0 right-0 top-0 z-30 h-12 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm xl:left-[var(--settings-topbar-left)] xl:right-[var(--settings-topbar-right)]"
+      className="fixed left-0 right-0 top-0 z-[1700] h-12 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm xl:left-[var(--settings-topbar-left)] xl:right-[var(--settings-topbar-right)]"
       style={{
         '--settings-topbar-left': `${leftOffset}px`,
         '--settings-topbar-right': `${rightOffset}px`,
