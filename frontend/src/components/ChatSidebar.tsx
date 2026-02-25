@@ -2430,6 +2430,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       }
       if (isPrimaryTab) {
         registerPrimaryEchoCandidate(optimisticMessage);
+        markOwnOutgoingEcho(targetChannel, ircText);
         setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
       } else {
         markOwnOutgoingEcho(activeTab, ircText);
