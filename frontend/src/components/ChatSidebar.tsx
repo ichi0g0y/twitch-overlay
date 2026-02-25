@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, Users, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, Users, X } from 'lucide-react';
 
 import { buildApiUrl } from '../utils/api';
 import {
@@ -95,6 +95,24 @@ type ResolvedIrcCredentials = {
 
 type MessageOrderReversedByTab = Record<string, boolean>;
 
+type DateSeparatorInfo = {
+  key: string;
+  label: string;
+};
+
+type ChatDisplayItem =
+  | {
+    type: 'date-separator';
+    key: string;
+    label: string;
+  }
+  | {
+    type: 'message';
+    key: string;
+    message: ChatMessage;
+    index: number;
+  };
+
 type UserInfoPopupState = {
   message: ChatMessage;
   tabId: string;
@@ -176,6 +194,32 @@ const formatTime = (timestamp?: string) => {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+};
+
+const formatDateSeparatorLabel = (date: Date) => (
+  date.toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  })
+);
+
+const resolveDateSeparatorInfo = (timestamp?: string): DateSeparatorInfo => {
+  if (!timestamp) {
+    return { key: 'unknown', label: '日時不明' };
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return { key: 'unknown', label: '日時不明' };
+  }
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return {
+    key: `${yyyy}-${mm}-${dd}`,
+    label: formatDateSeparatorLabel(date),
+  };
 };
 
 const emoteUrlFromId = (id: string) => `${EMOTE_CDN_BASE}/${id}/default/light/2.0`;
@@ -2125,6 +2169,31 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     () => (messageOrderReversed ? [...activeMessages].reverse() : activeMessages),
     [activeMessages, messageOrderReversed],
   );
+  const displayedItems = useMemo<ChatDisplayItem[]>(() => {
+    const items: ChatDisplayItem[] = [];
+    let previousDateKey = '';
+    let messageIndex = 0;
+
+    for (const message of displayedMessages) {
+      const dateInfo = resolveDateSeparatorInfo(message.timestamp);
+      if (dateInfo.key !== previousDateKey) {
+        items.push({
+          type: 'date-separator',
+          key: `date-${dateInfo.key}-${items.length}`,
+          label: dateInfo.label,
+        });
+        previousDateKey = dateInfo.key;
+      }
+      items.push({
+        type: 'message',
+        key: message.id,
+        message,
+        index: messageIndex,
+      });
+      messageIndex += 1;
+    }
+    return items;
+  }, [displayedMessages]);
 
   useEffect(() => {
     if (isCollapsed) return;
@@ -2746,19 +2815,31 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 {activeMessages.length === 0 ? (
                   emptyState
                 ) : (
-                  displayedMessages.map((msg, index) => (
-                    <ChatSidebarItem
-                      key={msg.id}
-                      message={msg}
-                      index={index}
-                      fontSize={fontSize}
-                      metaFontSize={metaFontSize}
-                      translationFontSize={translationFontSize}
-                      timestampLabel={formatTime(msg.timestamp)}
-                      onUsernameClick={handleOpenUserInfo}
-                      onRawDataClick={handleOpenRawData}
-                      resolveBadgeVisual={resolveBadgeVisual}
-                    />
+                  displayedItems.map((item) => (
+                    item.type === 'date-separator' ? (
+                      <div
+                        key={item.key}
+                        className="sticky top-0 z-10 px-4 py-1.5 text-[11px] font-semibold tracking-wide text-gray-600 dark:text-gray-300 bg-gray-100/95 dark:bg-gray-800/95 border-y border-gray-200/80 dark:border-gray-700/80 backdrop-blur-[1px]"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </span>
+                      </div>
+                    ) : (
+                      <ChatSidebarItem
+                        key={item.key}
+                        message={item.message}
+                        index={item.index}
+                        fontSize={fontSize}
+                        metaFontSize={metaFontSize}
+                        translationFontSize={translationFontSize}
+                        timestampLabel={formatTime(item.message.timestamp)}
+                        onUsernameClick={handleOpenUserInfo}
+                        onRawDataClick={handleOpenRawData}
+                        resolveBadgeVisual={resolveBadgeVisual}
+                      />
+                    )
                   ))
                 )}
               </div>
