@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -37,6 +38,8 @@ struct SharedStateInner {
     server_shutdown_token: RwLock<CancellationToken>,
     /// EventSub shutdown sender for graceful disconnect.
     eventsub_shutdown_tx: RwLock<Option<mpsc::Sender<()>>>,
+    /// 前回ポーリング時のライブチャンネル: broadcaster_id → started_at
+    previous_live_map: RwLock<HashMap<String, Option<String>>>,
 }
 
 impl SharedState {
@@ -56,6 +59,7 @@ impl SharedState {
                 shutdown_token: CancellationToken::new(),
                 server_shutdown_token: RwLock::new(CancellationToken::new()),
                 eventsub_shutdown_tx: RwLock::new(None),
+                previous_live_map: RwLock::new(HashMap::new()),
             }),
         }
     }
@@ -194,5 +198,14 @@ impl SharedState {
     pub async fn take_eventsub_shutdown(&self) -> Option<mpsc::Sender<()>> {
         let mut slot = self.inner.eventsub_shutdown_tx.write().await;
         slot.take()
+    }
+
+    /// 前回のライブマップを新しいものと入れ替え、古いマップを返す。
+    pub async fn swap_followed_live_map(
+        &self,
+        new_map: HashMap<String, Option<String>>,
+    ) -> HashMap<String, Option<String>> {
+        let mut live_map = self.inner.previous_live_map.write().await;
+        std::mem::replace(&mut *live_map, new_map)
     }
 }

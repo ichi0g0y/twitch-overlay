@@ -224,6 +224,16 @@ pub struct BitsLeaderboardEntry {
     pub score: u64,
 }
 
+/// Video information from GET /helix/videos.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoInfo {
+    pub id: String,
+    pub user_id: String,
+    pub created_at: String,
+    #[serde(rename = "type")]
+    pub video_type: String,
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -799,6 +809,18 @@ impl TwitchApiClient {
         let body = self.authenticated_get(&url, token).await?;
         let resp: HelixResponse<ChatColor> = serde_json::from_str(&body)?;
         Ok(resp.data)
+    }
+
+    /// 最新アーカイブ動画の created_at を返す。動画なしなら None。
+    pub async fn get_latest_video_date(
+        &self,
+        token: &Token,
+        user_id: &str,
+    ) -> Result<Option<String>, TwitchError> {
+        let url = format!("{HELIX_BASE}/videos?user_id={user_id}&type=archive&first=1");
+        let body = self.authenticated_get(&url, token).await?;
+        let resp: HelixResponse<VideoInfo> = serde_json::from_str(&body)?;
+        Ok(resp.data.into_iter().next().map(|v| v.created_at))
     }
 
     /// Get bits leaderboard for the authenticated channel.

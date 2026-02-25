@@ -427,4 +427,10 @@ CREATE TABLE IF NOT EXISTS lottery_history (
 
 CREATE INDEX IF NOT EXISTS idx_lottery_history_drawn_at
     ON lottery_history(drawn_at DESC);
+
+CREATE TABLE IF NOT EXISTS channel_broadcast_cache (
+    broadcaster_id TEXT PRIMARY KEY,
+    last_broadcast_at TEXT NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
 "#;
