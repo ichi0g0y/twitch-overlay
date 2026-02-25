@@ -162,6 +162,7 @@ mod tests {
             username: "alice".into(),
             display_name: "Alice".into(),
             message: "hello".into(),
+            badge_keys: vec!["subscriber/12".into(), "vip/1".into()],
             fragments_json: "[]".into(),
             avatar_url: String::new(),
             translation_text: String::new(),
@@ -178,6 +179,7 @@ mod tests {
         assert_eq!(msgs[0].username, "alice");
         assert_eq!(msgs[0].display_name, "Alice");
         assert_eq!(msgs[0].avatar_url, "");
+        assert_eq!(msgs[0].badge_keys, vec!["subscriber/12", "vip/1"]);
 
         assert!(db.chat_message_exists("msg1").unwrap());
         assert!(!db.chat_message_exists("msg2").unwrap());
@@ -211,6 +213,7 @@ mod tests {
         assert_eq!(hydrated[0].username, "alice_renamed");
         assert_eq!(hydrated[0].display_name, "AliceRenamed");
         assert_eq!(hydrated[0].avatar_url, "https://example.com/avatar.png");
+        assert_eq!(hydrated[0].badge_keys, vec!["subscriber/12", "vip/1"]);
     }
 
     #[test]

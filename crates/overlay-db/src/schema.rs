@@ -17,6 +17,7 @@ fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
     migrate_chat_user_profiles(conn)?;
     migrate_chat_users_add_display_name(conn)?;
     migrate_chat_messages_user_columns(conn)?;
+    migrate_chat_messages_badge_keys(conn)?;
     migrate_irc_chat_messages_badge_keys(conn)?;
     migrate_chat_messages_add_username(conn)?;
     migrate_irc_chat_messages_add_username(conn)?;
@@ -107,14 +108,21 @@ fn migrate_chat_messages_user_columns(conn: &Connection) -> Result<(), DbError> 
     if !has_username && !has_avatar_url {
         return Ok(());
     }
+    let has_badge_keys = column_exists(conn, "chat_messages", "badge_keys_json")?;
+    let badge_keys_expr = if has_badge_keys {
+        "COALESCE(badge_keys_json, '[]')"
+    } else {
+        "'[]'"
+    };
 
     tracing::info!("Migrating chat_messages to remove embedded user columns");
-    conn.execute_batch(
+    let sql = format!(
         "CREATE TABLE IF NOT EXISTS chat_messages_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_id TEXT,
             user_id TEXT,
             message TEXT NOT NULL,
+            badge_keys_json TEXT NOT NULL DEFAULT '[]',
             fragments_json TEXT,
             translation_text TEXT DEFAULT '',
             translation_status TEXT DEFAULT '',
@@ -123,11 +131,11 @@ fn migrate_chat_messages_user_columns(conn: &Connection) -> Result<(), DbError> 
         );
 
         INSERT INTO chat_messages_new (
-            id, message_id, user_id, message, fragments_json,
+            id, message_id, user_id, message, badge_keys_json, fragments_json,
             translation_text, translation_status, translation_lang, created_at
         )
         SELECT
-            id, message_id, user_id, message, fragments_json,
+            id, message_id, user_id, message, {badge_keys_expr}, fragments_json,
             translation_text, translation_status, translation_lang, created_at
         FROM chat_messages;
 
@@ -143,6 +151,19 @@ fn migrate_chat_messages_user_columns(conn: &Connection) -> Result<(), DbError> 
 
         CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
             ON chat_messages(user_id);",
+    );
+    conn.execute_batch(&sql)?;
+    Ok(())
+}
+
+fn migrate_chat_messages_badge_keys(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "chat_messages", "badge_keys_json")? {
+        return Ok(());
+    }
+
+    tracing::info!("Adding badge_keys_json column to chat_messages");
+    conn.execute_batch(
+        "ALTER TABLE chat_messages ADD COLUMN badge_keys_json TEXT NOT NULL DEFAULT '[]';",
     )?;
     Ok(())
 }
@@ -326,6 +347,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     user_id TEXT,
     username TEXT NOT NULL DEFAULT '',
     message TEXT NOT NULL,
+    badge_keys_json TEXT NOT NULL DEFAULT '[]',
     fragments_json TEXT,
     translation_text TEXT DEFAULT '',
     translation_status TEXT DEFAULT '',

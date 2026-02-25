@@ -1,5 +1,7 @@
 //! EventSub domain handlers (11 Twitch event types).
 
+use std::collections::HashSet;
+
 use serde_json::{Value, json};
 use twitch_client::eventsub;
 
@@ -47,6 +49,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         .and_then(|m| m.get("fragments"))
         .cloned()
         .unwrap_or(Value::Array(vec![]));
+    let badge_keys = extract_badge_keys(payload);
     let learned = channel_points_emote_cache::learn_from_chat_fragments(&message_fragments).await;
     if learned > 0 {
         tracing::debug!(learned, "Learned chat emotes for channel points parsing");
@@ -54,9 +57,10 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     let fragments_json = message_fragments.to_string();
     let avatar_url = resolve_chat_avatar_url(state, &user_id).await;
     let now = chrono::Utc::now().timestamp();
-    if let Err(e) = state
-        .db()
-        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
+    if let Err(e) =
+        state
+            .db()
+            .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
     {
         tracing::warn!(user_id, "Failed to upsert chat user profile: {e}");
     }
@@ -68,6 +72,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         username: username.clone(),
         display_name: display_name.clone(),
         message: message_text.clone(),
+        badge_keys: badge_keys.clone(),
         fragments_json,
         avatar_url: String::new(),
         translation_text: String::new(),
@@ -93,6 +98,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         "userId": user_id,
         "messageId": message_id,
         "message": message_text,
+        "badge_keys": badge_keys,
         "fragments": to_legacy_fragments(&message_fragments),
         "avatarUrl": avatar_url,
         "translation": "",
@@ -110,6 +116,38 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         NotificationType::Chat,
     )
     .await;
+}
+
+fn extract_badge_keys(payload: &Value) -> Vec<String> {
+    let Some(items) = payload.get("badges").and_then(|badges| badges.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut keys = Vec::new();
+    let mut dedupe = HashSet::new();
+    for item in items {
+        let Some(set_id_raw) = item.get("set_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let set_id = set_id_raw.trim();
+        if set_id.is_empty() {
+            continue;
+        }
+        let badge_id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or_default();
+        let key = if badge_id.is_empty() {
+            set_id.to_string()
+        } else {
+            format!("{set_id}/{badge_id}")
+        };
+        if dedupe.insert(key.clone()) {
+            keys.push(key);
+        }
+    }
+    keys
 }
 
 async fn resolve_chat_avatar_url(state: &SharedState, user_id: &str) -> String {
