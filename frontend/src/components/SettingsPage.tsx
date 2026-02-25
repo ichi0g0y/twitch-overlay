@@ -1,4 +1,4 @@
-import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Maximize2, Menu, Mic, Minimize2, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Bluetooth, Bug, ExternalLink, FileText, Gift, HardDrive, Languages, Layers, Magnet, Maximize2, Menu, Mic, Minimize2, Mouse, Music, Plus, Radio, RefreshCw, Server, Settings2, Wifi, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -169,6 +169,8 @@ type WorkspaceRenderContextValue = {
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (id: string) => void;
   isPreviewViewportExpanded: (id: string) => boolean;
+  isPreviewInteractionEnabled: (kind: WorkspaceCardKind) => boolean;
+  togglePreviewInteraction: (kind: WorkspaceCardKind) => void;
   previewPortalEnabled: boolean;
   snapCardSize: (id: string, width: number, height: number) => void;
   renderCard: (kind: WorkspaceCardKind) => React.ReactNode;
@@ -752,6 +754,7 @@ type TwitchStreamPreviewProps = {
   channelLogin: string;
   reloadNonce: number;
   autoplayEnabled: boolean;
+  interactionDisabled: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
@@ -775,16 +778,24 @@ type PreviewEmbedProps = {
   channelLogin: string;
   reloadNonce: number;
   autoplayEnabled: boolean;
+  interactionDisabled: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
-const PreviewEmbed: React.FC<PreviewEmbedProps> = ({ channelLogin, reloadNonce, autoplayEnabled, onWarningChange }) => {
+const PreviewEmbed: React.FC<PreviewEmbedProps> = ({
+  channelLogin,
+  reloadNonce,
+  autoplayEnabled,
+  interactionDisabled,
+  onWarningChange,
+}) => {
   return (
     <div className="nodrag nopan h-full min-h-0 overflow-hidden bg-black">
       <TwitchPlayerEmbed
         channelLogin={channelLogin}
         reloadNonce={reloadNonce}
         autoplayEnabled={autoplayEnabled}
+        interactionDisabled={interactionDisabled}
         onWarningChange={onWarningChange}
       />
     </div>
@@ -797,6 +808,7 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
   channelLogin,
   reloadNonce,
   autoplayEnabled,
+  interactionDisabled,
   onWarningChange,
 }) => {
   const canEmbed = Boolean(channelLogin);
@@ -828,6 +840,7 @@ const TwitchStreamPreview: React.FC<TwitchStreamPreviewProps> = ({
           channelLogin={channelLogin}
           reloadNonce={reloadNonce}
           autoplayEnabled={autoplayEnabled}
+          interactionDisabled={interactionDisabled}
           onWarningChange={onWarningChange}
         />
       )}
@@ -840,6 +853,7 @@ type AddedChannelStreamPreviewProps = {
   channelLogin: string;
   reloadNonce: number;
   autoplayEnabled: boolean;
+  interactionDisabled: boolean;
   onWarningChange: (kind: WorkspaceCardKind, warningMessage: string | null) => void;
 };
 
@@ -848,6 +862,7 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({
   channelLogin,
   reloadNonce,
   autoplayEnabled,
+  interactionDisabled,
   onWarningChange,
 }) => {
   return (
@@ -856,6 +871,7 @@ const AddedChannelStreamPreview: React.FC<AddedChannelStreamPreviewProps> = ({
         channelLogin={channelLogin}
         reloadNonce={reloadNonce}
         autoplayEnabled={autoplayEnabled}
+        interactionDisabled={interactionDisabled}
         onWarningChange={(warningMessage) => onWarningChange(kind, warningMessage)}
       />
     </CompactPreviewFrame>
@@ -880,6 +896,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const previewPortalZIndex = isPreviewViewportExpanded
     ? PREVIEW_PORTAL_EXPANDED_Z_INDEX
     : PREVIEW_PORTAL_BASE_Z_INDEX + toFiniteNumber(zIndex, PREVIEW_NODE_MIN_Z_INDEX);
+  const previewInteractionEnabled = previewHeader ? renderContext.isPreviewInteractionEnabled(data.kind) : true;
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
     ? 'border-b border-sky-400/60 bg-sky-500/20'
     : 'border-b border-gray-800/80 bg-gray-900/85';
@@ -988,6 +1005,19 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
                 <span className="truncate font-mono text-xs text-gray-200">channel: {previewHeader.channelLogin || '-'}</span>
                 <span className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}>{previewHeader.statusLabel}</span>
                 <div className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => renderContext.togglePreviewInteraction(data.kind)}
+                    className={`nodrag inline-flex h-6 w-6 items-center justify-center rounded border ${
+                      previewInteractionEnabled
+                        ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25'
+                        : 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20'
+                    }`}
+                    title={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
+                    aria-label={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
+                  >
+                    <Mouse className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => renderContext.refreshPreview(data.kind)}
@@ -2215,6 +2245,8 @@ export const SettingsPage: React.FC = () => {
   const [isWorkspaceControlsVisible, setIsWorkspaceControlsVisible] = useState(false);
   const [isPanKeyActive, setIsPanKeyActive] = useState(false);
   const [isZoomActivationKeyActive, setIsZoomActivationKeyActive] = useState(false);
+  const [previewInteractionKind, setPreviewInteractionKind] = useState<WorkspaceCardKind | null>(null);
+  const workspaceShellRef = useRef<HTMLDivElement | null>(null);
   const shouldFitWorkspaceOnInitRef = useRef(initialWorkspaceFlow?.viewport == null);
   const workspaceFlowInstanceRef = useRef<ReactFlowInstance<WorkspaceCardNode> | null>(null);
   const lastWorkspaceCardPositionRef =
@@ -2287,6 +2319,11 @@ export const SettingsPage: React.FC = () => {
     overlaySettings,
     updateOverlaySettings,
 		  } = contextValue;
+  const panActivationKeyCode = getSettingValue('WORKSPACE_PAN_ACTIVATION_KEY') || 'Space';
+  const zoomActivationKeyCode = normalizeWorkspaceZoomActivationKeyCode(getSettingValue('WORKSPACE_ZOOM_MODIFIER_KEY') || 'Control');
+  const scrollModeSettingValue = getSettingValue('WORKSPACE_SCROLL_MODE_ENABLED');
+  const scrollModeEnabled = (scrollModeSettingValue || getSettingValue('WORKSPACE_PAN_ON_SCROLL')) === 'true';
+  const previewPortalEnabled = getSettingValue('WORKSPACE_PREVIEW_PORTAL_ENABLED') === 'true';
 
   const handleChatSidebarWidthChange = (nextWidth: number) => {
     const clamped = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, nextWidth));
@@ -2304,9 +2341,23 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const deactivatePreviewInteraction = useCallback(() => {
+    setPreviewInteractionKind(null);
+  }, []);
+
+  const activatePreviewInteraction = useCallback((kind: WorkspaceCardKind) => {
+    if (!scrollModeEnabled) return;
+    setPreviewInteractionKind(kind);
+  }, [scrollModeEnabled]);
+
   const handleWorkspaceMoveEnd = useCallback((_: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     setWorkspaceViewport(normalizeWorkspaceViewport(viewport));
   }, []);
+
+  const handleWorkspaceMoveStart = useCallback(() => {
+    if (!scrollModeEnabled) return;
+    deactivatePreviewInteraction();
+  }, [deactivatePreviewInteraction, scrollModeEnabled]);
 
   const handleWorkspaceMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -2455,9 +2506,60 @@ export const SettingsPage: React.FC = () => {
     left: followedRailSide === 'left' ? railReservedWidth : 0,
     right: followedRailSide === 'right' ? railReservedWidth : 0,
   }), [followedRailSide, railReservedWidth]);
-  const panActivationKeyCode = getSettingValue('WORKSPACE_PAN_ACTIVATION_KEY') || 'Space';
-  const zoomActivationKeyCode = normalizeWorkspaceZoomActivationKeyCode(getSettingValue('WORKSPACE_ZOOM_MODIFIER_KEY') || 'Control');
-  const previewPortalEnabled = getSettingValue('WORKSPACE_PREVIEW_PORTAL_ENABLED') === 'true';
+
+  useEffect(() => {
+    if (!scrollModeEnabled) {
+      deactivatePreviewInteraction();
+    }
+  }, [deactivatePreviewInteraction, scrollModeEnabled]);
+
+  const activePreviewNodeId = useMemo(() => {
+    if (!previewInteractionKind) return null;
+    return nodes.find((node) => node.data.kind === previewInteractionKind)?.id ?? null;
+  }, [nodes, previewInteractionKind]);
+
+  useEffect(() => {
+    if (!scrollModeEnabled || !activePreviewNodeId) return undefined;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const nodeElement = Array
+        .from(window.document.querySelectorAll<HTMLElement>('.settings-workspace-flow .react-flow__node'))
+        .find((element) => element.dataset.id === activePreviewNodeId);
+      if (!nodeElement) {
+        deactivatePreviewInteraction();
+        return;
+      }
+      const rect = nodeElement.getBoundingClientRect();
+      const insideNode =
+        event.clientX >= rect.left
+        && event.clientX <= rect.right
+        && event.clientY >= rect.top
+        && event.clientY <= rect.bottom;
+      if (!insideNode) {
+        deactivatePreviewInteraction();
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, true);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove, true);
+    };
+  }, [activePreviewNodeId, deactivatePreviewInteraction, scrollModeEnabled]);
+
+  useEffect(() => {
+    if (!scrollModeEnabled) return undefined;
+    const handleWheelCapture = (event: WheelEvent) => {
+      const container = workspaceShellRef.current;
+      if (!(event.target instanceof Node) || !container?.contains(event.target)) return;
+      if (!event.cancelable) return;
+      // Prevent browser-level back/forward swipe while preserving ReactFlow pan handling.
+      event.preventDefault();
+    };
+    window.addEventListener('wheel', handleWheelCapture, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('wheel', handleWheelCapture, true);
+    };
+  }, [scrollModeEnabled]);
 
   useEffect(() => {
     setIsPanKeyActive(false);
@@ -3000,6 +3102,20 @@ export const SettingsPage: React.FC = () => {
     });
   }, []);
 
+  const isPreviewInteractionEnabled = useCallback((kind: WorkspaceCardKind) => {
+    if (!scrollModeEnabled) return true;
+    return previewInteractionKind === kind;
+  }, [previewInteractionKind, scrollModeEnabled]);
+
+  const togglePreviewInteraction = useCallback((kind: WorkspaceCardKind) => {
+    if (!scrollModeEnabled) return;
+    if (previewInteractionKind === kind) {
+      deactivatePreviewInteraction();
+      return;
+    }
+    activatePreviewInteraction(kind);
+  }, [activatePreviewInteraction, deactivatePreviewInteraction, previewInteractionKind, scrollModeEnabled]);
+
   const renderWorkspaceCard = useCallback((kind: WorkspaceCardKind) => {
     const reloadNonce = previewReloadNonceByKind[kind] ?? 0;
     if (kind === 'preview-main') {
@@ -3010,6 +3126,7 @@ export const SettingsPage: React.FC = () => {
           channelLogin={twitchUserInfo?.login ?? ''}
           reloadNonce={reloadNonce}
           autoplayEnabled={previewPortalEnabled}
+          interactionDisabled={!isPreviewInteractionEnabled('preview-main')}
           onWarningChange={(warningMessage) => setPreviewWarning('preview-main', warningMessage)}
         />
       );
@@ -3022,6 +3139,7 @@ export const SettingsPage: React.FC = () => {
           channelLogin={channelLogin}
           reloadNonce={reloadNonce}
           autoplayEnabled={previewPortalEnabled}
+          interactionDisabled={!isPreviewInteractionEnabled(kind)}
           onWarningChange={setPreviewWarning}
         />
       );
@@ -3145,6 +3263,7 @@ export const SettingsPage: React.FC = () => {
     handleTestNotification,
     previewImage,
     previewPortalEnabled,
+    isPreviewInteractionEnabled,
     previewText,
     setPreviewText,
     streamStatus,
@@ -3186,6 +3305,8 @@ export const SettingsPage: React.FC = () => {
     refreshPreview,
     togglePreviewViewportExpand,
     isPreviewViewportExpanded,
+    isPreviewInteractionEnabled,
+    togglePreviewInteraction,
     previewPortalEnabled,
     snapCardSize: snapWorkspaceCardSize,
     renderCard: renderWorkspaceCard,
@@ -3195,6 +3316,8 @@ export const SettingsPage: React.FC = () => {
     refreshPreview,
     togglePreviewViewportExpand,
     isPreviewViewportExpanded,
+    isPreviewInteractionEnabled,
+    togglePreviewInteraction,
     previewPortalEnabled,
     snapWorkspaceCardSize,
     renderWorkspaceCard,
@@ -3207,6 +3330,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleWorkspaceNodeClick = useCallback((_event: React.MouseEvent, node: WorkspaceCardNode) => {
     if (!isPreviewCardKind(node.data.kind)) return;
+    activatePreviewInteraction(node.data.kind);
     bringPreviewNodeToFront(node.id);
     const requestedTabId = node.data.kind === 'preview-main'
       ? PRIMARY_CHAT_TAB_ID
@@ -3216,7 +3340,7 @@ export const SettingsPage: React.FC = () => {
       tabId: requestedTabId,
       requestId: (current?.requestId ?? 0) + 1,
     }));
-  }, [bringPreviewNodeToFront]);
+  }, [activatePreviewInteraction, bringPreviewNodeToFront]);
 
   return (
     <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -3229,6 +3353,7 @@ export const SettingsPage: React.FC = () => {
       </div>
       <WORKSPACE_RENDER_CONTEXT.Provider value={workspaceRenderContext}>
         <div
+          ref={workspaceShellRef}
           className="fixed inset-0 z-0 top-12 xl:left-[var(--rf-flow-left)] xl:right-[var(--rf-flow-right)]"
           style={{
             '--rf-flow-left': `${topBarOffsets.left}px`,
@@ -3241,6 +3366,7 @@ export const SettingsPage: React.FC = () => {
             nodes={nodes}
             onNodesChange={onNodesChange}
             onNodeClick={handleWorkspaceNodeClick}
+            onMoveStart={handleWorkspaceMoveStart}
             onMoveEnd={handleWorkspaceMoveEnd}
             onInit={handleWorkspaceFlowInit}
             nodeTypes={WORKSPACE_NODE_TYPES}
@@ -3249,8 +3375,9 @@ export const SettingsPage: React.FC = () => {
             snapToGrid={workspaceSnapEnabled}
             snapGrid={WORKSPACE_SNAP_GRID}
             panOnDrag={[0, 1]}
-            panOnScroll={false}
-            zoomOnScroll
+            panOnScroll={scrollModeEnabled}
+            zoomOnScroll={!scrollModeEnabled}
+            noWheelClassName={scrollModeEnabled ? 'nowheel-disabled' : 'nowheel'}
             panActivationKeyCode={panActivationKeyCode}
             data-pan-key-active={isPanKeyActive || isZoomActivationKeyActive ? 'true' : undefined}
             data-controls-visible={isWorkspaceControlsVisible || panningSettingsOpen ? 'true' : undefined}
@@ -3271,6 +3398,14 @@ export const SettingsPage: React.FC = () => {
                 <Magnet className="h-4 w-4" />
               </ControlButton>
               <ControlButton
+                onClick={() => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', !scrollModeEnabled)}
+                title={scrollModeEnabled ? 'スクロールモード: ON' : 'スクロールモード: OFF'}
+                aria-label={scrollModeEnabled ? 'スクロールモードをオフにする' : 'スクロールモードをオンにする'}
+                className={`react-flow__controls-scroll ${scrollModeEnabled ? '!text-sky-300' : '!text-gray-400'}`}
+              >
+                <Mouse className="h-4 w-4" />
+              </ControlButton>
+              <ControlButton
                 onClick={() => setPanningSettingsOpen((current) => !current)}
                 title="パン設定"
                 aria-label="パン設定を開く"
@@ -3285,6 +3420,8 @@ export const SettingsPage: React.FC = () => {
                 onPanActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_PAN_ACTIVATION_KEY', value)}
                 zoomActivationKeyCode={zoomActivationKeyCode}
                 onZoomActivationKeyCodeChange={(value) => handleSettingChange('WORKSPACE_ZOOM_MODIFIER_KEY', value)}
+                scrollModeEnabled={scrollModeEnabled}
+                onScrollModeEnabledChange={(enabled) => handleSettingChange('WORKSPACE_SCROLL_MODE_ENABLED', enabled)}
                 previewPortalEnabled={previewPortalEnabled}
                 onPreviewPortalEnabledChange={(enabled) => handleSettingChange('WORKSPACE_PREVIEW_PORTAL_ENABLED', enabled)}
                 onClose={() => setPanningSettingsOpen(false)}

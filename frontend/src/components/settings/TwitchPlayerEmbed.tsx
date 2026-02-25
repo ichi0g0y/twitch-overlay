@@ -6,6 +6,7 @@ type TwitchPlayerEmbedProps = {
   channelLogin: string;
   reloadNonce: number;
   autoplayEnabled?: boolean;
+  interactionDisabled?: boolean;
   onWarningChange: (warningMessage: string | null) => void;
 };
 
@@ -18,10 +19,19 @@ const patchIframeAllow = (container: HTMLElement): boolean => {
   if (!allow.includes('autoplay')) {
     iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
   }
+  iframe.style.overscrollBehavior = 'none';
+  iframe.style.overscrollBehaviorX = 'none';
+  iframe.style.overscrollBehaviorY = 'none';
   return true;
 };
 
-export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLogin, reloadNonce, autoplayEnabled = false, onWarningChange }) => {
+export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({
+  channelLogin,
+  reloadNonce,
+  autoplayEnabled = false,
+  interactionDisabled = false,
+  onWarningChange,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const normalizedChannel = channelLogin.trim();
@@ -77,16 +87,20 @@ export const TwitchPlayerEmbed: React.FC<TwitchPlayerEmbedProps> = ({ channelLog
     onWarningChange(errorMessage);
   }, [errorMessage, onWarningChange]);
 
+  const handleInteractionStart = () => {
+    if (interactionDisabled) return;
+    const nodeEl = containerRef.current?.closest('.react-flow__node');
+    const nodeId = nodeEl?.getAttribute('data-id');
+    if (!nodeId) return;
+    window.dispatchEvent(new CustomEvent('workspace-preview-bring-to-front', { detail: { nodeId } }));
+  };
+
   return (
     <div
       ref={containerRef}
-      onPointerDownCapture={() => {
-        const nodeEl = containerRef.current?.closest('.react-flow__node');
-        const nodeId = nodeEl?.getAttribute('data-id');
-        if (!nodeId) return;
-        window.dispatchEvent(new CustomEvent('workspace-preview-bring-to-front', { detail: { nodeId } }));
-      }}
-      className="pointer-events-auto nodrag nopan h-full w-full overflow-hidden"
+      onPointerDownCapture={handleInteractionStart}
+      onTouchStartCapture={handleInteractionStart}
+      className={`nodrag nopan h-full w-full overflow-hidden ${interactionDisabled ? 'pointer-events-none' : 'pointer-events-auto'}`}
     />
   );
 };

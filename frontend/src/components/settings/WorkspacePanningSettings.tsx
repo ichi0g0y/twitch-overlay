@@ -6,6 +6,8 @@ interface WorkspacePanningSettingsProps {
   onPanActivationKeyCodeChange: (value: string) => void;
   zoomActivationKeyCode: string;
   onZoomActivationKeyCodeChange: (value: string) => void;
+  scrollModeEnabled: boolean;
+  onScrollModeEnabledChange: (enabled: boolean) => void;
   previewPortalEnabled: boolean;
   onPreviewPortalEnabledChange: (enabled: boolean) => void;
   onClose: () => void;
@@ -43,6 +45,8 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
   onPanActivationKeyCodeChange,
   zoomActivationKeyCode,
   onZoomActivationKeyCodeChange,
+  scrollModeEnabled,
+  onScrollModeEnabledChange,
   previewPortalEnabled,
   onPreviewPortalEnabledChange,
   onClose,
@@ -155,7 +159,7 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
           >
             {captureTarget === 'zoom' ? '入力待機中...' : formatKeyDisplay(zoomActivationKeyCode)}
           </button>
-          <p className="mt-2 text-[11px] text-gray-500">押しながらホイールでどこでもズーム</p>
+          <p className="mt-2 text-[11px] text-gray-500">押しながらスクロール操作でどこでもズーム</p>
         </div>
 
         <div className="mt-3 border-t border-gray-700 pt-3">
@@ -173,6 +177,26 @@ export const WorkspacePanningSettings: React.FC<WorkspacePanningSettingsProps> =
             {captureTarget === 'pan' ? '入力待機中...' : formatKeyDisplay(panActivationKeyCode)}
           </button>
           <p className="mt-2 text-[11px] text-gray-500">クリック後にキーを押して設定</p>
+        </div>
+
+        <div className="mt-3 border-t border-gray-700 pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-gray-400">スクロールモード</p>
+            <button
+              type="button"
+              onClick={() => onScrollModeEnabledChange(!scrollModeEnabled)}
+              className={`inline-flex h-7 items-center rounded border px-2 text-[11px] ${
+                scrollModeEnabled
+                  ? 'border-sky-500 bg-sky-500/20 text-sky-100'
+                  : 'border-gray-700 bg-gray-950/60 text-gray-200 hover:bg-gray-800'
+              }`}
+              aria-label="スクロールモードを切り替える"
+              title="スクロールモードを切り替える"
+            >
+              {scrollModeEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500">ON時はスクロール操作でキャンバスをパンします。ズームはズーム起動キー+スクロール操作を使用します。プレビュー操作はノードタイトルのMouseアイコンかノードクリックで有効化でき、カーソルがプレビュー領域から外れた時かパン開始時、またはMouseアイコンで再ロックされます。</p>
         </div>
 
         <div className="mt-3 border-t border-gray-700 pt-3">
