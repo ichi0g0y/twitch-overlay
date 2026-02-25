@@ -1,5 +1,6 @@
 //! SQLite database layer for the overlay application.
 
+pub mod broadcast_cache;
 pub mod cache;
 pub mod chat;
 pub mod lottery;

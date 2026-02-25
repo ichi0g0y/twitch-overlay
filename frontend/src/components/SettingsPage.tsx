@@ -1096,6 +1096,7 @@ export type FollowedChannelRailItem = {
   title?: string | null;
   game_name?: string | null;
   started_at?: string | null;
+  last_broadcast_at?: string | null;
 };
 
 type FollowedChannelsRailProps = {
@@ -2531,6 +2532,9 @@ export const SettingsPage: React.FC = () => {
           const isLive = typeof liveFlag === 'boolean'
             ? liveFlag
             : viewerCount > 0 || Boolean(startedAt);
+          const lastBroadcastAt = typeof item.last_broadcast_at === 'string'
+            ? item.last_broadcast_at
+            : undefined;
           return {
             broadcaster_id: String(item.broadcaster_id ?? item.id ?? ''),
             broadcaster_login: String(item.broadcaster_login ?? item.login ?? ''),
@@ -2543,12 +2547,16 @@ export const SettingsPage: React.FC = () => {
             title: typeof item.title === 'string' ? item.title : undefined,
             game_name: typeof item.game_name === 'string' ? item.game_name : undefined,
             started_at: startedAt,
+            last_broadcast_at: lastBroadcastAt,
           };
         }).filter((item) => item.broadcaster_id && item.broadcaster_login);
 
         normalized.sort((a, b) => {
           if (a.is_live !== b.is_live) return a.is_live ? -1 : 1;
           if (a.viewer_count !== b.viewer_count) return b.viewer_count - a.viewer_count;
+          const aDate = a.last_broadcast_at ?? '';
+          const bDate = b.last_broadcast_at ?? '';
+          if (aDate !== bDate) return bDate.localeCompare(aDate);
           return a.broadcaster_name.localeCompare(b.broadcaster_name, 'ja');
         });
         if (!cancelled) {
