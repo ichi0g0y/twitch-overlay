@@ -58,6 +58,7 @@ const WORKSPACE_FLOW_MIN_ZOOM = 0.2;
 const WORKSPACE_FLOW_MAX_ZOOM = 1.8;
 const WORKSPACE_SNAP_GRID: [number, number] = [24, 24];
 const DEFAULT_WORKSPACE_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+const SETTINGS_UI_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
 const PREVIEW_NODE_HEADER_HEIGHT = 36;
 const PREVIEW_NODE_MIN_Z_INDEX = 10;
 const PREVIEW_NODE_MAX_Z_INDEX = 59;
@@ -162,6 +163,8 @@ type StoredWorkspacePreviewExpandStatePayload = {
   expandedNodeId?: string | null;
   snapshots?: Record<string, { x: number; y: number; width: number; height: number; zIndex?: number }>;
 };
+
+type PortalRect = { left: number; top: number; width: number; height: number };
 
 type WorkspaceRenderContextValue = {
   removeCard: (id: string) => void;
@@ -883,7 +886,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [warningTooltip, setWarningTooltip] = useState<{ message: string; x: number; y: number; fontFamily: string } | null>(null);
-  const [previewPortalRect, setPreviewPortalRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [previewPortalRect, setPreviewPortalRect] = useState<PortalRect | null>(null);
   const previewContentHostRef = useRef<HTMLDivElement | null>(null);
   const cardAsNode = isCollapsibleCardNodeKind(data.kind);
   const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
@@ -2256,6 +2259,15 @@ export const SettingsPage: React.FC = () => {
   const expandedPreviewNodeIdRef = useRef<string | null>(initialPreviewExpandState.expandedNodeId);
   const previewExpandSnapshotRef = useRef<Record<string, PreviewViewportExpandSnapshot>>(initialPreviewExpandState.snapshots);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const previousBodyFontFamily = document.body.style.fontFamily;
+    document.body.style.fontFamily = SETTINGS_UI_FONT_FAMILY;
+    return () => {
+      document.body.style.fontFamily = previousBodyFontFamily;
+    };
+  }, []);
+
   const onNodesChange = useCallback((changes: NodeChange<WorkspaceCardNode>[]) => {
     onNodesChangeRaw(changes);
     const expandedNodeId = expandedPreviewNodeIdRef.current;
@@ -3365,7 +3377,7 @@ export const SettingsPage: React.FC = () => {
   const shouldShowQuickControls = isWorkspaceControlsVisible || panningSettingsOpen || isQuickControlsHovered;
 
   return (
-    <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="min-h-screen bg-gray-900 transition-colors" style={{ fontFamily: SETTINGS_UI_FONT_FAMILY }}>
       <div className="hidden" aria-hidden="true">
         <MicCaptionSender
           variant="switch_only"
