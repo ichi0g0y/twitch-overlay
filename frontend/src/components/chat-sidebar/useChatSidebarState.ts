@@ -63,9 +63,6 @@ export const useChatSidebarState = ({
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [resizing, setResizing] = useState(false);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
-  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const actionsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const actionsMenuPanelRef = useRef<HTMLDivElement | null>(null);
@@ -138,10 +135,6 @@ export const useChatSidebarState = ({
     resizing,
     setResizing,
     resizeStateRef,
-    settingsOpen,
-    setSettingsOpen,
-    settingsButtonRef,
-    settingsPanelRef,
     actionsMenuOpen,
     setActionsMenuOpen,
     actionsMenuButtonRef,

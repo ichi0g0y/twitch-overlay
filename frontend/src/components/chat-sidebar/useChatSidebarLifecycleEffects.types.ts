@@ -9,10 +9,6 @@ import type {
 } from './types';
 
 export type UseChatSidebarLifecycleEffectsParams = {
-  settingsOpen: boolean;
-  settingsPanelRef: React.MutableRefObject<HTMLDivElement | null>;
-  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
-  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   actionsMenuOpen: boolean;
   actionsMenuPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   actionsMenuButtonRef: React.MutableRefObject<HTMLButtonElement | null>;

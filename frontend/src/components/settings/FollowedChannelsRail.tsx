@@ -25,6 +25,9 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   canStartRaid,
   chatWidth,
   chatPanel,
+  twitchUserId,
+  twitchAvatarUrl,
+  twitchDisplayName,
   onSideChange,
   onOpenOverlay,
   onOpenOverlayDebug,
@@ -226,6 +229,9 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
           <FollowedRailQuickMenu
             side={side}
             railMenuOpen={railMenuOpen}
+            twitchUserId={twitchUserId}
+            twitchAvatarUrl={twitchAvatarUrl}
+            twitchDisplayName={twitchDisplayName}
             onToggleMenu={() => setRailMenuOpen((prev) => !prev)}
             onCloseMenu={() => setRailMenuOpen(false)}
             onSideChange={onSideChange}

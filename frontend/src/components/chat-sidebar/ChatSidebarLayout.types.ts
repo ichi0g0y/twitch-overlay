@@ -24,7 +24,6 @@ export type ChatSidebarLayoutProps = {
   chattersOpen: boolean;
   channelEditorOpen: boolean;
   actionsMenuOpen: boolean;
-  settingsOpen: boolean;
   popoutChatUrl: string;
   toggleIcon: React.ReactNode;
   fontSize: number;
@@ -39,14 +38,11 @@ export type ChatSidebarLayoutProps = {
   setActiveChatDisplayMode: (mode: ChatDisplayMode) => void;
   setActionsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEmbedReloadNonceByTab: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleOpenChatPopout: () => void;
   onFontSizeChange: (size: number) => void;
   onTranslationToggle: (enabled: boolean) => void;
   onNotificationModeToggle: (enabled: boolean) => void;
   handleToggle: () => void;
-  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
-  settingsPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   actionsMenuButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
   actionsMenuPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   tabScrollerRef: React.MutableRefObject<HTMLDivElement | null>;

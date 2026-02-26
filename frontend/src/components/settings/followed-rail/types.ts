@@ -23,6 +23,9 @@ export type FollowedChannelsRailProps = {
   canStartRaid: boolean;
   chatWidth: number;
   chatPanel: React.ReactNode;
+  twitchUserId?: string;
+  twitchAvatarUrl?: string;
+  twitchDisplayName?: string;
   onSideChange: (side: 'left' | 'right') => void;
   onOpenOverlay: () => void;
   onOpenOverlayDebug: () => void;

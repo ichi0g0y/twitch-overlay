@@ -22,7 +22,6 @@ export const ChatSidebarLayout = ({
   chattersOpen,
   channelEditorOpen,
   actionsMenuOpen,
-  settingsOpen,
   popoutChatUrl,
   toggleIcon,
   fontSize,
@@ -37,14 +36,11 @@ export const ChatSidebarLayout = ({
   setActiveChatDisplayMode,
   setActionsMenuOpen,
   setEmbedReloadNonceByTab,
-  setSettingsOpen,
   handleOpenChatPopout,
   onFontSizeChange,
   onTranslationToggle,
   onNotificationModeToggle,
   handleToggle,
-  settingsButtonRef,
-  settingsPanelRef,
   actionsMenuButtonRef,
   actionsMenuPanelRef,
   tabScrollerRef,
@@ -136,7 +132,6 @@ export const ChatSidebarLayout = ({
                 chattersOpen={chattersOpen}
                 channelEditorOpen={channelEditorOpen}
                 actionsMenuOpen={actionsMenuOpen}
-                settingsOpen={settingsOpen}
                 popoutChatUrl={popoutChatUrl}
                 embedded={embedded}
                 isCollapsed={isCollapsed}
@@ -153,14 +148,11 @@ export const ChatSidebarLayout = ({
                 setActiveChatDisplayMode={setActiveChatDisplayMode}
                 setActionsMenuOpen={setActionsMenuOpen}
                 setEmbedReloadNonceByTab={setEmbedReloadNonceByTab}
-                setSettingsOpen={setSettingsOpen}
                 onOpenChatPopout={handleOpenChatPopout}
                 onFontSizeChange={onFontSizeChange}
                 onTranslationToggle={onTranslationToggle}
                 onNotificationModeToggle={onNotificationModeToggle}
                 onToggleSidebar={handleToggle}
-                settingsButtonRef={settingsButtonRef}
-                settingsPanelRef={settingsPanelRef}
                 actionsMenuButtonRef={actionsMenuButtonRef}
                 actionsMenuPanelRef={actionsMenuPanelRef}
               />

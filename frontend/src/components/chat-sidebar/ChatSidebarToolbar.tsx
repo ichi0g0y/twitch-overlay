@@ -1,8 +1,9 @@
 import React from 'react';
-import { ArrowUpDown, ExternalLink, LocateFixed, MessageCircle, MoreHorizontal, Plus, RefreshCw, Settings, Twitch, Users } from 'lucide-react';
+import { ArrowUpDown, ExternalLink, LocateFixed, MessageCircle, MoreHorizontal, Plus, RefreshCw, Twitch, Users } from 'lucide-react';
 import { MAX_IRC_CHANNELS, PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import type { ChatDisplayMode, MessageOrderReversedByTab } from './types';
-import { ChatSidebarSettingsPanel } from './ChatSidebarSettingsPanel';
+import { FONT_MAX_SIZE, FONT_MIN_SIZE } from './utils';
+import { Switch } from '../ui/switch';
 
 type ChatSidebarToolbarProps = {
   activeTab: string;
@@ -12,7 +13,6 @@ type ChatSidebarToolbarProps = {
   chattersOpen: boolean;
   channelEditorOpen: boolean;
   actionsMenuOpen: boolean;
-  settingsOpen: boolean;
   popoutChatUrl: string;
   embedded: boolean;
   isCollapsed: boolean;
@@ -29,14 +29,11 @@ type ChatSidebarToolbarProps = {
   setActiveChatDisplayMode: (mode: ChatDisplayMode) => void;
   setActionsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEmbedReloadNonceByTab: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   onOpenChatPopout: () => void;
   onFontSizeChange: (size: number) => void;
   onTranslationToggle: (enabled: boolean) => void;
   onNotificationModeToggle: (enabled: boolean) => void;
   onToggleSidebar: () => void;
-  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
-  settingsPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   actionsMenuButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
   actionsMenuPanelRef: React.MutableRefObject<HTMLDivElement | null>;
 };
@@ -49,7 +46,6 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
   chattersOpen,
   channelEditorOpen,
   actionsMenuOpen,
-  settingsOpen,
   popoutChatUrl,
   embedded,
   isCollapsed,
@@ -66,14 +62,11 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
   setActiveChatDisplayMode,
   setActionsMenuOpen,
   setEmbedReloadNonceByTab,
-  setSettingsOpen,
   onOpenChatPopout,
   onFontSizeChange,
   onTranslationToggle,
   onNotificationModeToggle,
   onToggleSidebar,
-  settingsButtonRef,
-  settingsPanelRef,
   actionsMenuButtonRef,
   actionsMenuPanelRef,
 }) => {
@@ -196,7 +189,7 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
           {actionsMenuOpen && (
             <div
               ref={actionsMenuPanelRef}
-              className="absolute right-0 top-9 z-20 w-48 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-1"
+              className="absolute right-0 top-9 z-20 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-1.5"
             >
               <button
                 type="button"
@@ -253,20 +246,34 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
                 <LocateFixed className="w-4 h-4" />
                 <span>{previewActionLabel}</span>
               </button>
+              <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+              <div className="space-y-3 px-1 py-1.5">
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">文字サイズ</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={FONT_MIN_SIZE}
+                      max={FONT_MAX_SIZE}
+                      value={fontSize}
+                      onChange={(event) => onFontSizeChange(Number(event.target.value))}
+                      className="flex-1"
+                    />
+                    <span className="w-8 text-right text-xs text-gray-600 dark:text-gray-300">{fontSize}px</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">翻訳</span>
+                  <Switch checked={translationEnabled} onCheckedChange={onTranslationToggle} />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">通知上書き</span>
+                  <Switch checked={notificationOverwrite} onCheckedChange={onNotificationModeToggle} />
+                </div>
+              </div>
             </div>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => setSettingsOpen((prev) => !prev)}
-          className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-          aria-label="コメント欄の設定を開く"
-          aria-expanded={settingsOpen}
-          ref={settingsButtonRef}
-        >
-          <Settings className="w-4 h-4" />
-        </button>
 
         {!embedded && (
           <button
@@ -280,18 +287,6 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
           </button>
         )}
       </div>
-
-      {settingsOpen && (
-        <ChatSidebarSettingsPanel
-          fontSize={fontSize}
-          translationEnabled={translationEnabled}
-          notificationOverwrite={notificationOverwrite}
-          onFontSizeChange={onFontSizeChange}
-          onTranslationToggle={onTranslationToggle}
-          onNotificationModeToggle={onNotificationModeToggle}
-          settingsPanelRef={settingsPanelRef}
-        />
-      )}
     </div>
   );
 };

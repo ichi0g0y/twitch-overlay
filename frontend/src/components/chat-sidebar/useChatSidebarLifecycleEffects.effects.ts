@@ -19,28 +19,11 @@ import {
 } from './utils';
 
 export const useChatSidebarMenuEffects = ({
-  settingsOpen,
-  settingsPanelRef,
-  settingsButtonRef,
-  setSettingsOpen,
   actionsMenuOpen,
   actionsMenuPanelRef,
   actionsMenuButtonRef,
   setActionsMenuOpen,
 }: UseChatSidebarLifecycleEffectsParams) => {
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (settingsPanelRef.current?.contains(target)) return;
-      if (settingsButtonRef.current?.contains(target)) return;
-      setSettingsOpen(false);
-    };
-    window.addEventListener('mousedown', handleClick);
-    return () => window.removeEventListener('mousedown', handleClick);
-  }, [setSettingsOpen, settingsButtonRef, settingsOpen, settingsPanelRef]);
-
   useEffect(() => {
     if (!actionsMenuOpen) return;
     const handleClick = (event: MouseEvent) => {
@@ -230,9 +213,9 @@ export const useChatSidebarModeEffects = ({
   isCollapsed,
   setChattersOpen,
   activeChatDisplayMode,
+  setActionsMenuOpen,
   setUserInfoPopup,
   setRawDataMessage,
-  setSettingsOpen,
   setChannelEditorOpen,
 }: UseChatSidebarLifecycleEffectsParams) => {
   useEffect(() => {
@@ -246,14 +229,14 @@ export const useChatSidebarModeEffects = ({
     setChattersOpen(false);
     setUserInfoPopup(null);
     setRawDataMessage(null);
-    setSettingsOpen(false);
+    setActionsMenuOpen(false);
     setChannelEditorOpen(false);
   }, [
     activeChatDisplayMode,
+    setActionsMenuOpen,
     setChannelEditorOpen,
     setChattersOpen,
     setRawDataMessage,
-    setSettingsOpen,
     setUserInfoPopup,
   ]);
 };

@@ -165,6 +165,10 @@ const useWorkspaceRailProps = (
       error: params.followedChannelsError,
       canStartRaid: params.streamIsLive,
       chatWidth: params.chatSidebarWidth,
+      twitchUserId: params.twitchUserInfo?.id,
+      twitchAvatarUrl: params.twitchUserInfo?.profile_image_url,
+      twitchDisplayName:
+        params.twitchUserInfo?.display_name || params.twitchUserInfo?.login,
       onSideChange: params.setFollowedRailSide,
       onOpenOverlay: params.handleOpenOverlay,
       onOpenOverlayDebug: params.handleOpenOverlayDebug,
