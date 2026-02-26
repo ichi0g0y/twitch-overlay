@@ -13,6 +13,7 @@ import {
 } from "./renderers";
 import { isCollapsibleCardNodeKind, resolveWorkspaceCardMinSize } from "./node";
 import type {
+  RemoveWorkspaceCardOptions,
   WorkspaceCardKind,
   WorkspaceRenderContextValue,
 } from "./types";
@@ -49,7 +50,10 @@ type UseWorkspaceRenderContextParams = {
   activeChatSidebarTabId: string;
   followedChannels: FollowedChannelRailItem[];
   previewWarningByKind: Partial<Record<WorkspaceCardKind, string>>;
-  removeWorkspaceCard: (nodeId: string) => void;
+  removeWorkspaceCard: (
+    nodeId: string,
+    options?: RemoveWorkspaceCardOptions,
+  ) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (
     id: string,

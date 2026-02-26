@@ -1,21 +1,7 @@
 import React from 'react';
-import {
-  ArrowUpDown,
-  ExternalLink,
-  LocateFixed,
-  MessageCircle,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Settings,
-  Twitch,
-  Users,
-} from 'lucide-react';
+import { ArrowUpDown, ExternalLink, LocateFixed, MessageCircle, MoreHorizontal, Plus, RefreshCw, Settings, Twitch, Users } from 'lucide-react';
 import { MAX_IRC_CHANNELS, PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
-import type {
-  ChatDisplayMode,
-  MessageOrderReversedByTab,
-} from './types';
+import type { ChatDisplayMode, MessageOrderReversedByTab } from './types';
 import { ChatSidebarSettingsPanel } from './ChatSidebarSettingsPanel';
 
 type ChatSidebarToolbarProps = {
@@ -35,6 +21,7 @@ type ChatSidebarToolbarProps = {
   translationEnabled: boolean;
   notificationOverwrite: boolean;
   onEnsureIrcPreview?: (channelLogin: string) => void;
+  hasPreviewForTab?: (tabId: string) => boolean;
   setChannelEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setChannelInputError: React.Dispatch<React.SetStateAction<string>>;
   setMessageOrderReversedByTab: React.Dispatch<React.SetStateAction<MessageOrderReversedByTab>>;
@@ -71,6 +58,7 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
   translationEnabled,
   notificationOverwrite,
   onEnsureIrcPreview,
+  hasPreviewForTab,
   setChannelEditorOpen,
   setChannelInputError,
   setMessageOrderReversedByTab,
@@ -91,6 +79,9 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
 }) => {
   const canAddChannel = ircChannelCount < MAX_IRC_CHANNELS;
   const addChannelLimitMessage = `IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`;
+  const canEnsureIrcPreview = activeTab !== PRIMARY_CHAT_TAB_ID && typeof onEnsureIrcPreview === 'function';
+  const hasActiveTabPreview = hasPreviewForTab?.(activeTab) ?? true;
+  const previewActionLabel = hasActiveTabPreview ? 'プレビューへ移動' : 'プレビューを再生成';
 
   return (
     <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
@@ -248,18 +239,19 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
                 type="button"
                 onClick={() => {
                   if (activeTab === PRIMARY_CHAT_TAB_ID) return;
-                  onEnsureIrcPreview?.(activeTab);
+                  if (typeof onEnsureIrcPreview !== 'function') return;
+                  onEnsureIrcPreview(activeTab);
                   setActionsMenuOpen(false);
                 }}
                 className={`w-full inline-flex items-center gap-2 px-2 py-1.5 text-left rounded text-sm transition ${
-                  activeTab === PRIMARY_CHAT_TAB_ID
-                    ? 'text-gray-400 dark:text-gray-500'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  canEnsureIrcPreview
+                    ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    : 'text-gray-400 dark:text-gray-500'
                 }`}
-                disabled={activeTab === PRIMARY_CHAT_TAB_ID}
+                disabled={!canEnsureIrcPreview}
               >
                 <LocateFixed className="w-4 h-4" />
-                <span>プレビューへ移動</span>
+                <span>{previewActionLabel}</span>
               </button>
             </div>
           )}

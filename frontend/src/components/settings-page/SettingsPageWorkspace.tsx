@@ -1,5 +1,6 @@
 import "@xyflow/react/dist/style.css";
-import React, { useRef } from "react";
+import React, { useCallback, useRef } from "react";
+import { PRIMARY_CHAT_TAB_ID, normalizeTwitchChannelName } from "../../utils/chatChannels";
 import { MicCaptionSender } from "../mic/MicCaptionSender";
 import { SETTINGS_UI_FONT_FAMILY } from "./workspace-card/constants";
 import { WORKSPACE_RENDER_CONTEXT } from "./workspace-card/context";
@@ -19,7 +20,6 @@ import { useWorkspacePreviewEffects } from "./workspace-card/useWorkspacePreview
 import { useWorkspaceRenderContext } from "./workspace-card/useWorkspaceRenderContext";
 import { useWorkspaceRuntimeState } from "./workspace-card/useWorkspaceRuntimeState";
 import { useWorkspaceSidePanelProps } from "./workspace-card/useWorkspaceSidePanelProps";
-
 export const SettingsPageWorkspace: React.FC = () => {
   const autoVerifyTriggeredRef = useRef(false);
   const runtime = useWorkspaceRuntimeState();
@@ -45,7 +45,6 @@ export const SettingsPageWorkspace: React.FC = () => {
     setNodes,
     setExpandedPreviewNodeId: state.setExpandedPreviewNodeId,
   });
-
   const previewActions = useWorkspacePreviewActions({
     nodes,
     setNodes,
@@ -182,6 +181,22 @@ export const SettingsPageWorkspace: React.FC = () => {
     setChatSidebarActiveTabRequest: state.setChatSidebarActiveTabRequest,
   });
 
+  const hasPreviewForTab = useCallback(
+    (tabId: string) => {
+      const requestedTabId = (tabId || "").trim();
+      if (!requestedTabId) return false;
+      if (requestedTabId === PRIMARY_CHAT_TAB_ID) {
+        return nodes.some((node) => node.data.kind === "preview-main");
+      }
+      const normalized = normalizeTwitchChannelName(requestedTabId);
+      if (!normalized) return false;
+      return nodes.some(
+        (node) => node.data.kind === `preview-irc:${normalized}`,
+      );
+    },
+    [nodes],
+  );
+
   const { sidePanelProps, topBarOffsets } = useWorkspaceSidePanelProps({
     followedRailSide: state.followedRailSide,
     followedChannels: state.followedChannels,
@@ -202,6 +217,7 @@ export const SettingsPageWorkspace: React.FC = () => {
     handleStartShoutoutToChannel: cardActions.handleStartShoutoutToChannel,
     chatSidebarActiveTabRequest: state.chatSidebarActiveTabRequest,
     setActiveChatSidebarTabId: state.setActiveChatSidebarTabId,
+    hasPreviewForTab,
     getSettingValue: settings.getSettingValue,
     handleSettingChange: settings.handleSettingChange,
     featureStatus: settings.featureStatus,

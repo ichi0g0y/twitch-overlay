@@ -36,6 +36,7 @@ type ChatSidebarProps = {
   } | null;
   onActiveTabChange?: (tabId: string) => void;
   onEnsureIrcPreview?: (channelLogin: string) => void;
+  hasPreviewForTab?: (tabId: string) => boolean;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -54,6 +55,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   activeTabRequest = null,
   onActiveTabChange,
   onEnsureIrcPreview,
+  hasPreviewForTab,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -279,6 +281,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       translationEnabled={translationEnabled}
       notificationOverwrite={notificationOverwrite}
       onEnsureIrcPreview={onEnsureIrcPreview}
+      hasPreviewForTab={hasPreviewForTab}
       onFontSizeChange={onFontSizeChange}
       onTranslationToggle={onTranslationToggle}
       onNotificationModeToggle={onNotificationModeToggle}

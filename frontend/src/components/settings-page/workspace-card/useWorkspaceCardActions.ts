@@ -18,6 +18,7 @@ import { toFiniteNumber } from "./numeric";
 import { writeWorkspaceCardLastPositions } from "./storage";
 import type {
   PreviewViewportExpandSnapshot,
+  RemoveWorkspaceCardOptions,
   WorkspaceCardKind,
   WorkspaceCardNode,
 } from "./types";
@@ -278,7 +279,8 @@ export const useWorkspaceCardActions = ({
   );
 
   const removeWorkspaceCard = useCallback(
-    (id: string) => {
+    (id: string, options?: RemoveWorkspaceCardOptions) => {
+      const shouldDisconnectIrcChannel = options?.disconnectIrcChannel ?? true;
       if (expandedPreviewNodeIdRef.current === id) {
         expandedPreviewNodeIdRef.current = null;
         setExpandedPreviewNodeId(null);
@@ -296,7 +298,10 @@ export const useWorkspaceCardActions = ({
           };
           lastWorkspaceCardPositionRef.current = nextPositions;
           writeWorkspaceCardLastPositions(nextPositions);
-          if (target.data.kind.startsWith("preview-irc:")) {
+          if (
+            shouldDisconnectIrcChannel &&
+            target.data.kind.startsWith("preview-irc:")
+          ) {
             const channelLogin = target.data.kind
               .slice("preview-irc:".length)
               .trim()

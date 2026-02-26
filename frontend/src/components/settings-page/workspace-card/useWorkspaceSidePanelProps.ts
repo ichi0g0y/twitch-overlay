@@ -49,6 +49,7 @@ type UseWorkspaceSidePanelPropsParams = {
   handleStartShoutoutToChannel: RailProps["onStartShoutout"];
   chatSidebarActiveTabRequest: ChatSidebarProps["activeTabRequest"];
   setActiveChatSidebarTabId: ChatSidebarProps["onActiveTabChange"];
+  hasPreviewForTab: ChatSidebarProps["hasPreviewForTab"];
   getSettingValue: (key: string) => string;
   handleSettingChange: (
     key: string,
@@ -193,6 +194,7 @@ const useWorkspaceChatSidebarProps = (
       onActiveTabChange: params.setActiveChatSidebarTabId,
       onEnsureIrcPreview: (channelLogin) =>
         params.addIrcPreviewCard(channelLogin, { reveal: true }),
+      hasPreviewForTab: params.hasPreviewForTab,
       fontSize: params.chatSidebarFontSize,
       onFontSizeChange: handleChatSidebarFontSizeChange,
       translationEnabled:

@@ -139,7 +139,7 @@ export const useWorkspacePreviewEffects = ({
     const nodeArea = Math.max(1, width * height);
     const visibleRatio = (intersectionWidth * intersectionHeight) / nodeArea;
     if (visibleRatio < PREVIEW_REVEAL_VISIBLE_RATIO_THRESHOLD) {
-      void flowInstance.setCenter(centerX, centerY, { duration: 180 });
+      void flowInstance.setCenter(centerX, centerY, { zoom, duration: 180 });
     }
 
     setPendingPreviewRevealKind(null);

@@ -107,8 +107,12 @@ export type WorkspacePreviewHeader = {
   isLinkedChatTab: boolean;
 };
 
+export type RemoveWorkspaceCardOptions = {
+  disconnectIrcChannel?: boolean;
+};
+
 export type WorkspaceRenderContextValue = {
-  removeCard: (id: string) => void;
+  removeCard: (id: string, options?: RemoveWorkspaceCardOptions) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (id: string) => void;
   isPreviewViewportExpanded: (id: string) => boolean;

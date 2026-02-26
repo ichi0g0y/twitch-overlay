@@ -29,6 +29,7 @@ export const ChatSidebarLayout = ({
   translationEnabled,
   notificationOverwrite,
   onEnsureIrcPreview,
+  hasPreviewForTab,
   setChannelEditorOpen,
   setChannelInputError,
   setMessageOrderReversedByTab,
@@ -53,6 +54,7 @@ export const ChatSidebarLayout = ({
   channelInput,
   channelInputError,
   setActiveTab,
+  setIrcChannels,
   handleRemoveChannel,
   setChannelInput,
   handleAddChannel,
@@ -143,6 +145,7 @@ export const ChatSidebarLayout = ({
                 translationEnabled={translationEnabled}
                 notificationOverwrite={notificationOverwrite}
                 onEnsureIrcPreview={onEnsureIrcPreview}
+                hasPreviewForTab={hasPreviewForTab}
                 setChannelEditorOpen={setChannelEditorOpen}
                 setChannelInputError={setChannelInputError}
                 setMessageOrderReversedByTab={setMessageOrderReversedByTab}
@@ -171,6 +174,7 @@ export const ChatSidebarLayout = ({
                 channelInput={channelInput}
                 channelInputError={channelInputError}
                 setActiveTab={setActiveTab}
+                setIrcChannels={setIrcChannels}
                 handleRemoveChannel={handleRemoveChannel}
                 setChannelInput={setChannelInput}
                 setChannelInputError={setChannelInputError}

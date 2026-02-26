@@ -31,6 +31,7 @@ export type ChatSidebarLayoutProps = {
   translationEnabled: boolean;
   notificationOverwrite: boolean;
   onEnsureIrcPreview?: (channelLogin: string) => void;
+  hasPreviewForTab?: (tabId: string) => boolean;
   setChannelEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setChannelInputError: React.Dispatch<React.SetStateAction<string>>;
   setMessageOrderReversedByTab: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -55,6 +56,7 @@ export type ChatSidebarLayoutProps = {
   channelInput: string;
   channelInputError: string;
   setActiveTab: React.Dispatch<React.SetStateAction<string>>;
+  setIrcChannels: React.Dispatch<React.SetStateAction<string[]>>;
   handleRemoveChannel: (channel: string) => void;
   setChannelInput: React.Dispatch<React.SetStateAction<string>>;
   handleAddChannel: () => void;
