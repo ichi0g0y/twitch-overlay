@@ -1,6 +1,10 @@
 import { useCallback, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type { ReactFlowInstance } from "@xyflow/react";
-import { readIrcChannels, writeIrcChannels } from "../../../utils/chatChannels";
+import {
+  appendIrcChannel,
+  readIrcChannels,
+  writeIrcChannels,
+} from "../../../utils/chatChannels";
 import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import { startRaidToChannel, startShoutoutToChannel } from "./followedChannels";
 import { isPreviewCardKind } from "./kinds";
@@ -105,9 +109,9 @@ export const useWorkspaceCardActions = ({
     const normalized = (channelLogin || "").trim().toLowerCase();
     if (!normalized) return;
     const current = readIrcChannels();
-    if (!current.includes(normalized)) {
-      writeIrcChannels([...current, normalized]);
-    }
+    const next = appendIrcChannel(current, normalized);
+    if (next.length === current.length && next.every((channel, index) => channel === current[index])) return;
+    writeIrcChannels(next);
   }, []);
 
   const addIrcPreviewCard = useCallback(

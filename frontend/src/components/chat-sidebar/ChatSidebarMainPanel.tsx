@@ -221,7 +221,7 @@ export const ChatSidebarMainPanel: React.FC<{
           )}
         </div>
         {!autoFollowLatest && activeMessages.length > 0 && (
-          <div className="pointer-events-none absolute bottom-16 right-3 z-20">
+          <div className="pointer-events-none absolute bottom-16 left-1/2 z-20 -translate-x-1/2">
             <button
               type="button"
               onClick={handleJumpToLatest}

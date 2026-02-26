@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type React from 'react';
 import {
+  appendIrcChannel,
   PRIMARY_CHAT_TAB_ID,
   normalizeTwitchChannelName,
 } from '../../utils/chatChannels';
@@ -160,7 +161,7 @@ export const useChatSidebarActions = ({
       return;
     }
 
-    setIrcChannels((prev) => [...prev, normalized]);
+    setIrcChannels((prev) => appendIrcChannel(prev, normalized));
     setActiveTab(normalized);
     onEnsureIrcPreview?.(normalized);
     setChannelEditorOpen(false);
