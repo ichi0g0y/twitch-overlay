@@ -1,4 +1,4 @@
-import { Globe2, Lock, LockOpen, RefreshCw, Smile, Sparkles } from 'lucide-react';
+import { Globe2, Lock, LockOpen, RefreshCw, Smile, Sparkles, Star } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 
@@ -6,6 +6,7 @@ import { buildApiUrl } from '../../utils/api';
 import { Button } from '../ui/button';
 
 type Emote = {
+  id: string;
   name: string;
   url: string;
   source: 'channel' | 'special' | 'unlocked' | 'global' | 'learned';
@@ -39,8 +40,11 @@ type EmotePickerProps = {
 
 const DASHBOARD_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
 const EMOTE_CACHE_STORAGE_KEY = 'chat.emote_picker.cache.v10';
+const EMOTE_FAVORITES_STORAGE_KEY_LEGACY = 'chat.emote_picker.favorites.v1';
 const EMOTE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const EMOTE_CACHE_MAX_ENTRIES = 16;
+const EMOTE_FAVORITES_MAX_ENTRIES = 200;
+const FAVORITES_SECTION_KEY = 'favorites';
 
 type StoredEmoteCacheEntry = {
   savedAt: number;
@@ -66,6 +70,10 @@ const resolveContextUsable = (
 const parseEmote = (raw: any): Emote | null => {
   if (!raw || typeof raw !== 'object') return null;
 
+  const rawId = typeof raw.id === 'string'
+    ? raw.id
+    : (typeof raw.emote_id === 'string' ? raw.emote_id : '');
+  const id = rawId.trim();
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   const url = typeof raw.url === 'string' ? raw.url.trim() : '';
   const sourceRaw = typeof raw.source === 'string' ? raw.source : 'global';
@@ -91,6 +99,7 @@ const parseEmote = (raw: any): Emote | null => {
   if (name === '' || url === '') return null;
 
   return {
+    id,
     name,
     url,
     source,
@@ -99,6 +108,11 @@ const parseEmote = (raw: any): Emote | null => {
     emoteType: emoteType || undefined,
     tier: tier || undefined,
   };
+};
+
+const getEmoteFavoriteKey = (emote: Emote) => {
+  if (emote.id.trim() !== '') return emote.id.trim();
+  return `${emote.source}:${emote.channelLogin ?? ''}:${emote.name}:${emote.url}`;
 };
 
 const getEmoteUnavailableLabel = (emote: Emote) => {
@@ -162,6 +176,45 @@ const clearStoredGroups = (requestKey: string) => {
   if (!(requestKey in cache)) return;
   delete cache[requestKey];
   writeStoredEmoteCache(cache);
+};
+
+const sanitizeFavoriteKeys = (keys: unknown): string[] => {
+  if (!Array.isArray(keys)) return [];
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const value of keys) {
+    if (typeof value !== 'string') continue;
+    const key = value.trim();
+    if (key === '' || seen.has(key)) continue;
+    seen.add(key);
+    next.push(key);
+    if (next.length >= EMOTE_FAVORITES_MAX_ENTRIES) break;
+  }
+  return next;
+};
+
+const readLegacyStoredFavoriteKeys = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(EMOTE_FAVORITES_STORAGE_KEY_LEGACY);
+    if (!raw) return [];
+    return sanitizeFavoriteKeys(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+};
+
+const clearLegacyStoredFavoriteKeys = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(EMOTE_FAVORITES_STORAGE_KEY_LEGACY);
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const parseFavoriteKeysFromResponse = (raw: any): string[] => {
+  return sanitizeFavoriteKeys(raw?.data?.keys);
 };
 
 const sortGroups = (groups: EmoteGroup[], priorityChannelLogin?: string) => {
@@ -584,6 +637,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   const cacheRef = useRef<Record<string, EmoteGroup[]>>({});
   const groupCacheRef = useRef<Record<string, EmoteGroup>>({});
   const fetchSeqRef = useRef(0);
+  const favoriteInitDoneRef = useRef(false);
+  const favoriteSaveControllerRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const [open, setOpen] = useState(false);
@@ -592,6 +647,7 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   const [warning, setWarning] = useState('');
   const [keyword, setKeyword] = useState('');
   const [groups, setGroups] = useState<EmoteGroup[]>([]);
+  const [favoriteKeys, setFavoriteKeys] = useState<string[]>([]);
   const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
   const [needsFetch, setNeedsFetch] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
@@ -639,6 +695,10 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     }
     return buildApiUrl(`/api/emotes?${queryString}`);
   }, [forceRefresh, normalizedPriorityChannel, requestChannel]);
+
+  const favoriteApiUrl = useMemo(() => {
+    return buildApiUrl('/api/emotes/favorites');
+  }, []);
 
   useEffect(() => {
     setKeyword('');
@@ -737,6 +797,65 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     };
   }, [forceRefresh, needsFetch, normalizedPriorityChannel, open, requestKey, requestUrl]);
 
+  useEffect(() => {
+    if (!open || favoriteInitDoneRef.current) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadFavoriteKeys = async () => {
+      const legacyKeys = readLegacyStoredFavoriteKeys();
+      try {
+        const response = await fetch(favoriteApiUrl, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (cancelled) return;
+        const keys = parseFavoriteKeysFromResponse(data);
+        if (keys.length > 0) {
+          setFavoriteKeys(keys);
+          clearLegacyStoredFavoriteKeys();
+          favoriteInitDoneRef.current = true;
+          return;
+        }
+
+        if (legacyKeys.length > 0) {
+          setFavoriteKeys(legacyKeys);
+          favoriteInitDoneRef.current = true;
+          try {
+            await fetch(favoriteApiUrl, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ keys: legacyKeys }),
+              signal: controller.signal,
+            });
+            clearLegacyStoredFavoriteKeys();
+          } catch (migrationError) {
+            console.warn('[EmotePicker] Failed to migrate legacy favorites to DB:', migrationError);
+          }
+          return;
+        }
+
+        setFavoriteKeys([]);
+        favoriteInitDoneRef.current = true;
+      } catch (fetchError) {
+        if (controller.signal.aborted || cancelled) return;
+        console.warn('[EmotePicker] Failed to load favorite keys from DB:', fetchError);
+        setFavoriteKeys(legacyKeys);
+        favoriteInitDoneRef.current = true;
+      }
+    };
+
+    void loadFavoriteKeys();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [favoriteApiUrl, open]);
+
   const displayGroups = useMemo(() => {
     const next = [...groups];
     const existingIds = new Set(next.map((group) => group.id));
@@ -752,6 +871,32 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   const pendingGroupIdSet = useMemo(() => {
     return new Set(pendingGroupIds);
   }, [pendingGroupIds]);
+
+  const favoriteKeySet = useMemo(() => {
+    return new Set(favoriteKeys);
+  }, [favoriteKeys]);
+
+  const usableEmoteMap = useMemo(() => {
+    const map = new Map<string, Emote>();
+    for (const group of displayGroups) {
+      for (const emote of group.emotes) {
+        if (!emote.usable) continue;
+        const key = getEmoteFavoriteKey(emote);
+        if (!map.has(key)) {
+          map.set(key, emote);
+        }
+      }
+    }
+    return map;
+  }, [displayGroups]);
+
+  const favoriteEmotes = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return favoriteKeys
+      .map((key) => usableEmoteMap.get(key))
+      .filter((emote): emote is Emote => emote !== undefined)
+      .filter((emote) => normalizedKeyword === '' || emote.name.toLowerCase().includes(normalizedKeyword));
+  }, [favoriteKeys, keyword, usableEmoteMap]);
 
   const filteredGroups = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
@@ -791,6 +936,50 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     setWarning('');
     setPendingGroupIds(collectMissingGroupIds(requestChannel, groups));
   };
+
+  const persistFavoriteKeys = async (keys: string[]) => {
+    favoriteSaveControllerRef.current?.abort();
+    const controller = new AbortController();
+    favoriteSaveControllerRef.current = controller;
+    try {
+      const response = await fetch(favoriteApiUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keys }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (saveError) {
+      if (controller.signal.aborted) return;
+      console.warn('[EmotePicker] Failed to save favorite keys to DB:', saveError);
+    }
+  };
+
+  const toggleFavorite = (emote: Emote) => {
+    if (!emote.usable) return;
+    const targetKey = getEmoteFavoriteKey(emote);
+    setFavoriteKeys((prev) => {
+      const exists = prev.includes(targetKey);
+      const next = exists
+        ? prev.filter((key) => key !== targetKey)
+        : [targetKey, ...prev];
+      const sanitized = sanitizeFavoriteKeys(next);
+      void persistFavoriteKeys(sanitized);
+      favoriteInitDoneRef.current = true;
+      clearLegacyStoredFavoriteKeys();
+      return sanitized;
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      favoriteSaveControllerRef.current?.abort();
+    };
+  }, []);
 
   const scrollToGroup = (groupId: string) => {
     const container = scrollContainerRef.current;
@@ -833,6 +1022,72 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
       </span>
     );
   };
+
+  const renderEmoteCell = (
+    emote: Emote,
+    cellKey: string,
+    options?: { showFavoriteToggle?: boolean },
+  ) => {
+    const showFavoriteToggle = options?.showFavoriteToggle ?? true;
+    const favoriteKey = getEmoteFavoriteKey(emote);
+    const isFavorite = favoriteKeySet.has(favoriteKey);
+    const canToggleFavorite = emote.usable && showFavoriteToggle;
+
+    return (
+      <div key={cellKey} className="group/emote relative inline-flex h-8 w-8 items-center justify-center">
+        <button
+          type="button"
+          disabled={!emote.usable}
+          onMouseDown={(event) => {
+            event.preventDefault();
+          }}
+          onClick={() => {
+            if (!emote.usable) return;
+            onSelect(emote.name, emote.url);
+          }}
+          className={`relative inline-flex h-8 w-8 items-center justify-center rounded border ${
+            emote.usable
+              ? 'border-transparent hover:bg-white/80 dark:hover:bg-gray-800/70'
+              : 'cursor-not-allowed border-transparent opacity-60'
+          }`}
+          title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+          aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+        >
+          <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
+          {!emote.usable && (
+            <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center text-gray-500/80 dark:text-gray-300/70">
+              <Lock className="h-2.5 w-2.5 fill-current opacity-80" />
+            </span>
+          )}
+        </button>
+        {canToggleFavorite && (
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              toggleFavorite(emote);
+            }}
+            className={`pointer-events-none absolute -right-1 -top-1 inline-flex h-3.5 w-3.5 items-center justify-center opacity-0 transition-all group-hover/emote:pointer-events-auto group-hover/emote:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 ${
+              isFavorite
+                ? 'text-amber-500 dark:text-amber-300'
+                : 'text-gray-400 hover:text-amber-500 dark:text-gray-500 dark:hover:text-amber-300'
+            }`}
+            aria-label={isFavorite ? `${emote.name} をお気に入り解除` : `${emote.name} をお気に入り`}
+            title={isFavorite ? 'お気に入り解除' : 'お気に入り'}
+          >
+            <Star className={`h-2.5 w-2.5 ${isFavorite ? 'fill-current' : ''}`} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const hasVisibleContent = favoriteEmotes.length > 0 || filteredGroups.length > 0;
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -903,13 +1158,41 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
               </p>
             )}
 
-            {!loading && error === '' && filteredGroups.length === 0 && (
+            {!loading && error === '' && !hasVisibleContent && (
               <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">該当するエモートがありません</p>
             )}
 
-            {filteredGroups.length > 0 && (
+            {hasVisibleContent && (
               <div className="flex items-start gap-2">
                 <div ref={scrollContainerRef} className="max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
+                  {favoriteEmotes.length > 0 && (
+                    <section
+                      key={FAVORITES_SECTION_KEY}
+                      ref={(node) => {
+                        sectionRefs.current[FAVORITES_SECTION_KEY] = node;
+                      }}
+                      className="space-y-1"
+                    >
+                      <div className="sticky top-0 z-10 w-full rounded-md bg-amber-100 px-2.5 py-2 text-xs font-semibold text-amber-900 backdrop-blur dark:bg-amber-500/20 dark:text-amber-100">
+                        <div className="flex min-h-5 items-center gap-2">
+                          <Star className="h-3.5 w-3.5 fill-current" />
+                          <span className="truncate">お気に入り</span>
+                          <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-amber-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-400/30 dark:text-amber-100">
+                            {favoriteEmotes.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid justify-items-center gap-1 [grid-template-columns:repeat(auto-fill,minmax(2rem,1fr))]">
+                          {favoriteEmotes.map((emote) => (
+                            renderEmoteCell(
+                              emote,
+                              `${FAVORITES_SECTION_KEY}:${emote.id}:${emote.name}:${emote.url}`,
+                              { showFavoriteToggle: false },
+                            )
+                          ))}
+                        </div>
+                    </section>
+                  )}
                   {filteredGroups.map((group) => (
                     <section
                       key={group.id}
@@ -982,32 +1265,10 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
                                     </div>
                                     <div className="grid justify-items-center gap-1 [grid-template-columns:repeat(auto-fill,minmax(2rem,1fr))]">
                                       {subSection.emotes.map((emote) => (
-                                        <button
-                                          key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
-                                          type="button"
-                                          disabled={!emote.usable}
-                                          onMouseDown={(event) => {
-                                            event.preventDefault();
-                                          }}
-                                          onClick={() => {
-                                            if (!emote.usable) return;
-                                            onSelect(emote.name, emote.url);
-                                          }}
-                                          className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
-                                            emote.usable
-                                              ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
-                                              : 'cursor-not-allowed opacity-60'
-                                          }`}
-                                          title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                          aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                        >
-                                          <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
-                                          {!emote.usable && (
-                                            <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
-                                              <Lock className="h-2.5 w-2.5" />
-                                            </span>
-                                          )}
-                                        </button>
+                                        renderEmoteCell(
+                                          emote,
+                                          `${group.id}:${section.key}:${subSection.key}:${emote.id}:${emote.name}:${emote.url}`,
+                                        )
                                       ))}
                                     </div>
                                   </div>
@@ -1021,6 +1282,23 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
                   ))}
                 </div>
                 <div className="max-h-72 w-9 shrink-0 space-y-1 overflow-y-auto pl-0.5">
+                  {favoriteEmotes.length > 0 && (
+                    <button
+                      key={`jump:${FAVORITES_SECTION_KEY}`}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        scrollToGroup(FAVORITES_SECTION_KEY);
+                      }}
+                      className="relative inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800 transition-colors hover:bg-amber-50 dark:border-amber-500/60 dark:bg-amber-500/20 dark:text-amber-200 dark:hover:bg-amber-500/30"
+                      aria-label="お気に入りセクションへ移動"
+                      title="お気に入りセクションへ移動"
+                    >
+                      <Star className="h-3.5 w-3.5 fill-current" />
+                    </button>
+                  )}
                   {filteredGroups.map((group) => (
                     <button
                       key={`jump:${group.id}`}
