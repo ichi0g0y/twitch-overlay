@@ -13,6 +13,10 @@ use crate::app::SharedState;
 use crate::config::SettingsManager;
 use crate::window::monitor;
 
+mod settings;
+
+use settings::{load_interaction_settings, load_saved_coordinate};
+
 pub const NOTIFICATION_WINDOW_LABEL: &str = "twitch-chat-notification";
 
 const SETTING_X: &str = "NOTIFICATION_WINDOW_X";
@@ -60,7 +64,8 @@ pub fn ensure_window(state: &SharedState) -> Result<WebviewWindow, String> {
     }
 
     let (width, height) = load_size(state.db());
-    let (movable, resizable) = load_interaction_settings(state.db());
+    let (movable, resizable) =
+        load_interaction_settings(state.db(), SETTING_MOVABLE, SETTING_RESIZABLE);
     let effective_resizable = movable && resizable;
     let window = WebviewWindowBuilder::new(
         &app,
@@ -269,15 +274,8 @@ fn load_size(db: &Database) -> (u32, u32) {
     (width, height)
 }
 
-fn load_interaction_settings(db: &Database) -> (bool, bool) {
-    let sm = SettingsManager::new(db.clone());
-    let movable = parse_saved_bool(sm.get_setting(SETTING_MOVABLE).unwrap_or_default(), true);
-    let resizable = parse_saved_bool(sm.get_setting(SETTING_RESIZABLE).unwrap_or_default(), true);
-    (movable, resizable)
-}
-
 fn apply_interaction_settings(window: &WebviewWindow, db: &Database) {
-    let (movable, resizable) = load_interaction_settings(db);
+    let (movable, resizable) = load_interaction_settings(db, SETTING_MOVABLE, SETTING_RESIZABLE);
     let effective_resizable = movable && resizable;
     let _ = window.set_always_on_top(true);
     let _ = window.set_decorations(false);
@@ -289,33 +287,4 @@ fn save_size(db: &Database, width: u32, height: u32) {
     let sm = SettingsManager::new(db.clone());
     let _ = sm.set_setting(SETTING_WIDTH, &width.to_string());
     let _ = sm.set_setting(SETTING_HEIGHT, &height.to_string());
-}
-
-fn parse_saved_i32(value: String) -> Option<i32> {
-    if let Ok(i) = value.parse::<i32>() {
-        return Some(i);
-    }
-    value.parse::<f64>().ok().map(|f| f.round() as i32)
-}
-
-fn parse_saved_bool(value: String, default_value: bool) -> bool {
-    if value.eq_ignore_ascii_case("true") {
-        return true;
-    }
-    if value.eq_ignore_ascii_case("false") {
-        return false;
-    }
-    default_value
-}
-
-fn load_saved_coordinate(
-    sm: &SettingsManager,
-    absolute_key: &str,
-    legacy_key: &str,
-) -> Option<i32> {
-    let absolute = sm.get_setting(absolute_key).unwrap_or_default();
-    parse_saved_i32(absolute).or_else(|| {
-        let legacy = sm.get_setting(legacy_key).unwrap_or_default();
-        parse_saved_i32(legacy)
-    })
 }
