@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, MessageCircle, Send } from 'lucide-react';
 import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import type { ChatMessage } from '../ChatSidebarItem';
@@ -64,6 +64,33 @@ export const ChatSidebarMainPanel: React.FC<{
   sendComment,
   inputHasContent,
 }) => {
+  const [relativeNowMs, setRelativeNowMs] = useState(() => Date.now());
+  const hasSecondPrecisionTimestamp = useMemo(() => {
+    for (const message of activeMessages) {
+      if (!message.timestamp) continue;
+      const parsed = new Date(message.timestamp).getTime();
+      if (Number.isNaN(parsed)) continue;
+      const diffMs = relativeNowMs - parsed;
+      if (diffMs >= 0 && diffMs < 60 * 1000) return true;
+    }
+    return false;
+  }, [activeMessages, relativeNowMs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    setRelativeNowMs(Date.now());
+    if (activeMessages.length === 0) return undefined;
+
+    const intervalMs = hasSecondPrecisionTimestamp ? 1000 : 60 * 1000;
+    const timer = window.setInterval(() => {
+      setRelativeNowMs(Date.now());
+    }, intervalMs);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [activeMessages, activeTab, hasSecondPrecisionTimestamp]);
+
   if (isCollapsed) {
     return (
       <button
@@ -139,7 +166,7 @@ export const ChatSidebarMainPanel: React.FC<{
                   fontSize={fontSize}
                   metaFontSize={metaFontSize}
                   translationFontSize={translationFontSize}
-                  timestampLabel={formatTime(item.message.timestamp)}
+                  timestampLabel={formatTime(item.message.timestamp, relativeNowMs)}
                   onUsernameClick={onOpenUserInfo}
                   onRawDataClick={onOpenRawData}
                   resolveBadgeVisual={resolveBadgeVisual}

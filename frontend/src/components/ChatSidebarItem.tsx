@@ -30,6 +30,74 @@ export type ChatMessage = {
 
 const TWITCH_CHAT_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
+const hexToRgb = (hex: string): [number, number, number] | null => {
+  if (!TWITCH_CHAT_COLOR_RE.test(hex)) return null;
+  const value = hex.replace('#', '');
+  const r = Number.parseInt(value.slice(0, 2), 16);
+  const g = Number.parseInt(value.slice(2, 4), 16);
+  const b = Number.parseInt(value.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return null;
+  return [r, g, b];
+};
+
+const rgbToHsl = (r: number, g: number, b: number): [number, number, number] => {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  return [h / 6, s, l];
+};
+
+const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
+  if (s === 0) {
+    const gray = Math.round(l * 255);
+    return [gray, gray, gray];
+  }
+  const hue2rgb = (p: number, q: number, t: number) => {
+    let tn = t;
+    if (tn < 0) tn += 1;
+    if (tn > 1) tn -= 1;
+    if (tn < 1 / 6) return p + (q - p) * 6 * tn;
+    if (tn < 1 / 2) return q;
+    if (tn < 2 / 3) return p + (q - p) * (2 / 3 - tn) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - (l * s);
+  const p = (2 * l) - q;
+  const r = hue2rgb(p, q, h + (1 / 3));
+  const g = hue2rgb(p, q, h);
+  const b = hue2rgb(p, q, h - (1 / 3));
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+};
+
+const rgbToHex = (r: number, g: number, b: number) =>
+  `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+
+const normalizeReadableChatColor = (hex?: string): string | undefined => {
+  if (!hex || !TWITCH_CHAT_COLOR_RE.test(hex)) return undefined;
+  const rgb = hexToRgb(hex);
+  if (!rgb) return undefined;
+
+  const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+  let nextL = l;
+
+  // Avoid very dark / very bright colors against alternating light/dark row backgrounds.
+  if (nextL < 0.32) nextL = 0.45;
+  else if (nextL > 0.78) nextL = 0.62;
+
+  const [r, g, b] = hslToRgb(h, s, nextL);
+  return rgbToHex(r, g, b);
+};
+
 const ISO6391_TO_3: Record<string, string> = {
   ja: 'jpn',
   en: 'eng',
@@ -139,13 +207,13 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
     && displayName.toLowerCase() !== rawName.toLowerCase();
   const renderedDisplayName = shouldAppendName ? `${displayName} (${rawName})` : displayName;
   const displayNameNode = (
-    <>
-      <span className="font-semibold">{displayName}</span>
-      {shouldAppendName && <span className="font-normal">{` (${rawName})`}</span>}
-    </>
+    <span className="inline-flex min-w-0 max-w-full items-baseline">
+      <span className="shrink-0 font-semibold">{displayName}</span>
+      {shouldAppendName && <span className="min-w-0 truncate font-normal">{` (${rawName})`}</span>}
+    </span>
   );
-  const usernameColor = message.chatSource === 'irc' && TWITCH_CHAT_COLOR_RE.test(message.color ?? '')
-    ? message.color
+  const usernameColor = message.chatSource === 'irc'
+    ? normalizeReadableChatColor(message.color)
     : undefined;
   const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
   const avatarFallbackStyle = {
@@ -194,7 +262,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       style={{ fontSize }}
     >
       <div className="flex items-start justify-between text-gray-500 dark:text-gray-400" style={{ fontSize: metaFontSize }}>
-        <div className="min-w-0 flex items-center gap-[5px]">
+        <div className="min-w-0 flex flex-1 items-center gap-[5px]">
           {avatarNode}
           {badgeVisuals.length > 0 && (
             <span className="inline-flex items-center gap-[5px]">
@@ -220,7 +288,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             <button
               type="button"
               onClick={() => onUsernameClick(message)}
-              className="text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
+              className="inline-flex min-w-0 max-w-full text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
               aria-label={`${renderedDisplayName} の情報を表示`}
               title={`${renderedDisplayName} の情報を表示`}
               style={usernameColor ? { color: usernameColor } : undefined}
@@ -229,7 +297,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             </button>
           ) : (
             <span
-              className="text-gray-700 dark:text-gray-200"
+              className="inline-flex min-w-0 max-w-full text-gray-700 dark:text-gray-200"
               style={usernameColor ? { color: usernameColor } : undefined}
             >
               {displayNameNode}
@@ -240,9 +308,8 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
               BOT
             </span>
           )}
-          <span className="text-gray-300 dark:text-gray-600">{timestampLabel}</span>
         </div>
-        <div className="ml-2 inline-flex items-center gap-1">
+        <div className="ml-2 inline-flex flex-shrink-0 items-center gap-1">
           {onRawDataClick && (
             <button
               type="button"
@@ -254,6 +321,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
               <Code className="h-3 w-3" />
             </button>
           )}
+          <span className="text-gray-300 dark:text-gray-600 tabular-nums">{timestampLabel}</span>
         </div>
       </div>
       <div

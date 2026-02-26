@@ -169,7 +169,7 @@ export const useChatSidebarPopupEffects = ({
     if (!userInfoPopup && !rawDataMessage) return;
     setUserInfoPopup(null);
     setRawDataMessage(null);
-  }, [activeTab, isCollapsed, rawDataMessage, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
+  }, [activeTab, isCollapsed]);
 
   useEffect(() => {
     setUserInfoIdCopied(false);

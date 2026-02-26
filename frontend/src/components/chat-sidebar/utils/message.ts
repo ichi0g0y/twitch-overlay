@@ -2,14 +2,34 @@ import type { ChatFragment, ChatMessage } from '../../ChatSidebarItem';
 import type { DateSeparatorInfo } from '../types';
 import { EMOTE_CDN_BASE, HISTORY_DAYS } from './constants';
 
-export const formatTime = (timestamp?: string) => {
+export const formatTime = (timestamp?: string, nowMs: number = Date.now()) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
+  const now = nowMs;
+  const diffMs = now - date.getTime();
+
+  if (diffMs < 0) {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  const diffSeconds = Math.floor(diffMs / 1000);
+  if (diffSeconds < 10) return 'たった今';
+  if (diffSeconds < 60) return `${diffSeconds}秒前`;
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+
   return date.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false,
   });
 };
