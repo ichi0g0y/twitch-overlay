@@ -62,6 +62,33 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onNotificationModeToggle,
 }) => {
   const state = useChatSidebarState({ embedded });
+  const loadedTabIds = useMemo(
+    () => ({
+      ...state.loadedCustomTabIds,
+      ...state.loadedEmbedTabIds,
+    }),
+    [state.loadedCustomTabIds, state.loadedEmbedTabIds],
+  );
+  const ircHistoryChannels = useMemo(
+    () => state.ircChannels.filter((channel) => loadedTabIds[channel] === true),
+    [loadedTabIds, state.ircChannels],
+  );
+  const enablePrimaryIrcConnection = loadedTabIds[PRIMARY_CHAT_TAB_ID] === true;
+
+  useEffect(() => {
+    state.setLoadedCustomTabIds((prev) => {
+      if (prev[state.activeTab]) return prev;
+      return { ...prev, [state.activeTab]: true };
+    });
+    state.setLoadedEmbedTabIds((prev) => {
+      if (prev[state.activeTab]) return prev;
+      return { ...prev, [state.activeTab]: true };
+    });
+  }, [
+    state.activeTab,
+    state.setLoadedCustomTabIds,
+    state.setLoadedEmbedTabIds,
+  ]);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -133,6 +160,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   const ircConnectionActions = useIrcConnectionManager({
     ...state,
+    activeCustomIrcChannels: ircHistoryChannels,
+    enablePrimaryConnection: enablePrimaryIrcConnection,
     appendIrcMessage: ircParticipantActions.appendIrcMessage,
     upsertIrcParticipant: ircParticipantActions.upsertIrcParticipant,
     applyIrcNames: ircParticipantActions.applyIrcNames,
@@ -181,6 +210,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   useChatSidebarLifecycleEffects({
     ...state,
+    ircHistoryChannels,
     hydrateIrcUserProfile: ircProfileActions.hydrateIrcUserProfile,
     onActiveTabChange,
     activeTabRequest,
@@ -190,6 +220,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   const displayState = useChatSidebarDisplayState({
     ...state,
+    loadedEmbedTabIds: loadedTabIds,
     side,
     width,
     onWidthChange,

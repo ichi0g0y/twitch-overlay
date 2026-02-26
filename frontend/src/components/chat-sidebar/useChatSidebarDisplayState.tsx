@@ -36,6 +36,7 @@ type UseChatSidebarDisplayStateParams = {
   channelDisplayNames: Record<string, string>;
   tabDisplayNamesByChannel: Record<string, string>;
   embedReloadNonceByTab: Record<string, number>;
+  loadedEmbedTabIds: Record<string, true>;
 };
 
 const buildDisplayStateResult = ({
@@ -105,6 +106,7 @@ export const useChatSidebarDisplayState = ({
   channelDisplayNames,
   tabDisplayNamesByChannel,
   embedReloadNonceByTab,
+  loadedEmbedTabIds,
 }: UseChatSidebarDisplayStateParams) => {
   const {
     activeMessages,
@@ -158,6 +160,7 @@ export const useChatSidebarDisplayState = ({
     channelDisplayNames,
     tabDisplayNamesByChannel,
     embedReloadNonceByTab,
+    loadedEmbedTabIds,
     resolveTabChannelLogin,
     tabScroller: tabScrollerRef.current,
     activeButton: tabButtonRefs.current[activeTab],

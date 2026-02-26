@@ -19,6 +19,7 @@ export type UseChatSidebarLifecycleEffectsParams = {
   setActionsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPrimaryMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   ircChannels: string[];
+  ircHistoryChannels: string[];
   setIrcChannels: React.Dispatch<React.SetStateAction<string[]>>;
   setIrcMessagesByChannel: React.Dispatch<React.SetStateAction<Record<string, ChatMessage[]>>>;
   hydrateIrcUserProfile: (userId?: string, usernameHint?: string) => Promise<void>;

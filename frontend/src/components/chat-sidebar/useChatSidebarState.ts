@@ -73,6 +73,8 @@ export const useChatSidebarState = ({
   const [channelInput, setChannelInput] = useState('');
   const [channelInputError, setChannelInputError] = useState('');
   const [embedReloadNonceByTab, setEmbedReloadNonceByTab] = useState<Record<string, number>>({});
+  const [loadedEmbedTabIds, setLoadedEmbedTabIds] = useState<Record<string, true>>({});
+  const [loadedCustomTabIds, setLoadedCustomTabIds] = useState<Record<string, true>>({});
 
   const richInputRef = useRef<RichChatInputRef | null>(null);
   const postingMessageLockRef = useRef(false);
@@ -152,6 +154,10 @@ export const useChatSidebarState = ({
     setChannelInputError,
     embedReloadNonceByTab,
     setEmbedReloadNonceByTab,
+    loadedEmbedTabIds,
+    setLoadedEmbedTabIds,
+    loadedCustomTabIds,
+    setLoadedCustomTabIds,
     richInputRef,
     postingMessageLockRef,
     inputHasContent,

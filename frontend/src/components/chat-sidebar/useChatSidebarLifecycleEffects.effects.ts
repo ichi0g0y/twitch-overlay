@@ -58,6 +58,7 @@ export const useChatSidebarMenuEffects = ({
 export const useChatSidebarChannelEffects = ({
   setPrimaryMessages,
   ircChannels,
+  ircHistoryChannels,
   setIrcChannels,
   setIrcMessagesByChannel,
   hydrateIrcUserProfile,
@@ -81,7 +82,7 @@ export const useChatSidebarChannelEffects = ({
   }, [setIrcChannels]);
 
   useIrcHistoryLoader({
-    ircChannels,
+    ircChannels: ircHistoryChannels,
     setIrcMessagesByChannel,
     hydrateIrcUserProfile,
   });
