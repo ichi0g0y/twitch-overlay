@@ -94,9 +94,10 @@
 
 ### 5. PRと完了
 
-1. PR本文には対象Issueを記載する
-2. `Closes` は作業対象のサブIssue番号を記載する（親Issueではなくサブ）
-3. `Refs` は親Issueや関連Issueを記載し、共有ライブラリ変更時は相互Issueを明示する
-4. PRマージ後にIssueが自動クローズされない場合は、マージPRを参照して手動クローズする
-5. PRマージ後、親Issueの全サブIssueがClose済みかを `subIssuesSummary` で確認し、全完了なら親Issueもクローズする
-6. 対象Issueの完了が確認できたら `.context/current_issue` を削除する
+1. PR作成またはPR更新の実行時に未コミット変更がある場合は、`/commit!` / `/c!` 相当の処理を自動実行してから続行する
+2. PR本文には対象Issueを記載する
+3. `Closes` は作業対象のサブIssue番号を記載する（親Issueではなくサブ）
+4. `Refs` は親Issueや関連Issueを記載し、共有ライブラリ変更時は相互Issueを明示する
+5. PRマージ後にIssueが自動クローズされない場合は、マージPRを参照して手動クローズする
+6. PRマージ後、親Issueの全サブIssueがClose済みかを `subIssuesSummary` で確認し、全完了なら親Issueもクローズする
+7. 対象Issueの完了が確認できたら `.context/current_issue` を削除する
