@@ -36,6 +36,8 @@ type EmotePickerProps = {
   channelLogins?: string[];
   priorityChannelLogin?: string;
   onSelect: (name: string, url: string) => void;
+  triggerClassName?: string;
+  triggerVariant?: 'outline' | 'ghost';
 };
 
 const DASHBOARD_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
@@ -633,6 +635,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   channelLogins = [],
   priorityChannelLogin,
   onSelect,
+  triggerClassName,
+  triggerVariant = 'outline',
 }) => {
   const cacheRef = useRef<Record<string, EmoteGroup[]>>({});
   const groupCacheRef = useRef<Record<string, EmoteGroup>>({});
@@ -1095,8 +1099,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
         <Button
           type="button"
           size="sm"
-          variant="outline"
-          className="h-9 w-9 px-0"
+          variant={triggerVariant}
+          className={triggerClassName && triggerClassName.trim() !== '' ? triggerClassName : 'h-9 w-9 px-0'}
           aria-label="エモートを選択"
           disabled={disabled}
           onMouseDown={(event) => {

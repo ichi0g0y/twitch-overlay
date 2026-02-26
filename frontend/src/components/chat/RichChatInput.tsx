@@ -25,6 +25,7 @@ type RichChatInputProps = {
   onSubmit: () => void;
   onChangeHasContent?: (hasContent: boolean) => void;
   onChangeText?: () => void;
+  rightAccessory?: React.ReactNode;
 };
 
 export const RichChatInput = forwardRef<RichChatInputRef, RichChatInputProps>(({
@@ -33,6 +34,7 @@ export const RichChatInput = forwardRef<RichChatInputRef, RichChatInputProps>(({
   onSubmit,
   onChangeHasContent,
   onChangeText,
+  rightAccessory,
 }, ref) => {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const isComposingRef = useRef(false);
@@ -119,7 +121,7 @@ export const RichChatInput = forwardRef<RichChatInputRef, RichChatInputProps>(({
   return (
     <div className="relative flex-1">
       {!hasContent && (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+        <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400 ${rightAccessory ? 'pr-12' : ''}`}>
           {placeholder}
         </span>
       )}
@@ -163,9 +165,16 @@ export const RichChatInput = forwardRef<RichChatInputRef, RichChatInputProps>(({
         onKeyUp={saveSelectionRange}
         onMouseUp={saveSelectionRange}
         className={`min-h-9 max-h-24 overflow-y-auto rounded-md border border-gray-200 bg-white px-3 py-[7px] text-sm text-gray-900 outline-none ring-offset-white transition focus-visible:ring-2 focus-visible:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:ring-offset-gray-900 dark:focus-visible:ring-blue-600 ${
+          rightAccessory ? 'pr-12' : ''
+        } ${
           disabled ? 'cursor-not-allowed opacity-60' : ''
         }`}
       />
+      {rightAccessory && (
+        <div className="absolute right-1 top-1/2 z-10 -translate-y-1/2">
+          {rightAccessory}
+        </div>
+      )}
     </div>
   );
 });

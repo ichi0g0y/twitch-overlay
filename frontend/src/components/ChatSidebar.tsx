@@ -14,7 +14,6 @@ import { ChattersPanel, type ChattersPanelChatter } from './ChattersPanel';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
 import { EmotePicker } from './chat/EmotePicker';
 import { RichChatInput, type RichChatInputRef } from './chat/RichChatInput';
-import { type InputFragment } from './chat/chatInputUtils';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 
@@ -526,12 +525,6 @@ const parseIrcPart = (line: string): { channel: string; userLogin: string } | nu
   return { channel, userLogin };
 };
 
-const buildOwnOutgoingEchoKey = (channel: string, messageText: string) => {
-  const normalizedChannel = normalizeTwitchChannelName(channel) || channel.trim().toLowerCase();
-  const normalizedBody = messageText.trim().replace(/\s+/g, ' ');
-  return `${normalizedChannel}|${normalizedBody}`;
-};
-
 const createAnonymousNick = () => `justinfan${Math.floor(10000 + Math.random() * 90000)}`;
 
 const createAnonymousCredentials = (nick?: string) => ({
@@ -541,33 +534,6 @@ const createAnonymousCredentials = (nick?: string) => ({
 });
 
 const sanitizeIrcMessage = (raw: string) => raw.replace(/\r?\n/g, ' ').trim();
-
-const inputFragmentsToChatFragments = (fragments: InputFragment[], fallbackText: string): ChatFragment[] => {
-  const next: ChatFragment[] = [];
-
-  for (const fragment of fragments) {
-    if (fragment.type === 'text') {
-      if (fragment.text === '') continue;
-      const prev = next[next.length - 1];
-      if (prev?.type === 'text') {
-        prev.text += fragment.text;
-      } else {
-        next.push({ type: 'text', text: fragment.text });
-      }
-      continue;
-    }
-
-    const emoteName = fragment.text.trim();
-    if (emoteName === '') continue;
-    next.push({
-      type: 'emote',
-      text: emoteName,
-      emoteUrl: fragment.emoteUrl,
-    });
-  }
-
-  return next.length > 0 ? next : [{ type: 'text', text: fallbackText }];
-};
 
 const isLoginLikeDisplayName = (name: string, channel: string) => {
   const rawName = name.trim().replace(/^[@#]+/, '');
@@ -652,6 +618,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [channelInputError, setChannelInputError] = useState('');
 
   const richInputRef = useRef<RichChatInputRef | null>(null);
+  const postingMessageLockRef = useRef(false);
   const [inputHasContent, setInputHasContent] = useState(false);
   const [postingMessage, setPostingMessage] = useState(false);
   const [postError, setPostError] = useState('');
@@ -672,8 +639,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const ircProfileInFlightRef = useRef<Set<string>>(new Set());
   const ircRecentRawLinesRef = useRef<Map<string, number>>(new Map());
   const ircRecentMessageKeysRef = useRef<Map<string, number>>(new Map());
-  const ownOutgoingEchoRef = useRef<Map<string, number>>(new Map());
-  const primaryRecentEchoKeysRef = useRef<Map<string, { sentAt: number; optimisticId: string }>>(new Map());
   const primaryIrcStartedRef = useRef(false);
   const userProfileDetailCacheRef = useRef<Record<string, CachedUserProfileDetail>>({});
   const userInfoFetchSeqRef = useRef(0);
@@ -897,80 +862,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     recent.set(key, now);
     return typeof lastSeen === 'number' && (now - lastSeen) < ttlMs;
   }, []);
-
-  const markOwnOutgoingEcho = useCallback((channel: string, messageText: string) => {
-    const now = Date.now();
-    const ttlMs = 10_000;
-    const map = ownOutgoingEchoRef.current;
-    for (const [key, timestamp] of map.entries()) {
-      if ((now - timestamp) > ttlMs) {
-        map.delete(key);
-      }
-    }
-    map.set(buildOwnOutgoingEchoKey(channel, messageText), now);
-  }, []);
-
-  const consumeOwnOutgoingEcho = useCallback((connection: IrcConnection, message: ChatMessage) => {
-    const selfUserId = connection.userId.trim();
-    const normalizedUserName = normalizeTwitchChannelName(message.username || '') || '';
-    const isSelf = (selfUserId !== '' && message.userId === selfUserId)
-      || (normalizedUserName !== '' && normalizedUserName === normalizeTwitchChannelName(connection.nick));
-    if (!isSelf) return false;
-
-    const now = Date.now();
-    const ttlMs = 10_000;
-    const map = ownOutgoingEchoRef.current;
-    for (const [key, timestamp] of map.entries()) {
-      if ((now - timestamp) > ttlMs) {
-        map.delete(key);
-      }
-    }
-    const echoKey = buildOwnOutgoingEchoKey(connection.channel, message.message || '');
-    const sentAt = map.get(echoKey);
-    if (typeof sentAt !== 'number') return false;
-    map.delete(echoKey);
-    return (now - sentAt) < ttlMs;
-  }, []);
-
-  const buildPrimaryEchoKey = useCallback((message: ChatMessage) => {
-    const actor = (message.userId || message.username || '').trim().toLowerCase();
-    const body = message.message.trim().replace(/\s+/g, ' ');
-    if (actor === '' || body === '') return '';
-    return `${actor}|${body}`;
-  }, []);
-
-  const registerPrimaryEchoCandidate = useCallback((message: ChatMessage) => {
-    const key = buildPrimaryEchoKey(message);
-    if (!key) return;
-    primaryRecentEchoKeysRef.current.set(key, {
-      sentAt: Date.now(),
-      optimisticId: message.id,
-    });
-  }, [buildPrimaryEchoKey]);
-
-  const consumePrimaryEchoCandidate = useCallback((message: ChatMessage): string | null => {
-    const key = buildPrimaryEchoKey(message);
-    if (!key) return null;
-
-    const now = Date.now();
-    const ttlMs = 10000;
-    const recent = primaryRecentEchoKeysRef.current;
-    for (const [staleKey, candidate] of recent.entries()) {
-      if (now - candidate.sentAt > ttlMs) {
-        recent.delete(staleKey);
-      }
-    }
-
-    const candidate = recent.get(key);
-    if (!candidate) return null;
-
-    // 消費型: 1回だけエコー候補を使う
-    recent.delete(key);
-    if ((now - candidate.sentAt) >= ttlMs) {
-      return null;
-    }
-    return candidate.optimisticId;
-  }, [buildPrimaryEchoKey]);
 
   const persistIrcMessage = useCallback(async (channel: string, message: ChatMessage) => {
     try {
@@ -1304,9 +1195,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
           const parsed = parseIrcPrivmsg(line);
           if (!parsed || parsed.channel !== connection.channel) continue;
-          if (consumeOwnOutgoingEcho(connection, parsed.message)) {
-            continue;
-          }
           if (shouldIgnoreDuplicateIrcMessage(connection.channel, parsed.message)) {
             continue;
           }
@@ -1365,7 +1253,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     persistIrcMessage,
     removeIrcParticipant,
     resolveIrcCredentials,
-    consumeOwnOutgoingEcho,
     setChannelConnecting,
     shouldIgnoreDuplicateIrcLine,
     shouldIgnoreDuplicateIrcMessage,
@@ -1554,16 +1441,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             translationLang: data.translationLang,
             timestamp: data.timestamp,
           };
-          const optimisticId = consumePrimaryEchoCandidate(nextMessage);
           setPrimaryMessages((prev) => {
-            if (optimisticId) {
-              const index = prev.findIndex((item) => item.id === optimisticId || item.messageId === optimisticId);
-              if (index >= 0) {
-                const patched = [...prev];
-                patched[index] = mergeChatMessage(patched[index], nextMessage);
-                return dedupeMessages(trimMessagesByAge(patched));
-              }
-            }
             const next = [...prev, nextMessage];
             return dedupeMessages(trimMessagesByAge(next));
           });
@@ -1592,7 +1470,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [consumePrimaryEchoCandidate]);
+  }, []);
 
   useEffect(() => {
     writeIrcChannels(ircChannels);
@@ -2434,11 +2312,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [activeBadgeChannelLogin, badgeCatalogVersion]);
 
   const sendComment = async () => {
-    if (postingMessage) {
+    if (postingMessageLockRef.current || postingMessage) {
       return;
     }
 
-    const inputFragments = richInputRef.current?.getFragments() ?? [];
     const text = richInputRef.current?.getIrcText() ?? '';
     const ircText = sanitizeIrcMessage(text);
     if (!ircText) {
@@ -2446,6 +2323,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
 
     setPostError('');
+    postingMessageLockRef.current = true;
     setPostingMessage(true);
     try {
       const connectionKey = isPrimaryTab ? primaryConnectionId : activeTab;
@@ -2462,33 +2340,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       }
       const targetChannel = connection.channel;
       connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
-      const ownProfile = connection.userId ? ircUserProfilesRef.current[connection.userId] : undefined;
-      // オプティミスティック表示：送信メッセージを即座にローカル表示
-      const optimisticId = `irc-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const optimisticMessage: ChatMessage = {
-        id: optimisticId,
-        messageId: optimisticId,
-        userId: connection.userId || undefined,
-        username: ownProfile?.username || connection.login || connection.nick,
-        displayName: connection.displayName || ownProfile?.displayName || ownProfile?.username || connection.nick,
-        message: ircText,
-        fragments: inputFragmentsToChatFragments(inputFragments, ircText),
-        avatarUrl: ownProfile?.avatarUrl,
-        timestamp: new Date().toISOString(),
-      };
       if (connection.userId) {
         void hydrateIrcUserProfile(connection.userId, connection.displayName || connection.nick);
-      }
-      if (isPrimaryTab) {
-        registerPrimaryEchoCandidate(optimisticMessage);
-        markOwnOutgoingEcho(targetChannel, ircText);
-        setPrimaryMessages((prev) => dedupeMessages(trimMessagesByAge([...prev, optimisticMessage])));
-      } else {
-        markOwnOutgoingEcho(activeTab, ircText);
-        appendIrcMessage(activeTab, optimisticMessage);
-        void persistIrcMessage(activeTab, optimisticMessage);
-        // 署名を登録してTwitchエコー到着時に重複排除
-        shouldIgnoreDuplicateIrcMessage(activeTab, optimisticMessage);
       }
 
       richInputRef.current?.clear();
@@ -2498,6 +2351,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       setPostError(message);
       console.error('[ChatSidebar] Failed to post comment:', error);
     } finally {
+      postingMessageLockRef.current = false;
       setPostingMessage(false);
     }
   };
@@ -2833,19 +2687,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       ? (primaryChannelLogin ? `#${primaryChannelLogin} に送信...` : 'メインチャンネルに送信...')
                       : `#${activeTab} に送信...`}
                     disabled={postingMessage}
+                    rightAccessory={(
+                      <EmotePicker
+                        disabled={postingMessage}
+                        triggerVariant="ghost"
+                        triggerClassName="h-7 w-7 px-0 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                        channelLogins={activeBadgeChannelLogin ? [activeBadgeChannelLogin] : []}
+                        priorityChannelLogin={activeBadgeChannelLogin || undefined}
+                        onSelect={(name, url) => {
+                          richInputRef.current?.insertEmote(name, url);
+                          richInputRef.current?.focus();
+                          if (postError) setPostError('');
+                        }}
+                      />
+                    )}
                     onSubmit={() => void sendComment()}
                     onChangeHasContent={setInputHasContent}
                     onChangeText={() => {
-                      if (postError) setPostError('');
-                    }}
-                  />
-                  <EmotePicker
-                    disabled={postingMessage}
-                    channelLogins={activeBadgeChannelLogin ? [activeBadgeChannelLogin] : []}
-                    priorityChannelLogin={activeBadgeChannelLogin || undefined}
-                    onSelect={(name, url) => {
-                      richInputRef.current?.insertEmote(name, url);
-                      richInputRef.current?.focus();
                       if (postError) setPostError('');
                     }}
                   />
