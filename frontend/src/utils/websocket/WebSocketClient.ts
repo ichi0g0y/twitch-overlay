@@ -31,6 +31,10 @@ export class WebSocketClient {
       console.log('WebSocket already connected');
       return;
     }
+    if (this.ws?.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket connection is already in progress');
+      return;
+    }
 
     this.isIntentionallyClosed = false;
     await this.attemptConnection();
