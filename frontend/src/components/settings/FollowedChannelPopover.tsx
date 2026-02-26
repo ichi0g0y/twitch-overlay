@@ -1,6 +1,6 @@
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import React from 'react';
-import type { FollowedChannelRailItem } from '../SettingsPage';
+import type { FollowedChannelRailItem } from './FollowedChannelsRail';
 import { TwitchPreviewIframe } from './TwitchPreviewIframe';
 
 type FollowedChannelPopoverProps = {
