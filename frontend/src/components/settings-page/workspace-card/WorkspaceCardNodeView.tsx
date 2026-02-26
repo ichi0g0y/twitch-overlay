@@ -77,6 +77,18 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
     shouldPortalPreviewContent,
     previewContentHostRef,
   );
+  const handlePreviewHeaderPointerDownCapture = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!previewHeader) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(".nodrag")) return;
+    window.dispatchEvent(
+      new CustomEvent("workspace-preview-bring-to-front", {
+        detail: { nodeId: id },
+      }),
+    );
+  };
 
   return (
     <div
@@ -118,6 +130,8 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
           {!isPreviewModalLikeExpanded && (
             <div
               className={`workspace-node-drag-handle flex h-9 items-center px-3 ${previewHeaderClassName}`}
+              onPointerDownCapture={handlePreviewHeaderPointerDownCapture}
+              data-workspace-node-drag-handle="true"
             >
               {previewHeader ? (
                 <>
