@@ -74,8 +74,11 @@ export const findAvailableWorkspaceCardPosition = (
   kind: WorkspaceCardKind,
   base: { x: number; y: number },
   existingNodes: WorkspaceCardNode[],
+  options: {
+    size?: { width: number; height: number };
+  } = {},
 ) => {
-  const size = resolveWorkspaceCardSize(kind);
+  const size = options.size ?? resolveWorkspaceCardSize(kind);
   const maxAttempts =
     WORKSPACE_CARD_SPAWN_SEARCH_RING_LIMIT *
     WORKSPACE_CARD_SPAWN_SEARCH_RING_LIMIT *

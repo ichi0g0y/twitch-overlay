@@ -14,6 +14,7 @@ import {
   reorderPreviewNodesForFront,
   resolveWorkspaceCardSize,
 } from "./node";
+import { toFiniteNumber } from "./numeric";
 import { writeWorkspaceCardLastPositions } from "./storage";
 import type {
   PreviewViewportExpandSnapshot,
@@ -52,8 +53,81 @@ export const useWorkspaceCardActions = ({
   setChatSidebarActiveTabRequest,
   setPendingPreviewRevealKind,
 }: UseWorkspaceCardActionsParams) => {
-  const resolveWorkspaceCardSpawnPosition = useCallback(
+  const resolvePreviewReferenceSize = useCallback(
     (kind: WorkspaceCardKind, existingNodes: WorkspaceCardNode[]) => {
+      if (!isPreviewCardKind(kind)) return null;
+      const expandedNodeId = expandedPreviewNodeIdRef.current;
+      const previewNodes = existingNodes.filter((node) =>
+        isPreviewCardKind(node.data.kind),
+      );
+      if (previewNodes.length === 0) return null;
+      const activePreviewNodes = previewNodes.filter(
+        (node) => node.selected === true,
+      );
+      const activeSourcePool = activePreviewNodes.some(
+        (node) => node.id !== expandedNodeId,
+      )
+        ? activePreviewNodes.filter((node) => node.id !== expandedNodeId)
+        : activePreviewNodes;
+      const sourcePool =
+        activeSourcePool.length > 0
+          ? activeSourcePool
+          : previewNodes.some((node) => node.id !== expandedNodeId)
+            ? previewNodes.filter((node) => node.id !== expandedNodeId)
+            : previewNodes;
+      const candidate = [...sourcePool].sort((a, b) => {
+        const aZ = toFiniteNumber(a.zIndex, Number.NEGATIVE_INFINITY);
+        const bZ = toFiniteNumber(b.zIndex, Number.NEGATIVE_INFINITY);
+        if (aZ === bZ) return a.id.localeCompare(b.id);
+        return bZ - aZ;
+      })[0];
+
+      if (candidate.id === expandedNodeId) {
+        const snapshot = previewExpandSnapshotRef.current[candidate.id];
+        if (snapshot) {
+          return { width: snapshot.width, height: snapshot.height };
+        }
+        const restoredFallback = resolveWorkspaceCardSize(candidate.data.kind);
+        return {
+          width: restoredFallback.width,
+          height: restoredFallback.height,
+        };
+      }
+
+      const fallback = resolveWorkspaceCardSize(candidate.data.kind);
+      const width = toFiniteNumber(
+        candidate.width,
+        toFiniteNumber(
+          candidate.measured?.width,
+          toFiniteNumber(
+            (candidate.style as Record<string, unknown> | undefined)?.width,
+            fallback.width,
+          ),
+        ),
+      );
+      const height = toFiniteNumber(
+        candidate.height,
+        toFiniteNumber(
+          candidate.measured?.height,
+          toFiniteNumber(
+            (candidate.style as Record<string, unknown> | undefined)?.height,
+            fallback.height,
+          ),
+        ),
+      );
+      return { width, height };
+    },
+    [expandedPreviewNodeIdRef, previewExpandSnapshotRef],
+  );
+
+  const resolveWorkspaceCardSpawnPosition = useCallback(
+    (
+      kind: WorkspaceCardKind,
+      existingNodes: WorkspaceCardNode[],
+      options: {
+        size?: { width: number; height: number };
+      } = {},
+    ) => {
       const existingCount = existingNodes.length;
       const remembered = lastWorkspaceCardPositionRef.current[kind];
       if (remembered) {
@@ -61,6 +135,7 @@ export const useWorkspaceCardActions = ({
           kind,
           remembered,
           existingNodes,
+          options,
         );
       }
 
@@ -76,6 +151,7 @@ export const useWorkspaceCardActions = ({
           kind,
           fallback,
           existingNodes,
+          options,
         );
       }
 
@@ -84,7 +160,7 @@ export const useWorkspaceCardActions = ({
           x: Math.max(0, Math.floor(window.innerWidth / 2)),
           y: Math.max(0, Math.floor(window.innerHeight / 2)),
         });
-        const size = resolveWorkspaceCardSize(kind);
+        const size = options.size ?? resolveWorkspaceCardSize(kind);
         const shift = (existingCount % 6) * 24;
         return findAvailableWorkspaceCardPosition(
           kind,
@@ -93,12 +169,14 @@ export const useWorkspaceCardActions = ({
             y: base.y - size.height / 2 + Math.floor(existingCount / 6) * 24,
           },
           existingNodes,
+          options,
         );
       } catch {
         return findAvailableWorkspaceCardPosition(
           kind,
           fallback,
           existingNodes,
+          options,
         );
       }
     },
@@ -128,8 +206,14 @@ export const useWorkspaceCardActions = ({
       setNodes((existing) => {
         if (existing.some((node) => node.data.kind === previewKind))
           return existing;
-        const position = resolveWorkspaceCardSpawnPosition(previewKind, existing);
-        const created = createWorkspaceNode(previewKind, position);
+        const referencedSize = resolvePreviewReferenceSize(previewKind, existing);
+        const position = resolveWorkspaceCardSpawnPosition(previewKind, existing, {
+          size: referencedSize ?? undefined,
+        });
+        const created = createWorkspaceNode(previewKind, position, {
+          width: referencedSize?.width,
+          height: referencedSize?.height,
+        });
         return reorderPreviewNodesForFront(
           [...existing, created],
           created.id,
@@ -147,6 +231,7 @@ export const useWorkspaceCardActions = ({
     [
       connectIrcChannel,
       expandedPreviewNodeIdRef,
+      resolvePreviewReferenceSize,
       resolveWorkspaceCardSpawnPosition,
       setChatSidebarActiveTabRequest,
       setNodes,
@@ -160,8 +245,14 @@ export const useWorkspaceCardActions = ({
         if (current.some((node) => node.data.kind === kind)) {
           return current;
         }
-        const position = resolveWorkspaceCardSpawnPosition(kind, current);
-        const created = createWorkspaceNode(kind, position);
+        const referencedSize = resolvePreviewReferenceSize(kind, current);
+        const position = resolveWorkspaceCardSpawnPosition(kind, current, {
+          size: referencedSize ?? undefined,
+        });
+        const created = createWorkspaceNode(kind, position, {
+          width: referencedSize?.width,
+          height: referencedSize?.height,
+        });
         const next = [...current, created];
         if (!isPreviewCardKind(kind)) return next;
         return reorderPreviewNodesForFront(
@@ -171,7 +262,12 @@ export const useWorkspaceCardActions = ({
         );
       });
     },
-    [expandedPreviewNodeIdRef, resolveWorkspaceCardSpawnPosition, setNodes],
+    [
+      expandedPreviewNodeIdRef,
+      resolvePreviewReferenceSize,
+      resolveWorkspaceCardSpawnPosition,
+      setNodes,
+    ],
   );
 
   const canAddCard = useCallback(
