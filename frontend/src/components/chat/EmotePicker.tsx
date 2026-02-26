@@ -25,6 +25,11 @@ type EmoteGroup = {
   emotes: Emote[];
 };
 
+type RenderGroup = EmoteGroup & {
+  sections: EmoteSection[];
+  loading: boolean;
+};
+
 type EmotePickerProps = {
   disabled?: boolean;
   channelLogins?: string[];
@@ -468,6 +473,108 @@ const groupHeaderClass = (group: EmoteGroup): string => {
   return 'bg-gray-100 text-gray-800 dark:bg-gray-700/70 dark:text-gray-100';
 };
 
+const cloneGroup = (group: EmoteGroup): EmoteGroup => {
+  return {
+    ...group,
+    emotes: [...group.emotes],
+  };
+};
+
+const mergeGroupsIntoGroupCache = (
+  cache: Record<string, EmoteGroup>,
+  groups: EmoteGroup[],
+) => {
+  for (const group of groups) {
+    if (!group.id) continue;
+    cache[group.id] = cloneGroup(group);
+  }
+};
+
+const pickSeedGroupsFromCache = (
+  cache: Record<string, EmoteGroup>,
+  requestChannel: string,
+  priorityChannel: string,
+): EmoteGroup[] => {
+  const selected: EmoteGroup[] = [];
+  const seen = new Set<string>();
+  const include = (groupId: string) => {
+    if (groupId === '' || seen.has(groupId)) return;
+    const group = cache[groupId];
+    if (!group) return;
+    selected.push(cloneGroup(group));
+    seen.add(groupId);
+  };
+
+  for (const group of Object.values(cache)) {
+    if (group.source !== 'channel') {
+      include(group.id);
+    }
+  }
+
+  if (priorityChannel !== '') {
+    include(`channel:${priorityChannel}`);
+  }
+  if (requestChannel !== '') {
+    include(`channel:${requestChannel}`);
+  }
+
+  return selected;
+};
+
+const collectMissingGroupIds = (requestChannel: string, groups: EmoteGroup[]): string[] => {
+  const existingIds = new Set(groups.map((group) => group.id));
+  const missing: string[] = [];
+
+  if (!existingIds.has('global')) {
+    missing.push('global');
+  }
+  if (!existingIds.has('unlocked')) {
+    missing.push('unlocked');
+  }
+  if (requestChannel !== '') {
+    const channelGroupId = `channel:${requestChannel}`;
+    if (!existingIds.has(channelGroupId)) {
+      missing.push(channelGroupId);
+    }
+  }
+
+  return missing;
+};
+
+const buildLoadingGroup = (groupId: string): EmoteGroup | null => {
+  if (groupId === 'global') {
+    return {
+      id: 'global',
+      label: 'グローバル',
+      source: 'global',
+      priority: false,
+      emotes: [],
+    };
+  }
+  if (groupId === 'unlocked') {
+    return {
+      id: 'unlocked',
+      label: 'アンロック済み',
+      source: 'unlocked',
+      priority: false,
+      emotes: [],
+    };
+  }
+  if (groupId.startsWith('channel:')) {
+    const channelLogin = groupId.slice('channel:'.length).trim().toLowerCase();
+    if (channelLogin === '') return null;
+    return {
+      id: groupId,
+      label: `#${channelLogin}`,
+      source: 'channel',
+      channelLogin,
+      priority: false,
+      emotes: [],
+    };
+  }
+  return null;
+};
+
 export const EmotePicker: React.FC<EmotePickerProps> = ({
   disabled = false,
   channelLogins = [],
@@ -475,6 +582,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   onSelect,
 }) => {
   const cacheRef = useRef<Record<string, EmoteGroup[]>>({});
+  const groupCacheRef = useRef<Record<string, EmoteGroup>>({});
+  const fetchSeqRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const [open, setOpen] = useState(false);
@@ -483,6 +592,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   const [warning, setWarning] = useState('');
   const [keyword, setKeyword] = useState('');
   const [groups, setGroups] = useState<EmoteGroup[]>([]);
+  const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
+  const [needsFetch, setNeedsFetch] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
 
   const normalizedChannels = useMemo(() => {
@@ -536,28 +647,50 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
 
     const cached = cacheRef.current[requestKey];
     if (cached) {
-      setGroups(sortGroups(cached, normalizedPriorityChannel));
+      const sorted = sortGroups(cached, normalizedPriorityChannel);
+      mergeGroupsIntoGroupCache(groupCacheRef.current, sorted);
+      setGroups(sorted);
+      setPendingGroupIds(collectMissingGroupIds(requestChannel, sorted));
+      setNeedsFetch(true);
       return;
     }
 
     const stored = loadGroupsFromStorage(requestKey);
     if (stored) {
       cacheRef.current[requestKey] = stored;
-      setGroups(sortGroups(stored, normalizedPriorityChannel));
+      const sorted = sortGroups(stored, normalizedPriorityChannel);
+      mergeGroupsIntoGroupCache(groupCacheRef.current, sorted);
+      setGroups(sorted);
+      setPendingGroupIds(collectMissingGroupIds(requestChannel, sorted));
+      setNeedsFetch(true);
       return;
     }
 
-    setGroups([]);
-  }, [normalizedPriorityChannel, requestKey]);
+    const seeded = sortGroups(
+      pickSeedGroupsFromCache(
+        groupCacheRef.current,
+        requestChannel,
+        normalizedPriorityChannel,
+      ),
+      normalizedPriorityChannel,
+    );
+    setGroups(seeded);
+    setPendingGroupIds(collectMissingGroupIds(requestChannel, seeded));
+    setNeedsFetch(true);
+  }, [normalizedPriorityChannel, requestChannel, requestKey]);
 
   useEffect(() => {
-    if (!open || loading || groups.length > 0) return;
+    if (!open || (!needsFetch && !forceRefresh)) return;
+
+    const seq = fetchSeqRef.current + 1;
+    fetchSeqRef.current = seq;
+    const controller = new AbortController();
 
     const fetchEmotes = async () => {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(requestUrl);
+        const response = await fetch(requestUrl, { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -570,30 +703,68 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
         } else {
           setWarning('');
         }
+        if (fetchSeqRef.current !== seq) return;
         const parsed = parseEmoteGroupsFromResponse(data, normalizedPriorityChannel);
-        cacheRef.current[requestKey] = parsed;
+        const sorted = sortGroups(parsed, normalizedPriorityChannel);
+        cacheRef.current[requestKey] = sorted;
+        mergeGroupsIntoGroupCache(groupCacheRef.current, sorted);
         if (parsed.length > 0) {
-          saveGroupsToStorage(requestKey, parsed);
+          saveGroupsToStorage(requestKey, sorted);
         }
-        setGroups(parsed);
+        setGroups(sorted);
+        setPendingGroupIds([]);
+        setNeedsFetch(false);
       } catch (fetchError) {
+        if (controller.signal.aborted) return;
+        if (fetchSeqRef.current !== seq) return;
         console.error('[EmotePicker] Failed to fetch emotes:', fetchError);
         setError('エモート一覧の取得に失敗しました');
+        setNeedsFetch(false);
+        setPendingGroupIds([]);
       } finally {
-        setLoading(false);
-        if (forceRefresh) {
-          setForceRefresh(false);
+        if (fetchSeqRef.current === seq) {
+          setLoading(false);
+          if (forceRefresh) {
+            setForceRefresh(false);
+          }
         }
       }
     };
 
     void fetchEmotes();
-  }, [forceRefresh, groups.length, loading, normalizedPriorityChannel, open, requestKey, requestUrl]);
+    return () => {
+      controller.abort();
+    };
+  }, [forceRefresh, needsFetch, normalizedPriorityChannel, open, requestKey, requestUrl]);
+
+  const displayGroups = useMemo(() => {
+    const next = [...groups];
+    const existingIds = new Set(next.map((group) => group.id));
+    for (const groupId of pendingGroupIds) {
+      if (existingIds.has(groupId)) continue;
+      const loadingGroup = buildLoadingGroup(groupId);
+      if (!loadingGroup) continue;
+      next.push(loadingGroup);
+    }
+    return sortGroups(next, normalizedPriorityChannel);
+  }, [groups, normalizedPriorityChannel, pendingGroupIds]);
+
+  const pendingGroupIdSet = useMemo(() => {
+    return new Set(pendingGroupIds);
+  }, [pendingGroupIds]);
 
   const filteredGroups = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
-    return groups
+    return displayGroups
       .map((group) => {
+        const isLoadingGroup = pendingGroupIdSet.has(group.id) && group.emotes.length === 0;
+        if (isLoadingGroup) {
+          return {
+            ...group,
+            sections: [],
+            loading: true,
+          } satisfies RenderGroup;
+        }
         const isPriorityGroup = group.priority
           || (normalizedPriorityChannel !== '' && group.channelLogin === normalizedPriorityChannel);
         const visibleEmotes = group.emotes.filter((emote) => emote.usable || isPriorityGroup);
@@ -601,19 +772,24 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
           ? visibleEmotes
           : visibleEmotes.filter((emote) => emote.name.toLowerCase().includes(normalizedKeyword));
         const sections = buildSectionsForGroup(group, emotes);
-        return { ...group, sections };
+        return {
+          ...group,
+          sections,
+          loading: false,
+        } satisfies RenderGroup;
       })
-      .filter((group) => group.sections.length > 0);
-  }, [groups, keyword, normalizedPriorityChannel]);
+      .filter((group) => group.loading || group.sections.length > 0);
+  }, [displayGroups, keyword, normalizedPriorityChannel, pendingGroupIdSet]);
 
   const handleRefresh = () => {
     delete cacheRef.current[requestKey];
     clearStoredGroups(requestKey);
     setForceRefresh(true);
+    setNeedsFetch(true);
     setKeyword('');
     setError('');
     setWarning('');
-    setGroups([]);
+    setPendingGroupIds(collectMissingGroupIds(requestChannel, groups));
   };
 
   const scrollToGroup = (groupId: string) => {
@@ -631,7 +807,7 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     });
   };
 
-  const renderGroupNavAvatar = (group: EmoteGroup) => {
+  const renderGroupNavAvatar = (group: RenderGroup) => {
     if (group.channelAvatarUrl) {
       return (
         <img
@@ -707,17 +883,23 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
               </button>
             </div>
 
-            {loading && (
+            {loading && filteredGroups.length === 0 && (
               <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">読み込み中...</p>
             )}
 
-            {!loading && error !== '' && (
+            {error !== '' && filteredGroups.length === 0 && (
               <p className="py-6 text-center text-xs text-red-500 dark:text-red-300">{error}</p>
             )}
 
-            {!loading && error === '' && warning !== '' && (
+            {warning !== '' && (
               <p className="rounded border border-amber-300/60 bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
                 {warning}
+              </p>
+            )}
+
+            {error !== '' && filteredGroups.length > 0 && (
+              <p className="rounded border border-red-300/60 bg-red-50 px-2 py-1 text-[11px] text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                {error}
               </p>
             )}
 
@@ -725,7 +907,7 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
               <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">該当するエモートがありません</p>
             )}
 
-            {!loading && error === '' && filteredGroups.length > 0 && (
+            {filteredGroups.length > 0 && (
               <div className="flex items-start gap-2">
                 <div ref={scrollContainerRef} className="max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
                   {filteredGroups.map((group) => (
@@ -747,72 +929,94 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
                             />
                           )}
                           <span className="truncate">{group.label}</span>
+                          {group.loading && (
+                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-gray-900/60 dark:text-blue-200">
+                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                              読み込み中
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="space-y-1.5">
-                        {group.sections.map((section) => {
-                          const subSections = buildSubSectionsForSection(section);
-                          const hasMultipleSubSections = subSections.length > 1;
-
-                          return (
-                            <div key={`${group.id}:${section.key}`} className="space-y-1">
-                              {hasMultipleSubSections && (
-                                <div className="mb-1 flex items-center justify-start gap-1.5">
-                                  <span className="inline-flex px-1 py-0 text-[10px] font-medium leading-none text-gray-400 dark:text-gray-500">
-                                    {section.label}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                                    {section.emotes.length}
-                                  </span>
-                                </div>
-                              )}
-                              {subSections.map((subSection) => (
-                                <div
-                                  key={`${group.id}:${section.key}:${subSection.key}`}
-                                  className="space-y-1 rounded-md border border-gray-200/70 bg-gray-50/80 p-1.5 dark:border-gray-700/70 dark:bg-gray-800/40"
-                                >
-                                  <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                                    <span>{subSection.label}</span>
-                                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                      {subSection.emotes.length}
-                                    </span>
-                                  </div>
-                                  <div className="grid justify-items-center gap-1 [grid-template-columns:repeat(auto-fill,minmax(2rem,1fr))]">
-                                    {subSection.emotes.map((emote) => (
-                                      <button
-                                        key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
-                                        type="button"
-                                        disabled={!emote.usable}
-                                        onMouseDown={(event) => {
-                                          event.preventDefault();
-                                        }}
-                                        onClick={() => {
-                                          if (!emote.usable) return;
-                                          onSelect(emote.name, emote.url);
-                                        }}
-                                        className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
-                                          emote.usable
-                                            ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
-                                            : 'cursor-not-allowed opacity-60'
-                                        }`}
-                                        title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                        aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                      >
-                                        <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
-                                        {!emote.usable && (
-                                          <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
-                                            <Lock className="h-2.5 w-2.5" />
-                                          </span>
-                                        )}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
+                      {group.loading ? (
+                        <div className="space-y-1.5">
+                          <div className="rounded-md border border-dashed border-gray-200/80 bg-gray-50/80 p-2 dark:border-gray-700/80 dark:bg-gray-800/40">
+                            <div className="h-3 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                            <div className="mt-2 grid grid-cols-6 gap-1">
+                              {Array.from({ length: 12 }).map((_, idx) => (
+                                <span
+                                  key={`${group.id}:loading:${idx}`}
+                                  className="inline-block h-8 w-8 animate-pulse rounded border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+                                />
                               ))}
                             </div>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {group.sections.map((section) => {
+                            const subSections = buildSubSectionsForSection(section);
+                            const hasMultipleSubSections = subSections.length > 1;
+
+                            return (
+                              <div key={`${group.id}:${section.key}`} className="space-y-1">
+                                {hasMultipleSubSections && (
+                                  <div className="mb-1 flex items-center justify-start gap-1.5">
+                                    <span className="inline-flex px-1 py-0 text-[10px] font-medium leading-none text-gray-400 dark:text-gray-500">
+                                      {section.label}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                                      {section.emotes.length}
+                                    </span>
+                                  </div>
+                                )}
+                                {subSections.map((subSection) => (
+                                  <div
+                                    key={`${group.id}:${section.key}:${subSection.key}`}
+                                    className="space-y-1 rounded-md border border-gray-200/70 bg-gray-50/80 p-1.5 dark:border-gray-700/70 dark:bg-gray-800/40"
+                                  >
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                                      <span>{subSection.label}</span>
+                                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                        {subSection.emotes.length}
+                                      </span>
+                                    </div>
+                                    <div className="grid justify-items-center gap-1 [grid-template-columns:repeat(auto-fill,minmax(2rem,1fr))]">
+                                      {subSection.emotes.map((emote) => (
+                                        <button
+                                          key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
+                                          type="button"
+                                          disabled={!emote.usable}
+                                          onMouseDown={(event) => {
+                                            event.preventDefault();
+                                          }}
+                                          onClick={() => {
+                                            if (!emote.usable) return;
+                                            onSelect(emote.name, emote.url);
+                                          }}
+                                          className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
+                                            emote.usable
+                                              ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
+                                              : 'cursor-not-allowed opacity-60'
+                                          }`}
+                                          title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                          aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                        >
+                                          <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
+                                          {!emote.usable && (
+                                            <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
+                                              <Lock className="h-2.5 w-2.5" />
+                                            </span>
+                                          )}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </section>
                   ))}
                 </div>
@@ -827,11 +1031,20 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
                       onClick={() => {
                         scrollToGroup(group.id);
                       }}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-gray-700 transition-colors hover:bg-white hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      aria-label={`${group.label} セクションへ移動`}
-                      title={`${group.label} セクションへ移動`}
+                      className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-gray-700 transition-colors hover:bg-white hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700 ${
+                        group.loading
+                          ? 'border-blue-300 bg-blue-100 ring-1 ring-blue-300/80 dark:border-blue-500/60 dark:bg-blue-500/20 dark:ring-blue-500/40'
+                          : 'border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800'
+                      }`}
+                      aria-label={`${group.label} セクションへ移動${group.loading ? '（読み込み中）' : ''}`}
+                      title={`${group.label} セクションへ移動${group.loading ? '（読み込み中）' : ''}`}
                     >
                       {renderGroupNavAvatar(group)}
+                      {group.loading && (
+                        <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-500/70 dark:bg-blue-900/80 dark:text-blue-200">
+                          <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
