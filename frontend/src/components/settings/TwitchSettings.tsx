@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Eye, EyeOff, RefreshCw, Wifi } from 'lucide-react';
 import { CollapsibleCard } from '../ui/collapsible-card';
+import { WorkspaceCardUiContext } from '../ui/collapsible-card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -22,6 +23,7 @@ interface TwitchSettingsProps {
 
 export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
   const context = useContext(SettingsPageContext);
+  const workspaceUi = useContext(WorkspaceCardUiContext);
   if (!context) {
     throw new Error('TwitchSettings must be used within SettingsPageProvider');
   }
@@ -43,6 +45,7 @@ export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
   const [rewards, setRewards] = useState<CustomReward[]>([]);
   const [loadingRewards, setLoadingRewards] = useState(false);
   const visibleSections = new Set(sections ?? ['api', 'rewardGroups', 'customRewards']);
+  const isNodeMode = workspaceUi?.nodeMode === true;
 
   // カスタムリワードを取得
   useEffect(() => {
@@ -131,7 +134,7 @@ export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className={`grid grid-cols-1 gap-6 ${isNodeMode ? '' : 'md:grid-cols-2'}`}>
             <div className="space-y-2">
               <Label htmlFor="client_id">Client ID *</Label>
               <div className="relative">
@@ -206,12 +209,12 @@ export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
 
             <div className="space-y-2">
               <Label htmlFor="fax_trigger_reward">FAXトリガーリワード</Label>
-              <div className="flex items-center space-x-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <select
                   id="fax_trigger_reward"
                   value={unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] !== undefined ? unsavedChanges['TRIGGER_CUSTOM_REWORD_ID'] : getSettingValue('TRIGGER_CUSTOM_REWORD_ID')}
                   onChange={(e) => handleSettingChange('TRIGGER_CUSTOM_REWORD_ID', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-w-0 flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={loadingRewards || rewards.length === 0}
                 >
                   <option value="">リワードを選択してください</option>
@@ -225,6 +228,7 @@ export const TwitchSettings: React.FC<TwitchSettingsProps> = ({ sections }) => {
                   onClick={() => setRefreshTrigger(prev => prev + 1)}
                   variant="outline"
                   size="sm"
+                  className="shrink-0"
                   disabled={loadingRewards}
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingRewards ? 'animate-spin' : ''}`} />

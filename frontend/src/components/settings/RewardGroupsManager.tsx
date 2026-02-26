@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { AlertCircle, Loader2, Plus } from 'lucide-react';
+import React, { useContext, useEffect, useState } from 'react';
+import { AlertCircle, Loader2, Plus, X } from 'lucide-react';
 
 import { buildApiUrl } from '../../utils/api';
 import { Button } from '../ui/button';
-import { CollapsibleCard } from '../ui/collapsible-card';
+import { CollapsibleCard, WorkspaceCardUiContext } from '../ui/collapsible-card';
 import { NewRewardGroupForm } from './reward-groups/NewRewardGroupForm';
 import { RewardGroupItem } from './reward-groups/RewardGroupItem';
 import type { RewardGroup } from './reward-groups/types';
@@ -19,6 +19,7 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
   onGroupsChanged,
   availableRewardIds = [],
 }) => {
+  const workspaceUi = useContext(WorkspaceCardUiContext);
   const [groups, setGroups] = useState<RewardGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,15 +202,29 @@ export const RewardGroupsManager: React.FC<RewardGroupsManagerProps> = ({
       title="リワードグループ管理"
       description="カスタムリワードをグループ化して一括でオン/オフできます"
       actions={(
-        <Button
-          onClick={() => setShowNewGroupInput(!showNewGroupInput)}
-          variant="default"
-          size="sm"
-          disabled={creatingGroup}
-        >
-          <Plus className="w-4 h-4 mr-1" />
-          新規グループ作成
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            onClick={() => setShowNewGroupInput(!showNewGroupInput)}
+            variant="outline"
+            size="sm"
+            className="nodrag h-7 w-7 p-0"
+            aria-label="新規グループ作成"
+            title="新規グループ作成"
+            disabled={creatingGroup}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          {workspaceUi?.onClose && (
+            <button
+              type="button"
+              onClick={workspaceUi.onClose}
+              aria-label="カードを削除"
+              className="nodrag inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       )}
     >
       {error && (

@@ -1,7 +1,8 @@
 import { Edit2, Loader2, Trash2 } from 'lucide-react';
-import React from 'react';
+import React, { useContext } from 'react';
 
 import { Button } from '../../ui/button';
+import { WorkspaceCardUiContext } from '../../ui/collapsible-card';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
@@ -34,6 +35,9 @@ export const RewardGroupItem: React.FC<RewardGroupItemProps> = ({
   onToggleGroup,
   onDeleteGroup,
 }) => {
+  const workspaceUi = useContext(WorkspaceCardUiContext);
+  const isNodeMode = workspaceUi?.nodeMode;
+
   return (
     <div className="border dark:border-gray-700 rounded-lg p-4">
       <div className="flex items-center justify-between">
@@ -111,7 +115,7 @@ export const RewardGroupItem: React.FC<RewardGroupItemProps> = ({
               size="sm"
               disabled={togglingGroupId !== null}
             >
-              <Trash2 className="w-4 h-4 text-red-500" />
+              <Trash2 className={isNodeMode ? 'w-4 h-4' : 'w-4 h-4 text-red-500'} />
             </Button>
           </div>
         )}
