@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
+import { MAX_IRC_CHANNELS, PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import { Button } from '../ui/button';
 
 type SidebarTab = {
@@ -39,6 +39,10 @@ export const ChatSidebarTabs: React.FC<{
   setChannelInputError,
   handleAddChannel,
 }) => {
+  const ircChannelCount = tabs.filter((tab) => tab.id !== PRIMARY_CHAT_TAB_ID).length;
+  const canAddChannel = ircChannelCount < MAX_IRC_CHANNELS;
+  const addChannelLimitMessage = `IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`;
+
   return (
     <div className="border-b dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 px-2 py-1">
       <div ref={tabScrollerRef} className="flex items-center gap-1 overflow-x-auto">
@@ -103,6 +107,7 @@ export const ChatSidebarTabs: React.FC<{
                 }
               }}
               onKeyDown={(event) => {
+                if (!canAddChannel) return;
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   handleAddChannel();
@@ -111,11 +116,21 @@ export const ChatSidebarTabs: React.FC<{
               placeholder="追加するチャンネル名"
               className="flex-1 h-8 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 text-xs"
             />
-            <Button type="button" size="sm" className="h-8 px-2" onClick={handleAddChannel}>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-2"
+              onClick={handleAddChannel}
+              disabled={!canAddChannel}
+              title={!canAddChannel ? addChannelLimitMessage : undefined}
+            >
               追加
             </Button>
           </div>
           {channelInputError && <p className="mt-1 text-[11px] text-red-500">{channelInputError}</p>}
+          {!canAddChannel && !channelInputError && (
+            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-300">{addChannelLimitMessage}</p>
+          )}
           <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
             Twitch認証が有効ならユーザー接続し、利用できない場合は匿名接続します
           </p>

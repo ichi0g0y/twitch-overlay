@@ -1,4 +1,5 @@
 import React from 'react';
+import { MAX_IRC_CHANNELS } from '../../../utils/chatChannels';
 
 import { FollowedChannelPopover } from '../FollowedChannelPopover';
 import type { FollowedChannelRailItem } from './types';
@@ -63,6 +64,7 @@ export const FollowedChannelsList: React.FC<FollowedChannelsListProps> = ({
   const hoveredChannel = hoveredChannelId
     ? (channels.find((item) => item.broadcaster_id === hoveredChannelId) ?? null)
     : null;
+  const connectionLimitReached = ircConnectedChannels.length >= MAX_IRC_CHANNELS;
 
   return (
     <>
@@ -159,6 +161,7 @@ export const FollowedChannelsList: React.FC<FollowedChannelsListProps> = ({
                   channel={channel}
                   followerCountLabel={followerCountLabel}
                   alreadyConnected={alreadyConnected}
+                  connectionLimitReached={!alreadyConnected && connectionLimitReached}
                   canStartRaid={canStartRaid}
                   copiedChannelId={copiedChannelId}
                   raidConfirmChannelId={raidConfirmChannelId}

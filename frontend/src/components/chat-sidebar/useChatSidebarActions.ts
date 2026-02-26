@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type React from 'react';
 import {
   appendIrcChannel,
+  MAX_IRC_CHANNELS,
   PRIMARY_CHAT_TAB_ID,
   normalizeTwitchChannelName,
 } from '../../utils/chatChannels';
@@ -158,6 +159,10 @@ export const useChatSidebarActions = ({
       setChannelEditorOpen(false);
       setChannelInput('');
       setChannelInputError('');
+      return;
+    }
+    if (ircChannels.length >= MAX_IRC_CHANNELS) {
+      setChannelInputError(`IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`);
       return;
     }
 

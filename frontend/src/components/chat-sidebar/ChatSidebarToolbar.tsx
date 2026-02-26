@@ -11,7 +11,7 @@ import {
   Twitch,
   Users,
 } from 'lucide-react';
-import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
+import { MAX_IRC_CHANNELS, PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import type {
   ChatDisplayMode,
   MessageOrderReversedByTab,
@@ -22,6 +22,7 @@ type ChatSidebarToolbarProps = {
   activeTab: string;
   activeChatDisplayMode: ChatDisplayMode;
   messageOrderReversed: boolean;
+  ircChannelCount: number;
   chattersOpen: boolean;
   channelEditorOpen: boolean;
   actionsMenuOpen: boolean;
@@ -57,6 +58,7 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
   activeTab,
   activeChatDisplayMode,
   messageOrderReversed,
+  ircChannelCount,
   chattersOpen,
   channelEditorOpen,
   actionsMenuOpen,
@@ -87,6 +89,9 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
   actionsMenuButtonRef,
   actionsMenuPanelRef,
 }) => {
+  const canAddChannel = ircChannelCount < MAX_IRC_CHANNELS;
+  const addChannelLimitMessage = `IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`;
+
   return (
     <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
       <div className="flex items-center gap-2">
@@ -100,9 +105,15 @@ export const ChatSidebarToolbar: React.FC<ChatSidebarToolbarProps> = ({
             setChannelEditorOpen((prev) => !prev);
             setChannelInputError('');
           }}
-          className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800 transition"
-          aria-label="IRCチャンネルを追加"
+          className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+            canAddChannel
+              ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+              : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+          }`}
+          aria-label={canAddChannel ? 'IRCチャンネルを追加' : addChannelLimitMessage}
           aria-expanded={channelEditorOpen}
+          title={canAddChannel ? 'IRCチャンネルを追加' : addChannelLimitMessage}
+          disabled={!canAddChannel}
         >
           <Plus className="w-4 h-4" />
         </button>

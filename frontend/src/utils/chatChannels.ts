@@ -1,7 +1,7 @@
 const IRC_CHANNELS_STORAGE_KEY = 'chat_sidebar.irc_channels';
 const IRC_CHANNELS_EVENT = 'chat_sidebar:irc_channels_changed';
 
-export const MAX_IRC_CHANNELS = 8;
+export const MAX_IRC_CHANNELS = 15;
 
 export const PRIMARY_CHAT_TAB_ID = '__primary__';
 
@@ -36,10 +36,9 @@ export const appendIrcChannel = (
       .map((item) => normalizeTwitchChannelName(item))
       .filter((item): item is string => Boolean(item)),
   );
-  const withoutTarget = current.filter((channel) => channel !== normalized);
-  const next = [...withoutTarget, normalized];
-  if (next.length <= MAX_IRC_CHANNELS) return next;
-  return next.slice(next.length - MAX_IRC_CHANNELS);
+  if (current.includes(normalized)) return current;
+  if (current.length >= MAX_IRC_CHANNELS) return current;
+  return [...current, normalized];
 };
 
 export const readIrcChannels = (): string[] => {

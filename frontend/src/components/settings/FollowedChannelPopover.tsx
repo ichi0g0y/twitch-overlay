@@ -1,5 +1,6 @@
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import React from 'react';
+import { MAX_IRC_CHANNELS } from '../../utils/chatChannels';
 import type { FollowedChannelRailItem } from './FollowedChannelsRail';
 import { TwitchPreviewIframe } from './TwitchPreviewIframe';
 
@@ -7,6 +8,7 @@ type FollowedChannelPopoverProps = {
   channel: FollowedChannelRailItem;
   followerCountLabel: string;
   alreadyConnected: boolean;
+  connectionLimitReached: boolean;
   canStartRaid: boolean;
   copiedChannelId: string | null;
   raidConfirmChannelId: string | null;
@@ -25,6 +27,7 @@ export const FollowedChannelPopover: React.FC<FollowedChannelPopoverProps> = ({
   channel,
   followerCountLabel,
   alreadyConnected,
+  connectionLimitReached,
   canStartRaid,
   copiedChannelId,
   raidConfirmChannelId,
@@ -41,6 +44,18 @@ export const FollowedChannelPopover: React.FC<FollowedChannelPopoverProps> = ({
   const channelDisplayName = channel.broadcaster_name || channel.broadcaster_login;
   const channelLogin = channel.broadcaster_login;
   const canStartShoutout = canStartRaid && channel.is_live;
+  const connectDisabled = alreadyConnected || connectionLimitReached;
+  const connectLimitMessage = `IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`;
+  const connectLabel = alreadyConnected
+    ? '接続済み'
+    : connectionLimitReached
+      ? '上限到達'
+      : '接続';
+  const connectTooltip = alreadyConnected
+    ? '接続済みです'
+    : connectionLimitReached
+      ? connectLimitMessage
+      : 'このチャンネルをコメント欄に接続';
 
   return (
     <div
@@ -84,15 +99,16 @@ export const FollowedChannelPopover: React.FC<FollowedChannelPopoverProps> = ({
       </div>
       <button
         type="button"
-        disabled={alreadyConnected}
+        disabled={connectDisabled}
         onClick={() => onConnect(channel)}
         className={`mb-1 inline-flex h-8 w-full items-center justify-center rounded border text-xs ${
-          alreadyConnected
+          connectDisabled
             ? 'border-gray-700 text-gray-500 cursor-not-allowed'
             : 'border-emerald-600/60 text-emerald-300 hover:bg-emerald-700/20'
         }`}
+        title={connectTooltip}
       >
-        {alreadyConnected ? '接続済み' : '接続'}
+        {connectLabel}
       </button>
       <button
         type="button"

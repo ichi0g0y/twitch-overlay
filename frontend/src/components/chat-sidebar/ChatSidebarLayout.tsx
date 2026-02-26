@@ -1,4 +1,5 @@
 import { ChattersPanel } from '../ChattersPanel';
+import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import { ChatSidebarMainPanel } from './ChatSidebarMainPanel';
 import { ChatSidebarTabs } from './ChatSidebarTabs';
 import { ChatSidebarToolbar } from './ChatSidebarToolbar';
@@ -106,6 +107,8 @@ export const ChatSidebarLayout = ({
   copyRawDataJson,
   handleCloseRawData,
 }: ChatSidebarLayoutProps) => {
+  const ircChannelCount = tabs.filter((tab) => tab.id !== PRIMARY_CHAT_TAB_ID).length;
+
   return (
     <aside className={asideClass} style={embedded ? undefined : sidebarStyle}>
       <div className={wrapperClass} style={embedded ? undefined : sidebarStyle}>
@@ -127,6 +130,7 @@ export const ChatSidebarLayout = ({
                 activeTab={activeTab}
                 activeChatDisplayMode={activeChatDisplayMode}
                 messageOrderReversed={messageOrderReversed}
+                ircChannelCount={ircChannelCount}
                 chattersOpen={chattersOpen}
                 channelEditorOpen={channelEditorOpen}
                 actionsMenuOpen={actionsMenuOpen}

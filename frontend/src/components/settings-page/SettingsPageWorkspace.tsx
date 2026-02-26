@@ -120,6 +120,7 @@ export const SettingsPageWorkspace: React.FC = () => {
   useWorkspacePreviewEffects({
     isWorkspaceFlowReady: state.isWorkspaceFlowReady,
     nodes,
+    setNodes,
     restoredInitialExpandedPreviewRef,
     expandedPreviewNodeIdRef,
     setExpandedPreviewNodeId: state.setExpandedPreviewNodeId,
@@ -127,6 +128,7 @@ export const SettingsPageWorkspace: React.FC = () => {
     bringPreviewNodeToFront: previewActions.bringPreviewNodeToFront,
     pendingPreviewRevealKind: state.pendingPreviewRevealKind,
     workspaceFlowInstanceRef,
+    workspaceShellRef,
     activatePreviewInteraction: previewActions.activatePreviewInteraction,
     setPendingPreviewRevealKind: state.setPendingPreviewRevealKind,
   });

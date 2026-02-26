@@ -107,11 +107,15 @@ export const useWorkspaceCardActions = ({
 
   const connectIrcChannel = useCallback((channelLogin: string) => {
     const normalized = (channelLogin || "").trim().toLowerCase();
-    if (!normalized) return;
+    if (!normalized) return false;
     const current = readIrcChannels();
     const next = appendIrcChannel(current, normalized);
-    if (next.length === current.length && next.every((channel, index) => channel === current[index])) return;
-    writeIrcChannels(next);
+    const isConnected = next.includes(normalized);
+    if (!isConnected) return false;
+    if (next.length !== current.length || next.some((channel, index) => channel !== current[index])) {
+      writeIrcChannels(next);
+    }
+    return true;
   }, []);
 
   const addIrcPreviewCard = useCallback(
@@ -119,7 +123,7 @@ export const useWorkspaceCardActions = ({
       const normalized = (channelLogin || "").trim().toLowerCase();
       if (!normalized) return;
       const shouldReveal = options?.reveal ?? true;
-      connectIrcChannel(normalized);
+      if (!connectIrcChannel(normalized)) return;
       const previewKind = `preview-irc:${normalized}` as WorkspaceCardKind;
       setNodes((existing) => {
         if (existing.some((node) => node.data.kind === previewKind))
