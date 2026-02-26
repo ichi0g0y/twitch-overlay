@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use twitch_client::eventsub;
 
 use crate::app::SharedState;
+use crate::chat_filter::{extract_badge_keys, is_bot_chat_message};
 use crate::events;
 use crate::eventsub_support::{
     RewardEnqueueResult, enqueue_notification, enqueue_reward_redemption, non_empty, send_ws,
@@ -47,6 +48,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         .and_then(|m| m.get("fragments"))
         .cloned()
         .unwrap_or(Value::Array(vec![]));
+    let badge_keys = extract_badge_keys(payload);
     let learned = channel_points_emote_cache::learn_from_chat_fragments(&message_fragments).await;
     if learned > 0 {
         tracing::debug!(learned, "Learned chat emotes for channel points parsing");
@@ -54,9 +56,10 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
     let fragments_json = message_fragments.to_string();
     let avatar_url = resolve_chat_avatar_url(state, &user_id).await;
     let now = chrono::Utc::now().timestamp();
-    if let Err(e) = state
-        .db()
-        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
+    if let Err(e) =
+        state
+            .db()
+            .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
     {
         tracing::warn!(user_id, "Failed to upsert chat user profile: {e}");
     }
@@ -68,6 +71,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         username: username.clone(),
         display_name: display_name.clone(),
         message: message_text.clone(),
+        badge_keys: badge_keys.clone(),
         fragments_json,
         avatar_url: String::new(),
         translation_text: String::new(),
@@ -93,6 +97,7 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         "userId": user_id,
         "messageId": message_id,
         "message": message_text,
+        "badge_keys": badge_keys,
         "fragments": to_legacy_fragments(&message_fragments),
         "avatarUrl": avatar_url,
         "translation": "",
@@ -101,6 +106,16 @@ async fn handle_chat_message(state: &SharedState, payload: &Value) {
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
     send_ws(state, "chat-message", ws_payload);
+
+    if is_bot_chat_message(payload, &user_id, &username, &badge_keys) {
+        tracing::debug!(
+            message_id,
+            user_id,
+            username,
+            "Skip chat notification for bot message"
+        );
+        return;
+    }
 
     enqueue_notification(
         state,

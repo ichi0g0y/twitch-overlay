@@ -254,6 +254,10 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/chat/history", get(api::chat::get_history))
         .route("/api/emotes", get(api::emotes::get_emotes))
         .route(
+            "/api/emotes/favorites",
+            get(api::emotes::get_emote_favorites).put(api::emotes::put_emote_favorites),
+        )
+        .route(
             "/api/chat/irc/credentials",
             get(api::chat::get_irc_credentials),
         )

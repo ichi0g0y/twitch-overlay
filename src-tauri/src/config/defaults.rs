@@ -312,6 +312,13 @@ const DEFS: &[(&str, &str, bool, bool, &str)] = &[
         "Workspace scroll-to-pan mode",
     ),
     (
+        "WORKSPACE_SCROLL_MODE_ENABLED",
+        "false",
+        false,
+        false,
+        "Enable workspace scroll mode (wheel to pan)",
+    ),
+    (
         "WORKSPACE_PAN_ACTIVATION_KEY",
         "Space",
         false,

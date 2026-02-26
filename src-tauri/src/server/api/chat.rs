@@ -1137,6 +1137,7 @@ pub async fn post_chat_message(
         username: username.clone(),
         display_name: display_name.clone(),
         message: message.clone(),
+        badge_keys: Vec::new(),
         fragments_json: fragments.to_string(),
         avatar_url: String::new(),
         translation_text: String::new(),
@@ -1161,6 +1162,7 @@ pub async fn post_chat_message(
         "userId": user_id,
         "messageId": message_id,
         "message": message,
+        "badge_keys": [],
         "fragments": [{
             "type": "text",
             "text": msg.message,

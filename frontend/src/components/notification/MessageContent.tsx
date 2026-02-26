@@ -10,6 +10,22 @@ interface MessageContentProps {
 
 const URL_PATTERN = /https?:\/\/[^\s]+/gi;
 
+const isBlankTextFragment = (fragment: Fragment): boolean => {
+  return fragment.type === 'text' && fragment.text.trim() === '';
+};
+
+const getAdjacentNonBlankFragment = (fragments: Fragment[], startIndex: number, step: -1 | 1): Fragment | undefined => {
+  let index = startIndex + step;
+  while (index >= 0 && index < fragments.length) {
+    const fragment = fragments[index];
+    if (!isBlankTextFragment(fragment)) {
+      return fragment;
+    }
+    index += step;
+  }
+  return undefined;
+};
+
 const splitTrailingPunctuation = (url: string): { cleanUrl: string; trailing: string } => {
   let splitIndex = url.length;
   let trailing = '';
@@ -108,20 +124,34 @@ export function MessageContent({ message, fragments, fontSize = 14, linkifyUrls 
     return <>{renderText(message, 'plain')}</>;
   }
 
+  // 旧データ互換: Emoteに挟まれた空白text fragmentは描画から除外する
+  const displayFragments = fragments.filter((fragment, index, source) => {
+    if (!isBlankTextFragment(fragment)) {
+      return true;
+    }
+    const prev = getAdjacentNonBlankFragment(source, index, -1);
+    const next = getAdjacentNonBlankFragment(source, index, 1);
+    return !(prev?.type === 'emote' && next?.type === 'emote');
+  });
+
   // Calculate emote height based on font size (1.2x ratio)
   const emoteHeight = `${fontSize * 1.2}px`;
 
   // Render fragments (text + emotes)
   return (
     <>
-      {fragments.map((fragment, index) => {
+      {displayFragments.map((fragment, index) => {
         if (fragment.type === 'emote' && fragment.emoteUrl) {
+          const prevIsEmote = index > 0 && displayFragments[index - 1].type === 'emote';
+          const nextIsEmote = index < displayFragments.length - 1 && displayFragments[index + 1].type === 'emote';
+          const marginClass = `${prevIsEmote ? '' : 'ml-[0.1em]'} ${nextIsEmote ? 'mr-[2px]' : 'mr-[0.1em]'}`.trim();
+
           return (
             <img
               key={index}
               src={fragment.emoteUrl}
               alt={fragment.text}
-              className="inline align-middle mx-[0.1em]"
+              className={`inline align-middle ${marginClass}`}
               style={{ height: emoteHeight }}
               title={fragment.text}
               loading="lazy"

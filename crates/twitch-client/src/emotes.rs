@@ -20,7 +20,15 @@ const HELIX_BASE: &str = "https://api.twitch.tv/helix";
 pub struct Emote {
     pub id: String,
     pub name: String,
+    // `chat/emotes/user` doesn't include `images`; use id/format/template-derived URL instead.
+    #[serde(default)]
     pub images: EmoteImages,
+    #[serde(default)]
+    pub emote_type: Option<String>,
+    #[serde(default)]
+    pub tier: Option<String>,
+    #[serde(default)]
+    pub owner_id: Option<String>,
     #[serde(default)]
     pub format: Vec<String>,
     #[serde(default)]
@@ -30,7 +38,7 @@ pub struct Emote {
 }
 
 /// Image URLs at different scales.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EmoteImages {
     pub url_1x: String,
     pub url_2x: String,
@@ -41,6 +49,19 @@ pub struct EmoteImages {
 #[derive(Debug, Deserialize)]
 struct EmoteResponse {
     data: Vec<Emote>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmotePagination {
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmotePaginatedResponse {
+    data: Vec<Emote>,
+    #[serde(default)]
+    pagination: Option<EmotePagination>,
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +127,68 @@ impl EmoteCache {
             "Fetched channel emotes"
         );
         Ok(resp.data)
+    }
+
+    /// Fetch user-usable emotes for the authenticated user.
+    ///
+    /// This includes global emotes and channel emotes available to that user.
+    pub async fn get_user_emotes(
+        &self,
+        token: &Token,
+        user_id: &str,
+    ) -> Result<Vec<Emote>, TwitchError> {
+        self.get_user_emotes_paginated(token, user_id, None).await
+    }
+
+    /// Fetch user-usable emotes for a specific broadcaster context.
+    ///
+    /// Passing `broadcaster_id` guarantees inclusion of follower emotes for that broadcaster.
+    pub async fn get_user_emotes_for_broadcaster(
+        &self,
+        token: &Token,
+        user_id: &str,
+        broadcaster_id: &str,
+    ) -> Result<Vec<Emote>, TwitchError> {
+        self.get_user_emotes_paginated(token, user_id, Some(broadcaster_id))
+            .await
+    }
+
+    async fn get_user_emotes_paginated(
+        &self,
+        token: &Token,
+        user_id: &str,
+        broadcaster_id: Option<&str>,
+    ) -> Result<Vec<Emote>, TwitchError> {
+        let mut out = Vec::new();
+        let mut after: Option<String> = None;
+
+        loop {
+            let mut url = format!("{HELIX_BASE}/chat/emotes/user?user_id={user_id}&first=100");
+            if let Some(id) = broadcaster_id.filter(|id| !id.is_empty()) {
+                url.push_str("&broadcaster_id=");
+                url.push_str(id);
+            }
+            if let Some(cursor) = after.as_ref().filter(|cursor| !cursor.is_empty()) {
+                url.push_str("&after=");
+                url.push_str(cursor);
+            }
+
+            let body = self.fetch(&url, token).await?;
+            let resp: EmotePaginatedResponse = serde_json::from_str(&body)?;
+            out.extend(resp.data);
+
+            let next_cursor = resp
+                .pagination
+                .and_then(|p| p.cursor)
+                .filter(|cursor| !cursor.is_empty());
+            if let Some(cursor) = next_cursor {
+                after = Some(cursor);
+            } else {
+                break;
+            }
+        }
+
+        Ok(out)
     }
 
     /// Refresh the cache by loading both global and channel emotes.
@@ -191,6 +274,9 @@ mod tests {
                     url_2x: "https://example.com/2x".into(),
                     url_4x: "https://example.com/4x".into(),
                 },
+                emote_type: None,
+                tier: None,
+                owner_id: None,
                 format: vec![],
                 scale: vec![],
                 theme_mode: vec![],
@@ -201,5 +287,31 @@ mod tests {
         let emote = cache.get("123").unwrap();
         assert_eq!(emote.name, "Kappa");
         assert!(cache.get("999").is_none());
+    }
+
+    #[test]
+    fn test_user_emote_response_without_images_deserializes() {
+        let body = r#"{
+            "data": [
+                {
+                    "id": "301590448",
+                    "name": "HeyGuys",
+                    "format": ["static"],
+                    "scale": ["1.0","2.0","3.0"],
+                    "theme_mode": ["light","dark"],
+                    "emote_type": "subscriptions",
+                    "emote_set_id": "0",
+                    "owner_id": "141981764"
+                }
+            ],
+            "template": "https://static-cdn.jtvnw.net/emoticons/v2/{id}/{format}/{theme_mode}/{scale}",
+            "pagination": {}
+        }"#;
+
+        let parsed: EmotePaginatedResponse = serde_json::from_str(body).unwrap();
+        assert_eq!(parsed.data.len(), 1);
+        assert_eq!(parsed.data[0].id, "301590448");
+        assert_eq!(parsed.data[0].name, "HeyGuys");
+        assert!(parsed.data[0].images.url_1x.is_empty());
     }
 }

@@ -12,6 +12,7 @@ pub struct ChatMessage {
     pub username: String,
     pub display_name: String,
     pub message: String,
+    pub badge_keys: Vec<String>,
     pub fragments_json: String,
     pub avatar_url: String,
     pub translation_text: String,
@@ -53,17 +54,20 @@ pub struct IrcChannelProfile {
 
 impl Database {
     pub fn add_chat_message(&self, msg: &ChatMessage) -> Result<bool, DbError> {
+        let badge_keys_json = serde_json::to_string(&msg.badge_keys)
+            .map_err(|e| DbError::InvalidData(format!("invalid badge keys: {e}")))?;
         self.with_conn(|conn| {
             let changed = conn.execute(
                 "INSERT OR IGNORE INTO chat_messages
-                    (message_id, user_id, username, message, fragments_json,
+                    (message_id, user_id, username, message, badge_keys_json, fragments_json,
                      translation_text, translation_status, translation_lang, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 rusqlite::params![
                     msg.message_id,
                     msg.user_id,
                     msg.username,
                     msg.message,
+                    badge_keys_json,
                     msg.fragments_json,
                     msg.translation_text,
                     msg.translation_status,
@@ -90,6 +94,7 @@ impl Database {
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.translation_text,
@@ -112,6 +117,7 @@ impl Database {
                         COALESCE(NULLIF(u.username, ''), NULLIF(m.username, ''), '') AS username,
                         COALESCE(NULLIF(u.display_name, ''), '') AS display_name,
                         m.message,
+                        COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
                         m.translation_text,
@@ -136,12 +142,16 @@ impl Database {
                     username: row.get(3)?,
                     display_name: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                     message: row.get(5)?,
-                    fragments_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-                    avatar_url: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    translation_text: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                    translation_status: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
-                    translation_lang: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
-                    created_at: row.get(11)?,
+                    badge_keys: parse_badge_keys_json(
+                        row.get::<_, Option<String>>(6)?
+                            .unwrap_or_else(|| "[]".to_string()),
+                    )?,
+                    fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                    avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                    translation_text: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                    translation_status: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                    translation_lang: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                    created_at: row.get(12)?,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
