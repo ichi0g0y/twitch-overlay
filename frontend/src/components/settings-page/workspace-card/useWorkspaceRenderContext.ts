@@ -6,6 +6,7 @@ import type {
   StreamStatus,
   TwitchUserInfo,
 } from "../../../types";
+import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import {
   createPreviewHeaderResolver,
   createWorkspaceCardRenderer,
@@ -46,6 +47,7 @@ type UseWorkspaceRenderContextParams = {
   contextValue: SettingsPageValue;
   previewReloadNonceByKind: Record<string, number>;
   activeChatSidebarTabId: string;
+  followedChannels: FollowedChannelRailItem[];
   previewWarningByKind: Partial<Record<WorkspaceCardKind, string>>;
   removeWorkspaceCard: (nodeId: string) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
@@ -82,6 +84,7 @@ export const useWorkspaceRenderContext = ({
   contextValue,
   previewReloadNonceByKind,
   activeChatSidebarTabId,
+  followedChannels,
   previewWarningByKind,
   removeWorkspaceCard,
   refreshPreview,
@@ -148,10 +151,12 @@ export const useWorkspaceRenderContext = ({
         activeChatSidebarTabId,
         twitchUserInfo,
         streamStatus,
+        followedChannels,
         previewWarningByKind,
       }),
     [
       activeChatSidebarTabId,
+      followedChannels,
       previewWarningByKind,
       streamStatus,
       twitchUserInfo,

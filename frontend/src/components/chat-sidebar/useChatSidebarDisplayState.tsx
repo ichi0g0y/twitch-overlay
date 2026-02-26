@@ -29,7 +29,6 @@ type UseChatSidebarDisplayStateParams = {
   messageOrderReversedByTab: MessageOrderReversedByTab;
   activeChatDisplayMode: 'custom' | 'embed';
   isCollapsed: boolean;
-  listRef: React.MutableRefObject<HTMLDivElement | null>;
   tabScrollerRef: React.MutableRefObject<HTMLDivElement | null>;
   tabButtonRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>;
   ircChannels: string[];
@@ -99,7 +98,6 @@ export const useChatSidebarDisplayState = ({
   messageOrderReversedByTab,
   activeChatDisplayMode,
   isCollapsed,
-  listRef,
   tabScrollerRef,
   tabButtonRefs,
   ircChannels,
@@ -123,8 +121,6 @@ export const useChatSidebarDisplayState = ({
     ircParticipantsByChannelRef,
     ircParticipantsVersion,
     messageOrderReversedByTab,
-    listElement: listRef.current,
-    isCollapsed,
   });
 
   const layout = useChatSidebarLayoutPresentation({

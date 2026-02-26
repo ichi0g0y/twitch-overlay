@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, MessageCircle, Send } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronsDown, ChevronsUp, MessageCircle, Send } from 'lucide-react';
 import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import type { ChatMessage } from '../ChatSidebarItem';
 import { ChatSidebarItem } from '../ChatSidebarItem';
@@ -13,6 +13,7 @@ export const ChatSidebarMainPanel: React.FC<{
   isCollapsed: boolean;
   onToggleSidebar: () => void;
   activeChatDisplayMode: 'custom' | 'embed';
+  messageOrderReversed: boolean;
   embedFrames: Array<{ tabId: string; channelLogin: string; src: string }>;
   activeTab: string;
   activeEmbedFrame: { tabId: string; channelLogin: string; src: string } | null;
@@ -40,6 +41,7 @@ export const ChatSidebarMainPanel: React.FC<{
   isCollapsed,
   onToggleSidebar,
   activeChatDisplayMode,
+  messageOrderReversed,
   embedFrames,
   activeTab,
   activeEmbedFrame,
@@ -64,7 +66,33 @@ export const ChatSidebarMainPanel: React.FC<{
   sendComment,
   inputHasContent,
 }) => {
+  const [autoFollowLatest, setAutoFollowLatest] = useState(true);
   const [relativeNowMs, setRelativeNowMs] = useState(() => Date.now());
+  const isNearLatestPosition = useCallback((element: HTMLDivElement) => {
+    const threshold = 20;
+    if (messageOrderReversed) return element.scrollTop <= threshold;
+    const distance = element.scrollHeight - element.clientHeight - element.scrollTop;
+    return distance <= threshold;
+  }, [messageOrderReversed]);
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const element = listRef.current;
+    if (!element) return;
+    if (messageOrderReversed) {
+      element.scrollTo({ top: 0, behavior });
+      return;
+    }
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, [listRef, messageOrderReversed]);
+  const handleListScroll = useCallback(() => {
+    const element = listRef.current;
+    if (!element) return;
+    const atLatest = isNearLatestPosition(element);
+    setAutoFollowLatest((current) => (current === atLatest ? current : atLatest));
+  }, [isNearLatestPosition, listRef]);
+  const handleJumpToLatest = useCallback(() => {
+    setAutoFollowLatest(true);
+    scrollToLatest('smooth');
+  }, [scrollToLatest]);
   const hasSecondPrecisionTimestamp = useMemo(() => {
     for (const message of activeMessages) {
       if (!message.timestamp) continue;
@@ -90,6 +118,19 @@ export const ChatSidebarMainPanel: React.FC<{
       window.clearInterval(timer);
     };
   }, [activeMessages, activeTab, hasSecondPrecisionTimestamp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setAutoFollowLatest(true);
+    window.requestAnimationFrame(() => {
+      scrollToLatest('auto');
+    });
+  }, [activeTab, messageOrderReversed, scrollToLatest]);
+
+  useEffect(() => {
+    if (!autoFollowLatest) return;
+    scrollToLatest('auto');
+  }, [activeMessages, autoFollowLatest, scrollToLatest]);
 
   if (isCollapsed) {
     return (
@@ -143,7 +184,11 @@ export const ChatSidebarMainPanel: React.FC<{
           activeChatDisplayMode === 'custom' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <div ref={listRef} className="flex-1 overflow-y-auto px-0 pb-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left">
+        <div
+          ref={listRef}
+          onScroll={handleListScroll}
+          className="flex-1 overflow-y-auto px-0 pb-0 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+        >
           {activeMessages.length === 0 ? (
             emptyState
           ) : (
@@ -175,6 +220,20 @@ export const ChatSidebarMainPanel: React.FC<{
             ))
           )}
         </div>
+        {!autoFollowLatest && activeMessages.length > 0 && (
+          <div className="pointer-events-none absolute bottom-16 right-3 z-20">
+            <button
+              type="button"
+              onClick={handleJumpToLatest}
+              className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:border-blue-400/40 dark:bg-gray-900/95 dark:text-blue-200 dark:hover:bg-gray-800/95 dark:focus-visible:ring-blue-500"
+            >
+              {messageOrderReversed
+                ? <ChevronsUp className="h-3.5 w-3.5" aria-hidden="true" />
+                : <ChevronsDown className="h-3.5 w-3.5" aria-hidden="true" />}
+              <span>{messageOrderReversed ? '一番上へ' : '一番下へ'}</span>
+            </button>
+          </div>
+        )}
 
         <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
           <div className="flex items-center gap-2">

@@ -99,7 +99,9 @@ export type PortalRect = {
 
 export type WorkspacePreviewHeader = {
   channelLogin: string;
+  channelDisplayName: string;
   statusLabel: string;
+  streamTitle: string | null;
   statusClassName: string;
   warningMessage: string | null;
   isLinkedChatTab: boolean;

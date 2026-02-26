@@ -164,6 +164,7 @@ export const SettingsPageWorkspace: React.FC = () => {
     contextValue: settings.contextValue,
     previewReloadNonceByKind: state.previewReloadNonceByKind,
     activeChatSidebarTabId: state.activeChatSidebarTabId,
+    followedChannels: state.followedChannels,
     previewWarningByKind: state.previewWarningByKind,
     removeWorkspaceCard: cardActions.removeWorkspaceCard,
     refreshPreview: previewActions.refreshPreview,

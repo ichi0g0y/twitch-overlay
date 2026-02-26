@@ -121,14 +121,24 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
             >
               {previewHeader ? (
                 <>
-                  <span className="truncate font-mono text-xs text-gray-200">
-                    channel: {previewHeader.channelLogin || "-"}
-                  </span>
-                  <span
-                    className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}
-                  >
-                    {previewHeader.statusLabel}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="whitespace-nowrap text-xs text-gray-200">
+                      {previewHeader.channelDisplayName}
+                    </span>
+                    <span
+                      className={`shrink-0 text-[11px] ${previewHeader.statusClassName}`}
+                    >
+                      {previewHeader.statusLabel}
+                    </span>
+                    {previewHeader.streamTitle && (
+                      <span
+                        className="truncate text-[11px] text-gray-300"
+                        title={previewHeader.streamTitle}
+                      >
+                        {previewHeader.streamTitle}
+                      </span>
+                    )}
+                  </div>
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       type="button"

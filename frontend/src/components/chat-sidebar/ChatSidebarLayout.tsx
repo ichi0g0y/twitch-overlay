@@ -178,6 +178,7 @@ export const ChatSidebarLayout = ({
             isCollapsed={isCollapsed}
             onToggleSidebar={handleToggle}
             activeChatDisplayMode={activeChatDisplayMode}
+            messageOrderReversed={messageOrderReversed}
             embedFrames={embedFrames}
             activeTab={activeTab}
             activeEmbedFrame={activeEmbedFrame}
