@@ -1,120 +1,82 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type { Track, MusicPlayerState, PlaybackStatus } from '@shared/types/music';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MusicPlayerState, PlaybackStatus, Track } from '@shared/types/music';
 import { buildApiUrl } from '../utils/api';
-
-interface UseMusicPlayerReturn extends MusicPlayerState {
-  play: () => void;
-  pause: () => void;
-  stop: () => void;
-  next: () => void;
-  previous: () => void;
-  seek: (time: number) => void;
-  setVolume: (volume: number) => void;
-  loadPlaylist: (playlistName?: string) => Promise<void>;
-  loadTrack: (track: Track) => void;
-  clearHistory: () => void;
-  audioElement: HTMLAudioElement | null;
-}
-
-// localStorage キー（必要最小限のみ）
-const STORAGE_KEYS = {
-  PLAY_HISTORY: 'musicPlayer.playHistory', // ランダム再生履歴（セッション管理のみ）
-} as const;
-
-// localStorageから値を安全に取得
-const getFromStorage = <T>(key: string, defaultValue: T): T => {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-};
-
-// localStorageに値を保存
-const saveToStorage = (key: string, value: any): void => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error('Failed to save to localStorage:', error);
-  }
-};
+import { useMusicPlaybackActions } from './musicPlayer/actions';
+import { getFromStorage, saveToStorage, STORAGE_KEYS } from './musicPlayer/storage';
+import type { UseMusicPlayerReturn } from './musicPlayer/types';
 
 export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const handleNextRef = useRef<(() => void) | null>(null);
   const isInitializedRef = useRef(false);
-  
-  // 初期状態（サーバーから復元する）
+
   const [state, setState] = useState<MusicPlayerState>({
-    playbackStatus: 'stopped', // 初期表示時は常に停止状態から開始
+    playbackStatus: 'stopped',
     isPlaying: false,
     currentTrack: null,
     playlist: [],
-    playlistName: null, // サーバーから復元
+    playlistName: null,
     progress: 0,
     currentTime: 0,
     duration: 0,
-    volume: initialVolume ?? 70, // Settingsからの音量を優先、なければデフォルト70
+    volume: initialVolume ?? 70,
     isLoading: false,
-    playHistory: getFromStorage(STORAGE_KEYS.PLAY_HISTORY, []), // セッション管理のみlocalStorage使用
+    playHistory: getFromStorage(STORAGE_KEYS.PLAY_HISTORY, []),
   });
 
-  // 再生履歴のみlocalStorageに保存（セッション管理用）
   useEffect(() => {
-    if (!isInitializedRef.current) return;
+    if (!isInitializedRef.current) {
+      return;
+    }
+
     saveToStorage(STORAGE_KEYS.PLAY_HISTORY, state.playHistory);
   }, [state.playHistory]);
-  
-  // Settingsからの音量変更を反映
+
   useEffect(() => {
     if (initialVolume !== undefined && audioRef.current) {
       audioRef.current.volume = initialVolume / 100;
-      setState(prev => ({ ...prev, volume: initialVolume }));
+      setState((prev) => ({ ...prev, volume: initialVolume }));
     }
   }, [initialVolume]);
 
-  // オーディオ要素の初期化
   useEffect(() => {
     audioRef.current = new Audio();
-    audioRef.current.crossOrigin = 'anonymous'; // CORS対応
+    audioRef.current.crossOrigin = 'anonymous';
     audioRef.current.volume = (initialVolume ?? state.volume) / 100;
 
-    // イベントリスナー設定
     const audio = audioRef.current;
 
     const handleTimeUpdate = () => {
-      if (audio.duration) {
-        setState(prev => ({
-          ...prev,
-          currentTime: audio.currentTime,
-          duration: audio.duration,
-          progress: (audio.currentTime / audio.duration) * 100,
-        }));
+      if (!audio.duration) {
+        return;
       }
+
+      setState((prev) => ({
+        ...prev,
+        currentTime: audio.currentTime,
+        duration: audio.duration,
+        progress: (audio.currentTime / audio.duration) * 100,
+      }));
     };
 
     const handleEnded = () => {
-      // 3秒のインターバルを設けてから次の曲へ
-      setState(prev => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
+      setState((prev) => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
       setTimeout(() => {
-        if (handleNextRef.current) {
-          handleNextRef.current();
-        }
+        handleNextRef.current?.();
       }, 3000);
     };
 
     const handleLoadedMetadata = () => {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         duration: audio.duration,
         isLoading: false,
       }));
     };
 
-    const handleError = (e: Event) => {
-      console.error('Audio playback error:', e);
-      setState(prev => ({
+    const handleError = (event: Event) => {
+      console.error('Audio playback error:', event);
+      setState((prev) => ({
         ...prev,
         playbackStatus: prev.playbackStatus === 'playing' ? 'paused' : prev.playbackStatus,
         isPlaying: false,
@@ -137,327 +99,114 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
     };
   }, []);
 
-  // ランダムで次のトラックを取得（履歴管理付き）
-  const getNextRandomTrack = useCallback((): Track | null => {
-    if (state.playlist.length === 0) return null;
-    
-    // 未再生のトラックを取得
-    const unplayedTracks = state.playlist.filter(
-      track => !state.playHistory.includes(track.id)
-    );
+  const actions = useMusicPlaybackActions({
+    audioRef,
+    handleNextRef,
+    state,
+    setState,
+  });
 
-    // 全て再生済みの場合は履歴をリセット
-    if (unplayedTracks.length === 0) {
-      setState(prev => ({ ...prev, playHistory: [] }));
-      // 現在のトラックと異なるトラックを選択
-      const availableTracks = state.playlist.filter(
-        track => track.id !== state.currentTrack?.id
-      );
-      if (availableTracks.length === 0) return state.playlist[0];
-      const randomIndex = Math.floor(Math.random() * availableTracks.length);
-      return availableTracks[randomIndex];
-    }
-
-    // ランダムに未再生トラックを選択
-    const randomIndex = Math.floor(Math.random() * unplayedTracks.length);
-    return unplayedTracks[randomIndex];
-  }, [state.playlist, state.playHistory, state.currentTrack]);
-
-  // トラックを読み込む
-  const loadTrack = useCallback((track: Track, autoPlay: boolean = false) => {
-    if (!audioRef.current) return;
-
-    setState(prev => ({
-      ...prev,
-      currentTrack: track,
-      isLoading: true,
-      currentTime: 0,
-      progress: 0,
-    }));
-
-    audioRef.current.src = buildApiUrl(`/api/music/track/${track.id}/audio`);
-    audioRef.current.load();
-
-    // 自動再生が有効な場合（autoPlayパラメータまたは既存のstate.isPlaying）
-    if (autoPlay || state.playbackStatus === 'playing') {
-      audioRef.current.play().then(() => {
-        // 再生成功時に状態を更新
-        setState(prev => ({
-          ...prev,
-          playbackStatus: 'playing',
-          isPlaying: true,
-          isLoading: false  // ローディング完了
-        }));
-      }).catch(err => {
-        console.error('Failed to auto-play:', err);
-        setState(prev => ({
-          ...prev,
-          playbackStatus: 'paused',
-          isPlaying: false,
-          isLoading: false  // エラー時もローディング解除
-        }));
-      });
-    }
-  }, [state.playbackStatus]);
-
-  // 再生
-  const play = useCallback(() => {
-    if (!audioRef.current) return;
-
-    // トラックが選択されていない場合は最初のトラックを選択
-    if (!state.currentTrack && state.playlist.length > 0) {
-      const firstTrack = getNextRandomTrack();
-      if (firstTrack) {
-        loadTrack(firstTrack, true);
-      }
-      return;
-    }
-
-    // 停止状態からの再生の場合は、トラックを再読み込み
-    if (state.playbackStatus === 'stopped' && state.currentTrack) {
-      loadTrack(state.currentTrack, true);
-      return;
-    }
-
-    // 一時停止からの再生の場合は、そのまま再生
-    audioRef.current.play().then(() => {
-      setState(prev => ({ ...prev, playbackStatus: 'playing', isPlaying: true }));
-    }).catch(err => {
-      console.error('Failed to play:', err);
-    });
-  }, [state.currentTrack, state.playlist, state.playbackStatus, getNextRandomTrack, loadTrack]);
-
-  // 一時停止
-  const pause = useCallback(() => {
-    if (!audioRef.current) return;
-    audioRef.current.pause();
-    setState(prev => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
-  }, []);
-
-  // 停止
-  const stop = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      // MediaElementSourceNodeの接続を切断するため、srcをクリアしてリセット
-      audioRef.current.src = '';
-      audioRef.current.load();
-    }
-    setState(prev => ({
-      ...prev,
-      playbackStatus: 'stopped',
-      isPlaying: false,
-      // currentTrackは保持（nullにしない）
-      currentTime: 0,
-      progress: 0,
-      duration: prev.duration, // durationも保持
-    }));
-    // 停止時は再生履歴もクリア
-    setState(prev => ({ ...prev, playHistory: [] }));
-  }, []);
-
-  // 次の曲
-  const handleNext = useCallback(() => {
-    // 一旦停止して少し待つ
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setState(prev => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
-    
-    setTimeout(() => {
-      const nextTrack = getNextRandomTrack();
-      if (nextTrack) {
-        // 現在のトラックを履歴に追加
-        if (state.currentTrack) {
-          setState(prev => ({
-            ...prev,
-            playHistory: [...prev.playHistory, state.currentTrack!.id],
-            playbackStatus: 'playing',
-            isPlaying: true,
-          }));
-        } else {
-          setState(prev => ({ ...prev, playbackStatus: 'playing', isPlaying: true }));
-        }
-        loadTrack(nextTrack, true); // 明示的にautoPlay=trueを指定
-      }
-    }, 500); // next/prevボタンは少し短めのインターバル
-  }, [getNextRandomTrack, loadTrack, state.currentTrack]);
-  
-  // handleNextの参照を更新
-  useEffect(() => {
-    handleNextRef.current = handleNext;
-  }, [handleNext]);
-
-  // 前の曲（履歴から）
-  const previous = useCallback(() => {
-    // 一旦停止して少し待つ
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setState(prev => ({ ...prev, playbackStatus: 'paused', isPlaying: false }));
-    
-    setTimeout(() => {
-      if (state.playHistory.length > 0) {
-        const lastTrackId = state.playHistory[state.playHistory.length - 1];
-        const track = state.playlist.find(t => t.id === lastTrackId);
-        if (track) {
-          setState(prev => ({
-            ...prev,
-            playHistory: prev.playHistory.slice(0, -1),
-            playbackStatus: 'playing',
-            isPlaying: true,
-          }));
-          loadTrack(track, true); // 明示的にautoPlay=trueを指定
-        }
-      }
-    }, 500); // next/prevボタンは少し短めのインターバル
-  }, [state.playHistory, state.playlist, loadTrack]);
-
-  // シーク
-  const seek = useCallback((time: number) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = time;
-    setState(prev => ({
-      ...prev,
-      currentTime: time,
-      progress: (time / prev.duration) * 100,
-    }));
-  }, []);
-
-  // ボリューム設定
-  const setVolume = useCallback((volume: number) => {
-    if (!audioRef.current) return;
-    const clampedVolume = Math.max(0, Math.min(100, volume));
-    audioRef.current.volume = clampedVolume / 100;
-    setState(prev => ({ ...prev, volume: clampedVolume }));
-  }, []);
-
-  // サーバーから再生状態を復元
   const restoreServerState = useCallback(async (tracks: Track[]) => {
     try {
       const response = await fetch(buildApiUrl('/api/music/state/get'));
-      if (!response.ok) return;
+      if (!response.ok) {
+        return;
+      }
 
       const savedState = await response.json();
-      console.log('🔄 Restoring server playback state:', savedState);
-
-      // 保存されたトラックを探す
-      const savedTrack = tracks.find(t => t.id === savedState.track_id);
-      if (savedTrack && audioRef.current) {
-        console.log('🎵 Found saved track:', savedTrack.title);
-        console.log('📍 Saved position:', savedState.position);
-        console.log('🎵 Saved playlist:', savedState.playlist_name);
-
-        // リロード時は常に停止状態で復元（再生位置は保持）
-        const playbackStatus: PlaybackStatus = 'stopped';
-
-        // stateを直接更新（loadTrackを経由しない）
-        setState(prev => ({
-          ...prev,
-          playbackStatus,
-          isPlaying: false, // 常に停止状態で復元
-          currentTrack: savedTrack,
-          playlistName: savedState.playlist_name || null, // プレイリスト名も復元
-          isLoading: true,
-          // 位置をリセットしない
-          currentTime: savedState.position || 0,
-          progress: savedState.duration ? (savedState.position / savedState.duration) * 100 : 0,
-          duration: savedState.duration || 0
-        }));
-        
-        // audio要素を直接操作
-        audioRef.current.src = buildApiUrl(`/api/music/track/${savedTrack.id}/audio`);
-        audioRef.current.load();
-        
-        // メタデータ読み込み後に位置を復元
-        audioRef.current.addEventListener('loadedmetadata', () => {
-          if (savedState.position > 0 && audioRef.current && 
-              savedState.position < audioRef.current.duration) {
-            audioRef.current.currentTime = savedState.position;
-            console.log(`⏯️ Resuming from ${savedState.position.toFixed(1)}s`);
-            
-            // stateも更新
-            setState(prev => ({
-              ...prev,
-              isLoading: false,
-              duration: audioRef.current!.duration
-            }));
-          }
-          
-          // 音量も復元
-          if (savedState.volume !== undefined && audioRef.current) {
-            audioRef.current.volume = savedState.volume / 100;
-            setState(prev => ({ ...prev, volume: savedState.volume }));
-          }
-        }, { once: true });
-        
-        // エラー時の処理
-        audioRef.current.addEventListener('error', () => {
-          setState(prev => ({ ...prev, isLoading: false }));
-        }, { once: true });
+      const savedTrack = tracks.find((track) => track.id === savedState.track_id);
+      if (!savedTrack || !audioRef.current) {
+        return;
       }
-    } catch (error) {
-      console.log('No saved playback state or failed to restore:', error);
+
+      const playbackStatus: PlaybackStatus = 'stopped';
+      setState((prev) => ({
+        ...prev,
+        playbackStatus,
+        isPlaying: false,
+        currentTrack: savedTrack,
+        playlistName: savedState.playlist_name || null,
+        isLoading: true,
+        currentTime: savedState.position || 0,
+        progress: savedState.duration ? (savedState.position / savedState.duration) * 100 : 0,
+        duration: savedState.duration || 0,
+      }));
+
+      audioRef.current.src = buildApiUrl(`/api/music/track/${savedTrack.id}/audio`);
+      audioRef.current.load();
+
+      audioRef.current.addEventListener('loadedmetadata', () => {
+        if (savedState.position > 0 && audioRef.current && savedState.position < audioRef.current.duration) {
+          audioRef.current.currentTime = savedState.position;
+          setState((prev) => ({ ...prev, isLoading: false, duration: audioRef.current!.duration }));
+        }
+
+        if (savedState.volume !== undefined && audioRef.current) {
+          audioRef.current.volume = savedState.volume / 100;
+          setState((prev) => ({ ...prev, volume: savedState.volume }));
+        }
+      }, { once: true });
+
+      audioRef.current.addEventListener('error', () => {
+        setState((prev) => ({ ...prev, isLoading: false }));
+      }, { once: true });
+    } catch {
+      // noop
     }
   }, []);
 
-  // プレイリスト読み込み
   const loadPlaylist = useCallback(async (playlistName?: string) => {
-    setState(prev => ({ ...prev, isLoading: true }));
+    setState((prev) => ({ ...prev, isLoading: true }));
 
     try {
       let tracks: Track[] = [];
 
       if (playlistName) {
-        // 指定されたプレイリストを読み込む
         const response = await fetch(buildApiUrl(`/api/music/playlist/${playlistName}/tracks`));
         if (response.ok) {
           const data = await response.json();
           tracks = data.tracks || [];
-          setState(prev => ({ ...prev, playlistName }));
+          setState((prev) => ({ ...prev, playlistName }));
         }
       } else {
-        // 全トラックを読み込む
         const response = await fetch(buildApiUrl('/api/music/tracks'));
         if (response.ok) {
           const data = await response.json();
           tracks = data.tracks || [];
-          setState(prev => ({ ...prev, playlistName: null }));
+          setState((prev) => ({ ...prev, playlistName: null }));
         }
       }
 
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         playlist: tracks,
         isLoading: false,
-        playHistory: prev.playHistory.filter(id => 
-          tracks.some(track => track.id === id)
-        ), // プレイリストに存在するトラックのみ履歴に保持
+        playHistory: prev.playHistory.filter((id) => tracks.some((track) => track.id === id)),
       }));
 
-      // サーバーから状態を復元
       if (tracks.length > 0 && !isInitializedRef.current) {
         await restoreServerState(tracks);
         isInitializedRef.current = true;
       }
     } catch (error) {
       console.error('Failed to load playlist:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState((prev) => ({ ...prev, isLoading: false }));
     }
-  }, [loadTrack]);
+  }, [restoreServerState]);
 
-  // 履歴クリア
   const clearHistory = useCallback(() => {
-    setState(prev => ({ ...prev, playHistory: [] }));
+    setState((prev) => ({ ...prev, playHistory: [] }));
   }, []);
 
-  // サーバーに再生状態を送信
   const updateServerState = useCallback(async () => {
-    if (!state.currentTrack || !audioRef.current) return;
-    
+    if (!state.currentTrack || !audioRef.current) {
+      return;
+    }
+
     try {
       const position = Number.isFinite(audioRef.current.currentTime) ? audioRef.current.currentTime : 0;
       const duration = Number.isFinite(audioRef.current.duration) ? audioRef.current.duration : 0;
+
       await fetch(buildApiUrl('/api/music/state/update'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -466,49 +215,45 @@ export const useMusicPlayer = (initialVolume?: number): UseMusicPlayerReturn => 
           position,
           duration,
           playback_status: state.playbackStatus,
-          is_playing: state.isPlaying, // 互換性のため
+          is_playing: state.isPlaying,
           volume: state.volume,
-          playlist_name: state.playlistName
-        })
+          playlist_name: state.playlistName,
+        }),
       });
-    } catch (error) {
-      // サイレントに失敗（ログのみ）
-      console.log('Failed to update server state:', error);
+    } catch {
+      // noop
     }
-  }, [state.currentTrack, state.isPlaying, state.volume, state.playlistName]);
+  }, [state.currentTrack, state.playbackStatus, state.isPlaying, state.volume, state.playlistName]);
 
-  // 定期的に状態を送信（再生中のみ）
   useEffect(() => {
     if (state.playbackStatus === 'playing' && state.currentTrack) {
-      const interval = setInterval(updateServerState, 30000); // 30秒ごとに変更（サーバー保存用）
+      const interval = setInterval(updateServerState, 30000);
       return () => clearInterval(interval);
     }
   }, [state.playbackStatus, state.currentTrack, updateServerState]);
 
-  // 一時停止時にも状態を送信
   const pauseWithStateUpdate = useCallback(() => {
-    pause();
+    actions.pause();
     updateServerState();
-  }, [pause, updateServerState]);
+  }, [actions.pause, updateServerState]);
 
-  // トラック変更時にも状態を送信
   useEffect(() => {
     if (state.currentTrack) {
       updateServerState();
     }
-  }, [state.currentTrack?.id]); // IDが変わったときのみ
+  }, [state.currentTrack?.id]);
 
   return {
     ...state,
-    play,
-    pause: pauseWithStateUpdate, // 一時停止時に状態も送信
-    stop,
-    next: handleNext,
-    previous,
-    seek,
-    setVolume,
+    play: actions.play,
+    pause: pauseWithStateUpdate,
+    stop: actions.stop,
+    next: actions.next,
+    previous: actions.previous,
+    seek: actions.seek,
+    setVolume: actions.setVolume,
     loadPlaylist,
-    loadTrack,
+    loadTrack: actions.loadTrack,
     clearHistory,
     audioElement: audioRef.current,
   };
