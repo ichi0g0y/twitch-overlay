@@ -10,6 +10,7 @@ impl Database {
         username: &str,
         display_name: &str,
         avatar_url: &str,
+        color: &str,
         updated_at: i64,
     ) -> Result<(), DbError> {
         if user_id.trim().is_empty() {
@@ -17,8 +18,8 @@ impl Database {
         }
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO chat_users (user_id, username, display_name, avatar_url, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO chat_users (user_id, username, display_name, avatar_url, chat_color, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(user_id) DO UPDATE SET
                     username = CASE
                         WHEN excluded.username != '' AND excluded.updated_at >= chat_users.updated_at
@@ -36,12 +37,17 @@ impl Database {
                         THEN excluded.avatar_url
                         ELSE chat_users.avatar_url
                     END,
+                    chat_color = CASE
+                        WHEN excluded.chat_color != '' AND excluded.updated_at >= chat_users.updated_at
+                        THEN excluded.chat_color
+                        ELSE chat_users.chat_color
+                    END,
                     updated_at = CASE
                         WHEN excluded.updated_at > chat_users.updated_at
                         THEN excluded.updated_at
                         ELSE chat_users.updated_at
                     END",
-                rusqlite::params![user_id, username, display_name, avatar_url, updated_at],
+                rusqlite::params![user_id, username, display_name, avatar_url, color, updated_at],
             )?;
             Ok(())
         })
@@ -50,7 +56,7 @@ impl Database {
     pub fn get_chat_user_profile(&self, user_id: &str) -> Result<Option<ChatUserProfile>, DbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT user_id, username, display_name, avatar_url, updated_at
+                "SELECT user_id, username, display_name, avatar_url, chat_color, updated_at
                  FROM chat_users
                  WHERE user_id = ?1",
             )?;
@@ -61,7 +67,8 @@ impl Database {
                         username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                         display_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                         avatar_url: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                        updated_at: row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
+                        color: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(5)?.unwrap_or_default(),
                     })
                 })
                 .optional()?;
@@ -80,7 +87,7 @@ impl Database {
 
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT user_id, username, display_name, avatar_url, updated_at
+                "SELECT user_id, username, display_name, avatar_url, chat_color, updated_at
                  FROM chat_users
                  WHERE username != '' AND lower(username) = lower(?1)
                  ORDER BY updated_at DESC
@@ -93,7 +100,8 @@ impl Database {
                         username: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                         display_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                         avatar_url: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                        updated_at: row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
+                        color: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                        updated_at: row.get::<_, Option<i64>>(5)?.unwrap_or_default(),
                     })
                 })
                 .optional()?;

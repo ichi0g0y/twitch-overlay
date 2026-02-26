@@ -17,6 +17,8 @@ export type ChatMessage = {
   username: string;
   displayName?: string;
   message: string;
+  color?: string;
+  chatSource?: 'eventsub' | 'irc';
   badgeKeys?: string[];
   fragments?: ChatFragment[];
   avatarUrl?: string;
@@ -25,6 +27,8 @@ export type ChatMessage = {
   translationLang?: string;
   timestamp?: string;
 };
+
+const TWITCH_CHAT_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
 const ISO6391_TO_3: Record<string, string> = {
   ja: 'jpn',
@@ -128,6 +132,21 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
     .map((badgeKey) => resolveBadgeVisual?.(badgeKey))
     .filter((badge): badge is { imageUrl: string; label: string } => !!badge);
   const displayName = message.displayName || message.username || message.userId || '不明';
+  const rawName = (message.username || '').trim();
+  const shouldAppendName =
+    rawName !== ''
+    && displayName.trim() !== ''
+    && displayName.toLowerCase() !== rawName.toLowerCase();
+  const renderedDisplayName = shouldAppendName ? `${displayName} (${rawName})` : displayName;
+  const displayNameNode = (
+    <>
+      <span className="font-semibold">{displayName}</span>
+      {shouldAppendName && <span className="font-normal">{` (${rawName})`}</span>}
+    </>
+  );
+  const usernameColor = message.chatSource === 'irc' && TWITCH_CHAT_COLOR_RE.test(message.color ?? '')
+    ? message.color
+    : undefined;
   const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
   const avatarFallbackStyle = {
     ...avatarSizeStyle,
@@ -201,14 +220,20 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
             <button
               type="button"
               onClick={() => onUsernameClick(message)}
-              className="font-semibold text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
-              aria-label={`${displayName} の情報を表示`}
-              title={`${displayName} の情報を表示`}
+              className="text-gray-700 dark:text-gray-200 hover:underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 rounded-sm"
+              aria-label={`${renderedDisplayName} の情報を表示`}
+              title={`${renderedDisplayName} の情報を表示`}
+              style={usernameColor ? { color: usernameColor } : undefined}
             >
-              {displayName}
+              {displayNameNode}
             </button>
           ) : (
-            <span className="font-semibold text-gray-700 dark:text-gray-200">{displayName}</span>
+            <span
+              className="text-gray-700 dark:text-gray-200"
+              style={usernameColor ? { color: usernameColor } : undefined}
+            >
+              {displayNameNode}
+            </span>
           )}
           {isBotMessage && (
             <span className="rounded bg-amber-200/70 dark:bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">

@@ -85,6 +85,7 @@ pub struct IrcChatMessageBody {
     pub username: Option<String>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub color: Option<String>,
     pub message: String,
     pub badge_keys: Option<Vec<String>>,
     pub fragments: Option<Value>,
@@ -248,4 +249,3 @@ fn token_has_scope(scope_csv: &str, required_scope: &str) -> bool {
         .map(str::trim)
         .any(|scope| !scope.is_empty() && scope == required_scope)
 }
-

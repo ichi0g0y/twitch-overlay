@@ -80,6 +80,8 @@ const mergeChatMessage = (current: ChatMessage, incoming: ChatMessage): ChatMess
   username: current.username || incoming.username,
   displayName: current.displayName || incoming.displayName,
   message: current.message || incoming.message,
+  color: current.color || incoming.color,
+  chatSource: current.chatSource || incoming.chatSource,
   badgeKeys: mergeBadgeKeys(current.badgeKeys, incoming.badgeKeys),
   fragments: pickPreferredFragments(current.fragments, incoming.fragments),
   avatarUrl: current.avatarUrl || incoming.avatarUrl,

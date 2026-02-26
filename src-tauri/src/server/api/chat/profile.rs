@@ -3,7 +3,7 @@ async fn resolve_chat_user_profile(
     user_id: &str,
     username_hint: Option<&str>,
     force_refresh: bool,
-) -> Result<(String, String, String), (axum::http::StatusCode, Json<Value>)> {
+) -> Result<(String, String, String, String), (axum::http::StatusCode, Json<Value>)> {
     let normalized_user_id = user_id.trim();
     if normalized_user_id.is_empty() {
         return Err(err_json(400, "user_id is required"));
@@ -31,6 +31,11 @@ async fn resolve_chat_user_profile(
     let mut avatar_url = existing
         .as_ref()
         .map(|p| p.avatar_url.clone())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_default();
+    let color = existing
+        .as_ref()
+        .map(|p| p.color.clone())
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_default();
 
@@ -76,11 +81,12 @@ async fn resolve_chat_user_profile(
             &username,
             &display_name,
             &avatar_url,
+            "",
             now,
         )
         .map_err(|e| err_json(500, &e.to_string()))?;
 
-    Ok((username, display_name, avatar_url))
+    Ok((username, display_name, avatar_url, color))
 }
 
 async fn save_irc_chat_message(
@@ -91,6 +97,7 @@ async fn save_irc_chat_message(
     username_hint: Option<&str>,
     display_name_hint: Option<&str>,
     avatar_url_hint: Option<&str>,
+    color_hint: Option<&str>,
     message: &str,
     badge_keys: Vec<String>,
     fragments: Value,
@@ -108,8 +115,12 @@ async fn save_irc_chat_message(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned);
+    let normalized_color_hint = color_hint
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
 
-    let (mut username, mut display_name, mut avatar_url) = if !user_id.trim().is_empty() {
+    let (mut username, mut display_name, mut avatar_url, mut color) = if !user_id.trim().is_empty() {
         resolve_chat_user_profile(state, user_id, username_hint, false).await?
     } else {
         let username = normalized_username_hint
@@ -119,7 +130,8 @@ async fn save_irc_chat_message(
             .clone()
             .unwrap_or_else(|| username.clone());
         let avatar_url = normalized_avatar_url_hint.clone().unwrap_or_default();
-        (username, display_name, avatar_url)
+        let color = normalized_color_hint.clone().unwrap_or_default();
+        (username, display_name, avatar_url, color)
     };
     if !user_id.trim().is_empty() {
         let next_username = normalized_username_hint.unwrap_or_else(|| username.clone());
@@ -133,6 +145,7 @@ async fn save_irc_chat_message(
             next_display_name
         };
         let next_avatar_url = normalized_avatar_url_hint.unwrap_or_else(|| avatar_url.clone());
+        let next_color = normalized_color_hint.unwrap_or_else(|| color.clone());
         let now = chrono::Utc::now().timestamp();
         state
             .db()
@@ -141,12 +154,14 @@ async fn save_irc_chat_message(
                 &next_username,
                 &next_display_name,
                 &next_avatar_url,
+                &next_color,
                 now,
             )
             .map_err(|e| err_json(500, &e.to_string()))?;
         username = next_username;
         display_name = next_display_name;
         avatar_url = next_avatar_url;
+        color = next_color;
     }
 
     let irc_msg = overlay_db::chat::IrcChatMessage {
@@ -160,6 +175,7 @@ async fn save_irc_chat_message(
         badge_keys: badge_keys.clone(),
         fragments_json: fragments.to_string(),
         avatar_url: String::new(),
+        color: String::new(),
         created_at,
     };
     state
@@ -181,9 +197,11 @@ async fn save_irc_chat_message(
         "userId": user_id,
         "messageId": message_id,
         "message": message,
+        "chatSource": "irc",
         "badge_keys": badge_keys,
         "fragments": fragments,
         "avatarUrl": avatar_url,
+        "color": color,
         "translation": "",
         "translationStatus": "",
         "translationLang": "",
@@ -192,4 +210,3 @@ async fn save_irc_chat_message(
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
     }))
 }
-

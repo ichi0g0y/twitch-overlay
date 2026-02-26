@@ -40,6 +40,8 @@ export const usePrimaryChatStream = ({
             username: item.username || '',
             displayName: item.displayName ?? item.display_name,
             message: item.message,
+            color: item.color,
+            chatSource: 'eventsub',
             badgeKeys: Array.isArray(item.badge_keys)
               ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string')
               : undefined,
@@ -90,6 +92,8 @@ export const usePrimaryChatStream = ({
             username: data.username,
             displayName: data.displayName || data.display_name,
             message: data.message,
+            color: data.color,
+            chatSource: data.chatSource === 'irc' ? 'irc' : 'eventsub',
             badgeKeys: Array.isArray(data.badge_keys)
               ? data.badge_keys.filter((value: unknown): value is string => typeof value === 'string')
               : undefined,

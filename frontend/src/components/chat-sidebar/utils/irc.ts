@@ -87,6 +87,13 @@ const parseBadgeKeys = (badgesTag?: string): string[] | undefined => {
   return keys.size > 0 ? Array.from(keys) : undefined;
 };
 
+const normalizeIrcColor = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!/^#[0-9A-Fa-f]{6}$/.test(trimmed)) return undefined;
+  return trimmed;
+};
+
 export const parseIrcPrivmsg = (
   line: string,
 ): { channel: string; userLogin: string; message: ChatMessage } | null => {
@@ -112,6 +119,7 @@ export const parseIrcPrivmsg = (
     tags.id || `irc-${channel}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const badgeKeys = parseBadgeKeys(tags.badges);
   const fragments = parseEmoteFragments(rawMessage, tags.emotes);
+  const color = normalizeIrcColor(tags.color);
 
   return {
     channel,
@@ -123,6 +131,8 @@ export const parseIrcPrivmsg = (
       username,
       displayName,
       message: rawMessage,
+      color,
+      chatSource: 'irc',
       badgeKeys,
       fragments,
       timestamp,

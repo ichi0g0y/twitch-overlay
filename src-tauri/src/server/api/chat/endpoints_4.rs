@@ -24,7 +24,7 @@ pub async fn get_avatar(
         .map_err(|e| err_json(500, &e.to_string()))?;
 
     if url.as_deref().unwrap_or_default().trim().is_empty() && !user_id.trim().is_empty() {
-        let (_, _, avatar_url) = resolve_chat_user_profile(&state, &user_id, None, false).await?;
+        let (_, _, avatar_url, _) = resolve_chat_user_profile(&state, &user_id, None, false).await?;
         if !avatar_url.trim().is_empty() {
             url = Some(avatar_url);
         }

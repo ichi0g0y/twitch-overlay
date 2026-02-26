@@ -4,7 +4,7 @@ use crate::chat;
 #[test]
 fn test_chat_messages() {
     let db = test_db();
-    db.upsert_chat_user_profile("user1", "alice", "Alice", "", 900)
+    db.upsert_chat_user_profile("user1", "alice", "Alice", "", "", 900)
         .unwrap();
     let msg = chat::ChatMessage {
         id: 0,
@@ -16,6 +16,7 @@ fn test_chat_messages() {
         badge_keys: vec!["subscriber/12".into(), "vip/1".into()],
         fragments_json: "[]".into(),
         avatar_url: String::new(),
+        color: String::new(),
         translation_text: String::new(),
         translation_status: String::new(),
         translation_lang: String::new(),
@@ -39,6 +40,7 @@ fn test_chat_messages() {
         "alice_renamed",
         "AliceRenamed",
         "https://example.com/avatar.png",
+        "#ff0000",
         1200,
     )
     .unwrap();
@@ -46,6 +48,7 @@ fn test_chat_messages() {
     assert_eq!(profile.username, "alice_renamed");
     assert_eq!(profile.display_name, "AliceRenamed");
     assert_eq!(profile.avatar_url, "https://example.com/avatar.png");
+    assert_eq!(profile.color, "#ff0000");
 
     let by_name = db
         .find_chat_user_profile_by_username("Alice_Renamed")
@@ -63,14 +66,22 @@ fn test_chat_messages() {
     assert_eq!(hydrated[0].username, "alice_renamed");
     assert_eq!(hydrated[0].display_name, "AliceRenamed");
     assert_eq!(hydrated[0].avatar_url, "https://example.com/avatar.png");
+    assert_eq!(hydrated[0].color, "#ff0000");
     assert_eq!(hydrated[0].badge_keys, vec!["subscriber/12", "vip/1"]);
 }
 
 #[test]
 fn test_irc_chat_messages() {
     let db = test_db();
-    db.upsert_chat_user_profile("u1", "alice", "Alice", "https://example.com/a.png", 1000)
-        .unwrap();
+    db.upsert_chat_user_profile(
+        "u1",
+        "alice",
+        "Alice",
+        "https://example.com/a.png",
+        "#00ff00",
+        1000,
+    )
+    .unwrap();
 
     let msg = chat::IrcChatMessage {
         id: 0,
@@ -83,6 +94,7 @@ fn test_irc_chat_messages() {
         badge_keys: vec!["subscriber/24".into(), "moderator/1".into()],
         fragments_json: "[]".into(),
         avatar_url: String::new(),
+        color: String::new(),
         created_at: 1200,
     };
     assert!(db.add_irc_chat_message(&msg).unwrap());
@@ -96,6 +108,7 @@ fn test_irc_chat_messages() {
     assert_eq!(rows[0].username, "alice");
     assert_eq!(rows[0].display_name, "Alice");
     assert_eq!(rows[0].avatar_url, "https://example.com/a.png");
+    assert_eq!(rows[0].color, "#00ff00");
     assert_eq!(rows[0].badge_keys, vec!["subscriber/24", "moderator/1"]);
 
     let msg2 = chat::IrcChatMessage {
@@ -109,6 +122,7 @@ fn test_irc_chat_messages() {
         badge_keys: vec![],
         fragments_json: "[]".into(),
         avatar_url: String::new(),
+        color: String::new(),
         created_at: 1250,
     };
     let msg3 = chat::IrcChatMessage {
@@ -122,6 +136,7 @@ fn test_irc_chat_messages() {
         badge_keys: vec![],
         fragments_json: "[]".into(),
         avatar_url: String::new(),
+        color: String::new(),
         created_at: 1260,
     };
     assert!(db.add_irc_chat_message(&msg2).unwrap());

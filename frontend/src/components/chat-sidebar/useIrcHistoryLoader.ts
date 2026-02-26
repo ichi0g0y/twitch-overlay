@@ -41,6 +41,8 @@ export const useIrcHistoryLoader = ({
             username: item.username || '',
             displayName: item.displayName ?? item.display_name,
             message: item.message || '',
+            color: item.color,
+            chatSource: 'irc',
             badgeKeys: Array.isArray(item.badge_keys)
               ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string')
               : undefined,

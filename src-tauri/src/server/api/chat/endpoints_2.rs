@@ -75,6 +75,7 @@ pub async fn post_chat_message(
         badge_keys: Vec::new(),
         fragments_json: fragments.to_string(),
         avatar_url: String::new(),
+        color: String::new(),
         translation_text: String::new(),
         translation_status: String::new(),
         translation_lang: String::new(),
@@ -83,7 +84,7 @@ pub async fn post_chat_message(
 
     state
         .db()
-        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, created_at)
+        .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, "", created_at)
         .map_err(|e| err_json(500, &e.to_string()))?;
 
     state
@@ -97,6 +98,8 @@ pub async fn post_chat_message(
         "userId": user_id,
         "messageId": message_id,
         "message": message,
+        "color": "",
+        "chatSource": "eventsub",
         "badge_keys": [],
         "fragments": [{
             "type": "text",
@@ -139,13 +142,13 @@ pub async fn upsert_user_profile(
         return Err(err_json(400, "user_id is required"));
     }
 
-    let (username, display_name, avatar_url) =
+    let (username, display_name, avatar_url, color) =
         resolve_chat_user_profile(&state, user_id, body.username.as_deref(), false).await?;
     Ok(Json(json!({
         "user_id": user_id,
         "username": username,
         "display_name": display_name,
         "avatar_url": avatar_url,
+        "color": color,
     })))
 }
-

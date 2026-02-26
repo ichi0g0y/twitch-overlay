@@ -8,6 +8,7 @@ pub(super) fn migrate_legacy_tables(conn: &Connection) -> Result<(), DbError> {
     migrate_playlist_tracks_table(conn)?;
     migrate_chat_user_profiles(conn)?;
     migrate_chat_users_add_display_name(conn)?;
+    migrate_chat_users_add_chat_color(conn)?;
     migrate_chat_messages_user_columns(conn)?;
     migrate_chat_messages_badge_keys(conn)?;
     migrate_irc_chat_messages_badge_keys(conn)?;
@@ -179,6 +180,16 @@ fn migrate_chat_users_add_display_name(conn: &Connection) -> Result<(), DbError>
 
     tracing::info!("Adding display_name column to chat_users");
     conn.execute_batch("ALTER TABLE chat_users ADD COLUMN display_name TEXT NOT NULL DEFAULT '';")?;
+    Ok(())
+}
+
+fn migrate_chat_users_add_chat_color(conn: &Connection) -> Result<(), DbError> {
+    if column_exists(conn, "chat_users", "chat_color")? {
+        return Ok(());
+    }
+
+    tracing::info!("Adding chat_color column to chat_users");
+    conn.execute_batch("ALTER TABLE chat_users ADD COLUMN chat_color TEXT NOT NULL DEFAULT '';")?;
     Ok(())
 }
 

@@ -20,6 +20,7 @@ pub(super) async fn handle_chat_message(state: &SharedState, payload: &Value) {
         user_login
     };
     let message_text = str_field(payload, &["message", "text"]);
+    let color = str_field(payload, &["color"]);
     let message_fragments = payload
         .get("message")
         .and_then(|m| m.get("fragments"))
@@ -33,11 +34,14 @@ pub(super) async fn handle_chat_message(state: &SharedState, payload: &Value) {
     let fragments_json = message_fragments.to_string();
     let avatar_url = resolve_chat_avatar_url(state, &user_id).await;
     let now = chrono::Utc::now().timestamp();
-    if let Err(e) =
-        state
-            .db()
-            .upsert_chat_user_profile(&user_id, &username, &display_name, &avatar_url, now)
-    {
+    if let Err(e) = state.db().upsert_chat_user_profile(
+        &user_id,
+        &username,
+        &display_name,
+        &avatar_url,
+        &color,
+        now,
+    ) {
         tracing::warn!(user_id, "Failed to upsert chat user profile: {e}");
     }
 
@@ -51,6 +55,7 @@ pub(super) async fn handle_chat_message(state: &SharedState, payload: &Value) {
         badge_keys: badge_keys.clone(),
         fragments_json,
         avatar_url: String::new(),
+        color: String::new(),
         translation_text: String::new(),
         translation_status: String::new(),
         translation_lang: String::new(),
@@ -74,9 +79,11 @@ pub(super) async fn handle_chat_message(state: &SharedState, payload: &Value) {
         "userId": user_id,
         "messageId": message_id,
         "message": message_text,
+        "chatSource": "eventsub",
         "badge_keys": badge_keys,
         "fragments": to_legacy_fragments(&message_fragments),
         "avatarUrl": avatar_url,
+        "color": color,
         "translation": "",
         "translationStatus": "",
         "translationLang": "",
