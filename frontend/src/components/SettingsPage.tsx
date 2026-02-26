@@ -65,6 +65,8 @@ const PREVIEW_NODE_MAX_Z_INDEX = 59;
 const PREVIEW_NODE_EXPANDED_Z_INDEX = 60;
 const PREVIEW_PORTAL_BASE_Z_INDEX = 200;
 const PREVIEW_PORTAL_EXPANDED_Z_INDEX = 1500;
+const PREVIEW_EXPANDED_ASPECT_RATIO = 16 / 9;
+const PREVIEW_EXPANDED_VIEWPORT_FIT_RATIO = 0.92;
 const WORKSPACE_CONTROLS_PROXIMITY_PX = 220;
 const QUICK_CONTROLS_HIDE_DELAY_MS = 220;
 const WORKSPACE_CARD_SPAWN_SEARCH_STEP = 48;
@@ -878,6 +880,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
     ? 'border-b border-sky-400/60 bg-sky-500/20'
     : 'border-b border-gray-800/80 bg-gray-900/85';
+  const isPreviewModalLikeExpanded = Boolean(previewHeader) && isPreviewViewportExpanded;
   const shouldPortalPreviewContent =
     Boolean(previewHeader)
     && renderContext.previewPortalEnabled
@@ -956,7 +959,7 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
       <NodeResizer
         minWidth={minSize.minWidth}
         minHeight={minSize.minHeight}
-        isVisible={showResizeHandles}
+        isVisible={showResizeHandles && !isPreviewModalLikeExpanded}
         lineClassName="!border-transparent"
         handleClassName="!h-3.5 !w-3.5 !rounded-sm !border-none !bg-transparent !opacity-0"
         onResizeStart={() => {
@@ -977,101 +980,114 @@ const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({ id, dat
         </div>
       ) : (
         <div className={`h-full min-h-0 overflow-hidden rounded-md border border-gray-800/80 bg-gray-950/20 ${nodeInteractionClassName}`}>
-          <div className={`workspace-node-drag-handle flex h-9 items-center px-3 ${previewHeaderClassName}`}>
-            {previewHeader ? (
-              <>
-                <span className="truncate font-mono text-xs text-gray-200">channel: {previewHeader.channelLogin || '-'}</span>
-                <span className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}>{previewHeader.statusLabel}</span>
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => renderContext.togglePreviewInteraction(data.kind)}
-                    className={`nodrag inline-flex h-6 w-6 items-center justify-center rounded border ${
-                      previewInteractionEnabled
-                        ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25'
-                        : 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20'
-                    }`}
-                    title={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
-                    aria-label={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
-                  >
-                    <Mouse className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => renderContext.refreshPreview(data.kind)}
-                    className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
-                    aria-label="プレビューを更新"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => renderContext.togglePreviewViewportExpand(id)}
-                    className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
-                    aria-label={isPreviewViewportExpanded ? 'プレビュー拡大を解除' : 'プレビューを一時拡大'}
-                    title={isPreviewViewportExpanded ? '拡大解除' : '一時拡大'}
-                  >
-                    {isPreviewViewportExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                  </button>
-                  {previewHeader.channelLogin && (
-                    <a
-                      href={`https://www.twitch.tv/${encodeURIComponent(previewHeader.channelLogin)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
-                      aria-label={`${previewHeader.channelLogin} を開く`}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                  {previewHeader.warningMessage && (
+          {!isPreviewModalLikeExpanded && (
+            <div className={`workspace-node-drag-handle flex h-9 items-center px-3 ${previewHeaderClassName}`}>
+              {previewHeader ? (
+                <>
+                  <span className="truncate font-mono text-xs text-gray-200">channel: {previewHeader.channelLogin || '-'}</span>
+                  <span className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}>{previewHeader.statusLabel}</span>
+                  <div className="ml-auto flex items-center gap-2">
                     <button
                       type="button"
-                      className="nodrag inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-amber-400/20 text-[11px] font-semibold text-amber-300"
-                      aria-label={`プレビュー警告: ${previewHeader.warningMessage}`}
-                      onMouseEnter={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
-                      onMouseLeave={hideWarningTooltip}
-                      onFocus={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
-                      onBlur={hideWarningTooltip}
+                      onClick={() => renderContext.togglePreviewInteraction(data.kind)}
+                      className={`nodrag inline-flex h-6 w-6 items-center justify-center rounded border ${
+                        previewInteractionEnabled
+                          ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25'
+                          : 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20'
+                      }`}
+                      title={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
+                      aria-label={previewInteractionEnabled ? 'プレビュー操作をロックする' : 'プレビュー操作を有効化する'}
                     >
-                      !
+                      <Mouse className="h-3.5 w-3.5" />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="nodrag inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-                    onClick={() => renderContext.removeCard(id)}
-                    aria-label="カードを削除"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <span className="truncate text-xs font-semibold text-gray-200">{data.title}</span>
-            )}
-            {!previewHeader && (
-              <button
-                type="button"
-                className="nodrag ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-                onClick={() => renderContext.removeCard(id)}
-                aria-label="カードを削除"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+                    <button
+                      type="button"
+                      onClick={() => renderContext.refreshPreview(data.kind)}
+                      className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                      aria-label="プレビューを更新"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => renderContext.togglePreviewViewportExpand(id)}
+                      className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                      aria-label={isPreviewViewportExpanded ? 'プレビュー拡大を解除' : 'プレビューを一時拡大'}
+                      title={isPreviewViewportExpanded ? '拡大解除' : '一時拡大'}
+                    >
+                      {isPreviewViewportExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    </button>
+                    {previewHeader.channelLogin && (
+                      <a
+                        href={`https://www.twitch.tv/${encodeURIComponent(previewHeader.channelLogin)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="nodrag inline-flex h-6 w-6 items-center justify-center rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                        aria-label={`${previewHeader.channelLogin} を開く`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    {previewHeader.warningMessage && (
+                      <button
+                        type="button"
+                        className="nodrag inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-amber-400/20 text-[11px] font-semibold text-amber-300"
+                        aria-label={`プレビュー警告: ${previewHeader.warningMessage}`}
+                        onMouseEnter={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
+                        onMouseLeave={hideWarningTooltip}
+                        onFocus={(event) => showWarningTooltip(event.currentTarget, previewHeader.warningMessage as string)}
+                        onBlur={hideWarningTooltip}
+                      >
+                        !
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="nodrag inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+                      onClick={() => renderContext.removeCard(id)}
+                      aria-label="カードを削除"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <span className="truncate text-xs font-semibold text-gray-200">{data.title}</span>
+              )}
+              {!previewHeader && (
+                <button
+                  type="button"
+                  className="nodrag ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+                  onClick={() => renderContext.removeCard(id)}
+                  aria-label="カードを削除"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           <div
             ref={previewContentHostRef}
-            className={`nodrag nowheel h-[calc(100%-2.25rem)] overflow-auto ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
+            className={`nodrag nowheel ${isPreviewModalLikeExpanded ? 'h-full' : 'h-[calc(100%-2.25rem)]'} overflow-auto ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
           >
             {shouldPortalPreviewContent ? <div className="h-full w-full" /> : previewContentNode}
           </div>
         </div>
       )}
+      {isPreviewModalLikeExpanded && shouldPortalPreviewContent && typeof document !== 'undefined' && createPortal(
+        <div
+          className="pointer-events-none fixed inset-0 bg-black/60 backdrop-blur-[1.5px]"
+          style={{ zIndex: PREVIEW_PORTAL_EXPANDED_Z_INDEX - 1 }}
+        />,
+        document.body,
+      )}
       {shouldPortalPreviewContent && previewPortalRect && typeof document !== 'undefined' && createPortal(
         <div
-          className={`nodrag nowheel overflow-hidden ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
+          className={`nodrag nowheel relative overflow-hidden ${
+            isPreviewModalLikeExpanded
+              ? 'border border-slate-300/20 bg-gray-950/95 shadow-[0_40px_140px_rgba(0,0,0,0.88),0_0_0_1px_rgba(15,23,42,0.82)]'
+              : ''
+          } ${isPreviewPointerInputBlocked ? 'pointer-events-none select-none' : ''}`}
           style={{
             position: 'fixed',
             left: previewPortalRect.left,
@@ -3036,21 +3052,16 @@ export const SettingsPage: React.FC = () => {
         toFiniteNumber((target.style as Record<string, unknown> | undefined)?.height, resolveWorkspaceCardSize(target.data.kind).height),
       ),
     );
-    const contentHeight = Math.max(currentHeight - PREVIEW_NODE_HEADER_HEIGHT, 1);
-    const contentAspect = currentWidth / contentHeight;
-
     const viewport = flowInstance.getViewport();
     const zoom = Math.max(toFiniteNumber(viewport.zoom, 1), 0.01);
-    const maxWidth = Math.max(1, (viewportRect.width * 0.9) / zoom);
-    const maxHeight = Math.max(1, (viewportRect.height * 0.9) / zoom);
-    const maxContentHeight = Math.max(1, maxHeight - PREVIEW_NODE_HEADER_HEIGHT);
+    const maxWidth = Math.max(1, (viewportRect.width * PREVIEW_EXPANDED_VIEWPORT_FIT_RATIO) / zoom);
+    const maxHeight = Math.max(1, (viewportRect.height * PREVIEW_EXPANDED_VIEWPORT_FIT_RATIO) / zoom);
     let expandedWidth = maxWidth;
-    let expandedContentHeight = expandedWidth / contentAspect;
-    if (expandedContentHeight > maxContentHeight) {
-      expandedContentHeight = maxContentHeight;
-      expandedWidth = expandedContentHeight * contentAspect;
+    let expandedHeight = expandedWidth / PREVIEW_EXPANDED_ASPECT_RATIO;
+    if (expandedHeight > maxHeight) {
+      expandedHeight = maxHeight;
+      expandedWidth = expandedHeight * PREVIEW_EXPANDED_ASPECT_RATIO;
     }
-    const expandedHeight = expandedContentHeight + PREVIEW_NODE_HEADER_HEIGHT;
 
     let flowPosition: { x: number; y: number };
     try {

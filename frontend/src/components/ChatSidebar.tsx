@@ -1856,24 +1856,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return normalizeTwitchChannelName(activeTab || '') || '';
   }, [activeTab, primaryChannelLogin]);
 
-  const emotePickerChannelLogins = useMemo(() => {
-    const set = new Set<string>();
-    const primary = normalizeTwitchChannelName(primaryChannelLogin || '') || '';
-    if (primary) {
-      set.add(primary);
-    }
-    for (const channel of ircChannels) {
-      const normalized = normalizeTwitchChannelName(channel || '') || '';
-      if (normalized) {
-        set.add(normalized);
-      }
-    }
-    if (activeBadgeChannelLogin) {
-      set.add(activeBadgeChannelLogin);
-    }
-    return Array.from(set);
-  }, [activeBadgeChannelLogin, ircChannels, primaryChannelLogin]);
-
   useEffect(() => {
     void ensureBadgeCatalog(activeBadgeChannelLogin);
   }, [activeBadgeChannelLogin, ensureBadgeCatalog]);
@@ -2859,7 +2841,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   />
                   <EmotePicker
                     disabled={postingMessage}
-                    channelLogins={emotePickerChannelLogins}
+                    channelLogins={activeBadgeChannelLogin ? [activeBadgeChannelLogin] : []}
                     priorityChannelLogin={activeBadgeChannelLogin || undefined}
                     onSelect={(name, url) => {
                       richInputRef.current?.insertEmote(name, url);

@@ -1,4 +1,4 @@
-import { Smile } from 'lucide-react';
+import { Lock, RefreshCw, Smile } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 
@@ -8,15 +8,19 @@ import { Button } from '../ui/button';
 type Emote = {
   name: string;
   url: string;
-  source: 'channel' | 'global' | 'learned';
+  source: 'channel' | 'special' | 'unlocked' | 'global' | 'learned';
   channelLogin?: string;
+  usable: boolean;
+  emoteType?: string;
+  tier?: string;
 };
 
 type EmoteGroup = {
   id: string;
   label: string;
-  source: 'channel' | 'global' | 'learned';
+  source: 'channel' | 'special' | 'unlocked' | 'global' | 'learned';
   channelLogin?: string;
+  channelAvatarUrl?: string;
   priority: boolean;
   emotes: Emote[];
 };
@@ -29,11 +33,29 @@ type EmotePickerProps = {
 };
 
 const DASHBOARD_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
+const EMOTE_CACHE_STORAGE_KEY = 'chat.emote_picker.cache.v10';
+const EMOTE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const EMOTE_CACHE_MAX_ENTRIES = 16;
+
+type StoredEmoteCacheEntry = {
+  savedAt: number;
+  groups: unknown[];
+};
+
+type StoredEmoteCache = Record<string, StoredEmoteCacheEntry>;
 
 const normalizeChannelLogin = (raw: string) => {
   const normalized = raw.trim().replace(/^#/, '').toLowerCase();
   if (!/^[a-z0-9_]{3,25}$/.test(normalized)) return '';
   return normalized;
+};
+
+const resolveContextUsable = (
+  usableFromServer?: boolean,
+) => {
+  // Rely on backend user-usable emote resolution.
+  // If unavailable (older response), default to usable to avoid false locks.
+  return usableFromServer ?? true;
 };
 
 const parseEmote = (raw: any): Emote | null => {
@@ -42,8 +64,24 @@ const parseEmote = (raw: any): Emote | null => {
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   const url = typeof raw.url === 'string' ? raw.url.trim() : '';
   const sourceRaw = typeof raw.source === 'string' ? raw.source : 'global';
-  const source = sourceRaw === 'channel' || sourceRaw === 'learned' ? sourceRaw : 'global';
-  const channelLogin = typeof raw.channel_login === 'string' ? normalizeChannelLogin(raw.channel_login) : '';
+  const source = sourceRaw === 'channel'
+    || sourceRaw === 'special'
+    || sourceRaw === 'unlocked'
+    || sourceRaw === 'learned'
+    ? sourceRaw
+    : 'global';
+  const rawChannelLogin = typeof raw.channel_login === 'string'
+    ? raw.channel_login
+    : (typeof raw.channelLogin === 'string' ? raw.channelLogin : '');
+  const channelLogin = rawChannelLogin ? normalizeChannelLogin(rawChannelLogin) : '';
+  const usableFromServer = typeof raw.usable === 'boolean'
+    ? raw.usable
+    : (typeof raw.is_usable === 'boolean' ? raw.is_usable : undefined);
+  const rawEmoteType = typeof raw.emote_type === 'string'
+    ? raw.emote_type
+    : (typeof raw.emoteType === 'string' ? raw.emoteType : '');
+  const emoteType = rawEmoteType.trim();
+  const tier = typeof raw.tier === 'string' ? raw.tier.trim() : '';
 
   if (name === '' || url === '') return null;
 
@@ -52,7 +90,73 @@ const parseEmote = (raw: any): Emote | null => {
     url,
     source,
     channelLogin: channelLogin || undefined,
+    usable: resolveContextUsable(usableFromServer),
+    emoteType: emoteType || undefined,
+    tier: tier || undefined,
   };
+};
+
+const getEmoteUnavailableLabel = (emote: Emote) => {
+  if (emote.source === 'channel') {
+    return `${emote.name} (サブスク未加入/利用条件未達)`;
+  }
+  return `${emote.name} (利用不可)`;
+};
+
+const readStoredEmoteCache = (): StoredEmoteCache => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(EMOTE_CACHE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const now = Date.now();
+    const next: StoredEmoteCache = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object') continue;
+      const savedAt = Number((value as { savedAt?: unknown }).savedAt);
+      const groups = (value as { groups?: unknown }).groups;
+      if (!Array.isArray(groups) || !Number.isFinite(savedAt)) continue;
+      if (now - savedAt > EMOTE_CACHE_TTL_MS) continue;
+      next[key] = { savedAt, groups };
+    }
+    return next;
+  } catch {
+    return {};
+  }
+};
+
+const writeStoredEmoteCache = (cache: StoredEmoteCache) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(EMOTE_CACHE_STORAGE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage errors (quota, private mode, etc.)
+  }
+};
+
+const saveGroupsToStorage = (requestKey: string, groups: EmoteGroup[]) => {
+  if (typeof window === 'undefined') return;
+  const cache = readStoredEmoteCache();
+  cache[requestKey] = { savedAt: Date.now(), groups };
+  const orderedEntries = Object.entries(cache)
+    .sort((a, b) => b[1].savedAt - a[1].savedAt)
+    .slice(0, EMOTE_CACHE_MAX_ENTRIES);
+  writeStoredEmoteCache(Object.fromEntries(orderedEntries));
+};
+
+const loadGroupsFromStorage = (requestKey: string): EmoteGroup[] | null => {
+  const cache = readStoredEmoteCache();
+  const stored = cache[requestKey];
+  if (!stored) return null;
+  return parseEmoteGroupsFromResponse({ data: { groups: stored.groups } });
+};
+
+const clearStoredGroups = (requestKey: string) => {
+  const cache = readStoredEmoteCache();
+  if (!(requestKey in cache)) return;
+  delete cache[requestKey];
+  writeStoredEmoteCache(cache);
 };
 
 const sortGroups = (groups: EmoteGroup[], priorityChannelLogin?: string) => {
@@ -63,8 +167,10 @@ const sortGroups = (groups: EmoteGroup[], priorityChannelLogin?: string) => {
     const bPriority = b.priority || (normalizedPriority !== '' && b.channelLogin === normalizedPriority);
     const sourceOrder = (source: EmoteGroup['source']) => {
       if (source === 'channel') return 0;
-      if (source === 'global') return 1;
-      return 2;
+      if (source === 'special') return 1;
+      if (source === 'unlocked') return 2;
+      if (source === 'global') return 3;
+      return 4;
     };
 
     return Number(bPriority) - Number(aPriority)
@@ -83,15 +189,26 @@ const parseEmoteGroupsFromResponse = (raw: any, priorityChannelLogin?: string): 
       const id = typeof group.id === 'string' ? group.id : '';
       const label = typeof group.label === 'string' ? group.label : '';
       const sourceRaw = typeof group.source === 'string' ? group.source : 'global';
-      const source = sourceRaw === 'channel' || sourceRaw === 'learned' ? sourceRaw : 'global';
-      const channelLogin = typeof group.channel_login === 'string' ? normalizeChannelLogin(group.channel_login) : '';
+      const source = sourceRaw === 'channel'
+        || sourceRaw === 'special'
+        || sourceRaw === 'unlocked'
+        || sourceRaw === 'learned'
+        ? sourceRaw
+        : 'global';
+      const rawChannelLogin = typeof group.channel_login === 'string'
+        ? group.channel_login
+        : (typeof group.channelLogin === 'string' ? group.channelLogin : '');
+      const channelLogin = rawChannelLogin ? normalizeChannelLogin(rawChannelLogin) : '';
+      const rawChannelAvatarUrl = typeof group.channel_avatar_url === 'string'
+        ? group.channel_avatar_url
+        : (typeof group.channelAvatarUrl === 'string' ? group.channelAvatarUrl : '');
+      const channelAvatarUrl = rawChannelAvatarUrl.trim();
       const priority = group.priority === true;
 
       const emotes = Array.isArray(group.emotes)
         ? group.emotes
-          .map(parseEmote)
+          .map((emote) => parseEmote(emote))
           .filter((emote): emote is Emote => emote !== null)
-          .sort((a, b) => a.name.localeCompare(b.name, 'en'))
         : [];
 
       if (id === '' || label === '' || emotes.length === 0) continue;
@@ -101,6 +218,7 @@ const parseEmoteGroupsFromResponse = (raw: any, priorityChannelLogin?: string): 
         label,
         source,
         channelLogin: channelLogin || undefined,
+        channelAvatarUrl: channelAvatarUrl || undefined,
         priority,
         emotes,
       });
@@ -113,9 +231,8 @@ const parseEmoteGroupsFromResponse = (raw: any, priorityChannelLogin?: string): 
   if (!Array.isArray(flatList)) return [];
 
   const emotes = flatList
-    .map(parseEmote)
-    .filter((emote): emote is Emote => emote !== null)
-    .sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    .map((emote) => parseEmote(emote))
+    .filter((emote): emote is Emote => emote !== null);
 
   if (emotes.length === 0) return [];
 
@@ -128,6 +245,229 @@ const parseEmoteGroupsFromResponse = (raw: any, priorityChannelLogin?: string): 
   }];
 };
 
+type EmoteBucket = 'free' | 'tier1' | 'tier2' | 'tier3' | 'unlock' | 'other';
+
+type EmoteSection = {
+  key: string;
+  label: string;
+  emotes: Emote[];
+};
+
+type EmoteSubSection = {
+  key: string;
+  label: string;
+  emotes: Emote[];
+};
+
+const normalizeEmoteType = (value?: string) => {
+  return (value ?? '').trim().toLowerCase().replace(/[- ]/g, '_');
+};
+
+const parseTier = (value?: string): number | null => {
+  const parsed = Number.parseInt((value ?? '').trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const classifyEmoteBucket = (emote: Emote): EmoteBucket => {
+  const type = normalizeEmoteType(emote.emoteType);
+
+  if (type === 'follower' || type === 'followers') {
+    return 'free';
+  }
+  if (type === 'subscriptions' || type === 'subscription' || type === 'subscriber' || type === 'subscribers') {
+    const tier = parseTier(emote.tier);
+    if (tier === 1000) return 'tier1';
+    if (tier === 2000) return 'tier2';
+    if (tier === 3000) return 'tier3';
+    return 'other';
+  }
+  if (
+    emote.source === 'special'
+    || type === 'reward'
+    || type === 'rewards'
+    || type === 'channel_points'
+    || type === 'channelpoints'
+    || type === 'unlock'
+    || type === 'unlocked'
+    || type === 'bitstier'
+    || type === 'bits_tier'
+    || type === 'hypetrain'
+    || type === 'hype_train'
+    || type === 'limitedtime'
+    || type === 'limited_time'
+    || type === 'prime'
+    || type === 'turbo'
+    || type === 'twofactor'
+  ) {
+    return 'unlock';
+  }
+  if (emote.source === 'unlocked') {
+    return 'unlock';
+  }
+  return 'other';
+};
+
+const bucketOrder: EmoteBucket[] = ['free', 'tier1', 'tier2', 'tier3', 'unlock', 'other'];
+
+const bucketMeta: Record<EmoteBucket, Omit<EmoteSection, 'key' | 'emotes'>> = {
+  free: {
+    label: 'Free',
+  },
+  tier1: {
+    label: 'Tier1',
+  },
+  tier2: {
+    label: 'Tier2',
+  },
+  tier3: {
+    label: 'Tier3',
+  },
+  unlock: {
+    label: 'Unlock/Special',
+  },
+  other: {
+    label: 'Other',
+  },
+};
+
+const buildSectionsForGroup = (group: EmoteGroup, emotes: Emote[]): EmoteSection[] => {
+  if (group.source === 'global') {
+    const sorted = [...emotes].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+    if (sorted.length === 0) return [];
+    return [{
+      key: 'global',
+      label: 'Global A-Z',
+      emotes: sorted,
+    }];
+  }
+
+  const bucketed: Record<EmoteBucket, Emote[]> = {
+    free: [],
+    tier1: [],
+    tier2: [],
+    tier3: [],
+    unlock: [],
+    other: [],
+  };
+
+  for (const emote of emotes) {
+    const bucket = classifyEmoteBucket(emote);
+    bucketed[bucket].push(emote);
+  }
+
+  return bucketOrder
+    .filter((bucket) => bucketed[bucket].length > 0)
+    .map((bucket) => ({
+      key: bucket,
+      ...bucketMeta[bucket],
+      emotes: [...bucketed[bucket]].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })),
+    }));
+};
+
+const subsectionSortIndex = (sectionKey: string, label: string): number => {
+  const freeOrder = ['Follower', 'Free Unlock', 'Free Other'];
+  const unlockOrder = [
+    'Prime',
+    'Turbo',
+    'Two-Factor',
+    'Channel Points',
+    'Reward',
+    'Bits Tier',
+    'Hype Train',
+    'Limited Time',
+    'Special',
+    'Unlock',
+  ];
+
+  if (sectionKey === 'free') {
+    const idx = freeOrder.indexOf(label);
+    return idx >= 0 ? idx : 99;
+  }
+  if (sectionKey === 'unlock') {
+    const idx = unlockOrder.indexOf(label);
+    return idx >= 0 ? idx : 99;
+  }
+  return 99;
+};
+
+const resolveSubSectionLabel = (sectionKey: string, emote: Emote): string => {
+  const type = normalizeEmoteType(emote.emoteType);
+  if (sectionKey === 'global') return 'Global';
+  if (sectionKey === 'tier1') return 'Tier1';
+  if (sectionKey === 'tier2') return 'Tier2';
+  if (sectionKey === 'tier3') return 'Tier3';
+
+  if (sectionKey === 'free') {
+    if (type === 'follower' || type === 'followers') return 'Follower';
+    if (emote.source === 'unlocked') return 'Free Unlock';
+    return 'Free Other';
+  }
+
+  if (sectionKey === 'unlock') {
+    if (type === 'prime') return 'Prime';
+    if (type === 'turbo') return 'Turbo';
+    if (type === 'twofactor') return 'Two-Factor';
+    if (type === 'channel_points' || type === 'channelpoints') return 'Channel Points';
+    if (type === 'reward' || type === 'rewards') return 'Reward';
+    if (type === 'bitstier' || type === 'bits_tier') return 'Bits Tier';
+    if (type === 'hypetrain' || type === 'hype_train') return 'Hype Train';
+    if (type === 'limitedtime' || type === 'limited_time') return 'Limited Time';
+    if (emote.source === 'special') return 'Special';
+    return 'Unlock';
+  }
+
+  return 'Other';
+};
+
+const buildSubSectionsForSection = (section: EmoteSection): EmoteSubSection[] => {
+  if (section.key === 'global') {
+    return [{
+      key: 'global',
+      label: 'Global',
+      emotes: section.emotes,
+    }];
+  }
+
+  const byLabel = new Map<string, Emote[]>();
+  for (const emote of section.emotes) {
+    const label = resolveSubSectionLabel(section.key, emote);
+    const current = byLabel.get(label);
+    if (current) {
+      current.push(emote);
+    } else {
+      byLabel.set(label, [emote]);
+    }
+  }
+
+  return Array.from(byLabel.entries())
+    .sort((a, b) => {
+      const orderDiff = subsectionSortIndex(section.key, a[0]) - subsectionSortIndex(section.key, b[0]);
+      if (orderDiff !== 0) return orderDiff;
+      return a[0].localeCompare(b[0], 'en', { sensitivity: 'base' });
+    })
+    .map(([label, emotes]) => ({
+      key: `${section.key}:${label.toLowerCase().replace(/\s+/g, '_')}`,
+      label,
+      emotes: [...emotes].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })),
+    }));
+};
+
+const groupHeaderClass = (group: EmoteGroup): string => {
+  if (group.channelLogin) {
+    return 'bg-blue-100 text-blue-900 dark:bg-blue-500/20 dark:text-blue-100';
+  }
+  if (group.source === 'global') {
+    return 'bg-slate-200 text-slate-800 dark:bg-slate-700/80 dark:text-slate-100';
+  }
+  if (group.source === 'unlocked') {
+    return 'bg-cyan-100 text-cyan-900 dark:bg-cyan-500/20 dark:text-cyan-100';
+  }
+  if (group.source === 'special') {
+    return 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-100';
+  }
+  return 'bg-gray-100 text-gray-800 dark:bg-gray-700/70 dark:text-gray-100';
+};
+
 export const EmotePicker: React.FC<EmotePickerProps> = ({
   disabled = false,
   channelLogins = [],
@@ -138,8 +478,10 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [keyword, setKeyword] = useState('');
   const [groups, setGroups] = useState<EmoteGroup[]>([]);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
   const normalizedChannels = useMemo(() => {
     const set = new Set<string>();
@@ -156,17 +498,26 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     return priorityChannelLogin ? normalizeChannelLogin(priorityChannelLogin) : '';
   }, [priorityChannelLogin]);
 
-  const requestKey = useMemo(() => {
-    return `${normalizedPriorityChannel}|${normalizedChannels.join(',')}`;
+  const requestChannel = useMemo(() => {
+    if (normalizedPriorityChannel !== '') return normalizedPriorityChannel;
+    if (normalizedChannels.length > 0) return normalizedChannels[0];
+    return '';
   }, [normalizedChannels, normalizedPriorityChannel]);
+
+  const requestKey = useMemo(() => {
+    return `channel:${requestChannel || 'none'}`;
+  }, [requestChannel]);
 
   const requestUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (normalizedChannels.length > 0) {
-      params.set('channels', normalizedChannels.join(','));
+    if (requestChannel !== '') {
+      params.set('channels', requestChannel);
     }
     if (normalizedPriorityChannel !== '') {
       params.set('priority_channel', normalizedPriorityChannel);
+    }
+    if (forceRefresh) {
+      params.set('refresh', 'true');
     }
 
     const queryString = params.toString();
@@ -174,15 +525,23 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
       return buildApiUrl('/api/emotes');
     }
     return buildApiUrl(`/api/emotes?${queryString}`);
-  }, [normalizedChannels, normalizedPriorityChannel]);
+  }, [forceRefresh, normalizedPriorityChannel, requestChannel]);
 
   useEffect(() => {
     setKeyword('');
     setError('');
+    setWarning('');
 
     const cached = cacheRef.current[requestKey];
     if (cached) {
       setGroups(sortGroups(cached, normalizedPriorityChannel));
+      return;
+    }
+
+    const stored = loadGroupsFromStorage(requestKey);
+    if (stored) {
+      cacheRef.current[requestKey] = stored;
+      setGroups(sortGroups(stored, normalizedPriorityChannel));
       return;
     }
 
@@ -201,31 +560,59 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
+        const reason = typeof data?.meta?.user_emotes_reason === 'string'
+          ? data.meta.user_emotes_reason
+          : '';
+        if (reason === 'missing_scope:user:read:emotes') {
+          setWarning('一部Emoteの取得に追加認証が必要です（user:read:emotes）。再ログインしてください。');
+        } else {
+          setWarning('');
+        }
         const parsed = parseEmoteGroupsFromResponse(data, normalizedPriorityChannel);
         cacheRef.current[requestKey] = parsed;
+        if (parsed.length > 0) {
+          saveGroupsToStorage(requestKey, parsed);
+        }
         setGroups(parsed);
       } catch (fetchError) {
         console.error('[EmotePicker] Failed to fetch emotes:', fetchError);
         setError('エモート一覧の取得に失敗しました');
       } finally {
         setLoading(false);
+        if (forceRefresh) {
+          setForceRefresh(false);
+        }
       }
     };
 
     void fetchEmotes();
-  }, [groups.length, loading, normalizedPriorityChannel, open, requestKey, requestUrl]);
+  }, [forceRefresh, groups.length, loading, normalizedPriorityChannel, open, requestKey, requestUrl]);
 
   const filteredGroups = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
-    if (normalizedKeyword === '') return groups;
-
     return groups
-      .map((group) => ({
-        ...group,
-        emotes: group.emotes.filter((emote) => emote.name.toLowerCase().includes(normalizedKeyword)),
-      }))
-      .filter((group) => group.emotes.length > 0);
-  }, [groups, keyword]);
+      .map((group) => {
+        const isPriorityGroup = group.priority
+          || (normalizedPriorityChannel !== '' && group.channelLogin === normalizedPriorityChannel);
+        const visibleEmotes = group.emotes.filter((emote) => emote.usable || isPriorityGroup);
+        const emotes = normalizedKeyword === ''
+          ? visibleEmotes
+          : visibleEmotes.filter((emote) => emote.name.toLowerCase().includes(normalizedKeyword));
+        const sections = buildSectionsForGroup(group, emotes);
+        return { ...group, sections };
+      })
+      .filter((group) => group.sections.length > 0);
+  }, [groups, keyword, normalizedPriorityChannel]);
+
+  const handleRefresh = () => {
+    delete cacheRef.current[requestKey];
+    clearStoredGroups(requestKey);
+    setForceRefresh(true);
+    setKeyword('');
+    setError('');
+    setWarning('');
+    setGroups([]);
+  };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -251,18 +638,30 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
           sideOffset={8}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
-          className="z-50 w-[360px] rounded-md border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          className="z-[1800] w-[360px] rounded-md border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
           style={{ fontFamily: DASHBOARD_FONT_FAMILY }}
         >
           <div className="space-y-2">
-            <input
-              type="search"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="エモート検索"
-              style={{ fontFamily: DASHBOARD_FONT_FAMILY }}
-              className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-900 outline-none ring-offset-white focus-visible:ring-2 focus-visible:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:ring-offset-gray-900 dark:focus-visible:ring-blue-600"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="search"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="エモート検索"
+                style={{ fontFamily: DASHBOARD_FONT_FAMILY }}
+                className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-900 outline-none ring-offset-white focus-visible:ring-2 focus-visible:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:ring-offset-gray-900 dark:focus-visible:ring-blue-600"
+              />
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={loading}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                aria-label="エモート一覧を更新"
+                title="エモート一覧を更新"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
 
             {loading && (
               <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">読み込み中...</p>
@@ -270,6 +669,12 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
 
             {!loading && error !== '' && (
               <p className="py-6 text-center text-xs text-red-500 dark:text-red-300">{error}</p>
+            )}
+
+            {!loading && error === '' && warning !== '' && (
+              <p className="rounded border border-amber-300/60 bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                {warning}
+              </p>
             )}
 
             {!loading && error === '' && filteredGroups.length === 0 && (
@@ -280,25 +685,82 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
               <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                 {filteredGroups.map((group) => (
                   <section key={group.id} className="space-y-1">
-                    <div className="sticky top-0 z-10 rounded bg-white/90 px-1 py-0.5 text-[11px] font-semibold text-gray-600 backdrop-blur dark:bg-gray-900/90 dark:text-gray-300">
-                      {group.label}
+                    <div className={`sticky top-0 z-10 w-full rounded-md px-2.5 py-2 text-xs font-semibold backdrop-blur ${groupHeaderClass(group)}`}>
+                      <div className="flex min-h-5 items-center gap-2">
+                        {group.channelLogin && group.channelAvatarUrl && (
+                          <img
+                            src={group.channelAvatarUrl}
+                            alt={`${group.label} avatar`}
+                            className="h-5 w-5 rounded-full object-cover"
+                            loading="lazy"
+                          />
+                        )}
+                        <span className="truncate">{group.label}</span>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-9 gap-1">
-                      {group.emotes.map((emote) => (
-                        <button
-                          key={`${group.id}:${emote.name}:${emote.url}`}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                          }}
-                          onClick={() => onSelect(emote.name, emote.url)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-transparent hover:border-gray-300 hover:bg-gray-50 dark:hover:border-gray-600 dark:hover:bg-gray-800"
-                          title={emote.name}
-                          aria-label={emote.name}
-                        >
-                          <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
-                        </button>
-                      ))}
+                    <div className="space-y-1.5">
+                      {group.sections.map((section) => {
+                        const subSections = buildSubSectionsForSection(section);
+                        const hasMultipleSubSections = subSections.length > 1;
+
+                        return (
+                          <div key={`${group.id}:${section.key}`} className="space-y-1">
+                            {hasMultipleSubSections && (
+                              <div className="mb-1 flex items-center justify-start gap-1.5">
+                                <span className="inline-flex px-1 py-0 text-[10px] font-medium leading-none text-gray-400 dark:text-gray-500">
+                                  {section.label}
+                                </span>
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                                  {section.emotes.length}
+                                </span>
+                              </div>
+                            )}
+                            {subSections.map((subSection) => (
+                              <div
+                                key={`${group.id}:${section.key}:${subSection.key}`}
+                                className="space-y-1 rounded-md border border-gray-200/70 bg-gray-50/80 p-1.5 dark:border-gray-700/70 dark:bg-gray-800/40"
+                              >
+                                <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                                  <span>{subSection.label}</span>
+                                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                    {subSection.emotes.length}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-9 gap-1">
+                                  {subSection.emotes.map((emote) => (
+                                    <button
+                                      key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
+                                      type="button"
+                                      disabled={!emote.usable}
+                                      onMouseDown={(event) => {
+                                        event.preventDefault();
+                                      }}
+                                      onClick={() => {
+                                        if (!emote.usable) return;
+                                        onSelect(emote.name, emote.url);
+                                      }}
+                                      className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
+                                        emote.usable
+                                          ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
+                                          : 'cursor-not-allowed opacity-60'
+                                      }`}
+                                      title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                      aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                    >
+                                      <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
+                                      {!emote.usable && (
+                                        <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
+                                          <Lock className="h-2.5 w-2.5" />
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </section>
                 ))}
