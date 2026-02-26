@@ -132,13 +132,15 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        renderContext.togglePreviewInteraction(data.kind)
-                      }
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        renderContext.togglePreviewInteraction(data.kind);
+                      }}
                       className={`nodrag inline-flex h-6 w-6 items-center justify-center rounded border ${
                         previewInteractionEnabled
                           ? "border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25"
-                          : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20"
+                          : "border-gray-700 bg-gray-900/80 text-gray-400 hover:bg-gray-800 hover:text-gray-300"
                       }`}
                       title={
                         previewInteractionEnabled
