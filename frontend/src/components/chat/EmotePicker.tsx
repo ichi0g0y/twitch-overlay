@@ -1,4 +1,4 @@
-import { Lock, RefreshCw, Smile } from 'lucide-react';
+import { Globe2, Lock, LockOpen, RefreshCw, Smile, Sparkles } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 
@@ -475,6 +475,8 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
   onSelect,
 }) => {
   const cacheRef = useRef<Record<string, EmoteGroup[]>>({});
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -614,6 +616,48 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
     setGroups([]);
   };
 
+  const scrollToGroup = (groupId: string) => {
+    const container = scrollContainerRef.current;
+    const section = sectionRefs.current[groupId];
+    if (!container || !section) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const targetTop = container.scrollTop + (sectionRect.top - containerRect.top) - 4;
+
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: 'smooth',
+    });
+  };
+
+  const renderGroupNavAvatar = (group: EmoteGroup) => {
+    if (group.channelAvatarUrl) {
+      return (
+        <img
+          src={group.channelAvatarUrl}
+          alt={`${group.label} avatar`}
+          className="h-full w-full rounded-full object-cover"
+          loading="lazy"
+        />
+      );
+    }
+    if (group.source === 'unlocked') {
+      return <LockOpen className="h-3.5 w-3.5" />;
+    }
+    if (group.source === 'global') {
+      return <Globe2 className="h-3.5 w-3.5" />;
+    }
+    if (group.source === 'special') {
+      return <Sparkles className="h-3.5 w-3.5" />;
+    }
+    return (
+      <span className="text-[10px] font-semibold leading-none">
+        {(group.label || '?').slice(0, 1).toUpperCase()}
+      </span>
+    );
+  };
+
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
@@ -682,88 +726,115 @@ export const EmotePicker: React.FC<EmotePickerProps> = ({
             )}
 
             {!loading && error === '' && filteredGroups.length > 0 && (
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                {filteredGroups.map((group) => (
-                  <section key={group.id} className="space-y-1">
-                    <div className={`sticky top-0 z-10 w-full rounded-md px-2.5 py-2 text-xs font-semibold backdrop-blur ${groupHeaderClass(group)}`}>
-                      <div className="flex min-h-5 items-center gap-2">
-                        {group.channelLogin && group.channelAvatarUrl && (
-                          <img
-                            src={group.channelAvatarUrl}
-                            alt={`${group.label} avatar`}
-                            className="h-5 w-5 rounded-full object-cover"
-                            loading="lazy"
-                          />
-                        )}
-                        <span className="truncate">{group.label}</span>
+              <div className="flex items-start gap-2">
+                <div ref={scrollContainerRef} className="max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
+                  {filteredGroups.map((group) => (
+                    <section
+                      key={group.id}
+                      ref={(node) => {
+                        sectionRefs.current[group.id] = node;
+                      }}
+                      className="space-y-1"
+                    >
+                      <div className={`sticky top-0 z-10 w-full rounded-md px-2.5 py-2 text-xs font-semibold backdrop-blur ${groupHeaderClass(group)}`}>
+                        <div className="flex min-h-5 items-center gap-2">
+                          {group.channelLogin && group.channelAvatarUrl && (
+                            <img
+                              src={group.channelAvatarUrl}
+                              alt={`${group.label} avatar`}
+                              className="h-5 w-5 rounded-full object-cover"
+                              loading="lazy"
+                            />
+                          )}
+                          <span className="truncate">{group.label}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      {group.sections.map((section) => {
-                        const subSections = buildSubSectionsForSection(section);
-                        const hasMultipleSubSections = subSections.length > 1;
+                      <div className="space-y-1.5">
+                        {group.sections.map((section) => {
+                          const subSections = buildSubSectionsForSection(section);
+                          const hasMultipleSubSections = subSections.length > 1;
 
-                        return (
-                          <div key={`${group.id}:${section.key}`} className="space-y-1">
-                            {hasMultipleSubSections && (
-                              <div className="mb-1 flex items-center justify-start gap-1.5">
-                                <span className="inline-flex px-1 py-0 text-[10px] font-medium leading-none text-gray-400 dark:text-gray-500">
-                                  {section.label}
-                                </span>
-                                <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                                  {section.emotes.length}
-                                </span>
-                              </div>
-                            )}
-                            {subSections.map((subSection) => (
-                              <div
-                                key={`${group.id}:${section.key}:${subSection.key}`}
-                                className="space-y-1 rounded-md border border-gray-200/70 bg-gray-50/80 p-1.5 dark:border-gray-700/70 dark:bg-gray-800/40"
-                              >
-                                <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                                  <span>{subSection.label}</span>
-                                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                    {subSection.emotes.length}
+                          return (
+                            <div key={`${group.id}:${section.key}`} className="space-y-1">
+                              {hasMultipleSubSections && (
+                                <div className="mb-1 flex items-center justify-start gap-1.5">
+                                  <span className="inline-flex px-1 py-0 text-[10px] font-medium leading-none text-gray-400 dark:text-gray-500">
+                                    {section.label}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                                    {section.emotes.length}
                                   </span>
                                 </div>
-                                <div className="grid grid-cols-9 gap-1">
-                                  {subSection.emotes.map((emote) => (
-                                    <button
-                                      key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
-                                      type="button"
-                                      disabled={!emote.usable}
-                                      onMouseDown={(event) => {
-                                        event.preventDefault();
-                                      }}
-                                      onClick={() => {
-                                        if (!emote.usable) return;
-                                        onSelect(emote.name, emote.url);
-                                      }}
-                                      className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
-                                        emote.usable
-                                          ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
-                                          : 'cursor-not-allowed opacity-60'
-                                      }`}
-                                      title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                      aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
-                                    >
-                                      <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
-                                      {!emote.usable && (
-                                        <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
-                                          <Lock className="h-2.5 w-2.5" />
-                                        </span>
-                                      )}
-                                    </button>
-                                  ))}
+                              )}
+                              {subSections.map((subSection) => (
+                                <div
+                                  key={`${group.id}:${section.key}:${subSection.key}`}
+                                  className="space-y-1 rounded-md border border-gray-200/70 bg-gray-50/80 p-1.5 dark:border-gray-700/70 dark:bg-gray-800/40"
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                                    <span>{subSection.label}</span>
+                                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                      {subSection.emotes.length}
+                                    </span>
+                                  </div>
+                                  <div className="grid justify-items-center gap-1 [grid-template-columns:repeat(auto-fill,minmax(2rem,1fr))]">
+                                    {subSection.emotes.map((emote) => (
+                                      <button
+                                        key={`${group.id}:${section.key}:${subSection.key}:${emote.name}:${emote.url}`}
+                                        type="button"
+                                        disabled={!emote.usable}
+                                        onMouseDown={(event) => {
+                                          event.preventDefault();
+                                        }}
+                                        onClick={() => {
+                                          if (!emote.usable) return;
+                                          onSelect(emote.name, emote.url);
+                                        }}
+                                        className={`relative inline-flex h-8 w-8 items-center justify-center rounded border border-transparent ${
+                                          emote.usable
+                                            ? 'hover:border-gray-300 hover:bg-white/80 dark:hover:border-gray-600 dark:hover:bg-gray-800/70'
+                                            : 'cursor-not-allowed opacity-60'
+                                        }`}
+                                        title={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                        aria-label={emote.usable ? emote.name : getEmoteUnavailableLabel(emote)}
+                                      >
+                                        <img src={emote.url} alt={emote.name} className="h-7 w-7 object-contain" loading="lazy" />
+                                        {!emote.usable && (
+                                          <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-900/95 p-[1px] text-amber-300">
+                                            <Lock className="h-2.5 w-2.5" />
+                                          </span>
+                                        )}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+                <div className="max-h-72 w-9 shrink-0 space-y-1 overflow-y-auto pl-0.5">
+                  {filteredGroups.map((group) => (
+                    <button
+                      key={`jump:${group.id}`}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        scrollToGroup(group.id);
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-gray-700 transition-colors hover:bg-white hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                      aria-label={`${group.label} セクションへ移動`}
+                      title={`${group.label} セクションへ移動`}
+                    >
+                      {renderGroupNavAvatar(group)}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
