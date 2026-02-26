@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useFaxQueue } from '../hooks/useFaxQueue';
 import FaxDisplay from './FaxDisplay';
 import DebugPanel from './DebugPanel';
@@ -6,24 +6,18 @@ import MusicPlayer from './music/MusicPlayer';
 import ClockDisplay from './ClockDisplay';
 import RewardCountDisplay from './RewardCountDisplay';
 import { LAYOUT } from '../constants/layout';
-import { buildApiUrl } from '../utils/api';
-import { initWebSocket } from '../utils/websocket';
 import { useSettings } from '../contexts/SettingsContext';
-import type { FaxData, FaxState, ServerStatus, DynamicStyles } from '../types';
+import { useFaxReceiverWebSocket } from './fax-receiver/useFaxReceiverWebSocket';
+import type { FaxState, DynamicStyles } from '../types';
 
 const FaxReceiver = () => {
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [isPrinterConnected, setIsPrinterConnected] = useState<boolean>(false);
   const [labelPosition, setLabelPosition] = useState<number>(0);
   const [, setIsAnimating] = useState<boolean>(false);
   const [faxState, setFaxState] = useState<FaxState | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
   const [indicatorAnimation, setIndicatorAnimation] = useState<'hidden' | 'entering' | 'visible' | 'exiting'>('hidden');
   const { currentFax, addToQueue, onDisplayComplete } = useFaxQueue();
-
-  // 処理済みメッセージIDを保持（重複処理を防ぐ）
-  const processedMessageIds = useRef<Set<string>>(new Set());
-  const messageIdTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const { isConnected, isPrinterConnected } = useFaxReceiverWebSocket(addToQueue);
 
   // FAX状態をリセット
   useEffect(() => {
@@ -109,105 +103,6 @@ const FaxReceiver = () => {
       return () => clearTimeout(timer);
     }
   }, [faxState, indicatorAnimation]);
-
-  // プリンター状態の初期チェック（1回のみ）
-  useEffect(() => {
-    const checkPrinterStatus = async () => {
-      try {
-        const response = await fetch(buildApiUrl('/status'));
-        if (response.ok) {
-          const data: ServerStatus = await response.json();
-          setIsPrinterConnected(data.printerConnected);
-        }
-      } catch (error) {
-        console.error('Failed to check initial printer status:', error);
-        // エラー時はプリンター接続状態をfalseに設定しない
-        // （WebSocketイベントで更新されるため）
-      }
-    };
-
-    // 初回チェックのみ（ポーリングは廃止）
-    checkPrinterStatus();
-  }, []);
-
-  // WebSocket接続の管理
-  useEffect(() => {
-    const wsClient = initWebSocket();
-    
-    // 接続状態の管理
-    const unsubConnect = wsClient.onConnect(() => {
-      setIsConnected(true);
-      console.log('WebSocket connected in FaxReceiver');
-    });
-    
-    const unsubDisconnect = wsClient.onDisconnect(() => {
-      setIsConnected(false);
-      console.log('WebSocket disconnected in FaxReceiver');
-    });
-    
-    // FAXメッセージの処理（重複チェック付き）
-    const unsubFax = wsClient.on('fax', (data) => {
-      const faxData = data as FaxData;
-      
-      // 重複チェック
-      if (processedMessageIds.current.has(faxData.id)) {
-        console.log('Duplicate fax message ignored:', faxData.id);
-        return;
-      }
-      
-      console.log('Fax message received via WebSocket:', data);
-      
-      // メッセージIDを処理済みとして記録
-      processedMessageIds.current.add(faxData.id);
-      
-      // 5秒後にIDを削除（メモリリークを防ぐ）
-      const timeoutId = setTimeout(() => {
-        processedMessageIds.current.delete(faxData.id);
-        messageIdTimeouts.current.delete(faxData.id);
-      }, 5000);
-      
-      // 既存のタイムアウトがあればクリア
-      const existingTimeout = messageIdTimeouts.current.get(faxData.id);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
-      }
-      messageIdTimeouts.current.set(faxData.id, timeoutId);
-      
-      // キューに追加
-      addToQueue(faxData);
-    });
-    
-    // stream_status_changedメッセージの処理（プリンター状態など）
-    const unsubStreamStatus = wsClient.on('stream_status_changed', (data) => {
-      console.log('Stream status changed via WebSocket:', data);
-      // 必要に応じて処理を追加
-    });
-
-    // プリンター接続状態の変更を監視
-    const unsubPrinterConnected = wsClient.on('printer_connected', () => {
-      console.log('Printer connected via WebSocket');
-      setIsPrinterConnected(true);
-    });
-
-    const unsubPrinterDisconnected = wsClient.on('printer_disconnected', () => {
-      console.log('Printer disconnected via WebSocket');
-      setIsPrinterConnected(false);
-    });
-
-    return () => {
-      // クリーンアップ: すべてのハンドラーを解除
-      unsubConnect();
-      unsubDisconnect();
-      unsubFax();
-      unsubStreamStatus();
-      unsubPrinterConnected();
-      unsubPrinterDisconnected();
-      
-      // タイムアウトをクリア
-      messageIdTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      messageIdTimeouts.current.clear();
-    };
-  }, [addToQueue]); // addToQueueを依存配列に戻す
 
   // 背景スタイル
   const backgroundStyle: DynamicStyles = { 

@@ -1,0 +1,67 @@
+.clock-container {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 8px;
+  justify-content: end;
+  text-align: center;
+  margin: 0px;
+  padding: 0px 10px 0px 0px;
+}
+
+.icon {
+  margin: 6px 12px 0px 32px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.icon-placeholder {
+  width: 1px;
+  height: 42px;
+  display: inline-block;
+}
+
+.locate {
+  margin: 0px;
+  text-shadow: -4px -4px 0 #000000, -4px -2px 0 #000000, -4px 0px 0 #000000,
+    -4px 2px 0 #000000, -4px 4px 0 #000000, -2px -4px 0 #000000,
+    -2px -2px 0 #000000, -2px 0px 0 #000000, -2px 2px 0 #000000,
+    -2px 4px 0 #000000, 0px -4px 0 #000000, 0px -2px 0 #000000,
+    0px 2px 0 #000000, 0px 4px 0 #000000, 2px -4px 0 #000000, 2px -2px 0 #000000,
+    2px 0px 0 #000000, 2px 2px 0 #000000, 2px 4px 0 #000000, 4px -4px 0 #000000,
+    4px -2px 0 #000000, 4px 0px 0 #000000, 4px 2px 0 #000000, 4px 4px 0 #000000;
+}
+
+.clock {
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  text-align: right;
+}
+
+.clock-date {
+  margin: 0px;
+  text-shadow: -4px -4px 0 #000000, -4px -2px 0 #000000, -4px 0px 0 #000000,
+    -4px 2px 0 #000000, -4px 4px 0 #000000, -2px -4px 0 #000000,
+    -2px -2px 0 #000000, -2px 0px 0 #000000, -2px 2px 0 #000000,
+    -2px 4px 0 #000000, 0px -4px 0 #000000, 0px -2px 0 #000000,
+    0px 2px 0 #000000, 0px 4px 0 #000000, 2px -4px 0 #000000, 2px -2px 0 #000000,
+    2px 0px 0 #000000, 2px 2px 0 #000000, 2px 4px 0 #000000, 4px -4px 0 #000000,
+    4px -2px 0 #000000, 4px 0px 0 #000000, 4px 2px 0 #000000, 4px 4px 0 #000000;
+}
+
+.clock-hour,
+.clock-min,
+.clock-separator,
+.clock-string {
+  margin: 0px;
+  text-shadow: -4px -4px 0 #000000, -4px -2px 0 #000000, -4px 0px 0 #000000,
+    -4px 2px 0 #000000, -4px 4px 0 #000000, -2px -4px 0 #000000,
+    -2px -2px 0 #000000, -2px 0px 0 #000000, -2px 2px 0 #000000,
+    -2px 4px 0 #000000, 0px -4px 0 #000000, 0px -2px 0 #000000,
+    0px 2px 0 #000000, 0px 4px 0 #000000, 2px -4px 0 #000000, 2px -2px 0 #000000,
+    2px 0px 0 #000000, 2px 2px 0 #000000, 2px 4px 0 #000000, 4px -4px 0 #000000,
+    4px -2px 0 #000000, 4px 0px 0 #000000, 4px 2px 0 #000000, 4px 4px 0 #000000;
+}

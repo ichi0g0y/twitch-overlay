@@ -1,0 +1,72 @@
+@keyframes fax-image-scroll {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-2px, -1px);
+  }
+  20% {
+    transform: translate(2px, 1px);
+  }
+  30% {
+    transform: translate(-2px, 1px);
+  }
+  40% {
+    transform: translate(2px, -1px);
+  }
+  50% {
+    transform: translate(-2px, 0);
+  }
+  60% {
+    transform: translate(2px, 1px);
+  }
+  70% {
+    transform: translate(-2px, -1px);
+  }
+  80% {
+    transform: translate(2px, 0);
+  }
+  90% {
+    transform: translate(-2px, 1px);
+  }
+}
+
+@keyframes fax-indicator-slide-in {
+  from {
+    transform: translateY(-60px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fax-indicator-slide-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-60px);
+  }
+}
+
+.fax-indicator-hidden {
+  transform: translateY(-60px);
+}
+
+.fax-indicator-entering {
+  animation: fax-indicator-slide-in 0.7s cubic-bezier(0.85, 0, 0.7, 1) forwards;
+}
+
+.fax-indicator-exiting {
+  animation: fax-indicator-slide-out 0.7s cubic-bezier(0.3, 0, 0.8, 0.15) forwards;
+}
