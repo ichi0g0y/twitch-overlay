@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, Send, Settings, Users, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, RefreshCw, Send, Settings, Twitch, Users, X } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { buildApiUrl } from '../utils/api';
 import {
@@ -9,6 +10,7 @@ import {
   subscribeIrcChannels,
   writeIrcChannels,
 } from '../utils/chatChannels';
+import { getTwitchParentDomain } from '../utils/twitchParentDomain';
 import { getWebSocketClient } from '../utils/websocket';
 import { ChattersPanel, type ChattersPanelChatter } from './ChattersPanel';
 import { ChatFragment, ChatMessage, ChatSidebarItem } from './ChatSidebarItem';
@@ -93,6 +95,8 @@ type ResolvedIrcCredentials = {
 };
 
 type MessageOrderReversedByTab = Record<string, boolean>;
+type ChatDisplayMode = 'custom' | 'embed';
+type ChatDisplayModeByTab = Record<string, ChatDisplayMode>;
 
 type DateSeparatorInfo = {
   key: string;
@@ -164,10 +168,13 @@ const COLLAPSE_STORAGE_KEY = 'chat_sidebar_collapsed';
 const ACTIVE_TAB_STORAGE_KEY = 'chat_sidebar_active_tab';
 const MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed_by_tab';
 const LEGACY_MESSAGE_ORDER_REVERSED_STORAGE_KEY = 'chat_sidebar_message_order_reversed';
+const CHAT_DISPLAY_MODE_STORAGE_KEY = 'chat_sidebar_display_mode_by_tab';
+const LEGACY_CHAT_DISPLAY_MODE_STORAGE_KEY = 'chat_sidebar_display_mode';
 const RESIZE_MIN_WIDTH = 220;
 const RESIZE_MAX_WIDTH = 520;
 const FONT_MIN_SIZE = 12;
 const FONT_MAX_SIZE = 40;
+const EMBED_MIN_WIDTH = 340;
 const EMOTE_CDN_BASE = 'https://static-cdn.jtvnw.net/emoticons/v2';
 const IRC_ENDPOINT = 'wss://irc-ws.chat.twitch.tv:443';
 const IRC_RECONNECT_BASE_DELAY_MS = 2000;
@@ -182,6 +189,7 @@ const USER_PROFILE_CACHE_INCOMPLETE_TTL_MS = 5_000;
 const DEFAULT_TIMEOUT_SECONDS = 10 * 60;
 const DISPLAY_NAME_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DISPLAY_NAME_REFRESH_TICK_MS = 10 * 60 * 1000;
+const PRIMARY_IRC_CREDENTIAL_REFRESH_MS = 15 * 1000;
 const IVR_TWITCH_USER_ENDPOINT = 'https://api.ivr.fi/v2/twitch/user';
 const IVR_BADGES_GLOBAL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/global';
 const IVR_BADGES_CHANNEL_ENDPOINT = 'https://api.ivr.fi/v2/twitch/badges/channel';
@@ -577,6 +585,38 @@ const readStoredMessageOrderReversedByTab = (): MessageOrderReversedByTab => {
   return {};
 };
 
+const resolveDefaultChatDisplayMode = (tabId: string): ChatDisplayMode => (
+  tabId === PRIMARY_CHAT_TAB_ID ? 'custom' : 'embed'
+);
+
+const readStoredChatDisplayModeByTab = (): ChatDisplayModeByTab => {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(CHAT_DISPLAY_MODE_STORAGE_KEY);
+  if (raw && raw.trim() !== '') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const normalized: ChatDisplayModeByTab = {};
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof key !== 'string' || key.trim() === '') continue;
+          if (value === 'custom' || value === 'embed') {
+            normalized[key] = value;
+          }
+        }
+        return normalized;
+      }
+    } catch {
+      // ignore malformed payload and fall back
+    }
+  }
+
+  const legacy = window.localStorage.getItem(LEGACY_CHAT_DISPLAY_MODE_STORAGE_KEY);
+  if (legacy === 'custom' || legacy === 'embed') {
+    return { [PRIMARY_CHAT_TAB_ID]: legacy };
+  }
+  return {};
+};
+
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   side,
   width,
@@ -604,6 +644,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [ircMessagesByChannel, setIrcMessagesByChannel] = useState<Record<string, ChatMessage[]>>({});
   const [connectingChannels, setConnectingChannels] = useState<Record<string, boolean>>({});
   const [primaryChannelLogin, setPrimaryChannelLogin] = useState('');
+  const [chatDisplayModeByTab, setChatDisplayModeByTab] = useState<ChatDisplayModeByTab>(() => readStoredChatDisplayModeByTab());
+
+  const activeChatDisplayMode = chatDisplayModeByTab[activeTab] ?? resolveDefaultChatDisplayMode(activeTab);
+  const setActiveChatDisplayMode = useCallback((mode: ChatDisplayMode) => {
+    setChatDisplayModeByTab((prev) => {
+      const defaultMode = resolveDefaultChatDisplayMode(activeTab);
+      const current = prev[activeTab];
+      if (mode === defaultMode) {
+        if (current === undefined) return prev;
+        const next = { ...prev };
+        delete next[activeTab];
+        return next;
+      }
+      if (current === mode) return prev;
+      return { ...prev, [activeTab]: mode };
+    });
+  }, [activeTab]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const tabScrollerRef = useRef<HTMLDivElement | null>(null);
@@ -616,6 +673,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [channelEditorOpen, setChannelEditorOpen] = useState(false);
   const [channelInput, setChannelInput] = useState('');
   const [channelInputError, setChannelInputError] = useState('');
+  const [embedReloadNonceByTab, setEmbedReloadNonceByTab] = useState<Record<string, number>>({});
 
   const richInputRef = useRef<RichChatInputRef | null>(null);
   const postingMessageLockRef = useRef(false);
@@ -651,9 +709,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [tabDisplayNamesByChannel, setTabDisplayNamesByChannel] = useState<Record<string, string>>({});
   const [tabDisplayNameUpdatedAtByChannel, setTabDisplayNameUpdatedAtByChannel] = useState<Record<string, number>>({});
   const [displayNameRefreshTick, setDisplayNameRefreshTick] = useState(0);
+  const [primaryCredentialRefreshTick, setPrimaryCredentialRefreshTick] = useState(0);
   const [badgeCatalogVersion, setBadgeCatalogVersion] = useState(0);
   const [ircParticipantsVersion, setIrcParticipantsVersion] = useState(0);
   const lastHandledActiveTabRequestIdRef = useRef<number | null>(null);
+  const primaryConnectionRefreshInFlightRef = useRef(false);
 
   const handleToggle = () => {
     if (embedded) return;
@@ -683,6 +743,31 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }, DISPLAY_NAME_REFRESH_TICK_MS);
     return () => {
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const timer = window.setInterval(() => {
+      setPrimaryCredentialRefreshTick((current) => current + 1);
+    }, PRIMARY_IRC_CREDENTIAL_REFRESH_MS);
+
+    const isTauriRuntime = typeof (window as any).__TAURI__ !== 'undefined'
+      || typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
+    const tauriUnlisteners: Promise<UnlistenFn>[] = [];
+
+    if (isTauriRuntime) {
+      tauriUnlisteners.push(listen('auth_success', () => {
+        setPrimaryCredentialRefreshTick((current) => current + 1);
+      }));
+    }
+
+    return () => {
+      window.clearInterval(timer);
+      tauriUnlisteners.forEach((promise) => {
+        promise.then((unlisten) => unlisten()).catch(() => undefined);
+      });
     };
   }, []);
 
@@ -1565,6 +1650,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [messageOrderReversedByTab]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(CHAT_DISPLAY_MODE_STORAGE_KEY, JSON.stringify(chatDisplayModeByTab));
+    window.localStorage.removeItem(LEGACY_CHAT_DISPLAY_MODE_STORAGE_KEY);
+  }, [chatDisplayModeByTab]);
+
+  useEffect(() => {
     if (activeTab === PRIMARY_CHAT_TAB_ID) return;
     if (ircChannels.includes(activeTab)) return;
     setActiveTab(PRIMARY_CHAT_TAB_ID);
@@ -1760,31 +1851,70 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }, [isCollapsed]);
 
   useEffect(() => {
+    if (activeChatDisplayMode !== 'embed') return;
+    setChattersOpen(false);
+    setUserInfoPopup(null);
+    setRawDataMessage(null);
+    setSettingsOpen(false);
+    setChannelEditorOpen(false);
+  }, [activeChatDisplayMode]);
+
+  useEffect(() => {
     let cancelled = false;
 
-    const startPrimaryIrcConnection = async () => {
-      if (primaryIrcStartedRef.current) return;
+    const ensurePrimaryIrcConnection = async () => {
+      if (primaryConnectionRefreshInFlightRef.current) return;
+      primaryConnectionRefreshInFlightRef.current = true;
+
       const credentials = await resolveIrcCredentials();
-      if (cancelled) return;
+      try {
+        if (cancelled) return;
 
-      const login = normalizeTwitchChannelName(credentials.login ?? '');
-      if (!login) {
-        setPrimaryChannelLogin('');
-        return;
+        const login = normalizeTwitchChannelName(credentials.login ?? '');
+        const primaryKeys = Array.from(ircConnectionsRef.current.keys())
+          .filter((key) => key.startsWith(PRIMARY_IRC_CONNECTION_PREFIX));
+
+        if (!login) {
+          setPrimaryChannelLogin('');
+          primaryIrcStartedRef.current = false;
+          for (const key of primaryKeys) {
+            stopIrcConnection(key);
+          }
+          return;
+        }
+
+        const connectionKey = primaryIrcConnectionKey(login);
+        setPrimaryChannelLogin((prev) => (prev === login ? prev : login));
+
+        for (const key of primaryKeys) {
+          if (key === connectionKey) continue;
+          stopIrcConnection(key);
+        }
+
+        const existing = ircConnectionsRef.current.get(connectionKey);
+        if (existing) {
+          // Anonymous connection should be upgraded after auth is refreshed.
+          if (credentials.authenticated && !existing.authenticated) {
+            stopIrcConnection(connectionKey);
+            startIrcConnection(login, { connectionKey, isPrimary: true });
+          }
+          primaryIrcStartedRef.current = true;
+          return;
+        }
+
+        startIrcConnection(login, { connectionKey, isPrimary: true });
+        primaryIrcStartedRef.current = true;
+      } finally {
+        primaryConnectionRefreshInFlightRef.current = false;
       }
-
-      setPrimaryChannelLogin(login);
-      const connectionKey = primaryIrcConnectionKey(login);
-      startIrcConnection(login, { connectionKey, isPrimary: true });
-      primaryIrcStartedRef.current = true;
     };
 
-    void startPrimaryIrcConnection();
+    void ensurePrimaryIrcConnection();
 
     return () => {
       cancelled = true;
     };
-  }, [resolveIrcCredentials, startIrcConnection]);
+  }, [primaryCredentialRefreshTick, resolveIrcCredentials, startIrcConnection, stopIrcConnection]);
 
   useEffect(() => {
     const expected = new Set(ircChannels);
@@ -2055,6 +2185,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return items;
   }, [displayedMessages]);
 
+  const resolveTabChannelLogin = useCallback((tabId: string) => {
+    if (tabId === PRIMARY_CHAT_TAB_ID) {
+      return normalizeTwitchChannelName(primaryChannelLogin || '') || '';
+    }
+    return normalizeTwitchChannelName(tabId || '') || '';
+  }, [primaryChannelLogin]);
+  const activeTabChannelLogin = useMemo(
+    () => resolveTabChannelLogin(activeTab),
+    [activeTab, resolveTabChannelLogin],
+  );
+  const twitchParentDomain = useMemo(() => getTwitchParentDomain(), []);
+  useEffect(() => {
+    if (activeChatDisplayMode !== 'embed') return;
+    if (width >= EMBED_MIN_WIDTH) return;
+    onWidthChange(EMBED_MIN_WIDTH);
+  }, [activeChatDisplayMode, onWidthChange, width]);
+  const popoutChatUrl = useMemo(() => {
+    if (!activeTabChannelLogin) return '';
+    return `https://www.twitch.tv/popout/${encodeURIComponent(activeTabChannelLogin)}/chat?popout=`;
+  }, [activeTabChannelLogin]);
+
   useEffect(() => {
     if (isCollapsed) return;
     const container = listRef.current;
@@ -2072,7 +2223,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const collapseIcon = side === 'left' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />;
   const expandIcon = <span className="text-xs leading-none">＞</span>;
   const toggleIcon = isCollapsed ? expandIcon : collapseIcon;
-  const resizeHandleSideClass = side === 'left' ? 'right-0' : 'left-0';
+  const resizeHandleSideClass = side === 'left' ? 'right-0 translate-x-full' : 'left-0 -translate-x-full';
   const metaFontSize = Math.max(10, fontSize - 2);
   const translationFontSize = Math.max(10, fontSize - 2);
   const fixedSideClass = side === 'left'
@@ -2089,8 +2240,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     ? 'h-full w-full'
     : `transition-all duration-200 self-start ${asideWidthClass}`;
   const wrapperClass = embedded
-    ? 'h-full w-full'
-    : `${fixedWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass}`;
+    ? 'h-full w-full relative'
+    : `${fixedWidthClass} lg:fixed ${fixedOffsetClass} ${fixedSideClass} relative`;
   const panelClass = embedded
     ? `h-full bg-white dark:bg-gray-800 border-gray-700 ${side === 'left' ? 'border-r' : 'border-l'} flex flex-col overflow-hidden relative`
     : 'h-[calc(100vh-48px)] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-sm flex flex-col overflow-hidden relative';
@@ -2136,6 +2287,24 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       };
     }),
   ], [channelDisplayNames, ircChannels, tabDisplayNamesByChannel]);
+  const embedFrames = useMemo(() => {
+    return tabs
+      .map((tab) => {
+        const channelLogin = resolveTabChannelLogin(tab.id);
+        if (!channelLogin) return null;
+        const reloadNonce = embedReloadNonceByTab[tab.id] ?? 0;
+        return {
+          tabId: tab.id,
+          channelLogin,
+          src: `https://www.twitch.tv/embed/${encodeURIComponent(channelLogin)}/chat?parent=${encodeURIComponent(twitchParentDomain)}&darkpopout&reload=${reloadNonce}`,
+        };
+      })
+      .filter((frame): frame is { tabId: string; channelLogin: string; src: string } => frame !== null);
+  }, [embedReloadNonceByTab, resolveTabChannelLogin, tabs, twitchParentDomain]);
+  const activeEmbedFrame = useMemo(
+    () => embedFrames.find((frame) => frame.tabId === activeTab) ?? null,
+    [activeTab, embedFrames],
+  );
   useEffect(() => {
     const scroller = tabScrollerRef.current;
     const activeButton = tabButtonRefs.current[activeTab];
@@ -2184,6 +2353,19 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const moderationAllowedOnPopup = userInfoPopup?.tabId === PRIMARY_CHAT_TAB_ID;
   const userInfoCanTimeout = moderationAllowedOnPopup && userInfoProfile?.canTimeout === true && userInfoResolvedUserId !== '';
   const userInfoCanBlock = moderationAllowedOnPopup && userInfoProfile?.canBlock === true && userInfoResolvedUserId !== '';
+  const moderationUnavailableReason = (() => {
+    if (!userInfoPopup) return '';
+    if (!moderationAllowedOnPopup) {
+      return 'モデレーション操作はメインタブでのみ利用できます。';
+    }
+    if (userInfoResolvedUserId === '') {
+      return 'ユーザーIDを解決できないため、モデレーション操作は利用できません。';
+    }
+    if (!userInfoCanTimeout && !userInfoCanBlock) {
+      return '必要なTwitchスコープ不足のため操作できません。再認証で moderator:manage:banned_users / user:manage:blocked_users を付与してください。';
+    }
+    return '';
+  })();
   const rawDataJson = useMemo(
     () => (rawDataMessage ? JSON.stringify(rawDataMessage, null, 2) : ''),
     [rawDataMessage],
@@ -2335,10 +2517,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       if (!connection?.ws || connection.ws.readyState !== WebSocket.OPEN) {
         throw new Error('IRCが未接続です。接続状態を確認してください。');
       }
-      if (!connection.authenticated) {
-        throw new Error('IRCが匿名接続です。Twitch認証を確認してください。');
-      }
       const targetChannel = connection.channel;
+      if (!connection.authenticated) {
+        stopIrcConnection(connectionKey);
+        startIrcConnection(targetChannel, { connectionKey, isPrimary: isPrimaryTab });
+        setPrimaryCredentialRefreshTick((current) => current + 1);
+        throw new Error('IRC認証を更新中です。数秒後に再投稿してください。');
+      }
       connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
       if (connection.userId) {
         void hydrateIrcUserProfile(connection.userId, connection.displayName || connection.nick);
@@ -2418,22 +2603,28 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const handleCloseRawData = useCallback(() => {
     setRawDataMessage(null);
   }, []);
+  const handleOpenChatPopout = useCallback(() => {
+    if (!popoutChatUrl) return;
+    window.open(popoutChatUrl, '_blank', 'noopener,noreferrer');
+  }, [popoutChatUrl]);
 
   return (
     <aside className={asideClass} style={embedded ? undefined : sidebarStyle}>
       <div className={wrapperClass} style={embedded ? undefined : sidebarStyle}>
+        {!isCollapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="コメント欄の幅を調整"
+            onPointerDown={handleResizeStart}
+            className={`absolute top-0 ${resizeHandleSideClass} z-30 h-full w-1 cursor-col-resize touch-none`}
+          >
+            <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
+          </div>
+        )}
         <div className={panelClass}>
           {!isCollapsed && (
             <>
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="コメント欄の幅を調整"
-                onPointerDown={handleResizeStart}
-                className={`absolute top-0 ${resizeHandleSideClass} h-full w-1 cursor-col-resize touch-none`}
-              >
-                <div className="h-full w-full bg-transparent hover:bg-blue-200/40 dark:hover:bg-blue-500/30 transition-colors" />
-              </div>
               <div className="flex items-center border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 relative px-3 py-2 justify-between">
                 <div className="flex items-center gap-2">
                   <MessageCircle className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -2469,26 +2660,93 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       });
                     }}
                     className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
-                      messageOrderReversed
-                        ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                      activeChatDisplayMode === 'embed'
+                        ? 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                        : messageOrderReversed
+                          ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
                     }`}
                     aria-label={messageOrderReversed ? 'コメント順を下に最新へ戻す' : 'コメント順を上に最新へ変更する'}
                     title={messageOrderReversed ? '上に最新 (ON)' : '下に最新 (OFF)'}
+                    disabled={activeChatDisplayMode === 'embed'}
                   >
                     <ArrowUpDown className="w-4 h-4" />
+                  </button>
+                  <div className="inline-flex items-center gap-0.5 rounded-md border border-gray-200 dark:border-gray-700 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveChatDisplayMode('custom')}
+                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition ${
+                        activeChatDisplayMode === 'custom'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                      }`}
+                      aria-label="独自チャット表示へ切り替える"
+                      title="独自チャット"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveChatDisplayMode('embed')}
+                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition ${
+                        activeChatDisplayMode === 'embed'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                      }`}
+                      aria-label="本家チャット表示へ切り替える"
+                      title="Twitch Embed"
+                    >
+                      <Twitch className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmbedReloadNonceByTab((current) => ({
+                        ...current,
+                        [activeTab]: (current[activeTab] ?? 0) + 1,
+                      }));
+                    }}
+                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+                      activeChatDisplayMode === 'embed'
+                        ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                    }`}
+                    aria-label="Twitch Embedを再読み込みする"
+                    title="Embed再読み込み"
+                    disabled={activeChatDisplayMode !== 'embed'}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenChatPopout}
+                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+                      popoutChatUrl
+                        ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                    }`}
+                    aria-label="チャットをポップアウトで開く"
+                    title="チャットをポップアウトで開く"
+                    disabled={!popoutChatUrl}
+                  >
+                    <ExternalLink className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => setChattersOpen((prev) => !prev)}
                     className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
-                      chattersOpen
-                        ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                      activeChatDisplayMode === 'embed'
+                        ? 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                        : chattersOpen
+                          ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
                     }`}
                     aria-label="視聴者一覧を開く"
                     aria-expanded={chattersOpen}
                     title="視聴者一覧"
+                    disabled={activeChatDisplayMode === 'embed'}
                   >
                     <Users className="w-4 h-4" />
                   </button>
@@ -2643,95 +2901,131 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <span className="text-[10px] leading-none">開く</span>
             </button>
           ) : (
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="relative flex-1 min-h-0">
               <div
-                ref={listRef}
-                className="flex-1 overflow-y-auto px-0 pb-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+                className={`absolute inset-0 min-h-0 border-t dark:border-gray-700 bg-black/10 dark:bg-black/30 transition-opacity ${
+                  activeChatDisplayMode === 'embed' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                }`}
               >
-                {activeMessages.length === 0 ? (
-                  emptyState
-                ) : (
-                  displayedItems.map((item) => (
-                    item.type === 'date-separator' ? (
-                      <div
-                        key={item.key}
-                        className="sticky top-0 z-10 px-4 py-1.5 text-[11px] font-semibold tracking-wide text-gray-600 dark:text-gray-300 bg-gray-100/95 dark:bg-gray-800/95 border-y border-gray-200/80 dark:border-gray-700/80 backdrop-blur-[1px]"
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                          <span>{item.label}</span>
-                        </span>
-                      </div>
-                    ) : (
-                      <ChatSidebarItem
-                        key={item.key}
-                        message={item.message}
-                        index={item.index}
-                        fontSize={fontSize}
-                        metaFontSize={metaFontSize}
-                        translationFontSize={translationFontSize}
-                        timestampLabel={formatTime(item.message.timestamp)}
-                        onUsernameClick={handleOpenUserInfo}
-                        onRawDataClick={handleOpenRawData}
-                        resolveBadgeVisual={resolveBadgeVisual}
-                      />
-                    )
-                  ))
+                {embedFrames.map((frame) => {
+                  const isVisible = activeChatDisplayMode === 'embed' && frame.tabId === activeTab;
+                  return (
+                    <iframe
+                      key={frame.tabId}
+                      src={frame.src}
+                      title={`${frame.channelLogin} のTwitchチャット`}
+                      className={`absolute inset-0 h-full w-full border-0 transition-opacity ${
+                        isVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                      }`}
+                      allow="autoplay; clipboard-read; clipboard-write"
+                    />
+                  );
+                })}
+                {embedFrames.length === 0 && (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    チャンネルログイン名が未解決です。Twitch認証状態を確認してください。
+                  </div>
+                )}
+                {embedFrames.length > 0 && !activeEmbedFrame && (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    このタブのEmbedチャットはまだ準備できていません。
+                  </div>
                 )}
               </div>
-            <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
-                <div className="flex items-center gap-2">
-                  <RichChatInput
-                    ref={richInputRef}
-                    placeholder={isPrimaryTab
-                      ? (primaryChannelLogin ? `#${primaryChannelLogin} に送信...` : 'メインチャンネルに送信...')
-                      : `#${activeTab} に送信...`}
-                    disabled={postingMessage}
-                    rightAccessory={(
-                      <EmotePicker
+              <div
+                className={`absolute inset-0 flex flex-col min-h-0 transition-opacity ${
+                  activeChatDisplayMode === 'custom' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                }`}
+              >
+                  <div
+                    ref={listRef}
+                    className="flex-1 overflow-y-auto px-0 pb-2 divide-y divide-gray-200/70 dark:divide-gray-700/70 text-left"
+                  >
+                    {activeMessages.length === 0 ? (
+                      emptyState
+                    ) : (
+                      displayedItems.map((item) => (
+                        item.type === 'date-separator' ? (
+                          <div
+                            key={item.key}
+                            className="sticky top-0 z-10 px-4 py-1.5 text-[11px] font-semibold tracking-wide text-gray-600 dark:text-gray-300 bg-gray-100/95 dark:bg-gray-800/95 border-y border-gray-200/80 dark:border-gray-700/80 backdrop-blur-[1px]"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>{item.label}</span>
+                            </span>
+                          </div>
+                        ) : (
+                          <ChatSidebarItem
+                            key={item.key}
+                            message={item.message}
+                            index={item.index}
+                            fontSize={fontSize}
+                            metaFontSize={metaFontSize}
+                            translationFontSize={translationFontSize}
+                            timestampLabel={formatTime(item.message.timestamp)}
+                            onUsernameClick={handleOpenUserInfo}
+                            onRawDataClick={handleOpenRawData}
+                            resolveBadgeVisual={resolveBadgeVisual}
+                          />
+                        )
+                      ))
+                    )}
+                  </div>
+                  <div className="border-t dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-900/70">
+                    <div className="flex items-center gap-2">
+                      <RichChatInput
+                        ref={richInputRef}
+                        placeholder={isPrimaryTab
+                          ? (primaryChannelLogin ? `#${primaryChannelLogin} に送信...` : 'メインチャンネルに送信...')
+                          : `#${activeTab} に送信...`}
                         disabled={postingMessage}
-                        triggerVariant="ghost"
-                        triggerClassName="h-7 w-7 px-0 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
-                        channelLogins={activeBadgeChannelLogin ? [activeBadgeChannelLogin] : []}
-                        priorityChannelLogin={activeBadgeChannelLogin || undefined}
-                        onSelect={(name, url) => {
-                          richInputRef.current?.insertEmote(name, url);
-                          richInputRef.current?.focus();
+                        rightAccessory={(
+                          <EmotePicker
+                            disabled={postingMessage}
+                            triggerVariant="ghost"
+                            triggerClassName="h-7 w-7 px-0 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                            channelLogins={activeBadgeChannelLogin ? [activeBadgeChannelLogin] : []}
+                            priorityChannelLogin={activeBadgeChannelLogin || undefined}
+                            onSelect={(name, url) => {
+                              richInputRef.current?.insertEmote(name, url);
+                              richInputRef.current?.focus();
+                              if (postError) setPostError('');
+                            }}
+                          />
+                        )}
+                        onSubmit={() => void sendComment()}
+                        onChangeHasContent={setInputHasContent}
+                        onChangeText={() => {
                           if (postError) setPostError('');
                         }}
                       />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 w-9 px-0"
+                        aria-label="コメントを投稿"
+                        onClick={() => void sendComment()}
+                        disabled={postingMessage || !inputHasContent}
+                      >
+                        <Send className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {postError && (
+                      <p className="mt-1 text-[11px] text-red-500 dark:text-red-300">{postError}</p>
                     )}
-                    onSubmit={() => void sendComment()}
-                    onChangeHasContent={setInputHasContent}
-                    onChangeText={() => {
-                      if (postError) setPostError('');
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-9 w-9 px-0"
-                    aria-label="コメントを投稿"
-                    onClick={() => void sendComment()}
-                    disabled={postingMessage || !inputHasContent}
-                  >
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </div>
-                {postError && (
-                  <p className="mt-1 text-[11px] text-red-500 dark:text-red-300">{postError}</p>
-                )}
+                  </div>
               </div>
             </div>
           )}
           <ChattersPanel
-            open={chattersOpen && !isCollapsed}
+            open={chattersOpen && !isCollapsed && activeChatDisplayMode !== 'embed'}
             channelLogin={activeBadgeChannelLogin || undefined}
             fallbackChatters={fallbackChatters}
             onChatterClick={handleOpenUserInfo}
             onClose={() => setChattersOpen(false)}
           />
-          {userInfoPopup && !isCollapsed && (
+          {userInfoPopup && !isCollapsed && activeChatDisplayMode !== 'embed' && (
             <div
               className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 p-3 backdrop-blur-[1px]"
               onMouseDown={(event) => {
@@ -2811,32 +3105,33 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   {userModerationMessage && (
                     <p className="text-xs text-emerald-600 dark:text-emerald-300">{userModerationMessage}</p>
                   )}
-                  {(userInfoCanTimeout || userInfoCanBlock) && (
+                  {(userInfoCanTimeout || userInfoCanBlock || moderationUnavailableReason !== '') && (
                     <div className="rounded-md border border-red-200 bg-red-50/70 p-2 dark:border-red-500/40 dark:bg-red-900/20">
                       <p className="mb-2 text-[11px] text-red-700 dark:text-red-200">
                         モデレーション操作（確認ダイアログ後に実行）
                       </p>
+                      {moderationUnavailableReason !== '' && (
+                        <p className="mb-2 text-[11px] text-red-700/90 dark:text-red-200/90">
+                          {moderationUnavailableReason}
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-2">
-                        {userInfoCanTimeout && (
-                          <button
-                            type="button"
-                            onClick={() => void runModerationAction('timeout')}
-                            disabled={userModerationLoading !== null}
-                            className="inline-flex h-7 items-center rounded-md border border-red-300 px-2 text-xs text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/50 dark:text-red-100 dark:hover:bg-red-800/50"
-                          >
-                            {userModerationLoading === 'timeout' ? '実行中...' : '10分タイムアウト'}
-                          </button>
-                        )}
-                        {userInfoCanBlock && (
-                          <button
-                            type="button"
-                            onClick={() => void runModerationAction('block')}
-                            disabled={userModerationLoading !== null}
-                            className="inline-flex h-7 items-center rounded-md border border-red-400 px-2 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400 dark:text-red-100 dark:hover:bg-red-800/60"
-                          >
-                            {userModerationLoading === 'block' ? '実行中...' : 'ブロック'}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => void runModerationAction('timeout')}
+                          disabled={userModerationLoading !== null || !userInfoCanTimeout}
+                          className="inline-flex h-7 items-center rounded-md border border-red-300 px-2 text-xs text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/50 dark:text-red-100 dark:hover:bg-red-800/50"
+                        >
+                          {userModerationLoading === 'timeout' ? '実行中...' : '10分タイムアウト'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void runModerationAction('block')}
+                          disabled={userModerationLoading !== null || !userInfoCanBlock}
+                          className="inline-flex h-7 items-center rounded-md border border-red-400 px-2 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400 dark:text-red-100 dark:hover:bg-red-800/60"
+                        >
+                          {userModerationLoading === 'block' ? '実行中...' : 'ブロック'}
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2886,7 +3181,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
             </div>
           )}
-          {rawDataMessage && (
+          {rawDataMessage && activeChatDisplayMode !== 'embed' && (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
               onMouseDown={(event) => {
