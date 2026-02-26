@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, MessageCircle, Plus, RefreshCw, Send, Settings, Twitch, Users, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, LocateFixed, MessageCircle, MoreHorizontal, Plus, RefreshCw, Send, Settings, Twitch, Users, X } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { buildApiUrl } from '../utils/api';
@@ -33,6 +33,7 @@ type ChatSidebarProps = {
     requestId: number;
   } | null;
   onActiveTabChange?: (tabId: string) => void;
+  onEnsureIrcPreview?: (channelLogin: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   translationEnabled: boolean;
@@ -626,6 +627,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   channelDisplayNames = {},
   activeTabRequest = null,
   onActiveTabChange,
+  onEnsureIrcPreview,
   fontSize,
   onFontSizeChange,
   translationEnabled,
@@ -670,6 +672,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const actionsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const actionsMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const [channelEditorOpen, setChannelEditorOpen] = useState(false);
   const [channelInput, setChannelInput] = useState('');
   const [channelInputError, setChannelInputError] = useState('');
@@ -1444,6 +1449,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       window.removeEventListener('mousedown', handleClick);
     };
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) return;
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (actionsMenuPanelRef.current?.contains(target)) return;
+      if (actionsMenuButtonRef.current?.contains(target)) return;
+      setActionsMenuOpen(false);
+    };
+
+    window.addEventListener('mousedown', handleClick);
+    return () => {
+      window.removeEventListener('mousedown', handleClick);
+    };
+  }, [actionsMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2550,6 +2572,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     if (ircChannels.includes(normalized)) {
       setActiveTab(normalized);
+      onEnsureIrcPreview?.(normalized);
       setChannelEditorOpen(false);
       setChannelInput('');
       setChannelInputError('');
@@ -2558,6 +2581,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     setIrcChannels((prev) => [...prev, normalized]);
     setActiveTab(normalized);
+    onEnsureIrcPreview?.(normalized);
     setChannelEditorOpen(false);
     setChannelInput('');
     setChannelInputError('');
@@ -2672,67 +2696,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   >
                     <ArrowUpDown className="w-4 h-4" />
                   </button>
-                  <div className="inline-flex items-center gap-0.5 rounded-md border border-gray-200 dark:border-gray-700 p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setActiveChatDisplayMode('custom')}
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition ${
-                        activeChatDisplayMode === 'custom'
-                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
-                          : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
-                      }`}
-                      aria-label="独自チャット表示へ切り替える"
-                      title="独自チャット"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveChatDisplayMode('embed')}
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition ${
-                        activeChatDisplayMode === 'embed'
-                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
-                          : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
-                      }`}
-                      aria-label="本家チャット表示へ切り替える"
-                      title="Twitch Embed"
-                    >
-                      <Twitch className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmbedReloadNonceByTab((current) => ({
-                        ...current,
-                        [activeTab]: (current[activeTab] ?? 0) + 1,
-                      }));
-                    }}
-                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
-                      activeChatDisplayMode === 'embed'
-                        ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
-                    }`}
-                    aria-label="Twitch Embedを再読み込みする"
-                    title="Embed再読み込み"
-                    disabled={activeChatDisplayMode !== 'embed'}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleOpenChatPopout}
-                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
-                      popoutChatUrl
-                        ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
-                    }`}
-                    aria-label="チャットをポップアウトで開く"
-                    title="チャットをポップアウトで開く"
-                    disabled={!popoutChatUrl}
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
                   <button
                     type="button"
                     onClick={() => setChattersOpen((prev) => !prev)}
@@ -2750,6 +2713,110 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   >
                     <Users className="w-4 h-4" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveChatDisplayMode(activeChatDisplayMode === 'custom' ? 'embed' : 'custom')}
+                    className="inline-flex items-stretch overflow-hidden rounded-md border border-gray-200 dark:border-gray-700"
+                    aria-label={activeChatDisplayMode === 'custom' ? '本家チャット表示へ切り替える' : '独自チャット表示へ切り替える'}
+                    title={activeChatDisplayMode === 'custom' ? 'Twitch Embedへ切り替え' : '独自チャットへ切り替え'}
+                  >
+                    <span
+                      className={`inline-flex items-center justify-center w-7 h-7 transition ${
+                        activeChatDisplayMode === 'custom'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                    </span>
+                    <span
+                      className={`inline-flex items-center justify-center w-7 h-7 border-l border-gray-200 dark:border-gray-700 transition ${
+                        activeChatDisplayMode === 'embed'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      <Twitch className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setActionsMenuOpen((prev) => !prev)}
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-md border transition ${
+                        actionsMenuOpen
+                          ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/70 dark:bg-blue-500/20 dark:text-blue-100'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800'
+                      }`}
+                      aria-label="その他のチャット操作を開く"
+                      aria-expanded={actionsMenuOpen}
+                      title="その他"
+                      ref={actionsMenuButtonRef}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {actionsMenuOpen && (
+                      <div
+                        ref={actionsMenuPanelRef}
+                        className="absolute right-0 top-9 z-20 w-48 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-1"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeChatDisplayMode !== 'embed') return;
+                            setEmbedReloadNonceByTab((current) => ({
+                              ...current,
+                              [activeTab]: (current[activeTab] ?? 0) + 1,
+                            }));
+                            setActionsMenuOpen(false);
+                          }}
+                          className={`w-full inline-flex items-center gap-2 px-2 py-1.5 text-left rounded text-sm transition ${
+                            activeChatDisplayMode === 'embed'
+                              ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                              : 'text-gray-400 dark:text-gray-500'
+                          }`}
+                          disabled={activeChatDisplayMode !== 'embed'}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          <span>Embed再読み込み</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!popoutChatUrl) return;
+                            handleOpenChatPopout();
+                            setActionsMenuOpen(false);
+                          }}
+                          className={`w-full inline-flex items-center gap-2 px-2 py-1.5 text-left rounded text-sm transition ${
+                            popoutChatUrl
+                              ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                              : 'text-gray-400 dark:text-gray-500'
+                          }`}
+                          disabled={!popoutChatUrl}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          <span>ポップアウトで開く</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeTab === PRIMARY_CHAT_TAB_ID) return;
+                            onEnsureIrcPreview?.(activeTab);
+                            setActionsMenuOpen(false);
+                          }}
+                          className={`w-full inline-flex items-center gap-2 px-2 py-1.5 text-left rounded text-sm transition ${
+                            activeTab === PRIMARY_CHAT_TAB_ID
+                              ? 'text-gray-400 dark:text-gray-500'
+                              : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                          }`}
+                          disabled={activeTab === PRIMARY_CHAT_TAB_ID}
+                        >
+                          <LocateFixed className="w-4 h-4" />
+                          <span>プレビューへ移動</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setSettingsOpen((prev) => !prev)}
