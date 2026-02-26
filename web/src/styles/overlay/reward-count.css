@@ -1,0 +1,131 @@
+.reward-count-item {
+  position: relative;
+  transition: all 0.3s ease;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.reward-count-grid {
+  display: grid;
+  grid-template-columns: 4px 1fr 4px;
+  grid-template-rows: 4px 1fr 4px;
+  min-width: 200px;
+}
+
+.reward-count-corner {
+  background: transparent;
+}
+
+.reward-count-border-h {
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.reward-count-border-v {
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.reward-count-content-container {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.reward-count-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reward-count-header {
+  font-size: 14px;
+  line-height: 1.4;
+  color: #ffffff;
+  font-weight: bold;
+  image-rendering: pixelated;
+}
+
+.reward-count-users {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reward-count-user {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ffd700;
+  padding-left: 8px;
+  image-rendering: pixelated;
+}
+
+@keyframes reward-count-slide-in {
+  from {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes reward-count-slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+}
+
+@keyframes reward-count-slide-in-right {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes reward-count-slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+.reward-count-item-entering {
+  animation: reward-count-slide-in 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-entering-right {
+  animation: reward-count-slide-in-right 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-visible {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.reward-count-item-exiting {
+  animation: reward-count-slide-out 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-exiting-right {
+  animation: reward-count-slide-out-right 0.3s ease-in-out forwards;
+}
+
+.reward-count-item-hidden {
+  display: none;
+}
