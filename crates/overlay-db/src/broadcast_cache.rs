@@ -73,8 +73,9 @@ impl Database {
             return Ok(Vec::new());
         }
         self.with_conn(|conn| {
-            let placeholders: Vec<String> =
-                (1..=broadcaster_ids.len()).map(|i| format!("?{i}")).collect();
+            let placeholders: Vec<String> = (1..=broadcaster_ids.len())
+                .map(|i| format!("?{i}"))
+                .collect();
             let sql = format!(
                 "SELECT broadcaster_id, last_broadcast_at, updated_at
                  FROM channel_broadcast_cache
@@ -122,7 +123,10 @@ mod tests {
             .unwrap();
         assert_eq!(entries.len(), 2);
 
-        let user1 = entries.iter().find(|e| e.broadcaster_id == "user1").unwrap();
+        let user1 = entries
+            .iter()
+            .find(|e| e.broadcaster_id == "user1")
+            .unwrap();
         assert_eq!(user1.last_broadcast_at, "2025-01-15T10:00:00Z");
     }
 
@@ -135,9 +139,7 @@ mod tests {
         db.upsert_broadcast_cache("user1", "2025-01-16T12:00:00Z", 2000)
             .unwrap();
 
-        let entries = db
-            .get_broadcast_cache(&["user1".to_string()])
-            .unwrap();
+        let entries = db.get_broadcast_cache(&["user1".to_string()]).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].last_broadcast_at, "2025-01-16T12:00:00Z");
         assert_eq!(entries[0].updated_at, 2000);
