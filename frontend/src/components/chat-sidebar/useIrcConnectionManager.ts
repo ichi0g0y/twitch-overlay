@@ -13,7 +13,8 @@ import {
 import { useIrcSocketLifecycle } from './useIrcSocketLifecycle';
 
 export const useIrcConnectionManager = ({
-  ircChannels,
+  activeCustomIrcChannels,
+  enablePrimaryConnection,
   primaryCredentialRefreshTick,
   setPrimaryChannelLogin,
   setConnectingChannels,
@@ -29,7 +30,8 @@ export const useIrcConnectionManager = ({
   persistIrcMessage,
   hydrateIrcUserProfile,
 }: {
-  ircChannels: string[];
+  activeCustomIrcChannels: string[];
+  enablePrimaryConnection: boolean;
   primaryCredentialRefreshTick: number;
   setPrimaryChannelLogin: React.Dispatch<React.SetStateAction<string>>;
   setConnectingChannels: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -73,6 +75,15 @@ export const useIrcConnectionManager = ({
     let cancelled = false;
 
     const ensurePrimaryIrcConnection = async () => {
+      const primaryKeys = Array.from(ircConnectionsRef.current.keys())
+        .filter((key) => key.startsWith(PRIMARY_IRC_CONNECTION_PREFIX));
+      if (!enablePrimaryConnection) {
+        setPrimaryChannelLogin('');
+        for (const key of primaryKeys) {
+          stopIrcConnection(key);
+        }
+        return;
+      }
       if (primaryConnectionRefreshInFlightRef.current) return;
       primaryConnectionRefreshInFlightRef.current = true;
 
@@ -81,8 +92,6 @@ export const useIrcConnectionManager = ({
         if (cancelled) return;
 
         const login = normalizeTwitchChannelName(credentials.login ?? '');
-        const primaryKeys = Array.from(ircConnectionsRef.current.keys())
-          .filter((key) => key.startsWith(PRIMARY_IRC_CONNECTION_PREFIX));
 
         if (!login) {
           setPrimaryChannelLogin('');
@@ -121,6 +130,7 @@ export const useIrcConnectionManager = ({
       cancelled = true;
     };
   }, [
+    enablePrimaryConnection,
     ircConnectionsRef,
     primaryCredentialRefreshTick,
     resolveIrcCredentials,
@@ -130,8 +140,8 @@ export const useIrcConnectionManager = ({
   ]);
 
   useEffect(() => {
-    const expected = new Set(ircChannels);
-    for (const channel of ircChannels) {
+    const expected = new Set(activeCustomIrcChannels);
+    for (const channel of activeCustomIrcChannels) {
       if (!ircConnectionsRef.current.has(channel)) {
         startIrcConnection(channel);
       }
@@ -143,7 +153,12 @@ export const useIrcConnectionManager = ({
         stopIrcConnection(channel);
       }
     }
-  }, [ircChannels, ircConnectionsRef, startIrcConnection, stopIrcConnection]);
+  }, [
+    activeCustomIrcChannels,
+    ircConnectionsRef,
+    startIrcConnection,
+    stopIrcConnection,
+  ]);
 
   useEffect(() => {
     return () => {

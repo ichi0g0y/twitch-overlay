@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { readIrcChannels, subscribeIrcChannels } from '../../utils/chatChannels';
+import { MAX_IRC_CHANNELS, readIrcChannels, subscribeIrcChannels } from '../../utils/chatChannels';
 import { FollowedChannelsList } from './followed-rail/FollowedChannelsList';
 import { FollowedRailQuickMenu } from './followed-rail/FollowedRailQuickMenu';
 import type { FollowedChannelRailItem, FollowedChannelsRailProps } from './followed-rail/types';
@@ -25,7 +25,13 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   canStartRaid,
   chatWidth,
   chatPanel,
+  twitchUserId,
+  twitchAvatarUrl,
+  twitchDisplayName,
+  streamViewerCount,
+  selfViewerCountVisible,
   onSideChange,
+  onSelfViewerCountVisibleChange,
   onOpenOverlay,
   onOpenOverlayDebug,
   onOpenPresent,
@@ -172,9 +178,16 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   }, []);
 
   const connectChannel = useCallback((channel: FollowedChannelRailItem) => {
+    const normalized = (channel.broadcaster_login || '').trim().toLowerCase();
+    if (!normalized) return;
+    if (!ircConnectedChannels.includes(normalized) && ircConnectedChannels.length >= MAX_IRC_CHANNELS) {
+      setActionError(`IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`);
+      return;
+    }
+    setActionError('');
     onAddIrcPreview(channel.broadcaster_login);
     closeChannelMenu();
-  }, [closeChannelMenu, onAddIrcPreview]);
+  }, [closeChannelMenu, ircConnectedChannels, onAddIrcPreview]);
 
   const startShoutout = useCallback(async (channel: FollowedChannelRailItem) => {
     setActionError('');
@@ -219,9 +232,15 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
           <FollowedRailQuickMenu
             side={side}
             railMenuOpen={railMenuOpen}
+            twitchUserId={twitchUserId}
+            twitchAvatarUrl={twitchAvatarUrl}
+            twitchDisplayName={twitchDisplayName}
+            streamViewerCount={streamViewerCount}
+            selfViewerCountVisible={selfViewerCountVisible}
             onToggleMenu={() => setRailMenuOpen((prev) => !prev)}
             onCloseMenu={() => setRailMenuOpen(false)}
             onSideChange={onSideChange}
+            onSelfViewerCountVisibleChange={onSelfViewerCountVisibleChange}
             onOpenOverlay={onOpenOverlay}
             onOpenOverlayDebug={onOpenOverlayDebug}
             onOpenPresent={onOpenPresent}

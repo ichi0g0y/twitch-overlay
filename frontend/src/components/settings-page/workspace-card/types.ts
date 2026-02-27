@@ -99,14 +99,20 @@ export type PortalRect = {
 
 export type WorkspacePreviewHeader = {
   channelLogin: string;
+  channelDisplayName: string;
   statusLabel: string;
+  streamTitle: string | null;
   statusClassName: string;
   warningMessage: string | null;
   isLinkedChatTab: boolean;
 };
 
+export type RemoveWorkspaceCardOptions = {
+  disconnectIrcChannel?: boolean;
+};
+
 export type WorkspaceRenderContextValue = {
-  removeCard: (id: string) => void;
+  removeCard: (id: string, options?: RemoveWorkspaceCardOptions) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (id: string) => void;
   isPreviewViewportExpanded: (id: string) => boolean;

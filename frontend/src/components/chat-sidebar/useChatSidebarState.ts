@@ -9,6 +9,7 @@ import type {
   ChatDisplayMode,
   ChatDisplayModeByTab,
   ChatUserProfileDetail,
+  EmoteInfoPopupState,
   IrcConnection,
   IrcParticipant,
   IrcUserProfile,
@@ -63,9 +64,6 @@ export const useChatSidebarState = ({
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [resizing, setResizing] = useState(false);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
-  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const actionsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const actionsMenuPanelRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +71,8 @@ export const useChatSidebarState = ({
   const [channelInput, setChannelInput] = useState('');
   const [channelInputError, setChannelInputError] = useState('');
   const [embedReloadNonceByTab, setEmbedReloadNonceByTab] = useState<Record<string, number>>({});
+  const [loadedEmbedTabIds, setLoadedEmbedTabIds] = useState<Record<string, true>>({});
+  const [loadedCustomTabIds, setLoadedCustomTabIds] = useState<Record<string, true>>({});
 
   const richInputRef = useRef<RichChatInputRef | null>(null);
   const postingMessageLockRef = useRef(false);
@@ -82,6 +82,7 @@ export const useChatSidebarState = ({
   const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
   const [chattersOpen, setChattersOpen] = useState(false);
   const [userInfoPopup, setUserInfoPopup] = useState<UserInfoPopupState | null>(null);
+  const [emoteInfoPopup, setEmoteInfoPopup] = useState<EmoteInfoPopupState | null>(null);
   const [rawDataMessage, setRawDataMessage] = useState<ChatMessage | null>(null);
   const [userInfoProfile, setUserInfoProfile] = useState<ChatUserProfileDetail | null>(null);
   const [userInfoLoading, setUserInfoLoading] = useState(false);
@@ -136,10 +137,6 @@ export const useChatSidebarState = ({
     resizing,
     setResizing,
     resizeStateRef,
-    settingsOpen,
-    setSettingsOpen,
-    settingsButtonRef,
-    settingsPanelRef,
     actionsMenuOpen,
     setActionsMenuOpen,
     actionsMenuButtonRef,
@@ -152,6 +149,10 @@ export const useChatSidebarState = ({
     setChannelInputError,
     embedReloadNonceByTab,
     setEmbedReloadNonceByTab,
+    loadedEmbedTabIds,
+    setLoadedEmbedTabIds,
+    loadedCustomTabIds,
+    setLoadedCustomTabIds,
     richInputRef,
     postingMessageLockRef,
     inputHasContent,
@@ -166,6 +167,8 @@ export const useChatSidebarState = ({
     setChattersOpen,
     userInfoPopup,
     setUserInfoPopup,
+    emoteInfoPopup,
+    setEmoteInfoPopup,
     rawDataMessage,
     setRawDataMessage,
     userInfoProfile,

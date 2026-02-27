@@ -11,6 +11,7 @@ pub struct ChatMessage {
     pub badge_keys: Vec<String>,
     pub fragments_json: String,
     pub avatar_url: String,
+    pub color: String,
     pub translation_text: String,
     pub translation_status: String,
     pub translation_lang: String,
@@ -23,6 +24,7 @@ pub struct ChatUserProfile {
     pub username: String,
     pub display_name: String,
     pub avatar_url: String,
+    pub color: String,
     pub updated_at: i64,
 }
 
@@ -38,6 +40,7 @@ pub struct IrcChatMessage {
     pub badge_keys: Vec<String>,
     pub fragments_json: String,
     pub avatar_url: String,
+    pub color: String,
     pub created_at: i64,
 }
 

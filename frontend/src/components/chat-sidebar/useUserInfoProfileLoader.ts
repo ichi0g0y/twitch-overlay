@@ -41,7 +41,6 @@ export const useUserInfoProfileLoader = ({
       setUserModerationMessage('');
       return;
     }
-
     const userId = (userInfoPopup.message.userId || '').trim();
     const loginHint = (userInfoPopup.message.username || '').trim().toLowerCase();
     if (!userId && !loginHint) {
@@ -56,14 +55,16 @@ export const useUserInfoProfileLoader = ({
     const ttl = cached?.profile.followerCount == null
       ? USER_PROFILE_CACHE_INCOMPLETE_TTL_MS
       : USER_PROFILE_CACHE_TTL_MS;
+    const hasCachedSnapshot = !!cached;
     const hasFreshCache = !!(cached && (Date.now() - cached.fetchedAt) <= ttl);
     if (hasFreshCache && cached) {
       setUserInfoProfile(cached.profile);
-      setUserInfoLoading(true);
-    } else {
-      setUserInfoProfile(null);
-      setUserInfoLoading(true);
+      setUserInfoLoading(false);
+      setUserInfoError('');
+      return;
     }
+    setUserInfoProfile(cached?.profile ?? null);
+    setUserInfoLoading(true);
 
     let cancelled = false;
     const seq = ++userInfoFetchSeqRef.current;
@@ -78,7 +79,7 @@ export const useUserInfoProfileLoader = ({
             user_id: userId || undefined,
             username: userInfoPopup.message.username || undefined,
             login: userInfoPopup.message.username || undefined,
-            force_refresh: true,
+            force_refresh: false,
           }),
         });
         if (!response.ok) {
@@ -122,7 +123,7 @@ export const useUserInfoProfileLoader = ({
         }
         console.error('[ChatSidebar] Failed to load user profile detail:', error);
         setUserInfoLoading(false);
-        setUserInfoError(hasFreshCache ? '最新情報の再取得に失敗しました。' : 'プロフィール取得に失敗しました。');
+        setUserInfoError(hasCachedSnapshot ? '最新情報の再取得に失敗しました。' : 'プロフィール取得に失敗しました。');
       }
     };
 

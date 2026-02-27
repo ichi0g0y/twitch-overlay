@@ -1,5 +1,7 @@
+import { useContext } from 'react';
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from '../../ui/button';
+import { WorkspaceCardUiContext } from '../../ui/collapsible-card';
 import type { ManagerToolbarProps } from './types';
 
 const ManagerToolbar = ({
@@ -13,6 +15,9 @@ const ManagerToolbar = ({
   onDeleteAllClick,
   onNewPlaylistNameChange,
 }: ManagerToolbarProps) => {
+  const workspaceUi = useContext(WorkspaceCardUiContext);
+  const isNodeMode = workspaceUi?.nodeMode;
+
   return (
     <>
       <div className="mb-6 flex justify-between">
@@ -28,12 +33,22 @@ const ManagerToolbar = ({
           </Button>
         </div>
 
-        {tracksCount > 0 && (
+        {tracksCount > 0 && (isNodeMode ? (
+          <Button
+            onClick={onDeleteAllClick}
+            variant="outline"
+            size="sm"
+            className="nodrag"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            すべて削除
+          </Button>
+        ) : (
           <Button onClick={onDeleteAllClick} variant="destructive" size="sm">
             <Trash2 className="mr-2 h-4 w-4" />
             すべて削除
           </Button>
-        )}
+        ))}
       </div>
 
       {isCreatingPlaylist && (

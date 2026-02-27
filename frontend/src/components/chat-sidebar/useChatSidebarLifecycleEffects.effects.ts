@@ -19,28 +19,11 @@ import {
 } from './utils';
 
 export const useChatSidebarMenuEffects = ({
-  settingsOpen,
-  settingsPanelRef,
-  settingsButtonRef,
-  setSettingsOpen,
   actionsMenuOpen,
   actionsMenuPanelRef,
   actionsMenuButtonRef,
   setActionsMenuOpen,
 }: UseChatSidebarLifecycleEffectsParams) => {
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (settingsPanelRef.current?.contains(target)) return;
-      if (settingsButtonRef.current?.contains(target)) return;
-      setSettingsOpen(false);
-    };
-    window.addEventListener('mousedown', handleClick);
-    return () => window.removeEventListener('mousedown', handleClick);
-  }, [setSettingsOpen, settingsButtonRef, settingsOpen, settingsPanelRef]);
-
   useEffect(() => {
     if (!actionsMenuOpen) return;
     const handleClick = (event: MouseEvent) => {
@@ -58,6 +41,7 @@ export const useChatSidebarMenuEffects = ({
 export const useChatSidebarChannelEffects = ({
   setPrimaryMessages,
   ircChannels,
+  ircHistoryChannels,
   setIrcChannels,
   setIrcMessagesByChannel,
   hydrateIrcUserProfile,
@@ -81,7 +65,7 @@ export const useChatSidebarChannelEffects = ({
   }, [setIrcChannels]);
 
   useIrcHistoryLoader({
-    ircChannels,
+    ircChannels: ircHistoryChannels,
     setIrcMessagesByChannel,
     hydrateIrcUserProfile,
   });
@@ -148,8 +132,10 @@ export const useChatSidebarPopupEffects = ({
   activeTab,
   isCollapsed,
   userInfoPopup,
+  emoteInfoPopup,
   rawDataMessage,
   setUserInfoPopup,
+  setEmoteInfoPopup,
   setRawDataMessage,
   setUserInfoIdCopied,
   userInfoIdCopiedTimerRef,
@@ -165,10 +151,11 @@ export const useChatSidebarPopupEffects = ({
   applyResolvedUserProfile,
 }: UseChatSidebarLifecycleEffectsParams) => {
   useEffect(() => {
-    if (!userInfoPopup && !rawDataMessage) return;
+    if (!userInfoPopup && !emoteInfoPopup && !rawDataMessage) return;
     setUserInfoPopup(null);
+    setEmoteInfoPopup(null);
     setRawDataMessage(null);
-  }, [activeTab, isCollapsed, rawDataMessage, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
+  }, [activeTab, isCollapsed, setEmoteInfoPopup, setRawDataMessage, setUserInfoPopup]);
 
   useEffect(() => {
     setUserInfoIdCopied(false);
@@ -213,25 +200,27 @@ export const useChatSidebarPopupEffects = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!userInfoPopup && !rawDataMessage) return;
+    if (!userInfoPopup && !emoteInfoPopup && !rawDataMessage) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setUserInfoPopup(null);
+        setEmoteInfoPopup(null);
         setRawDataMessage(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [rawDataMessage, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
+  }, [emoteInfoPopup, rawDataMessage, setEmoteInfoPopup, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
 };
 
 export const useChatSidebarModeEffects = ({
   isCollapsed,
   setChattersOpen,
   activeChatDisplayMode,
+  setActionsMenuOpen,
   setUserInfoPopup,
+  setEmoteInfoPopup,
   setRawDataMessage,
-  setSettingsOpen,
   setChannelEditorOpen,
 }: UseChatSidebarLifecycleEffectsParams) => {
   useEffect(() => {
@@ -244,15 +233,17 @@ export const useChatSidebarModeEffects = ({
     if (activeChatDisplayMode !== 'embed') return;
     setChattersOpen(false);
     setUserInfoPopup(null);
+    setEmoteInfoPopup(null);
     setRawDataMessage(null);
-    setSettingsOpen(false);
+    setActionsMenuOpen(false);
     setChannelEditorOpen(false);
   }, [
     activeChatDisplayMode,
+    setActionsMenuOpen,
     setChannelEditorOpen,
     setChattersOpen,
+    setEmoteInfoPopup,
     setRawDataMessage,
-    setSettingsOpen,
     setUserInfoPopup,
   ]);
 };

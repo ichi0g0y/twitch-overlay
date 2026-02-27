@@ -4,21 +4,19 @@ import type {
   CachedUserProfileDetail,
   ChatDisplayModeByTab,
   ChatUserProfileDetail,
+  EmoteInfoPopupState,
   MessageOrderReversedByTab,
   UserInfoPopupState,
 } from './types';
 
 export type UseChatSidebarLifecycleEffectsParams = {
-  settingsOpen: boolean;
-  settingsPanelRef: React.MutableRefObject<HTMLDivElement | null>;
-  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
-  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   actionsMenuOpen: boolean;
   actionsMenuPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   actionsMenuButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
   setActionsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPrimaryMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   ircChannels: string[];
+  ircHistoryChannels: string[];
   setIrcChannels: React.Dispatch<React.SetStateAction<string[]>>;
   setIrcMessagesByChannel: React.Dispatch<React.SetStateAction<Record<string, ChatMessage[]>>>;
   hydrateIrcUserProfile: (userId?: string, usernameHint?: string) => Promise<void>;
@@ -33,9 +31,11 @@ export type UseChatSidebarLifecycleEffectsParams = {
   } | null;
   lastHandledActiveTabRequestIdRef: React.MutableRefObject<number | null>;
   userInfoPopup: UserInfoPopupState | null;
+  emoteInfoPopup: EmoteInfoPopupState | null;
   rawDataMessage: ChatMessage | null;
   isCollapsed: boolean;
   setUserInfoPopup: React.Dispatch<React.SetStateAction<UserInfoPopupState | null>>;
+  setEmoteInfoPopup: React.Dispatch<React.SetStateAction<EmoteInfoPopupState | null>>;
   setRawDataMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>;
   setUserInfoIdCopied: React.Dispatch<React.SetStateAction<boolean>>;
   userInfoIdCopiedTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;

@@ -8,6 +8,8 @@ export const SIDEBAR_MAX_FONT_SIZE = 40;
 export const SIDEBAR_DEFAULT_FONT_SIZE = 14;
 export const FOLLOWED_RAIL_SIDE_STORAGE_KEY =
   "settings.followed_channels.side";
+export const FOLLOWED_RAIL_SELF_VIEWER_COUNT_VISIBLE_STORAGE_KEY =
+  "settings.followed_channels.self_viewer_count.visible";
 export const FOLLOWED_RAIL_POLL_INTERVAL_MS = 60_000;
 export const FOLLOWED_RAIL_FETCH_LIMIT = 50;
 export const WORKSPACE_FLOW_STORAGE_KEY = "settings.workspace.reactflow.v1";

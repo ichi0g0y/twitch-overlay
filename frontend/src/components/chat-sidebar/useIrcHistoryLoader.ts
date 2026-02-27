@@ -34,13 +34,15 @@ export const useIrcHistoryLoader = ({
         if (!Array.isArray(rawMessages) || cancelled) return;
 
         const history: ChatMessage[] = rawMessages
-          .map((item: any) => ({
+          .map<ChatMessage>((item: any) => ({
             id: item.id ? String(item.id) : `${channel}-${item.message_id || item.messageId || Date.now()}`,
             messageId: item.messageId ?? item.message_id,
             userId: item.userId ?? item.user_id,
             username: item.username || '',
             displayName: item.displayName ?? item.display_name,
             message: item.message || '',
+            color: item.color,
+            chatSource: 'irc',
             badgeKeys: Array.isArray(item.badge_keys)
               ? item.badge_keys.filter((value: unknown): value is string => typeof value === 'string')
               : undefined,

@@ -147,6 +147,7 @@ export interface StreamStatus {
   is_live: boolean;
   started_at?: string;
   viewer_count: number;
+  title?: string | null;
   last_checked: string;
   duration_seconds?: number;
 }

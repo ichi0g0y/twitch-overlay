@@ -6,6 +6,8 @@ export interface Fragment {
   text: string;
   emoteId?: string;
   emoteUrl?: string;
+  emoteOwnerId?: string;
+  emoteSetId?: string;
 }
 
 /**

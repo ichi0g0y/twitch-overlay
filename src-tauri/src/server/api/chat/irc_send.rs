@@ -120,6 +120,7 @@ async fn post_twitch_chat_via_irc_channel(
         Some(&sender_login),
         Some(&identity.sender_user.display_name),
         Some(&identity.sender_user.profile_image_url),
+        None,
         &message,
         Vec::new(),
         json!([{ "type": "text", "text": message }]),
@@ -127,4 +128,3 @@ async fn post_twitch_chat_via_irc_channel(
     )
     .await
 }
-

@@ -16,7 +16,7 @@ type UseWorkspaceEffectsParams = {
   deactivatePreviewInteraction: () => void;
   previewInteractionKind: WorkspaceCardKind | null;
   nodes: WorkspaceCardNode[];
-  workspaceShellRef: RefObject<HTMLDivElement | null>;
+  workspaceShellRef: RefObject<HTMLDivElement>;
   collapseExpandedPreviewViewport: () => void;
   panActivationKeyCode: string;
   zoomActivationKeyCode: string;

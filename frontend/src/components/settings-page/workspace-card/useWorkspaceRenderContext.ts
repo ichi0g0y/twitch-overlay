@@ -6,12 +6,14 @@ import type {
   StreamStatus,
   TwitchUserInfo,
 } from "../../../types";
+import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import {
   createPreviewHeaderResolver,
   createWorkspaceCardRenderer,
 } from "./renderers";
 import { isCollapsibleCardNodeKind, resolveWorkspaceCardMinSize } from "./node";
 import type {
+  RemoveWorkspaceCardOptions,
   WorkspaceCardKind,
   WorkspaceRenderContextValue,
 } from "./types";
@@ -28,12 +30,12 @@ type UseWorkspaceRenderContextParams = {
   getSettingValue: (key: string) => string;
   handleSettingChange: (
     key: string,
-    value: string,
+    value: string | boolean | number,
     saveImmediately?: boolean,
   ) => void;
   getBooleanValue: (key: string) => boolean;
   streamStatus: StreamStatus | null;
-  fileInputRef: RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement>;
   uploadingFont: boolean;
   handleFontUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   previewText: string;
@@ -46,8 +48,12 @@ type UseWorkspaceRenderContextParams = {
   contextValue: SettingsPageValue;
   previewReloadNonceByKind: Record<string, number>;
   activeChatSidebarTabId: string;
+  followedChannels: FollowedChannelRailItem[];
   previewWarningByKind: Partial<Record<WorkspaceCardKind, string>>;
-  removeWorkspaceCard: (nodeId: string) => void;
+  removeWorkspaceCard: (
+    nodeId: string,
+    options?: RemoveWorkspaceCardOptions,
+  ) => void;
   refreshPreview: (kind: WorkspaceCardKind) => void;
   togglePreviewViewportExpand: (
     id: string,
@@ -82,6 +88,7 @@ export const useWorkspaceRenderContext = ({
   contextValue,
   previewReloadNonceByKind,
   activeChatSidebarTabId,
+  followedChannels,
   previewWarningByKind,
   removeWorkspaceCard,
   refreshPreview,
@@ -148,10 +155,12 @@ export const useWorkspaceRenderContext = ({
         activeChatSidebarTabId,
         twitchUserInfo,
         streamStatus,
+        followedChannels,
         previewWarningByKind,
       }),
     [
       activeChatSidebarTabId,
+      followedChannels,
       previewWarningByKind,
       streamStatus,
       twitchUserInfo,

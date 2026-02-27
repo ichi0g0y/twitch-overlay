@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS chat_users (
     username TEXT NOT NULL DEFAULT '',
     display_name TEXT NOT NULL DEFAULT '',
     avatar_url TEXT NOT NULL DEFAULT '',
+    chat_color TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL DEFAULT 0
 );
 

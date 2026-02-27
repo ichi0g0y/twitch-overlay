@@ -1,7 +1,9 @@
 import { ChattersPanel } from '../ChattersPanel';
+import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import { ChatSidebarMainPanel } from './ChatSidebarMainPanel';
 import { ChatSidebarTabs } from './ChatSidebarTabs';
 import { ChatSidebarToolbar } from './ChatSidebarToolbar';
+import { EmoteInfoModal } from './EmoteInfoModal';
 import { RawDataModal } from './RawDataModal';
 import { UserInfoModal } from './UserInfoModal';
 import type { ChatSidebarLayoutProps } from './ChatSidebarLayout.types';
@@ -21,13 +23,13 @@ export const ChatSidebarLayout = ({
   chattersOpen,
   channelEditorOpen,
   actionsMenuOpen,
-  settingsOpen,
   popoutChatUrl,
   toggleIcon,
   fontSize,
   translationEnabled,
   notificationOverwrite,
   onEnsureIrcPreview,
+  hasPreviewForTab,
   setChannelEditorOpen,
   setChannelInputError,
   setMessageOrderReversedByTab,
@@ -35,14 +37,11 @@ export const ChatSidebarLayout = ({
   setActiveChatDisplayMode,
   setActionsMenuOpen,
   setEmbedReloadNonceByTab,
-  setSettingsOpen,
   handleOpenChatPopout,
   onFontSizeChange,
   onTranslationToggle,
   onNotificationModeToggle,
   handleToggle,
-  settingsButtonRef,
-  settingsPanelRef,
   actionsMenuButtonRef,
   actionsMenuPanelRef,
   tabScrollerRef,
@@ -52,6 +51,7 @@ export const ChatSidebarLayout = ({
   channelInput,
   channelInputError,
   setActiveTab,
+  setIrcChannels,
   handleRemoveChannel,
   setChannelInput,
   handleAddChannel,
@@ -64,6 +64,7 @@ export const ChatSidebarLayout = ({
   metaFontSize,
   translationFontSize,
   handleOpenUserInfo,
+  handleOpenEmoteInfo,
   handleOpenRawData,
   resolveBadgeVisual,
   richInputRef,
@@ -78,7 +79,9 @@ export const ChatSidebarLayout = ({
   inputHasContent,
   fallbackChatters,
   userInfoPopup,
+  emoteInfoPopup,
   handleCloseUserInfo,
+  handleCloseEmoteInfo,
   popupChannelUrl,
   popupChannelLogin,
   popupProfileCover,
@@ -106,6 +109,8 @@ export const ChatSidebarLayout = ({
   copyRawDataJson,
   handleCloseRawData,
 }: ChatSidebarLayoutProps) => {
+  const ircChannelCount = tabs.filter((tab) => tab.id !== PRIMARY_CHAT_TAB_ID).length;
+
   return (
     <aside className={asideClass} style={embedded ? undefined : sidebarStyle}>
       <div className={wrapperClass} style={embedded ? undefined : sidebarStyle}>
@@ -127,10 +132,10 @@ export const ChatSidebarLayout = ({
                 activeTab={activeTab}
                 activeChatDisplayMode={activeChatDisplayMode}
                 messageOrderReversed={messageOrderReversed}
+                ircChannelCount={ircChannelCount}
                 chattersOpen={chattersOpen}
                 channelEditorOpen={channelEditorOpen}
                 actionsMenuOpen={actionsMenuOpen}
-                settingsOpen={settingsOpen}
                 popoutChatUrl={popoutChatUrl}
                 embedded={embedded}
                 isCollapsed={isCollapsed}
@@ -139,6 +144,7 @@ export const ChatSidebarLayout = ({
                 translationEnabled={translationEnabled}
                 notificationOverwrite={notificationOverwrite}
                 onEnsureIrcPreview={onEnsureIrcPreview}
+                hasPreviewForTab={hasPreviewForTab}
                 setChannelEditorOpen={setChannelEditorOpen}
                 setChannelInputError={setChannelInputError}
                 setMessageOrderReversedByTab={setMessageOrderReversedByTab}
@@ -146,14 +152,11 @@ export const ChatSidebarLayout = ({
                 setActiveChatDisplayMode={setActiveChatDisplayMode}
                 setActionsMenuOpen={setActionsMenuOpen}
                 setEmbedReloadNonceByTab={setEmbedReloadNonceByTab}
-                setSettingsOpen={setSettingsOpen}
                 onOpenChatPopout={handleOpenChatPopout}
                 onFontSizeChange={onFontSizeChange}
                 onTranslationToggle={onTranslationToggle}
                 onNotificationModeToggle={onNotificationModeToggle}
                 onToggleSidebar={handleToggle}
-                settingsButtonRef={settingsButtonRef}
-                settingsPanelRef={settingsPanelRef}
                 actionsMenuButtonRef={actionsMenuButtonRef}
                 actionsMenuPanelRef={actionsMenuPanelRef}
               />
@@ -167,6 +170,7 @@ export const ChatSidebarLayout = ({
                 channelInput={channelInput}
                 channelInputError={channelInputError}
                 setActiveTab={setActiveTab}
+                setIrcChannels={setIrcChannels}
                 handleRemoveChannel={handleRemoveChannel}
                 setChannelInput={setChannelInput}
                 setChannelInputError={setChannelInputError}
@@ -178,6 +182,7 @@ export const ChatSidebarLayout = ({
             isCollapsed={isCollapsed}
             onToggleSidebar={handleToggle}
             activeChatDisplayMode={activeChatDisplayMode}
+            messageOrderReversed={messageOrderReversed}
             embedFrames={embedFrames}
             activeTab={activeTab}
             activeEmbedFrame={activeEmbedFrame}
@@ -189,6 +194,7 @@ export const ChatSidebarLayout = ({
             metaFontSize={metaFontSize}
             translationFontSize={translationFontSize}
             onOpenUserInfo={handleOpenUserInfo}
+            onOpenEmoteInfo={handleOpenEmoteInfo}
             onOpenRawData={handleOpenRawData}
             resolveBadgeVisual={resolveBadgeVisual}
             richInputRef={richInputRef}
@@ -234,6 +240,11 @@ export const ChatSidebarLayout = ({
             userInfoCreatedAtLabel={userInfoCreatedAtLabel}
             userInfoFollowerCountLabel={userInfoFollowerCountLabel}
             userInfoTypeLabel={userInfoTypeLabel}
+          />
+          <EmoteInfoModal
+            open={Boolean(emoteInfoPopup) && !isCollapsed && activeChatDisplayMode !== 'embed'}
+            emoteInfoPopup={emoteInfoPopup}
+            onClose={handleCloseEmoteInfo}
           />
           <RawDataModal
             open={Boolean(rawDataMessage) && activeChatDisplayMode !== 'embed'}

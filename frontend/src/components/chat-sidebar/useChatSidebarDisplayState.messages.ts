@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type React from 'react';
 import { PRIMARY_CHAT_TAB_ID, normalizeTwitchChannelName } from '../../utils/chatChannels';
 import type { ChattersPanelChatter } from '../ChattersPanel';
@@ -81,29 +81,6 @@ export const buildDisplayedItems = (messages: ChatMessage[]): ChatDisplayItem[] 
   return items;
 };
 
-export const useAutoScrollMessages = ({
-  isCollapsed,
-  listElement,
-  messageOrderReversed,
-  activeMessages,
-  activeTab,
-}: {
-  isCollapsed: boolean;
-  listElement: HTMLDivElement | null;
-  messageOrderReversed: boolean;
-  activeMessages: ChatMessage[];
-  activeTab: string;
-}) => {
-  useEffect(() => {
-    if (isCollapsed || !listElement) return;
-    if (messageOrderReversed) {
-      listElement.scrollTop = 0;
-      return;
-    }
-    listElement.scrollTop = listElement.scrollHeight;
-  }, [activeMessages, activeTab, isCollapsed, listElement, messageOrderReversed]);
-};
-
 export const useChatMessageDisplayState = ({
   activeTab,
   primaryMessages,
@@ -112,8 +89,6 @@ export const useChatMessageDisplayState = ({
   ircParticipantsByChannelRef,
   ircParticipantsVersion,
   messageOrderReversedByTab,
-  listElement,
-  isCollapsed,
 }: {
   activeTab: string;
   primaryMessages: ChatMessage[];
@@ -122,8 +97,6 @@ export const useChatMessageDisplayState = ({
   ircParticipantsByChannelRef: React.MutableRefObject<Record<string, Record<string, IrcParticipant>>>;
   ircParticipantsVersion: number;
   messageOrderReversedByTab: Record<string, boolean>;
-  listElement: HTMLDivElement | null;
-  isCollapsed: boolean;
 }) => {
   const activeMessages = useMemo(
     () => (activeTab === PRIMARY_CHAT_TAB_ID ? primaryMessages : (ircMessagesByChannel[activeTab] ?? [])),
@@ -163,14 +136,6 @@ export const useChatMessageDisplayState = ({
     () => (activeTabChannelLogin ? `https://www.twitch.tv/popout/${encodeURIComponent(activeTabChannelLogin)}/chat?popout=` : ''),
     [activeTabChannelLogin],
   );
-
-  useAutoScrollMessages({
-    isCollapsed,
-    listElement,
-    messageOrderReversed,
-    activeMessages,
-    activeTab,
-  });
 
   return {
     activeMessages,

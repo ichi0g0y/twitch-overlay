@@ -48,6 +48,7 @@ impl Database {
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
+                        COALESCE(u.chat_color, '') AS color,
                         m.translation_text,
                         m.translation_status,
                         m.translation_lang,
@@ -71,6 +72,7 @@ impl Database {
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
+                        COALESCE(u.chat_color, '') AS color,
                         m.translation_text,
                         m.translation_status,
                         m.translation_lang,
@@ -99,10 +101,11 @@ impl Database {
                     )?,
                     fragments_json: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
                     avatar_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                    translation_text: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
-                    translation_status: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
-                    translation_lang: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
-                    created_at: row.get(12)?,
+                    color: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                    translation_text: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                    translation_status: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                    translation_lang: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
+                    created_at: row.get(13)?,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

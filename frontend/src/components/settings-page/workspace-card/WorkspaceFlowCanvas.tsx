@@ -16,7 +16,7 @@ import { WORKSPACE_NODE_TYPES } from "./WorkspaceCardNodeView";
 import type { WorkspaceCardNode } from "./types";
 
 type WorkspaceFlowCanvasProps = {
-  workspaceShellRef: RefObject<HTMLDivElement | null>;
+  workspaceShellRef: RefObject<HTMLDivElement>;
   topBarOffsets: { left: number; right: number };
   handleWorkspaceMouseMove: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleWorkspaceMouseLeave: () => void;

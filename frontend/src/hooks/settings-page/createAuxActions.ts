@@ -1,5 +1,4 @@
 import type React from 'react';
-import { useCallback } from 'react';
 import { toast } from 'sonner';
 import type { BluetoothDevice } from '../../types';
 import { buildApiUrl } from '../../utils/api';
@@ -47,7 +46,7 @@ export const createAuxActions = (deps: AuxActionDeps) => {
     setIsControlDisabled,
   } = deps;
 
-  const resolveExternalBaseUrl = useCallback((): string => {
+  const resolveExternalBaseUrl = (): string => {
     if (typeof window === 'undefined') {
       return `http://localhost:${webServerPort}`;
     }
@@ -56,9 +55,9 @@ export const createAuxActions = (deps: AuxActionDeps) => {
       return window.location.origin;
     }
     return `http://localhost:${webServerPort}`;
-  }, [webServerPort]);
+  };
 
-  const openExternal = useCallback((path: string) => {
+  const openExternal = (path: string) => {
     try {
       let base = resolveExternalBaseUrl();
       let targetPath = path;
@@ -71,7 +70,7 @@ export const createAuxActions = (deps: AuxActionDeps) => {
     } catch (error) {
       console.error('[openExternal] Failed:', error);
     }
-  }, [resolveExternalBaseUrl]);
+  };
 
   const handleOpenPresent = async () => {
     openExternal('/overlay/present');

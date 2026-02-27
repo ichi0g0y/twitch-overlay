@@ -184,6 +184,7 @@ pub async fn post_irc_message(
         body.username.as_deref(),
         body.display_name.as_deref(),
         body.avatar_url.as_deref(),
+        body.color.as_deref(),
         &message,
         badge_keys,
         fragments,
@@ -193,4 +194,3 @@ pub async fn post_irc_message(
 
     Ok(Json(json!({ "status": "ok", "message": ws_payload })))
 }
-

@@ -3,6 +3,7 @@ import { Magnet, Maximize2, Mouse, Settings2 } from "lucide-react";
 import type {
   Dispatch,
   FC,
+  MouseEvent as ReactMouseEvent,
   MutableRefObject,
   RefObject,
   SetStateAction,
@@ -52,6 +53,10 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
   zoomActivationKeyCode,
   previewPortalEnabled,
 }) => {
+  const preventMouseFocus = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
+
   return (
     <>
       <div
@@ -83,6 +88,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
       >
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() => {
             collapseExpandedPreviewViewport();
             void workspaceFlowInstanceRef.current?.zoomIn({ duration: 120 });
@@ -95,6 +101,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
         </button>
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() => {
             collapseExpandedPreviewViewport();
             void workspaceFlowInstanceRef.current?.zoomOut({ duration: 120 });
@@ -107,6 +114,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
         </button>
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() => {
             collapseExpandedPreviewViewport();
             void workspaceFlowInstanceRef.current?.fitView({ duration: 150 });
@@ -119,6 +127,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
         </button>
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() => setWorkspaceSnapEnabled((current) => !current)}
           className={`inline-flex h-8 w-8 items-center justify-center border-b border-gray-700 hover:bg-gray-800 ${
             workspaceSnapEnabled ? "text-emerald-300" : "text-gray-400"
@@ -134,6 +143,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
         </button>
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() =>
             handleSettingChange(
               "WORKSPACE_SCROLL_MODE_ENABLED",
@@ -154,6 +164,7 @@ export const WorkspaceQuickControls: FC<WorkspaceQuickControlsProps> = ({
         </button>
         <button
           type="button"
+          onMouseDown={preventMouseFocus}
           onClick={() => setPanningSettingsOpen((current) => !current)}
           className={`inline-flex h-8 w-8 items-center justify-center hover:bg-gray-800 ${
             panningSettingsOpen ? "text-blue-300" : "text-gray-400"

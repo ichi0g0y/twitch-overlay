@@ -175,6 +175,7 @@ export const useIrcParticipantActions = ({
           username: message.username,
           display_name: message.displayName,
           avatar_url: message.avatarUrl,
+          color: message.color,
           message: message.message,
           badge_keys: message.badgeKeys,
           fragments: message.fragments ?? [{ type: 'text', text: message.message }],

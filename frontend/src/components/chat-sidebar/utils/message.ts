@@ -2,14 +2,34 @@ import type { ChatFragment, ChatMessage } from '../../ChatSidebarItem';
 import type { DateSeparatorInfo } from '../types';
 import { EMOTE_CDN_BASE, HISTORY_DAYS } from './constants';
 
-export const formatTime = (timestamp?: string) => {
+export const formatTime = (timestamp?: string, nowMs: number = Date.now()) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
+  const now = nowMs;
+  const diffMs = now - date.getTime();
+
+  if (diffMs < 0) {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  const diffSeconds = Math.floor(diffMs / 1000);
+  if (diffSeconds < 10) return 'たった今';
+  if (diffSeconds < 60) return `${diffSeconds}秒前`;
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+
   return date.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false,
   });
 };
@@ -80,6 +100,8 @@ const mergeChatMessage = (current: ChatMessage, incoming: ChatMessage): ChatMess
   username: current.username || incoming.username,
   displayName: current.displayName || incoming.displayName,
   message: current.message || incoming.message,
+  color: current.color || incoming.color,
+  chatSource: current.chatSource || incoming.chatSource,
   badgeKeys: mergeBadgeKeys(current.badgeKeys, incoming.badgeKeys),
   fragments: pickPreferredFragments(current.fragments, incoming.fragments),
   avatarUrl: current.avatarUrl || incoming.avatarUrl,
@@ -151,7 +173,26 @@ export const normalizeFragments = (raw: any): ChatFragment[] | undefined => {
           : emoteId
             ? emoteUrlFromId(emoteId)
             : undefined;
-      fragments.push({ type: 'emote', text, emoteId, emoteUrl });
+      const emoteOwnerIdRaw =
+        item.emoteOwnerId
+        ?? item.emote_owner_id
+        ?? item.owner_id
+        ?? item?.emote?.owner_id;
+      const emoteOwnerId = typeof emoteOwnerIdRaw === 'string'
+        ? emoteOwnerIdRaw.trim() || undefined
+        : typeof emoteOwnerIdRaw === 'number'
+          ? String(emoteOwnerIdRaw)
+          : undefined;
+      const emoteSetIdRaw =
+        item.emoteSetId
+        ?? item.emote_set_id
+        ?? item?.emote?.emote_set_id;
+      const emoteSetId = typeof emoteSetIdRaw === 'string'
+        ? emoteSetIdRaw.trim() || undefined
+        : typeof emoteSetIdRaw === 'number'
+          ? String(emoteSetIdRaw)
+          : undefined;
+      fragments.push({ type: 'emote', text, emoteId, emoteUrl, emoteOwnerId, emoteSetId });
       continue;
     }
 

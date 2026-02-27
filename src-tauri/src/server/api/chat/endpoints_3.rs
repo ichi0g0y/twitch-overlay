@@ -139,7 +139,7 @@ pub async fn get_user_profile_detail(
         }
     }
 
-    let (username, _display_name, avatar_url) =
+    let (username, _display_name, avatar_url, _color) =
         resolve_chat_user_profile(&state, &resolved_user_id, body.username.as_deref(), force_refresh)
             .await?;
     if twitch_profile.is_none() {
@@ -236,4 +236,3 @@ pub async fn get_user_profile_detail(
         moderation_capabilities,
     )))
 }
-

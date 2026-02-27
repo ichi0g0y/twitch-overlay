@@ -35,14 +35,17 @@ export const buildTabs = ({
 export const buildEmbedFrames = ({
   tabs,
   embedReloadNonceByTab,
+  loadedEmbedTabIds,
   twitchParentDomain,
   resolveTabChannelLogin,
 }: {
   tabs: DisplayTab[];
   embedReloadNonceByTab: Record<string, number>;
+  loadedEmbedTabIds: Record<string, true>;
   twitchParentDomain: string;
   resolveTabChannelLogin: (tabId: string) => string;
 }): EmbedFrame[] => tabs
+  .filter((tab) => loadedEmbedTabIds[tab.id] === true)
   .map((tab) => {
     const channelLogin = resolveTabChannelLogin(tab.id);
     if (!channelLogin) return null;
@@ -80,6 +83,7 @@ export const useTabEmbedDisplayState = ({
   channelDisplayNames,
   tabDisplayNamesByChannel,
   embedReloadNonceByTab,
+  loadedEmbedTabIds,
   resolveTabChannelLogin,
   tabScroller,
   activeButton,
@@ -89,6 +93,7 @@ export const useTabEmbedDisplayState = ({
   channelDisplayNames: Record<string, string>;
   tabDisplayNamesByChannel: Record<string, string>;
   embedReloadNonceByTab: Record<string, number>;
+  loadedEmbedTabIds: Record<string, true>;
   resolveTabChannelLogin: (tabId: string) => string;
   tabScroller: HTMLDivElement | null;
   activeButton: HTMLButtonElement | null;
@@ -99,8 +104,14 @@ export const useTabEmbedDisplayState = ({
   );
   const twitchParentDomain = useMemo(() => getTwitchParentDomain(), []);
   const embedFrames = useMemo(
-    () => buildEmbedFrames({ tabs, embedReloadNonceByTab, twitchParentDomain, resolveTabChannelLogin }),
-    [embedReloadNonceByTab, resolveTabChannelLogin, tabs, twitchParentDomain],
+    () => buildEmbedFrames({
+      tabs,
+      embedReloadNonceByTab,
+      loadedEmbedTabIds,
+      twitchParentDomain,
+      resolveTabChannelLogin,
+    }),
+    [embedReloadNonceByTab, loadedEmbedTabIds, resolveTabChannelLogin, tabs, twitchParentDomain],
   );
   const activeEmbedFrame = useMemo(
     () => embedFrames.find((frame) => frame.tabId === activeTab) ?? null,

@@ -3,6 +3,7 @@ import type { Viewport } from "@xyflow/react";
 import { PRIMARY_CHAT_TAB_ID } from "../../../utils/chatChannels";
 import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import {
+  FOLLOWED_RAIL_SELF_VIEWER_COUNT_VISIBLE_STORAGE_KEY,
   FOLLOWED_RAIL_SIDE_STORAGE_KEY,
   SIDEBAR_DEFAULT_FONT_SIZE,
   SIDEBAR_DEFAULT_WIDTH,
@@ -30,6 +31,8 @@ type ChatSidebarActiveTabRequest = { tabId: string; requestId: number } | null;
 export type WorkspaceLocalState = {
   followedRailSide: "left" | "right";
   setFollowedRailSide: Dispatch<SetStateAction<"left" | "right">>;
+  followedRailSelfViewerCountVisible: boolean;
+  setFollowedRailSelfViewerCountVisible: Dispatch<SetStateAction<boolean>>;
   followedChannels: FollowedChannelRailItem[];
   setFollowedChannels: Dispatch<SetStateAction<FollowedChannelRailItem[]>>;
   followedChannelsLoading: boolean;
@@ -96,6 +99,16 @@ export const useWorkspaceLocalState = ({
       return stored === "left" ? "left" : "right";
     },
   );
+  const [
+    followedRailSelfViewerCountVisible,
+    setFollowedRailSelfViewerCountVisible,
+  ] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = window.localStorage.getItem(
+      FOLLOWED_RAIL_SELF_VIEWER_COUNT_VISIBLE_STORAGE_KEY,
+    );
+    return stored == null ? true : stored !== "false";
+  });
   const [followedChannels, setFollowedChannels] = useState<
     FollowedChannelRailItem[]
   >([]);
@@ -159,6 +172,8 @@ export const useWorkspaceLocalState = ({
   return {
     followedRailSide,
     setFollowedRailSide,
+    followedRailSelfViewerCountVisible,
+    setFollowedRailSelfViewerCountVisible,
     followedChannels,
     setFollowedChannels,
     followedChannelsLoading,

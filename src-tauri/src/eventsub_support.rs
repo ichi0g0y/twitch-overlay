@@ -215,12 +215,32 @@ pub fn to_legacy_fragments(fragments: &Value) -> Vec<Value> {
                 .and_then(|e| e.get("id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
+            let emote_owner_id = item
+                .get("emote")
+                .and_then(|e| e.get("owner_id"))
+                .and_then(|v| match v {
+                    Value::String(value) => Some(value.clone()),
+                    Value::Number(value) => Some(value.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let emote_set_id = item
+                .get("emote")
+                .and_then(|e| e.get("emote_set_id"))
+                .and_then(|v| match v {
+                    Value::String(value) => Some(value.clone()),
+                    Value::Number(value) => Some(value.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
             let url = format!("https://static-cdn.jtvnw.net/emoticons/v2/{id}/static/light/2.0");
             out.push(json!({
                 "type": "emote",
                 "text": text,
                 "emoteId": id,
                 "emoteUrl": url,
+                "emoteOwnerId": emote_owner_id,
+                "emoteSetId": emote_set_id,
             }));
         } else {
             out.push(json!({

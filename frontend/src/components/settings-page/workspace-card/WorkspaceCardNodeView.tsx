@@ -1,29 +1,15 @@
 import { NodeResizer, type NodeProps, type NodeTypes } from "@xyflow/react";
-import {
-  ExternalLink,
-  Maximize2,
-  Minimize2,
-  Mouse,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { ExternalLink, Maximize2, Minimize2, Mouse, RefreshCw, X } from "lucide-react";
 import { useContext, useRef, useState } from "react";
 import { WorkspaceCardUiContext } from "../../ui/collapsible-card";
-import {
-  PREVIEW_NODE_MIN_Z_INDEX,
-  PREVIEW_PORTAL_BASE_Z_INDEX,
-  PREVIEW_PORTAL_EXPANDED_Z_INDEX,
-} from "./constants";
+import { PREVIEW_NODE_MIN_Z_INDEX, PREVIEW_PORTAL_BASE_Z_INDEX, PREVIEW_PORTAL_EXPANDED_Z_INDEX } from "./constants";
 import { WORKSPACE_RENDER_CONTEXT } from "./context";
 import { usePreviewPortalRect, useWarningTooltip } from "./hooks";
+import { PreviewCloseConfirmDialog } from "./PreviewCloseConfirmDialog";
 import { WorkspaceCardPortals } from "./WorkspaceCardPortals";
 import type { WorkspaceCardNode } from "./types";
 
-const toFiniteNumber = (value: unknown, fallback: number) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return parsed;
-};
+const toFiniteNumber = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
   id,
@@ -37,28 +23,20 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
 
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isPreviewCloseDialogOpen, setIsPreviewCloseDialogOpen] = useState(false);
   const previewContentHostRef = useRef<HTMLDivElement | null>(null);
   const { warningTooltip, hideWarningTooltip, showWarningTooltip } =
     useWarningTooltip();
 
   const cardAsNode = renderContext.isCollapsibleCardNodeKind(data.kind);
-  const previewHeader = cardAsNode
-    ? null
-    : renderContext.resolvePreviewHeader(data.kind);
+  const previewHeader = cardAsNode ? null : renderContext.resolvePreviewHeader(data.kind);
   const minSize = renderContext.resolveCardMinSize(data.kind);
   const showResizeHandles = selected || isHovered || isResizing;
   const isNodeInteractionLocked = isResizing || Boolean(dragging);
-  const nodeInteractionClassName = isResizing
-    ? "pointer-events-none select-none"
-    : "";
+  const nodeInteractionClassName = isResizing ? "pointer-events-none select-none" : "";
   const isPreviewViewportExpanded = renderContext.isPreviewViewportExpanded(id);
-  const previewPortalZIndex = isPreviewViewportExpanded
-    ? PREVIEW_PORTAL_EXPANDED_Z_INDEX
-    : PREVIEW_PORTAL_BASE_Z_INDEX +
-      toFiniteNumber(zIndex, PREVIEW_NODE_MIN_Z_INDEX);
-  const previewInteractionEnabled = previewHeader
-    ? renderContext.isPreviewInteractionEnabled(data.kind)
-    : true;
+  const previewPortalZIndex = isPreviewViewportExpanded ? PREVIEW_PORTAL_EXPANDED_Z_INDEX : PREVIEW_PORTAL_BASE_Z_INDEX + toFiniteNumber(zIndex, PREVIEW_NODE_MIN_Z_INDEX);
+  const previewInteractionEnabled = previewHeader ? renderContext.isPreviewInteractionEnabled(data.kind) : true;
   const isPreviewPointerInputBlocked =
     isNodeInteractionLocked || !previewInteractionEnabled;
   const previewHeaderClassName = previewHeader?.isLinkedChatTab
@@ -70,13 +48,33 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
     Boolean(previewHeader) &&
     renderContext.previewPortalEnabled &&
     typeof document !== "undefined";
-  const previewContentNode = cardAsNode
-    ? null
-    : renderContext.renderCard(data.kind);
+  const previewContentNode = cardAsNode ? null : renderContext.renderCard(data.kind);
   const previewPortalRect = usePreviewPortalRect(
     shouldPortalPreviewContent,
     previewContentHostRef,
   );
+  const previewChannelLogin = data.kind.startsWith("preview-irc:")
+    ? data.kind.slice("preview-irc:".length).trim().toLowerCase()
+    : "";
+  const handlePreviewHeaderPointerDownCapture = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!previewHeader) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(".nodrag")) return;
+    window.dispatchEvent(
+      new CustomEvent("workspace-preview-bring-to-front", {
+        detail: { nodeId: id },
+      }),
+    );
+  };
+  const handleRemoveCardByCloseButton = () => {
+    if (!previewChannelLogin) {
+      renderContext.removeCard(id);
+      return;
+    }
+    setIsPreviewCloseDialogOpen(true);
+  };
 
   return (
     <div
@@ -118,27 +116,41 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
           {!isPreviewModalLikeExpanded && (
             <div
               className={`workspace-node-drag-handle flex h-9 items-center px-3 ${previewHeaderClassName}`}
+              onPointerDownCapture={handlePreviewHeaderPointerDownCapture}
+              data-workspace-node-drag-handle="true"
             >
               {previewHeader ? (
                 <>
-                  <span className="truncate font-mono text-xs text-gray-200">
-                    channel: {previewHeader.channelLogin || "-"}
-                  </span>
-                  <span
-                    className={`ml-2 shrink-0 text-[11px] ${previewHeader.statusClassName}`}
-                  >
-                    {previewHeader.statusLabel}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="whitespace-nowrap text-xs text-gray-200">
+                      {previewHeader.channelDisplayName}
+                    </span>
+                    <span
+                      className={`shrink-0 text-[11px] ${previewHeader.statusClassName}`}
+                    >
+                      {previewHeader.statusLabel}
+                    </span>
+                    {previewHeader.streamTitle && (
+                      <span
+                        className="truncate text-[11px] text-gray-300"
+                        title={previewHeader.streamTitle}
+                      >
+                        {previewHeader.streamTitle}
+                      </span>
+                    )}
+                  </div>
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        renderContext.togglePreviewInteraction(data.kind)
-                      }
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        renderContext.togglePreviewInteraction(data.kind);
+                      }}
                       className={`nodrag inline-flex h-6 w-6 items-center justify-center rounded border ${
                         previewInteractionEnabled
                           ? "border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25"
-                          : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/20"
+                          : "border-gray-700 bg-gray-900/80 text-gray-400 hover:bg-gray-800 hover:text-gray-300"
                       }`}
                       title={
                         previewInteractionEnabled
@@ -217,7 +229,7 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
                     <button
                       type="button"
                       className="nodrag inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-                      onClick={() => renderContext.removeCard(id)}
+                      onClick={handleRemoveCardByCloseButton}
                       aria-label="カードを削除"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -233,7 +245,7 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
                 <button
                   type="button"
                   className="nodrag ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-700/80 bg-gray-900/70 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-                  onClick={() => renderContext.removeCard(id)}
+                  onClick={handleRemoveCardByCloseButton}
                   aria-label="カードを削除"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -261,6 +273,21 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
         previewPortalZIndex={previewPortalZIndex}
         previewContentNode={previewContentNode}
         warningTooltip={warningTooltip}
+        onExpandedBackdropDismiss={() => renderContext.togglePreviewViewportExpand(id)}
+      />
+      <PreviewCloseConfirmDialog
+        isOpen={isPreviewCloseDialogOpen}
+        channelLogin={previewChannelLogin}
+        channelDisplayName={previewHeader?.channelDisplayName || previewChannelLogin}
+        onClose={() => setIsPreviewCloseDialogOpen(false)}
+        onClosePreviewOnly={() => {
+          setIsPreviewCloseDialogOpen(false);
+          renderContext.removeCard(id, { disconnectIrcChannel: false });
+        }}
+        onCloseWithComment={() => {
+          setIsPreviewCloseDialogOpen(false);
+          renderContext.removeCard(id, { disconnectIrcChannel: true });
+        }}
       />
     </div>
   );

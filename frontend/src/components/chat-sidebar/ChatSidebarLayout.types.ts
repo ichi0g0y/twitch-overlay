@@ -1,11 +1,12 @@
 import type React from 'react';
 import type { ChattersPanelChatter } from '../ChattersPanel';
-import type { ChatMessage } from '../ChatSidebarItem';
+import type { ChatFragment, ChatMessage } from '../ChatSidebarItem';
 import type { RichChatInputRef } from '../chat/RichChatInput';
 import type {
   BadgeVisual,
   ChatDisplayMode,
   ChatDisplayItem,
+  EmoteInfoPopupState,
   UserInfoPopupState,
 } from './types';
 
@@ -24,13 +25,13 @@ export type ChatSidebarLayoutProps = {
   chattersOpen: boolean;
   channelEditorOpen: boolean;
   actionsMenuOpen: boolean;
-  settingsOpen: boolean;
   popoutChatUrl: string;
   toggleIcon: React.ReactNode;
   fontSize: number;
   translationEnabled: boolean;
   notificationOverwrite: boolean;
   onEnsureIrcPreview?: (channelLogin: string) => void;
+  hasPreviewForTab?: (tabId: string) => boolean;
   setChannelEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setChannelInputError: React.Dispatch<React.SetStateAction<string>>;
   setMessageOrderReversedByTab: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -38,14 +39,11 @@ export type ChatSidebarLayoutProps = {
   setActiveChatDisplayMode: (mode: ChatDisplayMode) => void;
   setActionsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEmbedReloadNonceByTab: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleOpenChatPopout: () => void;
   onFontSizeChange: (size: number) => void;
   onTranslationToggle: (enabled: boolean) => void;
   onNotificationModeToggle: (enabled: boolean) => void;
   handleToggle: () => void;
-  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
-  settingsPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   actionsMenuButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
   actionsMenuPanelRef: React.MutableRefObject<HTMLDivElement | null>;
   tabScrollerRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -55,6 +53,7 @@ export type ChatSidebarLayoutProps = {
   channelInput: string;
   channelInputError: string;
   setActiveTab: React.Dispatch<React.SetStateAction<string>>;
+  setIrcChannels: React.Dispatch<React.SetStateAction<string[]>>;
   handleRemoveChannel: (channel: string) => void;
   setChannelInput: React.Dispatch<React.SetStateAction<string>>;
   handleAddChannel: () => void;
@@ -67,6 +66,7 @@ export type ChatSidebarLayoutProps = {
   metaFontSize: number;
   translationFontSize: number;
   handleOpenUserInfo: (message: ChatMessage) => void;
+  handleOpenEmoteInfo: (message: ChatMessage, fragment: ChatFragment) => void;
   handleOpenRawData: (message: ChatMessage) => void;
   resolveBadgeVisual: (badgeKey: string) => BadgeVisual | null;
   richInputRef: React.MutableRefObject<RichChatInputRef | null>;
@@ -81,7 +81,9 @@ export type ChatSidebarLayoutProps = {
   inputHasContent: boolean;
   fallbackChatters: ChattersPanelChatter[];
   userInfoPopup: UserInfoPopupState | null;
+  emoteInfoPopup: EmoteInfoPopupState | null;
   handleCloseUserInfo: () => void;
+  handleCloseEmoteInfo: () => void;
   popupChannelUrl: string;
   popupChannelLogin: string;
   popupProfileCover: string;

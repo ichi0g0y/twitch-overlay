@@ -48,6 +48,7 @@ impl Database {
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
+                        COALESCE(u.chat_color, '') AS color,
                         m.created_at
                      FROM irc_chat_messages m
                      LEFT JOIN chat_users u ON u.user_id = m.user_id
@@ -73,6 +74,7 @@ impl Database {
                         COALESCE(m.badge_keys_json, '[]') AS badge_keys_json,
                         m.fragments_json,
                         COALESCE(u.avatar_url, '') AS avatar_url,
+                        COALESCE(u.chat_color, '') AS color,
                         m.created_at
                      FROM irc_chat_messages m
                      LEFT JOIN chat_users u ON u.user_id = m.user_id
@@ -100,7 +102,8 @@ impl Database {
                         )?,
                         fragments_json: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
                         avatar_url: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
-                        created_at: row.get(10)?,
+                        color: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                        created_at: row.get(11)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

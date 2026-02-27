@@ -1,14 +1,11 @@
 import { useCallback } from 'react';
 import type React from 'react';
-import {
-  PRIMARY_CHAT_TAB_ID,
-  normalizeTwitchChannelName,
-} from '../../utils/chatChannels';
-import type { ChatMessage } from '../ChatSidebarItem';
+import { appendIrcChannel, MAX_IRC_CHANNELS, PRIMARY_CHAT_TAB_ID, normalizeTwitchChannelName } from '../../utils/chatChannels';
+import type { ChatFragment, ChatMessage } from '../ChatSidebarItem';
 import type { RichChatInputRef } from '../chat/RichChatInput';
-import type { IrcConnection, UserInfoPopupState } from './types';
+import type { EmoteInfoPopupState, IrcConnection, UserInfoPopupState } from './types';
+import { useEmoteOwnerResolver } from './useEmoteOwnerResolver';
 import { primaryIrcConnectionKey, sanitizeIrcMessage } from './utils';
-
 export const useChatSidebarActions = ({
   activeTab,
   primaryChannelLogin,
@@ -34,6 +31,7 @@ export const useChatSidebarActions = ({
   setIrcMessagesByChannel,
   clearIrcParticipants,
   setUserInfoPopup,
+  setEmoteInfoPopup,
   setUserInfoProfile,
   setUserInfoLoading,
   setUserInfoError,
@@ -69,6 +67,7 @@ export const useChatSidebarActions = ({
   setIrcMessagesByChannel: React.Dispatch<React.SetStateAction<Record<string, ChatMessage[]>>>;
   clearIrcParticipants: (channel: string) => void;
   setUserInfoPopup: React.Dispatch<React.SetStateAction<UserInfoPopupState | null>>;
+  setEmoteInfoPopup: React.Dispatch<React.SetStateAction<EmoteInfoPopupState | null>>;
   setUserInfoProfile: React.Dispatch<React.SetStateAction<any>>;
   setUserInfoLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setUserInfoError: React.Dispatch<React.SetStateAction<string>>;
@@ -77,18 +76,14 @@ export const useChatSidebarActions = ({
   setRawDataMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>;
   popoutChatUrl: string;
 }) => {
+  const { resolveOwnerLoginByEmoteId } = useEmoteOwnerResolver({ activeTab, primaryChannelLogin });
   const sendComment = useCallback(async () => {
     if (postingMessageLockRef.current || postingMessage) return;
-
     const text = richInputRef.current?.getIrcText() ?? '';
     const ircText = sanitizeIrcMessage(text);
     if (!ircText) return;
-
     const isPrimaryTab = activeTab === PRIMARY_CHAT_TAB_ID;
-    const primaryConnectionId = primaryChannelLogin
-      ? primaryIrcConnectionKey(primaryChannelLogin)
-      : '';
-
+    const primaryConnectionId = primaryChannelLogin ? primaryIrcConnectionKey(primaryChannelLogin) : '';
     setPostError('');
     postingMessageLockRef.current = true;
     setPostingMessage(true);
@@ -97,7 +92,6 @@ export const useChatSidebarActions = ({
       if (!connectionKey) {
         throw new Error('メインチャンネルのIRC接続を初期化できませんでした。Twitch認証を確認してください。');
       }
-
       const connection = ircConnectionsRef.current.get(connectionKey);
       if (!connection?.ws || connection.ws.readyState !== WebSocket.OPEN) {
         throw new Error('IRCが未接続です。接続状態を確認してください。');
@@ -112,12 +106,10 @@ export const useChatSidebarActions = ({
         setPrimaryCredentialRefreshTick((current) => current + 1);
         throw new Error('IRC認証を更新中です。数秒後に再投稿してください。');
       }
-
       connection.ws.send(`PRIVMSG #${targetChannel} :${ircText}`);
       if (connection.userId) {
         void hydrateIrcUserProfile(connection.userId, connection.displayName || connection.nick);
       }
-
       richInputRef.current?.clear();
       setInputHasContent(false);
     } catch (error) {
@@ -143,14 +135,12 @@ export const useChatSidebarActions = ({
     startIrcConnection,
     stopIrcConnection,
   ]);
-
   const handleAddChannel = useCallback(() => {
     const normalized = normalizeTwitchChannelName(channelInput);
     if (!normalized) {
       setChannelInputError('チャンネル名は英数字/アンダースコア (3-25文字) で入力してください');
       return;
     }
-
     if (ircChannels.includes(normalized)) {
       setActiveTab(normalized);
       onEnsureIrcPreview?.(normalized);
@@ -159,8 +149,11 @@ export const useChatSidebarActions = ({
       setChannelInputError('');
       return;
     }
-
-    setIrcChannels((prev) => [...prev, normalized]);
+    if (ircChannels.length >= MAX_IRC_CHANNELS) {
+      setChannelInputError(`IRCチャンネルの上限は${MAX_IRC_CHANNELS}件までです`);
+      return;
+    }
+    setIrcChannels((prev) => appendIrcChannel(prev, normalized));
     setActiveTab(normalized);
     onEnsureIrcPreview?.(normalized);
     setChannelEditorOpen(false);
@@ -176,7 +169,6 @@ export const useChatSidebarActions = ({
     setChannelInputError,
     setIrcChannels,
   ]);
-
   const handleRemoveChannel = useCallback((channel: string) => {
     setIrcChannels((prev) => prev.filter((item) => item !== channel));
     setIrcMessagesByChannel((prev) => {
@@ -190,67 +182,111 @@ export const useChatSidebarActions = ({
     }
     clearIrcParticipants(channel);
     setUserInfoPopup((prev) => (prev?.tabId === channel ? null : prev));
+    setEmoteInfoPopup((prev) => (prev?.tabId === channel ? null : prev));
   }, [
     activeTab,
     clearIrcParticipants,
     setActiveTab,
+    setEmoteInfoPopup,
     setIrcChannels,
     setIrcMessagesByChannel,
     setUserInfoPopup,
   ]);
-
-  const handleOpenUserInfo = useCallback((message: ChatMessage) => {
+  const resetUserInfoState = useCallback(() => {
     setUserInfoProfile(null);
     setUserInfoLoading(false);
     setUserInfoError('');
     setUserModerationLoading(null);
     setUserModerationMessage('');
+  }, [
+    setUserInfoError,
+    setUserInfoLoading,
+    setUserInfoProfile,
+    setUserModerationLoading,
+    setUserModerationMessage,
+  ]);
+  const openUserInfoPopup = useCallback((message: ChatMessage) => {
+    setEmoteInfoPopup(null);
+    resetUserInfoState();
     setUserInfoPopup({ message, tabId: activeTab });
-  }, [
-    activeTab,
-    setUserInfoError,
-    setUserInfoLoading,
-    setUserInfoPopup,
-    setUserInfoProfile,
-    setUserModerationLoading,
-    setUserModerationMessage,
-  ]);
-
-  const handleCloseUserInfo = useCallback(() => {
-    setUserInfoProfile(null);
-    setUserInfoLoading(false);
-    setUserInfoError('');
-    setUserModerationLoading(null);
-    setUserModerationMessage('');
+  }, [activeTab, resetUserInfoState, setEmoteInfoPopup, setUserInfoPopup]);
+  const openEmoteInfoPopup = useCallback((popup: Omit<EmoteInfoPopupState, 'tabId'>) => {
     setUserInfoPopup(null);
-  }, [
-    setUserInfoError,
-    setUserInfoLoading,
-    setUserInfoPopup,
-    setUserInfoProfile,
-    setUserModerationLoading,
-    setUserModerationMessage,
-  ]);
-
+    resetUserInfoState();
+    setEmoteInfoPopup({ ...popup, tabId: activeTab });
+  }, [activeTab, resetUserInfoState, setEmoteInfoPopup, setUserInfoPopup]);
+  const handleOpenUserInfo = useCallback((message: ChatMessage) => {
+    openUserInfoPopup(message);
+  }, [openUserInfoPopup]);
+  const handleOpenEmoteInfo = useCallback(async (message: ChatMessage, fragment: ChatFragment) => {
+    if (fragment.type !== 'emote') return;
+    const rawOwnerId = (fragment.emoteOwnerId || '').trim();
+    const isGlobalOwner = rawOwnerId === '0';
+    const emoteOwnerId = isGlobalOwner ? '' : rawOwnerId;
+    const emoteId = (fragment.emoteId || '').trim();
+    const emoteSetId = (fragment.emoteSetId || '').trim();
+    if (emoteId === '' && emoteSetId === '' && emoteOwnerId === '' && !isGlobalOwner) return;
+    const emoteKey = emoteId || emoteSetId || fragment.text || message.id;
+    if (isGlobalOwner) {
+      openEmoteInfoPopup({
+        id: `emote-global:${emoteKey}:${message.id}`,
+        message,
+        fragment,
+        source: 'global',
+      });
+      return;
+    }
+    if (emoteOwnerId !== '' && /^[0-9]+$/.test(emoteOwnerId)) {
+      openEmoteInfoPopup({
+        id: `emote-owner:${emoteKey}:${message.id}`,
+        message,
+        fragment,
+        source: 'channel',
+      });
+      return;
+    }
+    if (emoteId === '') {
+      openEmoteInfoPopup({
+        id: `emote-global:${emoteKey}:${message.id}`,
+        message,
+        fragment,
+        source: 'global',
+      });
+      return;
+    }
+    const popupId = `emote-resolve:${emoteId}:${message.id}`;
+    openEmoteInfoPopup({ id: popupId, message, fragment, source: 'channel' });
+    const emoteOwnerLogin = await resolveOwnerLoginByEmoteId(emoteId);
+    setEmoteInfoPopup((prev) => {
+      if (!prev || prev.id !== popupId) return prev;
+      return { ...prev, source: emoteOwnerLogin === '' ? 'global' : 'channel', channelLogin: emoteOwnerLogin || undefined };
+    });
+  }, [activeTab, openEmoteInfoPopup, primaryChannelLogin, resolveOwnerLoginByEmoteId, setEmoteInfoPopup]);
+  const handleCloseUserInfo = useCallback(() => {
+    resetUserInfoState();
+    setUserInfoPopup(null);
+  }, [resetUserInfoState, setUserInfoPopup]);
+  const handleCloseEmoteInfo = useCallback(() => {
+    setEmoteInfoPopup(null);
+  }, [setEmoteInfoPopup]);
   const handleOpenRawData = useCallback((message: ChatMessage) => {
     setRawDataMessage(message);
   }, [setRawDataMessage]);
-
   const handleCloseRawData = useCallback(() => {
     setRawDataMessage(null);
   }, [setRawDataMessage]);
-
   const handleOpenChatPopout = useCallback(() => {
     if (!popoutChatUrl) return;
     window.open(popoutChatUrl, '_blank', 'noopener,noreferrer');
   }, [popoutChatUrl]);
-
   return {
     sendComment,
     handleAddChannel,
     handleRemoveChannel,
     handleOpenUserInfo,
+    handleOpenEmoteInfo,
     handleCloseUserInfo,
+    handleCloseEmoteInfo,
     handleOpenRawData,
     handleCloseRawData,
     handleOpenChatPopout,

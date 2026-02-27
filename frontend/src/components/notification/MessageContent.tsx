@@ -6,6 +6,8 @@ interface MessageContentProps {
   fragments?: Fragment[];
   fontSize?: number;
   linkifyUrls?: boolean;
+  onEmoteClick?: (fragment: Fragment) => void;
+  canEmoteClick?: (fragment: Fragment) => boolean;
 }
 
 const URL_PATTERN = /https?:\/\/[^\s]+/gi;
@@ -62,7 +64,14 @@ const splitTrailingPunctuation = (url: string): { cleanUrl: string; trailing: st
  * MessageContent component
  * Renders message fragments with text and emotes
  */
-export function MessageContent({ message, fragments, fontSize = 14, linkifyUrls = false }: MessageContentProps) {
+export function MessageContent({
+  message,
+  fragments,
+  fontSize = 14,
+  linkifyUrls = false,
+  onEmoteClick,
+  canEmoteClick,
+}: MessageContentProps) {
   const renderText = (text: string, keyPrefix: string) => {
     if (!linkifyUrls) {
       return <span key={`${keyPrefix}-text`}>{text}</span>;
@@ -146,16 +155,34 @@ export function MessageContent({ message, fragments, fontSize = 14, linkifyUrls 
           const nextIsEmote = index < displayFragments.length - 1 && displayFragments[index + 1].type === 'emote';
           const marginClass = `${prevIsEmote ? '' : 'ml-[0.1em]'} ${nextIsEmote ? 'mr-[2px]' : 'mr-[0.1em]'}`.trim();
 
-          return (
+          const emoteNode = (
             <img
-              key={index}
               src={fragment.emoteUrl}
               alt={fragment.text}
-              className={`inline align-middle ${marginClass}`}
+              className="inline align-middle"
               style={{ height: emoteHeight }}
               title={fragment.text}
               loading="lazy"
             />
+          );
+          const clickable = onEmoteClick && (canEmoteClick ? canEmoteClick(fragment) : true);
+          if (!clickable) {
+            return <span key={index} className={`inline ${marginClass}`}>{emoteNode}</span>;
+          }
+          return (
+            <button
+              key={index}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEmoteClick(fragment);
+              }}
+              className={`inline-flex items-center align-middle rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-500 ${marginClass}`}
+              title={`${fragment.text} のチャンネル情報を表示`}
+              aria-label={`${fragment.text} のチャンネル情報を表示`}
+            >
+              {emoteNode}
+            </button>
           );
         } else {
           return <ReactFragment key={index}>{renderText(fragment.text, `fragment-${index}`)}</ReactFragment>;
