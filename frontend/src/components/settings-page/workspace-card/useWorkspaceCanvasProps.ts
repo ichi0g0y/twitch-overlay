@@ -38,7 +38,7 @@ type UseWorkspaceCanvasPropsParams = {
   setWorkspaceSnapEnabled: Dispatch<SetStateAction<boolean>>;
   handleSettingChange: (
     key: string,
-    value: string,
+    value: string | boolean | number,
     saveImmediately?: boolean,
   ) => void;
   zoomActivationKeyCode: string;

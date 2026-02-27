@@ -20,7 +20,7 @@ type UseWorkspacePreviewEffectsParams = {
   bringPreviewNodeToFront: (nodeId: string) => void;
   pendingPreviewRevealKind: WorkspaceCardKind | null;
   workspaceFlowInstanceRef: RefObject<ReactFlowInstance<WorkspaceCardNode> | null>;
-  workspaceShellRef: RefObject<HTMLDivElement | null>;
+  workspaceShellRef: RefObject<HTMLDivElement>;
   activatePreviewInteraction: (kind: WorkspaceCardKind) => void;
   setPendingPreviewRevealKind: Dispatch<SetStateAction<WorkspaceCardKind | null>>;
 };

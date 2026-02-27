@@ -12,16 +12,37 @@ export const useEmoteOwnerResolver = ({
   const emoteIdToChannelLoginRef = useRef<Record<string, string>>({});
   const inFlightRef = useRef<Map<string, Promise<string>>>(new Map());
 
+  const cacheResolvedEmotes = useCallback((emotes: any[]) => {
+    for (const emote of emotes) {
+      const id = typeof (emote?.id ?? emote?.emote_id) === 'string' ? (emote.id ?? emote.emote_id).trim() : '';
+      if (!id) continue;
+      const rawChannelLogin = typeof (emote?.channel_login ?? emote?.channelLogin) === 'string'
+        ? (emote.channel_login ?? emote.channelLogin)
+        : '';
+      const normalizedChannelLogin = normalizeTwitchChannelName(rawChannelLogin) || '';
+      if (!normalizedChannelLogin) continue;
+      emoteIdToChannelLoginRef.current[id] = normalizedChannelLogin;
+    }
+  }, []);
+
   const resolveOwnerLoginByEmoteId = useCallback(async (emoteId: string) => {
     const normalizedEmoteId = emoteId.trim();
     if (!normalizedEmoteId) return '';
-    if (normalizedEmoteId in emoteIdToChannelLoginRef.current) {
-      return emoteIdToChannelLoginRef.current[normalizedEmoteId] || '';
+    const cached = emoteIdToChannelLoginRef.current[normalizedEmoteId];
+    if (cached && cached.trim() !== '') {
+      return cached;
     }
     const inFlight = inFlightRef.current.get(normalizedEmoteId);
     if (inFlight) return inFlight;
     const task = (async () => {
       try {
+        const fetchEmotes = async (query: string) => {
+          const response = await fetch(query ? buildApiUrl(`/api/emotes?${query}`) : buildApiUrl('/api/emotes'));
+          if (!response.ok) return [];
+          const payload = await response.json().catch(() => null);
+          return Array.isArray(payload?.data?.emotes) ? payload.data.emotes : [];
+        };
+
         const activeChannelLogin = activeTab === PRIMARY_CHAT_TAB_ID
           ? (normalizeTwitchChannelName(primaryChannelLogin) || '')
           : (normalizeTwitchChannelName(activeTab) || '');
@@ -31,21 +52,16 @@ export const useEmoteOwnerResolver = ({
           params.set('priority_channel', activeChannelLogin);
         }
         const query = params.toString();
-        const response = await fetch(query ? buildApiUrl(`/api/emotes?${query}`) : buildApiUrl('/api/emotes'));
-        if (!response.ok) return '';
-        const payload = await response.json().catch(() => null);
-        const emotes = Array.isArray(payload?.data?.emotes) ? payload.data.emotes : [];
-        for (const emote of emotes) {
-          const id = typeof (emote?.id ?? emote?.emote_id) === 'string' ? (emote.id ?? emote.emote_id).trim() : '';
-          if (!id) continue;
-          const rawChannelLogin = typeof (emote?.channel_login ?? emote?.channelLogin) === 'string'
-            ? (emote.channel_login ?? emote.channelLogin)
-            : '';
-          emoteIdToChannelLoginRef.current[id] = normalizeTwitchChannelName(rawChannelLogin) || '';
+
+        const emotesInChannel = await fetchEmotes(query);
+        cacheResolvedEmotes(emotesInChannel);
+        const resolvedInChannel = emoteIdToChannelLoginRef.current[normalizedEmoteId];
+        if (resolvedInChannel && resolvedInChannel.trim() !== '') {
+          return resolvedInChannel;
         }
-        if (!(normalizedEmoteId in emoteIdToChannelLoginRef.current)) {
-          emoteIdToChannelLoginRef.current[normalizedEmoteId] = '';
-        }
+
+        const emotesGlobal = await fetchEmotes('');
+        cacheResolvedEmotes(emotesGlobal);
         return emoteIdToChannelLoginRef.current[normalizedEmoteId] || '';
       } catch {
         return '';
@@ -55,7 +71,7 @@ export const useEmoteOwnerResolver = ({
     })();
     inFlightRef.current.set(normalizedEmoteId, task);
     return task;
-  }, [activeTab, primaryChannelLogin]);
+  }, [activeTab, cacheResolvedEmotes, primaryChannelLogin]);
 
   return { resolveOwnerLoginByEmoteId };
 };

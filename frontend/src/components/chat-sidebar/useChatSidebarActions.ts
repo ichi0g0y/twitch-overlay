@@ -220,9 +220,6 @@ export const useChatSidebarActions = ({
   }, [openUserInfoPopup]);
   const handleOpenEmoteInfo = useCallback(async (message: ChatMessage, fragment: ChatFragment) => {
     if (fragment.type !== 'emote') return;
-    const fallbackChannelLogin = normalizeTwitchChannelName(
-      activeTab === PRIMARY_CHAT_TAB_ID ? primaryChannelLogin : activeTab,
-    ) || undefined;
     const rawOwnerId = (fragment.emoteOwnerId || '').trim();
     const isGlobalOwner = rawOwnerId === '0';
     const emoteOwnerId = isGlobalOwner ? '' : rawOwnerId;
@@ -245,7 +242,6 @@ export const useChatSidebarActions = ({
         message,
         fragment,
         source: 'channel',
-        channelLogin: fallbackChannelLogin,
       });
       return;
     }

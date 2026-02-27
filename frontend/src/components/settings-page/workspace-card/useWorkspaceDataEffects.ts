@@ -1,6 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { FeatureStatus, TwitchUserInfo } from "../../../types";
 import { subscribeIrcChannels } from "../../../utils/chatChannels";
+import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import {
   FOLLOWED_RAIL_FETCH_LIMIT,
   FOLLOWED_RAIL_POLL_INTERVAL_MS,
@@ -24,22 +25,7 @@ type UseWorkspaceDataEffectsParams = {
   followedRailSelfViewerCountVisible: boolean;
   workspaceSnapEnabled: boolean;
   setFollowedChannels: Dispatch<
-    SetStateAction<
-      Array<{
-        broadcaster_login: string;
-        broadcaster_name: string;
-        broadcaster_id: string;
-        is_live: boolean;
-        viewer_count: number;
-        last_broadcast_at?: string;
-        profile_image_url: string;
-        followed_at?: string;
-        follower_count?: number;
-        title?: string;
-        game_name?: string;
-        started_at?: string;
-      }>
-    >
+    SetStateAction<FollowedChannelRailItem[]>
   >;
   setFollowedChannelsError: Dispatch<SetStateAction<string>>;
   setFollowedChannelsLoading: Dispatch<SetStateAction<boolean>>;

@@ -55,7 +55,7 @@ type UseWorkspaceSidePanelPropsParams = {
   getSettingValue: (key: string) => string;
   handleSettingChange: (
     key: string,
-    value: string,
+    value: string | boolean | number,
     saveImmediately?: boolean,
   ) => void;
   featureStatus: FeatureStatus | null;

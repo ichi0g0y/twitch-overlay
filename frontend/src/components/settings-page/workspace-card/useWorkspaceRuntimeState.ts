@@ -48,7 +48,7 @@ export const useWorkspaceRuntimeState = () => {
   const [nodes, setNodes, onNodesChangeRaw] =
     useNodesState<WorkspaceCardNode>(initialWorkspace);
 
-  const workspaceShellRef = useRef<HTMLDivElement | null>(null);
+  const workspaceShellRef = useRef<HTMLDivElement>(null);
   const quickControlsHideTimerRef = useRef<number | null>(null);
   const shouldFitWorkspaceOnInitRef = useRef(
     initialWorkspaceFlow?.viewport == null,

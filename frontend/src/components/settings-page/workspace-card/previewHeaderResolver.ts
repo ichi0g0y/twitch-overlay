@@ -2,6 +2,7 @@ import {
   PRIMARY_CHAT_TAB_ID,
   normalizeTwitchChannelName,
 } from "../../../utils/chatChannels";
+import type { TwitchUserInfo } from "../../../types";
 import type { FollowedChannelRailItem } from "../../settings/FollowedChannelsRail";
 import { isPreviewIrcKind } from "./kinds";
 import type {
@@ -22,7 +23,7 @@ const normalizeStreamTitle = (value: unknown): string | null => {
 
 type PreviewHeaderResolverDeps = {
   activeChatSidebarTabId: string;
-  twitchUserInfo: { login?: string } | null;
+  twitchUserInfo: TwitchUserInfo | null;
   streamStatus: { is_live?: boolean; viewer_count?: number; title?: string | null } | null;
   followedChannels: FollowedChannelRailItem[];
   previewWarningByKind: Partial<Record<WorkspaceCardKind, string>>;

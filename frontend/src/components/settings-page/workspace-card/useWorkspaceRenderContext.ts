@@ -30,12 +30,12 @@ type UseWorkspaceRenderContextParams = {
   getSettingValue: (key: string) => string;
   handleSettingChange: (
     key: string,
-    value: string,
+    value: string | boolean | number,
     saveImmediately?: boolean,
   ) => void;
   getBooleanValue: (key: string) => boolean;
   streamStatus: StreamStatus | null;
-  fileInputRef: RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement>;
   uploadingFont: boolean;
   handleFontUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   previewText: string;
