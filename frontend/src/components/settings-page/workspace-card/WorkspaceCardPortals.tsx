@@ -18,6 +18,7 @@ type WorkspaceCardPortalsProps = {
   previewPortalZIndex: number;
   previewContentNode: ReactNode;
   warningTooltip: WarningTooltip | null;
+  onExpandedBackdropDismiss?: () => void;
 };
 
 export const WorkspaceCardPortals: FC<WorkspaceCardPortalsProps> = ({
@@ -28,6 +29,7 @@ export const WorkspaceCardPortals: FC<WorkspaceCardPortalsProps> = ({
   previewPortalZIndex,
   previewContentNode,
   warningTooltip,
+  onExpandedBackdropDismiss,
 }) => {
   const handleBackdropWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     if (typeof document === "undefined") return;
@@ -74,6 +76,7 @@ export const WorkspaceCardPortals: FC<WorkspaceCardPortalsProps> = ({
             className="fixed inset-0 cursor-default bg-black/60 backdrop-blur-[1.5px]"
             style={{ zIndex: PREVIEW_PORTAL_EXPANDED_Z_INDEX - 1 }}
             onPointerDown={(event) => {
+              onExpandedBackdropDismiss?.();
               event.preventDefault();
               event.stopPropagation();
             }}

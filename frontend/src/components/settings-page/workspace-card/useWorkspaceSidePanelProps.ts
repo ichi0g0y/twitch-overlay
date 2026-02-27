@@ -28,6 +28,7 @@ type StatusTopBarProps = WorkspaceSidePanelsProps["statusTopBarProps"];
 
 type UseWorkspaceSidePanelPropsParams = {
   followedRailSide: "left" | "right";
+  followedRailSelfViewerCountVisible: boolean;
   followedChannels: RailProps["channels"];
   followedChannelsLoading: boolean;
   followedChannelsError: string;
@@ -37,6 +38,7 @@ type UseWorkspaceSidePanelPropsParams = {
   chatSidebarFontSize: number;
   setChatSidebarFontSize: Dispatch<SetStateAction<number>>;
   setFollowedRailSide: RailProps["onSideChange"];
+  setFollowedRailSelfViewerCountVisible: Dispatch<SetStateAction<boolean>>;
   handleOpenOverlay: RailProps["onOpenOverlay"];
   handleOpenOverlayDebug: RailProps["onOpenOverlayDebug"];
   handleOpenPresent: RailProps["onOpenPresent"];
@@ -169,6 +171,12 @@ const useWorkspaceRailProps = (
       twitchAvatarUrl: params.twitchUserInfo?.profile_image_url,
       twitchDisplayName:
         params.twitchUserInfo?.display_name || params.twitchUserInfo?.login,
+      streamViewerCount: params.streamStatus?.is_live
+        ? params.streamStatus.viewer_count ?? 0
+        : null,
+      selfViewerCountVisible: params.followedRailSelfViewerCountVisible,
+      onSelfViewerCountVisibleChange: (visible) =>
+        params.setFollowedRailSelfViewerCountVisible(visible),
       onSideChange: params.setFollowedRailSide,
       onOpenOverlay: params.handleOpenOverlay,
       onOpenOverlayDebug: params.handleOpenOverlayDebug,

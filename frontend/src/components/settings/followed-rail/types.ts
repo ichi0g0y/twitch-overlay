@@ -26,7 +26,10 @@ export type FollowedChannelsRailProps = {
   twitchUserId?: string;
   twitchAvatarUrl?: string;
   twitchDisplayName?: string;
+  streamViewerCount: number | null;
+  selfViewerCountVisible: boolean;
   onSideChange: (side: 'left' | 'right') => void;
+  onSelfViewerCountVisibleChange: (visible: boolean) => void;
   onOpenOverlay: () => void;
   onOpenOverlayDebug: () => void;
   onOpenPresent: () => void;

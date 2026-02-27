@@ -28,7 +28,10 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
   twitchUserId,
   twitchAvatarUrl,
   twitchDisplayName,
+  streamViewerCount,
+  selfViewerCountVisible,
   onSideChange,
+  onSelfViewerCountVisibleChange,
   onOpenOverlay,
   onOpenOverlayDebug,
   onOpenPresent,
@@ -232,9 +235,12 @@ export const FollowedChannelsRail: React.FC<FollowedChannelsRailProps> = ({
             twitchUserId={twitchUserId}
             twitchAvatarUrl={twitchAvatarUrl}
             twitchDisplayName={twitchDisplayName}
+            streamViewerCount={streamViewerCount}
+            selfViewerCountVisible={selfViewerCountVisible}
             onToggleMenu={() => setRailMenuOpen((prev) => !prev)}
             onCloseMenu={() => setRailMenuOpen(false)}
             onSideChange={onSideChange}
+            onSelfViewerCountVisibleChange={onSelfViewerCountVisibleChange}
             onOpenOverlay={onOpenOverlay}
             onOpenOverlayDebug={onOpenOverlayDebug}
             onOpenPresent={onOpenPresent}

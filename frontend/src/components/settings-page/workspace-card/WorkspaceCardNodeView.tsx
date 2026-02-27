@@ -273,6 +273,7 @@ export const WorkspaceCardNodeView: React.FC<NodeProps<WorkspaceCardNode>> = ({
         previewPortalZIndex={previewPortalZIndex}
         previewContentNode={previewContentNode}
         warningTooltip={warningTooltip}
+        onExpandedBackdropDismiss={() => renderContext.togglePreviewViewportExpand(id)}
       />
       <PreviewCloseConfirmDialog
         isOpen={isPreviewCloseDialogOpen}

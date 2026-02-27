@@ -95,6 +95,7 @@ export const SettingsPageWorkspace: React.FC = () => {
     verifyTwitchConfig: settings.verifyTwitchConfig,
     autoVerifyTriggeredRef,
     followedRailSide: state.followedRailSide,
+    followedRailSelfViewerCountVisible: state.followedRailSelfViewerCountVisible,
     workspaceSnapEnabled: state.workspaceSnapEnabled,
     setFollowedChannels: state.setFollowedChannels,
     setFollowedChannelsError: state.setFollowedChannelsError,
@@ -199,6 +200,7 @@ export const SettingsPageWorkspace: React.FC = () => {
 
   const { sidePanelProps, topBarOffsets } = useWorkspaceSidePanelProps({
     followedRailSide: state.followedRailSide,
+    followedRailSelfViewerCountVisible: state.followedRailSelfViewerCountVisible,
     followedChannels: state.followedChannels,
     followedChannelsLoading: state.followedChannelsLoading,
     followedChannelsError: state.followedChannelsError,
@@ -208,6 +210,8 @@ export const SettingsPageWorkspace: React.FC = () => {
     chatSidebarFontSize: state.chatSidebarFontSize,
     setChatSidebarFontSize: state.setChatSidebarFontSize,
     setFollowedRailSide: state.setFollowedRailSide,
+    setFollowedRailSelfViewerCountVisible:
+      state.setFollowedRailSelfViewerCountVisible,
     handleOpenOverlay: settings.handleOpenOverlay,
     handleOpenOverlayDebug: settings.handleOpenOverlayDebug,
     handleOpenPresent: settings.handleOpenPresent,

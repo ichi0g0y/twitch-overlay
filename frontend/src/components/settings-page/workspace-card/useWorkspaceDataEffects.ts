@@ -4,6 +4,7 @@ import { subscribeIrcChannels } from "../../../utils/chatChannels";
 import {
   FOLLOWED_RAIL_FETCH_LIMIT,
   FOLLOWED_RAIL_POLL_INTERVAL_MS,
+  FOLLOWED_RAIL_SELF_VIEWER_COUNT_VISIBLE_STORAGE_KEY,
   FOLLOWED_RAIL_SIDE_STORAGE_KEY,
   WORKSPACE_SNAP_ENABLED_STORAGE_KEY,
 } from "./constants";
@@ -20,6 +21,7 @@ type UseWorkspaceDataEffectsParams = {
   verifyTwitchConfig: (options?: { suppressSuccessToast?: boolean }) => Promise<void>;
   autoVerifyTriggeredRef: MutableRefObject<boolean>;
   followedRailSide: "left" | "right";
+  followedRailSelfViewerCountVisible: boolean;
   workspaceSnapEnabled: boolean;
   setFollowedChannels: Dispatch<
     SetStateAction<
@@ -55,6 +57,7 @@ export const useWorkspaceDataEffects = ({
   verifyTwitchConfig,
   autoVerifyTriggeredRef,
   followedRailSide,
+  followedRailSelfViewerCountVisible,
   workspaceSnapEnabled,
   setFollowedChannels,
   setFollowedChannelsError,
@@ -95,6 +98,14 @@ export const useWorkspaceDataEffects = ({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(FOLLOWED_RAIL_SIDE_STORAGE_KEY, followedRailSide);
   }, [followedRailSide]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      FOLLOWED_RAIL_SELF_VIEWER_COUNT_VISIBLE_STORAGE_KEY,
+      followedRailSelfViewerCountVisible ? "true" : "false",
+    );
+  }, [followedRailSelfViewerCountVisible]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -1,4 +1,4 @@
-import { Gift, Layers, Menu } from 'lucide-react';
+import { Eye, EyeOff, Gift, Layers, Menu } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { buildApiUrl } from '../../../utils/api';
@@ -9,13 +9,23 @@ interface FollowedRailQuickMenuProps {
   twitchUserId?: string;
   twitchAvatarUrl?: string;
   twitchDisplayName?: string;
+  streamViewerCount: number | null;
+  selfViewerCountVisible: boolean;
   onToggleMenu: () => void;
   onCloseMenu: () => void;
   onSideChange: (side: 'left' | 'right') => void;
+  onSelfViewerCountVisibleChange: (visible: boolean) => void;
   onOpenOverlay: () => void;
   onOpenOverlayDebug: () => void;
   onOpenPresent: () => void;
   onOpenPresentDebug: () => void;
+}
+
+function formatViewerCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (count >= 10_000) return `${(count / 1000).toFixed(0)}K`;
+  if (count >= 1_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(count);
 }
 
 export const FollowedRailQuickMenu: React.FC<FollowedRailQuickMenuProps> = ({
@@ -24,9 +34,12 @@ export const FollowedRailQuickMenu: React.FC<FollowedRailQuickMenuProps> = ({
   twitchUserId,
   twitchAvatarUrl,
   twitchDisplayName,
+  streamViewerCount,
+  selfViewerCountVisible,
   onToggleMenu,
   onCloseMenu,
   onSideChange,
+  onSelfViewerCountVisibleChange,
   onOpenOverlay,
   onOpenOverlayDebug,
   onOpenPresent,
@@ -43,6 +56,10 @@ export const FollowedRailQuickMenu: React.FC<FollowedRailQuickMenuProps> = ({
     if (!name) return 'クイック操作メニュー';
     return `${name} のクイック操作メニュー`;
   }, [twitchDisplayName]);
+  const viewerCountBadgeLabel = useMemo(() => {
+    if (streamViewerCount == null) return '';
+    return `接続数 ${formatViewerCount(streamViewerCount)}`;
+  }, [streamViewerCount]);
 
   useEffect(() => {
     setAvatarUrl(normalizedAvatarUrl);
@@ -109,6 +126,17 @@ export const FollowedRailQuickMenu: React.FC<FollowedRailQuickMenuProps> = ({
         ) : (
           <Menu className="h-4 w-4" />
         )}
+        {selfViewerCountVisible && streamViewerCount != null && (
+          <span
+            className="absolute -bottom-1 left-1/2 z-10 min-w-[16px] -translate-x-1/2 rounded-full border border-gray-900 bg-red-600 px-[2px] py-[2px] text-center text-[8px] font-bold leading-none text-white shadow"
+            aria-label={viewerCountBadgeLabel}
+            title={viewerCountBadgeLabel}
+          >
+            <span className="inline-block -translate-x-[1px]">
+              {formatViewerCount(streamViewerCount)}
+            </span>
+          </span>
+        )}
       </button>
 
       {railMenuOpen && (
@@ -127,6 +155,22 @@ export const FollowedRailQuickMenu: React.FC<FollowedRailQuickMenuProps> = ({
             className="mb-1 inline-flex h-8 w-full items-center rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
           >
             {toggleLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSelfViewerCountVisibleChange(!selfViewerCountVisible);
+              onCloseMenu();
+            }}
+            className="mb-1 inline-flex h-8 w-full items-center gap-2 rounded border border-gray-700 px-2 text-left text-xs text-gray-200 hover:bg-gray-800"
+            aria-pressed={selfViewerCountVisible}
+          >
+            {selfViewerCountVisible ? (
+              <Eye className="h-3.5 w-3.5 text-gray-300" />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5 text-gray-300" />
+            )}
+            <span>接続数表示: {selfViewerCountVisible ? 'オン' : 'オフ'}</span>
           </button>
           <button
             type="button"
