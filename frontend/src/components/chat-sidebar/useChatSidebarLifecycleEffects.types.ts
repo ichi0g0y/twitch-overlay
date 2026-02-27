@@ -4,6 +4,7 @@ import type {
   CachedUserProfileDetail,
   ChatDisplayModeByTab,
   ChatUserProfileDetail,
+  EmoteInfoPopupState,
   MessageOrderReversedByTab,
   UserInfoPopupState,
 } from './types';
@@ -30,9 +31,11 @@ export type UseChatSidebarLifecycleEffectsParams = {
   } | null;
   lastHandledActiveTabRequestIdRef: React.MutableRefObject<number | null>;
   userInfoPopup: UserInfoPopupState | null;
+  emoteInfoPopup: EmoteInfoPopupState | null;
   rawDataMessage: ChatMessage | null;
   isCollapsed: boolean;
   setUserInfoPopup: React.Dispatch<React.SetStateAction<UserInfoPopupState | null>>;
+  setEmoteInfoPopup: React.Dispatch<React.SetStateAction<EmoteInfoPopupState | null>>;
   setRawDataMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>;
   setUserInfoIdCopied: React.Dispatch<React.SetStateAction<boolean>>;
   userInfoIdCopiedTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;

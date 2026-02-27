@@ -9,6 +9,7 @@ import type {
   ChatDisplayMode,
   ChatDisplayModeByTab,
   ChatUserProfileDetail,
+  EmoteInfoPopupState,
   IrcConnection,
   IrcParticipant,
   IrcUserProfile,
@@ -81,6 +82,7 @@ export const useChatSidebarState = ({
   const [messageOrderReversedByTab, setMessageOrderReversedByTab] = useState<MessageOrderReversedByTab>(() => readStoredMessageOrderReversedByTab());
   const [chattersOpen, setChattersOpen] = useState(false);
   const [userInfoPopup, setUserInfoPopup] = useState<UserInfoPopupState | null>(null);
+  const [emoteInfoPopup, setEmoteInfoPopup] = useState<EmoteInfoPopupState | null>(null);
   const [rawDataMessage, setRawDataMessage] = useState<ChatMessage | null>(null);
   const [userInfoProfile, setUserInfoProfile] = useState<ChatUserProfileDetail | null>(null);
   const [userInfoLoading, setUserInfoLoading] = useState(false);
@@ -165,6 +167,8 @@ export const useChatSidebarState = ({
     setChattersOpen,
     userInfoPopup,
     setUserInfoPopup,
+    emoteInfoPopup,
+    setEmoteInfoPopup,
     rawDataMessage,
     setRawDataMessage,
     userInfoProfile,

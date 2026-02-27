@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronsDown, ChevronsUp, MessageCircle, Send } from 'lucide-react';
 import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
-import type { ChatMessage } from '../ChatSidebarItem';
+import type { ChatFragment, ChatMessage } from '../ChatSidebarItem';
 import { ChatSidebarItem } from '../ChatSidebarItem';
 import { EmotePicker } from '../chat/EmotePicker';
 import { RichChatInput, type RichChatInputRef } from '../chat/RichChatInput';
@@ -25,6 +25,7 @@ export const ChatSidebarMainPanel: React.FC<{
   metaFontSize: number;
   translationFontSize: number;
   onOpenUserInfo: (message: ChatMessage) => void;
+  onOpenEmoteInfo: (message: ChatMessage, fragment: ChatFragment) => void;
   onOpenRawData: (message: ChatMessage) => void;
   resolveBadgeVisual: (badgeKey: string) => BadgeVisual | null;
   richInputRef: React.MutableRefObject<RichChatInputRef | null>;
@@ -53,6 +54,7 @@ export const ChatSidebarMainPanel: React.FC<{
   metaFontSize,
   translationFontSize,
   onOpenUserInfo,
+  onOpenEmoteInfo,
   onOpenRawData,
   resolveBadgeVisual,
   richInputRef,
@@ -213,6 +215,7 @@ export const ChatSidebarMainPanel: React.FC<{
                   translationFontSize={translationFontSize}
                   timestampLabel={formatTime(item.message.timestamp, relativeNowMs)}
                   onUsernameClick={onOpenUserInfo}
+                  onEmoteClick={onOpenEmoteInfo}
                   onRawDataClick={onOpenRawData}
                   resolveBadgeVisual={resolveBadgeVisual}
                 />

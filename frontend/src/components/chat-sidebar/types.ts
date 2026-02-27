@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../ChatSidebarItem';
+import type { ChatFragment, ChatMessage } from '../ChatSidebarItem';
 
 export type IrcConnection = {
   channel: string;
@@ -78,6 +78,15 @@ export type ChatDisplayItem =
 export type UserInfoPopupState = {
   message: ChatMessage;
   tabId: string;
+};
+
+export type EmoteInfoPopupState = {
+  id: string;
+  tabId: string;
+  message: ChatMessage;
+  fragment: ChatFragment;
+  source: 'channel' | 'global';
+  channelLogin?: string;
 };
 
 export type ChatUserProfileDetail = {

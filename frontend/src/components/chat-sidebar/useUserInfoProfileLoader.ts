@@ -41,7 +41,6 @@ export const useUserInfoProfileLoader = ({
       setUserModerationMessage('');
       return;
     }
-
     const userId = (userInfoPopup.message.userId || '').trim();
     const loginHint = (userInfoPopup.message.username || '').trim().toLowerCase();
     if (!userId && !loginHint) {

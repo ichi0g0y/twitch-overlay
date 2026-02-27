@@ -132,8 +132,10 @@ export const useChatSidebarPopupEffects = ({
   activeTab,
   isCollapsed,
   userInfoPopup,
+  emoteInfoPopup,
   rawDataMessage,
   setUserInfoPopup,
+  setEmoteInfoPopup,
   setRawDataMessage,
   setUserInfoIdCopied,
   userInfoIdCopiedTimerRef,
@@ -149,10 +151,11 @@ export const useChatSidebarPopupEffects = ({
   applyResolvedUserProfile,
 }: UseChatSidebarLifecycleEffectsParams) => {
   useEffect(() => {
-    if (!userInfoPopup && !rawDataMessage) return;
+    if (!userInfoPopup && !emoteInfoPopup && !rawDataMessage) return;
     setUserInfoPopup(null);
+    setEmoteInfoPopup(null);
     setRawDataMessage(null);
-  }, [activeTab, isCollapsed]);
+  }, [activeTab, isCollapsed, setEmoteInfoPopup, setRawDataMessage, setUserInfoPopup]);
 
   useEffect(() => {
     setUserInfoIdCopied(false);
@@ -197,16 +200,17 @@ export const useChatSidebarPopupEffects = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!userInfoPopup && !rawDataMessage) return;
+    if (!userInfoPopup && !emoteInfoPopup && !rawDataMessage) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setUserInfoPopup(null);
+        setEmoteInfoPopup(null);
         setRawDataMessage(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [rawDataMessage, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
+  }, [emoteInfoPopup, rawDataMessage, setEmoteInfoPopup, setRawDataMessage, setUserInfoPopup, userInfoPopup]);
 };
 
 export const useChatSidebarModeEffects = ({
@@ -215,6 +219,7 @@ export const useChatSidebarModeEffects = ({
   activeChatDisplayMode,
   setActionsMenuOpen,
   setUserInfoPopup,
+  setEmoteInfoPopup,
   setRawDataMessage,
   setChannelEditorOpen,
 }: UseChatSidebarLifecycleEffectsParams) => {
@@ -228,6 +233,7 @@ export const useChatSidebarModeEffects = ({
     if (activeChatDisplayMode !== 'embed') return;
     setChattersOpen(false);
     setUserInfoPopup(null);
+    setEmoteInfoPopup(null);
     setRawDataMessage(null);
     setActionsMenuOpen(false);
     setChannelEditorOpen(false);
@@ -236,6 +242,7 @@ export const useChatSidebarModeEffects = ({
     setActionsMenuOpen,
     setChannelEditorOpen,
     setChattersOpen,
+    setEmoteInfoPopup,
     setRawDataMessage,
     setUserInfoPopup,
   ]);

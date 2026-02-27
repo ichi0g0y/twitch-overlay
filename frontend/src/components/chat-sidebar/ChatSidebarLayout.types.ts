@@ -1,11 +1,12 @@
 import type React from 'react';
 import type { ChattersPanelChatter } from '../ChattersPanel';
-import type { ChatMessage } from '../ChatSidebarItem';
+import type { ChatFragment, ChatMessage } from '../ChatSidebarItem';
 import type { RichChatInputRef } from '../chat/RichChatInput';
 import type {
   BadgeVisual,
   ChatDisplayMode,
   ChatDisplayItem,
+  EmoteInfoPopupState,
   UserInfoPopupState,
 } from './types';
 
@@ -65,6 +66,7 @@ export type ChatSidebarLayoutProps = {
   metaFontSize: number;
   translationFontSize: number;
   handleOpenUserInfo: (message: ChatMessage) => void;
+  handleOpenEmoteInfo: (message: ChatMessage, fragment: ChatFragment) => void;
   handleOpenRawData: (message: ChatMessage) => void;
   resolveBadgeVisual: (badgeKey: string) => BadgeVisual | null;
   richInputRef: React.MutableRefObject<RichChatInputRef | null>;
@@ -79,7 +81,9 @@ export type ChatSidebarLayoutProps = {
   inputHasContent: boolean;
   fallbackChatters: ChattersPanelChatter[];
   userInfoPopup: UserInfoPopupState | null;
+  emoteInfoPopup: EmoteInfoPopupState | null;
   handleCloseUserInfo: () => void;
+  handleCloseEmoteInfo: () => void;
   popupChannelUrl: string;
   popupChannelLogin: string;
   popupProfileCover: string;

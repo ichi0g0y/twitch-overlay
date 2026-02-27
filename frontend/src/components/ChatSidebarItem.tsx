@@ -8,6 +8,8 @@ export type ChatFragment = {
   text: string;
   emoteId?: string;
   emoteUrl?: string;
+  emoteOwnerId?: string;
+  emoteSetId?: string;
 };
 
 export type ChatMessage = {
@@ -167,6 +169,7 @@ type ChatSidebarItemProps = {
   translationFontSize: number;
   timestampLabel: string;
   onUsernameClick?: (message: ChatMessage) => void;
+  onEmoteClick?: (message: ChatMessage, fragment: ChatFragment) => void;
   onRawDataClick?: (message: ChatMessage) => void;
   resolveBadgeVisual?: (badgeKey: string) => { imageUrl: string; label: string } | null;
 };
@@ -181,6 +184,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
   translationFontSize,
   timestampLabel,
   onUsernameClick,
+  onEmoteClick,
   onRawDataClick,
   resolveBadgeVisual,
 }) => {
@@ -212,9 +216,7 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
       {shouldAppendName && <span className="min-w-0 truncate font-normal">{` (${rawName})`}</span>}
     </span>
   );
-  const usernameColor = message.chatSource === 'irc'
-    ? normalizeReadableChatColor(message.color)
-    : undefined;
+  const usernameColor = normalizeReadableChatColor(message.color);
   const avatarSizeStyle = { width: `${fontSize}px`, height: `${fontSize}px` };
   const avatarFallbackStyle = {
     ...avatarSizeStyle,
@@ -248,6 +250,16 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
         </span>
       </span>
     );
+  };
+
+  const canOpenEmoteChannelInfo = (fragment: ChatFragment) => {
+    const emoteId = (fragment.emoteId || '').trim();
+    if (emoteId !== '') return true;
+    const ownerId = (fragment.emoteOwnerId || '').trim();
+    if (ownerId !== '' && ownerId !== '0' && /^[0-9]+$/.test(ownerId)) return true;
+    const emoteSetId = (fragment.emoteSetId || '').trim();
+    if (emoteSetId !== '' && emoteSetId !== '0') return true;
+    return false;
   };
 
   return (
@@ -328,7 +340,14 @@ export const ChatSidebarItem: React.FC<ChatSidebarItemProps> = ({
         className="mt-1 text-gray-800 dark:text-gray-100 break-words"
         style={{ lineHeight: `${Math.round(fontSize * 1.1)}px` }}
       >
-        <MessageContent message={message.message} fragments={message.fragments} fontSize={fontSize} linkifyUrls />
+        <MessageContent
+          message={message.message}
+          fragments={message.fragments}
+          fontSize={fontSize}
+          linkifyUrls
+          onEmoteClick={(fragment) => onEmoteClick?.(message, fragment)}
+          canEmoteClick={canOpenEmoteChannelInfo}
+        />
         {showLangInMeta && renderLangLabel('text-amber-500/80 dark:text-amber-200/80', 'ml-2')}
       </div>
       {message.translationStatus === 'pending' && (

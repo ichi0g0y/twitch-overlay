@@ -3,6 +3,7 @@ import { PRIMARY_CHAT_TAB_ID } from '../../utils/chatChannels';
 import { ChatSidebarMainPanel } from './ChatSidebarMainPanel';
 import { ChatSidebarTabs } from './ChatSidebarTabs';
 import { ChatSidebarToolbar } from './ChatSidebarToolbar';
+import { EmoteInfoModal } from './EmoteInfoModal';
 import { RawDataModal } from './RawDataModal';
 import { UserInfoModal } from './UserInfoModal';
 import type { ChatSidebarLayoutProps } from './ChatSidebarLayout.types';
@@ -63,6 +64,7 @@ export const ChatSidebarLayout = ({
   metaFontSize,
   translationFontSize,
   handleOpenUserInfo,
+  handleOpenEmoteInfo,
   handleOpenRawData,
   resolveBadgeVisual,
   richInputRef,
@@ -77,7 +79,9 @@ export const ChatSidebarLayout = ({
   inputHasContent,
   fallbackChatters,
   userInfoPopup,
+  emoteInfoPopup,
   handleCloseUserInfo,
+  handleCloseEmoteInfo,
   popupChannelUrl,
   popupChannelLogin,
   popupProfileCover,
@@ -190,6 +194,7 @@ export const ChatSidebarLayout = ({
             metaFontSize={metaFontSize}
             translationFontSize={translationFontSize}
             onOpenUserInfo={handleOpenUserInfo}
+            onOpenEmoteInfo={handleOpenEmoteInfo}
             onOpenRawData={handleOpenRawData}
             resolveBadgeVisual={resolveBadgeVisual}
             richInputRef={richInputRef}
@@ -235,6 +240,11 @@ export const ChatSidebarLayout = ({
             userInfoCreatedAtLabel={userInfoCreatedAtLabel}
             userInfoFollowerCountLabel={userInfoFollowerCountLabel}
             userInfoTypeLabel={userInfoTypeLabel}
+          />
+          <EmoteInfoModal
+            open={Boolean(emoteInfoPopup) && !isCollapsed && activeChatDisplayMode !== 'embed'}
+            emoteInfoPopup={emoteInfoPopup}
+            onClose={handleCloseEmoteInfo}
           />
           <RawDataModal
             open={Boolean(rawDataMessage) && activeChatDisplayMode !== 'embed'}
